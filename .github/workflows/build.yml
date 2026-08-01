@@ -243,13 +243,17 @@ jobs:
         run: |
           flutter pub get
           if ! flutter build ios --release --no-codesign --verbose > /tmp/ios-build.log 2>&1; then
-            echo "===== cargokit failure (with context) ====="
-            grep -n -A 40 "Cargokit BuildTool failed" /tmp/ios-build.log | head -60
-            echo "===== compiler and linker errors ====="
-            grep -n -A 6 -E "Undefined symbols|ld: |clang: error|fatal error" /tmp/ios-build.log \
-              | grep -viE "warning:" | head -60
-            echo "===== last 60 lines ====="
-            tail -60 /tmp/ios-build.log
+            # cargokit relays cargo's stderr line by line prefixed with SEVERE:,
+            # and that output is long, so anchoring on a fixed number of context
+            # lines misses the error. Match the error text itself, then show the
+            # tail of the cargokit block where cargo's real failure lands.
+            echo "===== errors ====="
+            grep -nE "error\[|error:|panicked|could not compile|Compatibility with CMake|Undefined symbols|ld: |clang: error|fatal error" \
+              /tmp/ios-build.log | grep -viE "warning" | head -50
+            echo "===== end of cargokit output ====="
+            awk '/Cargokit BuildTool failed/,0' /tmp/ios-build.log | tail -70
+            echo "===== last 40 lines ====="
+            tail -40 /tmp/ios-build.log
             exit 1
           fi
 

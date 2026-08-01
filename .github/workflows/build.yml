@@ -243,11 +243,13 @@ jobs:
         run: |
           flutter pub get
           if ! flutter build ios --release --no-codesign --verbose > /tmp/ios-build.log 2>&1; then
+            echo "===== cargokit failure (with context) ====="
+            grep -n -A 40 "Cargokit BuildTool failed" /tmp/ios-build.log | head -60
             echo "===== compiler and linker errors ====="
-            grep -nE "error:|Undefined symbols|ld: |clang: error|fatal error" /tmp/ios-build.log \
+            grep -n -A 6 -E "Undefined symbols|ld: |clang: error|fatal error" /tmp/ios-build.log \
               | grep -viE "warning:" | head -60
-            echo "===== last 120 lines ====="
-            tail -120 /tmp/ios-build.log
+            echo "===== last 60 lines ====="
+            tail -60 /tmp/ios-build.log
             exit 1
           fi
 

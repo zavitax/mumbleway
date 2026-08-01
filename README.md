@@ -1,5 +1,7 @@
 # MumbleWay
 
+[![build](https://github.com/zavitax/mumbleway/actions/workflows/build.yml/badge.svg)](https://github.com/zavitax/mumbleway/actions/workflows/build.yml)
+
 A cross-platform Mumble client built for noisy environments — specifically, for
 talking from inside a motorcycle helmet at speed.
 
@@ -185,3 +187,26 @@ the reconnect policy's treatment of every disconnect reason.
 devices. It asserts the capture path keeps up with real time — roughly 100
 encoded frames per 2 seconds — which is the one property no amount of offline
 unit testing can establish.
+
+## Continuous integration
+
+`.github/workflows/build.yml` runs on every push and pull request to `main`:
+
+| Job | Runner | Produces |
+|---|---|---|
+| Tests | Ubuntu | `cargo fmt --check`, clippy, 109 engine tests, `flutter analyze`, widget tests |
+| Windows | windows-latest | `mumbleway-windows-x64.zip` |
+| macOS | macos-latest | `mumbleway-macos.zip` |
+| iOS | macos-latest | `mumbleway-ios-unsigned.zip` |
+| Android | Ubuntu | per-ABI APKs and an AAB |
+
+The platform builds are gated on the test job. Pushing a `v*` tag additionally
+publishes a GitHub release containing every artifact.
+
+The hardware audio tests stay excluded in CI — the runners have no audio
+devices, so they would fail for reasons unrelated to the code. Run them locally
+before shipping a change to the capture path.
+
+The iOS artifact is **unsigned**, because CI has no signing identity. It proves
+the target compiles and links; installing it on a device needs re-signing with
+your own provisioning profile.

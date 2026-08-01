@@ -101,6 +101,18 @@ jobs:
       - name: Install Ninja
         run: choco install ninja -y --no-progress
 
+      # The Ninja generator, unlike the Visual Studio one, expects cl.exe and
+      # the INCLUDE/LIB variables to already be in the environment.
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      # Build the engine on its own first. `flutter build windows` runs cargo
+      # through MSBuild, which swallows its output and reports only
+      # "exited with code -1" -- useless for diagnosing a native build. This
+      # step fails fast with the real compiler error instead.
+      - name: Build engine
+        working-directory: app/rust
+        run: cargo build --release
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -141,6 +153,12 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Xcode hides the cargo output behind its own build phase, so compile the
+      # engine separately first to get a readable error if it breaks.
+      - name: Build engine
+        working-directory: app/rust
+        run: cargo build --release
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -180,6 +198,15 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cross-compile the engine for the device target first. Flutter reports
+      # any Xcode failure as "requires a selected Development Team", which is a
+      # guess and hides the real cause; this surfaces it directly.
+      - name: Build engine for aarch64-apple-ios
+        working-directory: app/rust
+        run: |
+          rustup target add aarch64-apple-ios
+          cargo build --release --target aarch64-apple-ios
 
       - uses: subosito/flutter-action@v2
         with:

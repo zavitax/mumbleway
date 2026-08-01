@@ -106,6 +106,8 @@ pub struct ChannelInfo {
     pub description: String,
     pub position: i32,
     pub max_users: u32,
+    /// How many users are currently in this channel.
+    pub user_count: u32,
 }
 
 /// A connected user.
@@ -122,6 +124,32 @@ pub struct UserInfo {
     pub self_deaf: bool,
     /// Set locally when we are receiving audio from this user.
     pub talking: bool,
+    /// Silenced by us only. Unlike [`UserInfo::mute`] this needs no permission
+    /// and is invisible to everyone else — their audio is simply dropped before
+    /// it reaches the mixer.
+    pub local_mute: bool,
+}
+
+impl UserInfo {
+    /// One-word description of what this user is doing, for the roster.
+    pub fn status_label(&self) -> &'static str {
+        if self.deaf || self.self_deaf {
+            "deafened"
+        } else if self.local_mute {
+            "muted for you"
+        } else if self.mute || self.self_mute {
+            "muted"
+        } else if self.talking {
+            "talking"
+        } else {
+            "silent"
+        }
+    }
+
+    /// Whether we can hear this user at all right now.
+    pub fn is_audible(&self) -> bool {
+        !self.local_mute && !self.mute && !self.self_mute
+    }
 }
 
 /// Round-trip and quality figures for the status UI.
@@ -189,6 +217,24 @@ pub enum SessionCommand {
     },
     SetSelfMute(bool),
     SetSelfDeaf(bool),
+    /// Silence another user for us only. Always permitted.
+    SetUserLocalMute {
+        session: u32,
+        muted: bool,
+    },
+    /// Silence another user for everyone. Requires the Mute permission on the
+    /// server; without it the server answers with PermissionDenied.
+    SetUserServerMute {
+        session: u32,
+        muted: bool,
+    },
+    /// Deafen another user server-side. Also permission-gated.
+    SetUserServerDeaf {
+        session: u32,
+        deaf: bool,
+    },
+    /// Channel to join automatically on every future connect. `None` clears it.
+    SetDefaultChannel(Option<String>),
     /// Push-to-talk / voice-activation gate.
     SetTransmitting(bool),
     /// Accept a changed server certificate and re-pin it.

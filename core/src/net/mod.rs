@@ -3,6 +3,7 @@
 pub mod audio_packet;
 pub mod control;
 pub mod frame;
+pub mod ping;
 pub mod tls;
 pub mod voice;
 

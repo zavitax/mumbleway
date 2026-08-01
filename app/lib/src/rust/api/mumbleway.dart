@@ -8,9 +8,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `app`, `emit`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `app`, `cue_for_transition`, `emit`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -93,6 +93,114 @@ int maxConcurrentServers() =>
 /// Default Mumble port, so the UI can prefill it.
 int defaultPort() => RustLib.instance.api.crateApiMumblewayDefaultPort();
 
+/// Queries a server's ping and occupancy without connecting or authenticating.
+///
+/// Never fails: an unreachable or non-responding server comes back with
+/// `reachable == false`, because the caller is refreshing a list and a thrown
+/// error per offline server would be noise.
+Future<UiServerStatus> pingServer({
+  required String serverId,
+  required String host,
+  required int port,
+}) => RustLib.instance.api.crateApiMumblewayPingServer(
+  serverId: serverId,
+  host: host,
+  port: port,
+);
+
+/// Selects capture and playback devices. `None` means the system default.
+/// Takes effect within a few hundred milliseconds, without dropping sessions.
+Future<void> setAudioDevices({String? input, String? output}) => RustLib
+    .instance
+    .api
+    .crateApiMumblewaySetAudioDevices(input: input, output: output);
+
+/// Currently selected devices as `(input, output)`.
+Future<(String?, String?)> currentAudioDevices() =>
+    RustLib.instance.api.crateApiMumblewayCurrentAudioDevices();
+
+void setInputGainDb({required double db}) =>
+    RustLib.instance.api.crateApiMumblewaySetInputGainDb(db: db);
+
+double inputGainDb() => RustLib.instance.api.crateApiMumblewayInputGainDb();
+
+void setOutputVolumeDb({required double db}) =>
+    RustLib.instance.api.crateApiMumblewaySetOutputVolumeDb(db: db);
+
+double outputVolumeDb() =>
+    RustLib.instance.api.crateApiMumblewayOutputVolumeDb();
+
+/// Playback level in dBFS, for an output meter.
+double outputLevelDb() => RustLib.instance.api.crateApiMumblewayOutputLevelDb();
+
+/// Loopback monitoring: hear your own processed voice, to check the microphone
+/// and the noise-suppression setting.
+void setMonitoring({required bool on_}) =>
+    RustLib.instance.api.crateApiMumblewaySetMonitoring(on_: on_);
+
+bool isMonitoring() => RustLib.instance.api.crateApiMumblewayIsMonitoring();
+
+/// Plays a tone on the output device, to check the speaker choice.
+void playTestTone({required int millis}) =>
+    RustLib.instance.api.crateApiMumblewayPlayTestTone(millis: millis);
+
+void stopTestTone() => RustLib.instance.api.crateApiMumblewayStopTestTone();
+
+/// Gain limits, so the UI can build sliders that match the engine.
+Float32List gainLimits() => RustLib.instance.api.crateApiMumblewayGainLimits();
+
+/// Silences another user for us only. Always permitted.
+Future<void> setUserLocalMute({
+  required String serverId,
+  required int session,
+  required bool muted,
+}) => RustLib.instance.api.crateApiMumblewaySetUserLocalMute(
+  serverId: serverId,
+  session: session,
+  muted: muted,
+);
+
+/// Silences another user for everyone. Requires the Mute permission; without it
+/// the server replies with a permission-denied message that surfaces as text.
+Future<void> setUserServerMute({
+  required String serverId,
+  required int session,
+  required bool muted,
+}) => RustLib.instance.api.crateApiMumblewaySetUserServerMute(
+  serverId: serverId,
+  session: session,
+  muted: muted,
+);
+
+/// Deafens another user server-side. Also permission-gated.
+Future<void> setUserServerDeaf({
+  required String serverId,
+  required int session,
+  required bool deaf,
+}) => RustLib.instance.api.crateApiMumblewaySetUserServerDeaf(
+  serverId: serverId,
+  session: session,
+  deaf: deaf,
+);
+
+/// Channel to join automatically on every future connect. `None` clears it.
+Future<void> setDefaultChannel({required String serverId, String? channel}) =>
+    RustLib.instance.api.crateApiMumblewaySetDefaultChannel(
+      serverId: serverId,
+      channel: channel,
+    );
+
+/// Parses a `mumble://` link or a JSON profile file into server definitions.
+///
+/// Nothing is connected or saved here; the caller decides what to keep.
+Future<List<ServerConfig>> importServers({
+  required String text,
+  required String fallbackUsername,
+}) => RustLib.instance.api.crateApiMumblewayImportServers(
+  text: text,
+  fallbackUsername: fallbackUsername,
+);
+
 @freezed
 sealed class AppEvent with _$AppEvent {
   const AppEvent._();
@@ -130,6 +238,13 @@ sealed class AppEvent with _$AppEvent {
     required String serverId,
     required String text,
   }) = AppEvent_Welcome;
+
+  /// Our own session id on this server. Needed to work out which channel we
+  /// are in, and to keep ourselves out of the "other users" roster.
+  const factory AppEvent.selfSession({
+    required String serverId,
+    required int session,
+  }) = AppEvent_SelfSession;
 }
 
 /// Connection status, flattened for easy rendering.
@@ -273,16 +388,27 @@ class UiChannel {
   final int? parent;
   final String description;
 
+  /// Users currently in this channel.
+  final int userCount;
+  final int maxUsers;
+
   const UiChannel({
     required this.id,
     required this.name,
     this.parent,
     required this.description,
+    required this.userCount,
+    required this.maxUsers,
   });
 
   @override
   int get hashCode =>
-      id.hashCode ^ name.hashCode ^ parent.hashCode ^ description.hashCode;
+      id.hashCode ^
+      name.hashCode ^
+      parent.hashCode ^
+      description.hashCode ^
+      userCount.hashCode ^
+      maxUsers.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -292,7 +418,49 @@ class UiChannel {
           id == other.id &&
           name == other.name &&
           parent == other.parent &&
-          description == other.description;
+          description == other.description &&
+          userCount == other.userCount &&
+          maxUsers == other.maxUsers;
+}
+
+/// What an unauthenticated status probe reported about a server.
+class UiServerStatus {
+  final String serverId;
+  final bool reachable;
+  final double pingMs;
+  final int users;
+  final int maxUsers;
+  final String version;
+
+  const UiServerStatus({
+    required this.serverId,
+    required this.reachable,
+    required this.pingMs,
+    required this.users,
+    required this.maxUsers,
+    required this.version,
+  });
+
+  @override
+  int get hashCode =>
+      serverId.hashCode ^
+      reachable.hashCode ^
+      pingMs.hashCode ^
+      users.hashCode ^
+      maxUsers.hashCode ^
+      version.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiServerStatus &&
+          runtimeType == other.runtimeType &&
+          serverId == other.serverId &&
+          reachable == other.reachable &&
+          pingMs == other.pingMs &&
+          users == other.users &&
+          maxUsers == other.maxUsers &&
+          version == other.version;
 }
 
 class UiStats {
@@ -333,8 +501,16 @@ class UiUser {
   final String name;
   final int channelId;
   final bool talking;
+
+  /// Muted server-side or by themselves — nobody hears them.
   final bool muted;
   final bool deafened;
+
+  /// Silenced by us alone. Needs no permission and is invisible to others.
+  final bool localMute;
+
+  /// One word for the roster: talking, silent, muted, deafened, muted for you.
+  final String status;
 
   const UiUser({
     required this.session,
@@ -343,6 +519,8 @@ class UiUser {
     required this.talking,
     required this.muted,
     required this.deafened,
+    required this.localMute,
+    required this.status,
   });
 
   @override
@@ -352,7 +530,9 @@ class UiUser {
       channelId.hashCode ^
       talking.hashCode ^
       muted.hashCode ^
-      deafened.hashCode;
+      deafened.hashCode ^
+      localMute.hashCode ^
+      status.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -364,5 +544,7 @@ class UiUser {
           channelId == other.channelId &&
           talking == other.talking &&
           muted == other.muted &&
-          deafened == other.deafened;
+          deafened == other.deafened &&
+          localMute == other.localMute &&
+          status == other.status;
 }

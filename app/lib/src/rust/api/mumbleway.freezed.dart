@@ -55,7 +55,7 @@ extension AppEventPatterns on AppEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Welcome value)?  welcome,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -66,7 +66,8 @@ return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that);case AppEvent_Certificate() when certificate != null:
 return certificate(_that);case AppEvent_Welcome() when welcome != null:
-return welcome(_that);case _:
+return welcome(_that);case AppEvent_SelfSession() when selfSession != null:
+return selfSession(_that);case _:
   return orElse();
 
 }
@@ -84,7 +85,7 @@ return welcome(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Welcome value)  welcome,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status():
@@ -95,7 +96,8 @@ return text(_that);case AppEvent_Stats():
 return stats(_that);case AppEvent_InputLevel():
 return inputLevel(_that);case AppEvent_Certificate():
 return certificate(_that);case AppEvent_Welcome():
-return welcome(_that);}
+return welcome(_that);case AppEvent_SelfSession():
+return selfSession(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -109,7 +111,7 @@ return welcome(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Welcome value)?  welcome,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -120,7 +122,8 @@ return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that);case AppEvent_Certificate() when certificate != null:
 return certificate(_that);case AppEvent_Welcome() when welcome != null:
-return welcome(_that);case _:
+return welcome(_that);case AppEvent_SelfSession() when selfSession != null:
+return selfSession(_that);case _:
   return null;
 
 }
@@ -137,7 +140,7 @@ return welcome(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking)?  inputLevel,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String text)?  welcome,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking)?  inputLevel,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -147,7 +150,8 @@ return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when 
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that.levelDb,_that.speaking);case AppEvent_Certificate() when certificate != null:
 return certificate(_that.serverId,_that.fingerprint,_that.changed);case AppEvent_Welcome() when welcome != null:
-return welcome(_that.serverId,_that.text);case _:
+return welcome(_that.serverId,_that.text);case AppEvent_SelfSession() when selfSession != null:
+return selfSession(_that.serverId,_that.session);case _:
   return orElse();
 
 }
@@ -165,7 +169,7 @@ return welcome(_that.serverId,_that.text);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking)  inputLevel,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String text)  welcome,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking)  inputLevel,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status():
 return status(_that.field0);case AppEvent_Users():
@@ -175,7 +179,8 @@ return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats():
 return stats(_that.field0);case AppEvent_InputLevel():
 return inputLevel(_that.levelDb,_that.speaking);case AppEvent_Certificate():
 return certificate(_that.serverId,_that.fingerprint,_that.changed);case AppEvent_Welcome():
-return welcome(_that.serverId,_that.text);}
+return welcome(_that.serverId,_that.text);case AppEvent_SelfSession():
+return selfSession(_that.serverId,_that.session);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -189,7 +194,7 @@ return welcome(_that.serverId,_that.text);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking)?  inputLevel,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String text)?  welcome,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking)?  inputLevel,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -199,7 +204,8 @@ return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when 
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that.levelDb,_that.speaking);case AppEvent_Certificate() when certificate != null:
 return certificate(_that.serverId,_that.fingerprint,_that.changed);case AppEvent_Welcome() when welcome != null:
-return welcome(_that.serverId,_that.text);case _:
+return welcome(_that.serverId,_that.text);case AppEvent_SelfSession() when selfSession != null:
+return selfSession(_that.serverId,_that.session);case _:
   return null;
 
 }
@@ -757,6 +763,74 @@ class _$AppEvent_WelcomeCopyWithImpl<$Res>
 serverId: null == serverId ? _self.serverId : serverId // ignore: cast_nullable_to_non_nullable
 as String,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
 as String,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppEvent_SelfSession extends AppEvent {
+  const AppEvent_SelfSession({required this.serverId, required this.session}): super._();
+  
+
+ final  String serverId;
+ final  int session;
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppEvent_SelfSessionCopyWith<AppEvent_SelfSession> get copyWith => _$AppEvent_SelfSessionCopyWithImpl<AppEvent_SelfSession>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppEvent_SelfSession&&(identical(other.serverId, serverId) || other.serverId == serverId)&&(identical(other.session, session) || other.session == session));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,serverId,session);
+
+@override
+String toString() {
+  return 'AppEvent.selfSession(serverId: $serverId, session: $session)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppEvent_SelfSessionCopyWith<$Res> implements $AppEventCopyWith<$Res> {
+  factory $AppEvent_SelfSessionCopyWith(AppEvent_SelfSession value, $Res Function(AppEvent_SelfSession) _then) = _$AppEvent_SelfSessionCopyWithImpl;
+@useResult
+$Res call({
+ String serverId, int session
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppEvent_SelfSessionCopyWithImpl<$Res>
+    implements $AppEvent_SelfSessionCopyWith<$Res> {
+  _$AppEvent_SelfSessionCopyWithImpl(this._self, this._then);
+
+  final AppEvent_SelfSession _self;
+  final $Res Function(AppEvent_SelfSession) _then;
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? serverId = null,Object? session = null,}) {
+  return _then(AppEvent_SelfSession(
+serverId: null == serverId ? _self.serverId : serverId // ignore: cast_nullable_to_non_nullable
+as String,session: null == session ? _self.session : session // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

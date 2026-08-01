@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import 'import_screen.dart';
+import 'public_servers_screen.dart';
 
 /// Form for adding a server, with a few well-known public servers offered as
 /// shortcuts so a new user has something to try immediately.
@@ -45,7 +47,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const _PublicServerPicker(),
+            const _Shortcuts(),
             const SizedBox(height: 8),
             TextFormField(
               controller: _name,
@@ -153,15 +155,9 @@ class _AddServerScreenState extends State<AddServerScreen> {
   }
 }
 
-/// Well-known open servers, to make the first run painless.
-class _PublicServerPicker extends StatelessWidget {
-  const _PublicServerPicker();
-
-  static const _entries = [
-    ('Mumble.info (official test)', 'mumble.info', 64738),
-    ('GetMumble EU', 'eu.getmumble.com', 64738),
-    ('GetMumble US', 'us.getmumble.com', 64738),
-  ];
+/// Faster routes than typing an address by hand.
+class _Shortcuts extends StatelessWidget {
+  const _Shortcuts();
 
   @override
   Widget build(BuildContext context) {
@@ -172,34 +168,34 @@ class _PublicServerPicker extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Public servers',
+            const Text('Quicker ways to add a server',
                 style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(
-              'Tap to fill in the address, then choose a username.',
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _entries
-                  .map((e) => ActionChip(
-                        avatar: const Icon(Icons.public, size: 16),
-                        label: Text(e.$1),
-                        onPressed: () {
-                          final s = context
-                              .findAncestorStateOfType<_AddServerScreenState>();
-                          if (s == null) return;
-                          s._name.text = e.$1;
-                          s._host.text = e.$2;
-                          s._port.text = e.$3.toString();
-                        },
-                      ))
-                  .toList(),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const PublicServersScreen()),
+                    ),
+                    icon: const Icon(Icons.public),
+                    label: const Text('Browse public'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ImportScreen()),
+                    ),
+                    icon: const Icon(Icons.download),
+                    label: const Text('Import'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

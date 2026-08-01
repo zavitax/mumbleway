@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import '../widgets/ptt_button.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -15,8 +16,16 @@ class SettingsScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          const _SectionHeader('Audio devices'),
+          const _DeviceSection(),
+
+          const Divider(height: 32),
+          const _SectionHeader('Levels'),
+          const _LevelsSection(),
+
+          const Divider(height: 32),
           const _SectionHeader('Noise cancellation'),
-          _Explainer(
+          const _Explainer(
             'Filters wind, engine and road noise out of your microphone. '
             'Changes take effect next time the app starts.',
           ),
@@ -40,7 +49,7 @@ class SettingsScreen extends StatelessWidget {
 
           const Divider(height: 32),
           const _SectionHeader('Microphone mode'),
-          _Explainer(
+          const _Explainer(
             'Push-to-talk is the safest choice at speed: nothing you hit on the '
             'road can key the microphone by accident.',
           ),
@@ -61,17 +70,24 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
 
+          if (state.overlaySupported) ...[
+            const Divider(height: 32),
+            const _SectionHeader('Floating talk button'),
+            const _Explainer(
+              'Puts a small draggable push-to-talk button over whatever else '
+              'is on screen, with the names of whoever is speaking. Made for '
+              'riding with a navigation app in front.',
+            ),
+            const _OverlayTile(),
+          ],
+
           const Divider(height: 32),
           const _SectionHeader('Identity'),
-          _Explainer(
+          const _Explainer(
             'Mumble servers recognise you by a certificate this app generated. '
             'Give this fingerprint to a server admin to register your account.',
           ),
           const _FingerprintTile(),
-
-          const Divider(height: 32),
-          const _SectionHeader('Audio devices'),
-          const _DeviceList(),
           const SizedBox(height: 32),
         ],
       ),
@@ -105,6 +121,298 @@ class SettingsScreen extends StatelessWidget {
         MicMode.voiceActivity => 'Transmit automatically when you speak.',
         MicMode.continuous => 'Transmit constantly. Uses the most data.',
       };
+}
+
+/// Device pickers plus the two test controls.
+class _DeviceSection extends StatelessWidget {
+  const _DeviceSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+
+    // Desktop hosts enumerate real devices. Phones generally expose a single
+    // logical route that the OS switches for you, so there is nothing to pick.
+    final canChoose = state.inputDevices.length > 1 ||
+        state.outputDevices.length > 1;
+
+    if (!canChoose) {
+      return Column(
+        children: [
+          const _Explainer(
+            'This platform routes audio automatically — connecting a headset '
+            'switches the app over. Use the system audio settings to choose a '
+            'different device.',
+          ),
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: const Text('Re-check devices'),
+            onTap: state.refreshDevices,
+          ),
+          const _MonitorTile(),
+          const _TestOutputTile(),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        _DevicePicker(
+          label: 'Microphone',
+          icon: Icons.mic_none,
+          devices: state.inputDevices,
+          selected: state.selectedInput,
+          onChanged: state.chooseInputDevice,
+        ),
+        _DevicePicker(
+          label: 'Speakers',
+          icon: Icons.speaker,
+          devices: state.outputDevices,
+          selected: state.selectedOutput,
+          onChanged: state.chooseOutputDevice,
+        ),
+        ListTile(
+          leading: const Icon(Icons.refresh),
+          title: const Text('Re-check devices'),
+          subtitle: const Text('After plugging in or pairing a headset'),
+          onTap: state.refreshDevices,
+        ),
+        const _MonitorTile(),
+        const _TestOutputTile(),
+      ],
+    );
+  }
+}
+
+class _DevicePicker extends StatelessWidget {
+  const _DevicePicker({
+    required this.label,
+    required this.icon,
+    required this.devices,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final String label;
+  final IconData icon;
+  final List<String> devices;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    // `null` is a first-class choice meaning "follow the system default",
+    // which is what most users want and what survives replugging a headset.
+    final items = <DropdownMenuItem<String?>>[
+      const DropdownMenuItem(value: null, child: Text('System default')),
+      for (final d in devices)
+        DropdownMenuItem(
+          value: d,
+          child: Text(d, overflow: TextOverflow.ellipsis),
+        ),
+    ];
+
+    final value = devices.contains(selected) ? selected : null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 14),
+          Expanded(
+            child: DropdownButtonFormField<String?>(
+              initialValue: value,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: label,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+              items: items,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MonitorTile extends StatelessWidget {
+  const _MonitorTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: const Icon(Icons.hearing),
+      title: const Text('Test microphone (hear yourself)'),
+      subtitle: const Text(
+        'Plays your processed voice back, exactly as the far end hears it.',
+      ),
+      value: state.monitoring,
+      onChanged: (_) => state.toggleMonitoring(),
+    );
+  }
+}
+
+class _TestOutputTile extends StatelessWidget {
+  const _TestOutputTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    return ListTile(
+      leading: const Icon(Icons.volume_up),
+      title: const Text('Test speakers'),
+      subtitle: const Text('Plays a short tone on the selected output'),
+      trailing: FilledButton.tonal(
+        onPressed: state.testOutput,
+        child: const Text('Play'),
+      ),
+    );
+  }
+}
+
+/// Input gain and output volume, with the live meter alongside so the effect
+/// of a change is immediately visible.
+class _LevelsSection extends StatelessWidget {
+  const _LevelsSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    final minIn = state.gainRange[0];
+    final maxIn = state.gainRange[1];
+    final minOut = state.gainRange[2];
+    final maxOut = state.gainRange[3];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: LevelMeter(showScale: true),
+          ),
+          _LabelledSlider(
+            label: 'Microphone gain',
+            value: state.inputGainDbValue.clamp(minIn, maxIn),
+            min: minIn,
+            max: maxIn,
+            onChanged: state.updateInputGain,
+          ),
+          _LabelledSlider(
+            label: 'Speaker volume',
+            value: state.outputVolumeDbValue.clamp(minOut, maxOut),
+            min: minOut,
+            max: maxOut,
+            onChanged: state.updateOutputVolume,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Aim for the meter to peak around three quarters while speaking '
+            'normally. Too much gain lifts the engine noise with your voice.',
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+class _LabelledSlider extends StatelessWidget {
+  const _LabelledSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+            Text(
+              '${value >= 0 ? '+' : ''}${value.toStringAsFixed(0)} dB',
+              style: const TextStyle(
+                fontSize: 12,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: (max - min).round(),
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _OverlayTile extends StatefulWidget {
+  const _OverlayTile();
+
+  @override
+  State<_OverlayTile> createState() => _OverlayTileState();
+}
+
+class _OverlayTileState extends State<_OverlayTile> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: _busy
+          ? const SizedBox(
+              width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.picture_in_picture_alt),
+      title: const Text('Show floating talk button'),
+      subtitle: const Text(
+        'Needs the "display over other apps" permission.',
+      ),
+      value: state.overlayEnabled,
+      onChanged: _busy
+          ? null
+          : (want) async {
+              setState(() => _busy = true);
+              final messenger = ScaffoldMessenger.of(context);
+              String? error;
+              if (want) {
+                error = await state.enableOverlay();
+              } else {
+                await state.disableOverlay();
+              }
+              if (!mounted) return;
+              setState(() => _busy = false);
+              if (error != null) {
+                messenger.showSnackBar(SnackBar(content: Text(error)));
+              }
+            },
+    );
+  }
 }
 
 class _FingerprintTile extends StatefulWidget {
@@ -150,58 +458,6 @@ class _FingerprintTileState extends State<_FingerprintTile> {
                 );
               },
             ),
-    );
-  }
-}
-
-class _DeviceList extends StatefulWidget {
-  const _DeviceList();
-
-  @override
-  State<_DeviceList> createState() => _DeviceListState();
-}
-
-class _DeviceListState extends State<_DeviceList> {
-  List<String> _inputs = const [];
-  List<String> _outputs = const [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final i = await audioInputDevices();
-      final o = await audioOutputDevices();
-      if (mounted) {
-        setState(() {
-          _inputs = i;
-          _outputs = o;
-        });
-      }
-    } catch (_) {
-      // Device enumeration can fail on a locked-down platform; not fatal.
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          leading: const Icon(Icons.mic_none),
-          title: const Text('Inputs'),
-          subtitle: Text(_inputs.isEmpty ? 'None found' : _inputs.join('\n')),
-        ),
-        ListTile(
-          leading: const Icon(Icons.speaker),
-          title: const Text('Outputs'),
-          subtitle: Text(_outputs.isEmpty ? 'None found' : _outputs.join('\n')),
-        ),
-      ],
     );
   }
 }

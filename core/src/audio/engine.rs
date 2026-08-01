@@ -10,7 +10,7 @@
 //! * Incoming packets are decoded per speaker by [`super::jitter::SpeakerBuffer`],
 //!   mixed, and left in a queue that the cpal **output callback** drains.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -58,10 +58,104 @@ pub struct AudioShared {
     deafened: AtomicBool,
     /// Input level in dBFS * 100, for the UI meter.
     input_level: AtomicU32,
+    /// Output level in dBFS * 100, so the UI can show playback activity.
+    output_level: AtomicU32,
     /// Whether the last processed block counted as speech.
     speech_detected: AtomicBool,
     running: AtomicBool,
+
+    /// Microphone gain in dB * 100, applied before the DSP chain so the meter
+    /// reflects what the pipeline actually sees.
+    input_gain_db: AtomicI32,
+    /// Playback attenuation in dB * 100.
+    output_volume_db: AtomicI32,
+    /// Loopback: route the processed microphone straight to playback so the
+    /// user can hear exactly what the far end would hear.
+    monitor: AtomicBool,
+    /// Pre-rendered notification tones waiting to reach the output device.
+    ///
+    /// Rendering up front rather than synthesising in the worker keeps the cue
+    /// intact even if the worker is busy, and makes a cue a single atomic
+    /// action that cannot be half-played.
+    cue_queue: Mutex<VecDeque<f32>>,
+
+    /// Requested capture/playback devices, by name. `None` means system default.
+    device_request: Mutex<(Option<String>, Option<String>)>,
+    /// Bumped whenever `device_request` changes; the device thread watches this
+    /// and rebuilds its streams, which is how devices switch without tearing
+    /// down the sessions that feed this shared state.
+    device_generation: AtomicU64,
 }
+
+/// A short tone played to signal something without needing the screen.
+///
+/// These exist because the app is normally in a rider's pocket or behind a
+/// navigation app: a status change that is only visible is a status change that
+/// gets missed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioCue {
+    /// Falling two-tone — the connection dropped.
+    Disconnected,
+    /// Rising two-tone — the connection is back.
+    Reconnected,
+    /// Steady tone for checking the chosen output device.
+    Test,
+}
+
+impl AudioCue {
+    /// Segments as `(frequency_hz, milliseconds)`; frequency 0 is a gap.
+    fn segments(self) -> &'static [(f32, u32)] {
+        match self {
+            // Falling, so it reads as "something went wrong" without thinking.
+            AudioCue::Disconnected => &[(880.0, 140), (0.0, 40), (440.0, 240)],
+            // Rising, the mirror image.
+            AudioCue::Reconnected => &[(523.25, 120), (0.0, 30), (783.99, 220)],
+            AudioCue::Test => &[(440.0, 600)],
+        }
+    }
+}
+
+/// Renders a cue to PCM at [`SAMPLE_RATE`].
+///
+/// Each segment is faded in and out over a few milliseconds; without that the
+/// abrupt start and stop produce an audible click that is worse than the tone.
+pub fn render_cue(cue: AudioCue) -> Vec<f32> {
+    render_segments(cue.segments(), 0.22)
+}
+
+fn render_segments(segments: &[(f32, u32)], amplitude: f32) -> Vec<f32> {
+    let mut out = Vec::new();
+    for &(freq, millis) in segments {
+        let n = (SAMPLE_RATE as u64 * millis as u64 / 1000) as usize;
+        if n == 0 {
+            continue;
+        }
+        // ~5 ms of ramp at each end, but never more than a third of the segment.
+        let ramp = ((SAMPLE_RATE as usize / 200).min(n / 3)).max(1);
+        for i in 0..n {
+            let env = if i < ramp {
+                i as f32 / ramp as f32
+            } else if i >= n - ramp {
+                (n - i) as f32 / ramp as f32
+            } else {
+                1.0
+            };
+            let s = if freq <= 0.0 {
+                0.0
+            } else {
+                (std::f32::consts::TAU * freq * i as f32 / SAMPLE_RATE as f32).sin()
+            };
+            out.push(s * env * amplitude);
+        }
+    }
+    out
+}
+
+/// Bounds on the user-adjustable gains, in dB.
+pub const MIN_INPUT_GAIN_DB: f32 = -20.0;
+pub const MAX_INPUT_GAIN_DB: f32 = 30.0;
+pub const MIN_OUTPUT_VOLUME_DB: f32 = -40.0;
+pub const MAX_OUTPUT_VOLUME_DB: f32 = 10.0;
 
 impl AudioShared {
     fn new() -> Self {
@@ -73,9 +167,99 @@ impl AudioShared {
             muted: AtomicBool::new(false),
             deafened: AtomicBool::new(false),
             input_level: AtomicU32::new(0),
+            output_level: AtomicU32::new(0),
             speech_detected: AtomicBool::new(false),
             running: AtomicBool::new(true),
+            input_gain_db: AtomicI32::new(0),
+            output_volume_db: AtomicI32::new(0),
+            monitor: AtomicBool::new(false),
+            cue_queue: Mutex::new(VecDeque::new()),
+            device_request: Mutex::new((None, None)),
+            device_generation: AtomicU64::new(0),
         }
+    }
+
+    /// Sets microphone gain in dB, clamped to the supported range.
+    pub fn set_input_gain_db(&self, db: f32) {
+        let v = db.clamp(MIN_INPUT_GAIN_DB, MAX_INPUT_GAIN_DB);
+        self.input_gain_db
+            .store((v * 100.0) as i32, Ordering::Relaxed);
+    }
+
+    pub fn input_gain_db(&self) -> f32 {
+        self.input_gain_db.load(Ordering::Relaxed) as f32 / 100.0
+    }
+
+    /// Sets playback volume in dB, clamped to the supported range.
+    pub fn set_output_volume_db(&self, db: f32) {
+        let v = db.clamp(MIN_OUTPUT_VOLUME_DB, MAX_OUTPUT_VOLUME_DB);
+        self.output_volume_db
+            .store((v * 100.0) as i32, Ordering::Relaxed);
+    }
+
+    pub fn output_volume_db(&self) -> f32 {
+        self.output_volume_db.load(Ordering::Relaxed) as f32 / 100.0
+    }
+
+    /// Enables loopback monitoring, so the user hears their own processed voice.
+    pub fn set_monitor(&self, on: bool) {
+        self.monitor.store(on, Ordering::Relaxed);
+        if !on {
+            self.playback_queue.lock().clear();
+        }
+    }
+
+    pub fn is_monitoring(&self) -> bool {
+        self.monitor.load(Ordering::Relaxed)
+    }
+
+    /// Queues a notification tone.
+    ///
+    /// Cues bypass the deafen flag deliberately: "the connection dropped" is
+    /// exactly the thing a deafened user still needs to know.
+    pub fn play_cue(&self, cue: AudioCue) {
+        let pcm = render_cue(cue);
+        let mut q = self.cue_queue.lock();
+        // Replace rather than append: a flapping connection would otherwise
+        // queue a backlog of tones that keeps playing long after it settles.
+        q.clear();
+        q.extend(pcm);
+    }
+
+    /// Queues a steady test tone of the given length.
+    pub fn play_test_tone(&self, millis: u32) {
+        let pcm = render_segments(&[(440.0, millis)], 0.22);
+        let mut q = self.cue_queue.lock();
+        q.clear();
+        q.extend(pcm);
+    }
+
+    pub fn stop_test_tone(&self) {
+        self.cue_queue.lock().clear();
+    }
+
+    pub fn test_tone_active(&self) -> bool {
+        !self.cue_queue.lock().is_empty()
+    }
+
+    /// Playback level in dBFS.
+    pub fn output_level_db(&self) -> f32 {
+        self.output_level.load(Ordering::Relaxed) as f32 / 100.0 - 120.0
+    }
+
+    /// Requests different capture/playback devices. `None` selects the system
+    /// default. Takes effect within a few hundred milliseconds.
+    pub fn set_devices(&self, input: Option<String>, output: Option<String>) {
+        *self.device_request.lock() = (input, output);
+        self.device_generation.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn devices(&self) -> (Option<String>, Option<String>) {
+        self.device_request.lock().clone()
+    }
+
+    fn device_generation(&self) -> u64 {
+        self.device_generation.load(Ordering::Acquire)
     }
 
     pub fn set_transmitting(&self, on: bool) {
@@ -113,6 +297,11 @@ impl AudioShared {
     fn store_level(&self, db: f32) {
         let v = ((db + 120.0).clamp(0.0, 120.0) * 100.0) as u32;
         self.input_level.store(v, Ordering::Relaxed);
+    }
+
+    fn store_output_level(&self, db: f32) {
+        let v = ((db + 120.0).clamp(0.0, 120.0) * 100.0) as u32;
+        self.output_level.store(v, Ordering::Relaxed);
     }
 
     /// Queues a received voice packet for decoding and playback.
@@ -283,6 +472,8 @@ impl AudioEngine {
         F: FnMut(u64, Vec<u8>, bool) + Send + 'static,
     {
         let shared = Arc::new(AudioShared::new());
+        // Seed the request with the starting choice so `devices()` reports it.
+        *shared.device_request.lock() = (config.input_device.clone(), config.output_device.clone());
 
         // cpal streams are not Send on every platform, so they are created and
         // owned by a dedicated thread that outlives them.
@@ -293,21 +484,47 @@ impl AudioEngine {
         let thread = std::thread::Builder::new()
             .name("mumbleway-audio".into())
             .spawn(move || {
-                let built = build_streams(&dev_config, &dev_shared);
-                match built {
-                    Ok((in_stream, out_stream)) => {
+                let mut config = dev_config;
+                let mut generation = dev_shared.device_generation();
+
+                let mut streams = match build_streams(&config, &dev_shared) {
+                    Ok(s) => {
                         let _ = ready_tx.send(Ok(()));
-                        // Hold the streams open until asked to stop.
-                        while dev_shared.is_running() {
-                            std::thread::sleep(std::time::Duration::from_millis(100));
-                        }
-                        drop(in_stream);
-                        drop(out_stream);
+                        Some(s)
                     }
                     Err(e) => {
                         let _ = ready_tx.send(Err(e));
+                        return;
+                    }
+                };
+
+                while dev_shared.is_running() {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+
+                    let current = dev_shared.device_generation();
+                    if current == generation {
+                        continue;
+                    }
+                    generation = current;
+
+                    let (input, output) = dev_shared.devices();
+                    config.input_device = input;
+                    config.output_device = output;
+
+                    // Close the old streams before opening the new ones: some
+                    // drivers (and most Bluetooth headsets) only allow one
+                    // exclusive client at a time.
+                    streams = None;
+                    match build_streams(&config, &dev_shared) {
+                        Ok(s) => streams = Some(s),
+                        Err(e) => {
+                            // Keep the engine alive with no device rather than
+                            // killing the session; the user can pick another.
+                            tracing::error!("could not switch audio device: {e}");
+                        }
                     }
                 }
+                drop(streams);
             })
             .map_err(|e| CoreError::Audio(format!("spawning audio thread: {e}")))?;
 
@@ -426,12 +643,19 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                     pending.extend(converted.iter().copied());
                 }
 
+                // Volume is applied here rather than in the mixer so it covers
+                // everything the user might be listening to: voice, the
+                // loopback monitor and the test tone alike.
+                let vol = 10f32.powf(play_shared.output_volume_db() / 20.0);
+                let mut peak = 0.0f32;
                 for frame in data.chunks_mut(out_channels.max(1)) {
-                    let s = pending.pop_front().unwrap_or(0.0);
+                    let s = (pending.pop_front().unwrap_or(0.0) * vol).clamp(-1.0, 1.0);
+                    peak = peak.max(s.abs());
                     for ch in frame.iter_mut() {
                         *ch = s;
                     }
                 }
+                play_shared.store_output_level(super::dsp::to_dbfs(peak));
             },
             move |e| tracing::warn!("output stream error: {e}"),
             None,
@@ -485,11 +709,28 @@ where
             }
             did_work = true;
 
+            // Microphone gain goes in ahead of the DSP chain, so the level
+            // meter, the gate and the far end all see the same signal.
+            let gain = 10f32.powf(shared.input_gain_db() / 20.0);
+            if (gain - 1.0).abs() > 1e-3 {
+                for s in block.iter_mut() {
+                    *s *= gain;
+                }
+            }
+
             let analysis = processor.process(&mut block);
             shared.store_level(analysis.level_db);
             shared
                 .speech_detected
                 .store(analysis.speaking, Ordering::Relaxed);
+
+            // Loopback monitoring: hear exactly what would be transmitted.
+            if shared.is_monitoring() {
+                let mut q = shared.playback_queue.lock();
+                if q.len() + block.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
+                    q.extend(block.iter().copied());
+                }
+            }
 
             let allowed = !shared.is_muted()
                 && match config.transmit_mode {
@@ -517,6 +758,26 @@ where
                     was_transmitting = false;
                 }
                 frame.clear();
+            }
+        }
+
+        // --- notification cues ---------------------------------------------
+        // Drained a block at a time so a long cue cannot overrun the playback
+        // queue, and so voice keeps flowing underneath it.
+        {
+            let mut cues = shared.cue_queue.lock();
+            if !cues.is_empty() {
+                let mut q = shared.playback_queue.lock();
+                let room = MAX_QUEUED_OUTPUT_SAMPLES.saturating_sub(q.len());
+                let n = room.min(FRAME_SIZE).min(cues.len());
+                for _ in 0..n {
+                    if let Some(s) = cues.pop_front() {
+                        q.push_back(s);
+                    }
+                }
+                if n > 0 {
+                    did_work = true;
+                }
             }
         }
 
@@ -695,6 +956,154 @@ mod tests {
             2,
             "same session id on different servers must produce two speakers"
         );
+    }
+
+    #[test]
+    fn gains_clamp_to_their_supported_range() {
+        let s = AudioShared::new();
+        assert_eq!(s.input_gain_db(), 0.0, "starts at unity");
+
+        s.set_input_gain_db(12.5);
+        assert!((s.input_gain_db() - 12.5).abs() < 0.02);
+
+        // Beyond the range it must clamp, not wrap or distort wildly.
+        s.set_input_gain_db(1000.0);
+        assert_eq!(s.input_gain_db(), MAX_INPUT_GAIN_DB);
+        s.set_input_gain_db(-1000.0);
+        assert_eq!(s.input_gain_db(), MIN_INPUT_GAIN_DB);
+
+        s.set_output_volume_db(-6.0);
+        assert!((s.output_volume_db() + 6.0).abs() < 0.02);
+        s.set_output_volume_db(999.0);
+        assert_eq!(s.output_volume_db(), MAX_OUTPUT_VOLUME_DB);
+        s.set_output_volume_db(-999.0);
+        assert_eq!(s.output_volume_db(), MIN_OUTPUT_VOLUME_DB);
+    }
+
+    #[test]
+    fn output_level_meter_roundtrips() {
+        let s = AudioShared::new();
+        for db in [-80.0f32, -24.0, -1.0] {
+            s.store_output_level(db);
+            assert!((s.output_level_db() - db).abs() < 0.05);
+        }
+    }
+
+    #[test]
+    fn disabling_monitor_flushes_pending_playback() {
+        // Otherwise a burst of your own voice keeps playing after you switch
+        // monitoring off.
+        let s = AudioShared::new();
+        s.set_monitor(true);
+        assert!(s.is_monitoring());
+        s.playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.4, 4800));
+
+        s.set_monitor(false);
+        assert!(!s.is_monitoring());
+        assert!(s.playback_queue.lock().is_empty());
+    }
+
+    #[test]
+    fn test_tone_is_rendered_at_the_requested_length_and_can_be_cancelled() {
+        let s = AudioShared::new();
+        assert!(!s.test_tone_active());
+
+        s.play_test_tone(500);
+        assert!(s.test_tone_active());
+        assert_eq!(
+            s.cue_queue.lock().len(),
+            SAMPLE_RATE as usize / 2,
+            "500 ms at 48 kHz"
+        );
+
+        s.stop_test_tone();
+        assert!(!s.test_tone_active());
+    }
+
+    #[test]
+    fn drop_and_resume_cues_are_audibly_different() {
+        // A rider identifies these by ear alone, so they must not be the same
+        // sound: the drop falls in pitch and the resume rises.
+        let drop = render_cue(AudioCue::Disconnected);
+        let resume = render_cue(AudioCue::Reconnected);
+
+        assert!(!drop.is_empty() && !resume.is_empty());
+        assert_ne!(drop, resume, "cues must be distinguishable");
+
+        // Compare the dominant pitch of the first and last segments by counting
+        // zero crossings; falling versus rising is the whole point.
+        let crossings = |s: &[f32]| {
+            s.windows(2)
+                .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+                .count()
+        };
+        let head = |s: &[f32]| crossings(&s[..s.len() / 4]);
+        let tail = |s: &[f32]| crossings(&s[3 * s.len() / 4..]);
+
+        assert!(
+            head(&drop) > tail(&drop),
+            "the drop cue should fall in pitch"
+        );
+        assert!(
+            tail(&resume) > head(&resume),
+            "the resume cue should rise in pitch"
+        );
+    }
+
+    #[test]
+    fn cues_stay_in_range_and_start_and_end_silently() {
+        // Without the fade, the abrupt edges click louder than the tone itself.
+        for cue in [
+            AudioCue::Disconnected,
+            AudioCue::Reconnected,
+            AudioCue::Test,
+        ] {
+            let pcm = render_cue(cue);
+            assert!(
+                pcm.iter().all(|s| s.is_finite() && s.abs() <= 1.0),
+                "{cue:?} out of range"
+            );
+            assert!(pcm[0].abs() < 0.02, "{cue:?} starts with a click");
+            assert!(pcm[pcm.len() - 1].abs() < 0.02, "{cue:?} ends with a click");
+        }
+    }
+
+    #[test]
+    fn a_new_cue_replaces_any_pending_one() {
+        // A flapping connection must not queue a backlog of tones that keeps
+        // playing after it settles.
+        let s = AudioShared::new();
+        s.play_cue(AudioCue::Disconnected);
+        let first = s.cue_queue.lock().len();
+        s.play_cue(AudioCue::Reconnected);
+        let second = s.cue_queue.lock().len();
+
+        assert!(first > 0 && second > 0);
+        assert_eq!(
+            second,
+            render_cue(AudioCue::Reconnected).len(),
+            "the queue should hold only the newest cue"
+        );
+    }
+
+    #[test]
+    fn device_selection_bumps_the_generation_the_device_thread_watches() {
+        let s = AudioShared::new();
+        let before = s.device_generation();
+
+        s.set_devices(Some("Headset".into()), None);
+        assert_eq!(s.devices(), (Some("Headset".to_string()), None));
+        assert!(
+            s.device_generation() > before,
+            "the device thread only rebuilds when the generation changes"
+        );
+
+        let mid = s.device_generation();
+        s.set_devices(None, Some("Speakers".into()));
+        assert_eq!(s.devices(), (None, Some("Speakers".to_string())));
+        assert!(s.device_generation() > mid);
     }
 
     #[test]

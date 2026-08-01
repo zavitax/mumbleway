@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1635120130;
+  int get rustContentHash => -945949085;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -92,13 +92,26 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiMumblewayConnectServer({required String serverId});
 
+  Future<(String?, String?)> crateApiMumblewayCurrentAudioDevices();
+
   int crateApiMumblewayDefaultPort();
 
   Future<void> crateApiMumblewayDisconnectServer({required String serverId});
 
+  Float32List crateApiMumblewayGainLimits();
+
+  Future<List<ServerConfig>> crateApiMumblewayImportServers({
+    required String text,
+    required String fallbackUsername,
+  });
+
   Future<void> crateApiMumblewayInitApp();
 
+  double crateApiMumblewayInputGainDb();
+
   double crateApiMumblewayInputLevelDb();
+
+  bool crateApiMumblewayIsMonitoring();
 
   Future<void> crateApiMumblewayJoinChannel({
     required String serverId,
@@ -107,6 +120,18 @@ abstract class RustLibApi extends BaseApi {
 
   int crateApiMumblewayMaxConcurrentServers();
 
+  double crateApiMumblewayOutputLevelDb();
+
+  double crateApiMumblewayOutputVolumeDb();
+
+  Future<UiServerStatus> crateApiMumblewayPingServer({
+    required String serverId,
+    required String host,
+    required int port,
+  });
+
+  void crateApiMumblewayPlayTestTone({required int millis});
+
   Future<void> crateApiMumblewayRemoveServer({required String serverId});
 
   Future<void> crateApiMumblewaySendText({
@@ -114,9 +139,25 @@ abstract class RustLibApi extends BaseApi {
     required String message,
   });
 
+  Future<void> crateApiMumblewaySetAudioDevices({
+    String? input,
+    String? output,
+  });
+
   void crateApiMumblewaySetDeafened({required bool deafened});
 
+  Future<void> crateApiMumblewaySetDefaultChannel({
+    required String serverId,
+    String? channel,
+  });
+
+  void crateApiMumblewaySetInputGainDb({required double db});
+
   void crateApiMumblewaySetMicrophoneMuted({required bool muted});
+
+  void crateApiMumblewaySetMonitoring({required bool on_});
+
+  void crateApiMumblewaySetOutputVolumeDb({required double db});
 
   Future<void> crateApiMumblewaySetSelfMute({
     required String serverId,
@@ -125,7 +166,27 @@ abstract class RustLibApi extends BaseApi {
 
   void crateApiMumblewaySetTransmitting({required bool on_});
 
+  Future<void> crateApiMumblewaySetUserLocalMute({
+    required String serverId,
+    required int session,
+    required bool muted,
+  });
+
+  Future<void> crateApiMumblewaySetUserServerDeaf({
+    required String serverId,
+    required int session,
+    required bool deaf,
+  });
+
+  Future<void> crateApiMumblewaySetUserServerMute({
+    required String serverId,
+    required int session,
+    required bool muted,
+  });
+
   Future<void> crateApiMumblewayStartEngine({required StartupOptions options});
+
+  void crateApiMumblewayStopTestTone();
 }
 
 class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
@@ -340,12 +401,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "connect_server", argNames: ["serverId"]);
 
   @override
+  Future<(String?, String?)> crateApiMumblewayCurrentAudioDevices() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_record_opt_string_opt_string,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayCurrentAudioDevicesConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayCurrentAudioDevicesConstMeta =>
+      const TaskConstMeta(debugName: "current_audio_devices", argNames: []);
+
+  @override
   int crateApiMumblewayDefaultPort() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_16,
@@ -371,7 +459,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -393,6 +481,63 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Float32List crateApiMumblewayGainLimits() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_prim_f_32_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMumblewayGainLimitsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayGainLimitsConstMeta =>
+      const TaskConstMeta(debugName: "gain_limits", argNames: []);
+
+  @override
+  Future<List<ServerConfig>> crateApiMumblewayImportServers({
+    required String text,
+    required String fallbackUsername,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(text, serializer);
+          sse_encode_String(fallbackUsername, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_server_config,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayImportServersConstMeta,
+        argValues: [text, fallbackUsername],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayImportServersConstMeta =>
+      const TaskConstMeta(
+        debugName: "import_servers",
+        argNames: ["text", "fallbackUsername"],
+      );
+
+  @override
   Future<void> crateApiMumblewayInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -401,7 +546,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 13,
             port: port_,
           );
         },
@@ -420,12 +565,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_app", argNames: []);
 
   @override
+  double crateApiMumblewayInputGainDb() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_f_32,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayInputGainDbConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayInputGainDbConstMeta =>
+      const TaskConstMeta(debugName: "input_gain_db", argNames: []);
+
+  @override
   double crateApiMumblewayInputLevelDb() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_f_32,
@@ -442,6 +609,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "input_level_db", argNames: []);
 
   @override
+  bool crateApiMumblewayIsMonitoring() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayIsMonitoringConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayIsMonitoringConstMeta =>
+      const TaskConstMeta(debugName: "is_monitoring", argNames: []);
+
+  @override
   Future<void> crateApiMumblewayJoinChannel({
     required String serverId,
     required int channelId,
@@ -455,7 +644,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 17,
             port: port_,
           );
         },
@@ -482,7 +671,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_u_32,
@@ -499,6 +688,110 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "max_concurrent_servers", argNames: []);
 
   @override
+  double crateApiMumblewayOutputLevelDb() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_f_32,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayOutputLevelDbConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayOutputLevelDbConstMeta =>
+      const TaskConstMeta(debugName: "output_level_db", argNames: []);
+
+  @override
+  double crateApiMumblewayOutputVolumeDb() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_f_32,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayOutputVolumeDbConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayOutputVolumeDbConstMeta =>
+      const TaskConstMeta(debugName: "output_volume_db", argNames: []);
+
+  @override
+  Future<UiServerStatus> crateApiMumblewayPingServer({
+    required String serverId,
+    required String host,
+    required int port,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          sse_encode_String(host, serializer);
+          sse_encode_u_16(port, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ui_server_status,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMumblewayPingServerConstMeta,
+        argValues: [serverId, host, port],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayPingServerConstMeta =>
+      const TaskConstMeta(
+        debugName: "ping_server",
+        argNames: ["serverId", "host", "port"],
+      );
+
+  @override
+  void crateApiMumblewayPlayTestTone({required int millis}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(millis, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 22)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayPlayTestToneConstMeta,
+        argValues: [millis],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayPlayTestToneConstMeta =>
+      const TaskConstMeta(debugName: "play_test_tone", argNames: ["millis"]);
+
+  @override
   Future<void> crateApiMumblewayRemoveServer({required String serverId}) {
     return handler.executeNormal(
       NormalTask(
@@ -508,7 +801,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 23,
             port: port_,
           );
         },
@@ -540,7 +833,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 24,
             port: port_,
           );
         },
@@ -561,13 +854,48 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<void> crateApiMumblewaySetAudioDevices({
+    String? input,
+    String? output,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(input, serializer);
+          sse_encode_opt_String(output, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetAudioDevicesConstMeta,
+        argValues: [input, output],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetAudioDevicesConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_audio_devices",
+        argNames: ["input", "output"],
+      );
+
+  @override
   void crateApiMumblewaySetDeafened({required bool deafened}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_bool(deafened, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 26)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -584,13 +912,71 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "set_deafened", argNames: ["deafened"]);
 
   @override
+  Future<void> crateApiMumblewaySetDefaultChannel({
+    required String serverId,
+    String? channel,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          sse_encode_opt_String(channel, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetDefaultChannelConstMeta,
+        argValues: [serverId, channel],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetDefaultChannelConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_default_channel",
+        argNames: ["serverId", "channel"],
+      );
+
+  @override
+  void crateApiMumblewaySetInputGainDb({required double db}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_f_32(db, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 28)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetInputGainDbConstMeta,
+        argValues: [db],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetInputGainDbConstMeta =>
+      const TaskConstMeta(debugName: "set_input_gain_db", argNames: ["db"]);
+
+  @override
   void crateApiMumblewaySetMicrophoneMuted({required bool muted}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_bool(muted, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 29)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -610,6 +996,52 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  void crateApiMumblewaySetMonitoring({required bool on_}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_bool(on_, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 30)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetMonitoringConstMeta,
+        argValues: [on_],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetMonitoringConstMeta =>
+      const TaskConstMeta(debugName: "set_monitoring", argNames: ["on_"]);
+
+  @override
+  void crateApiMumblewaySetOutputVolumeDb({required double db}) {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_f_32(db, serializer);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 31)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetOutputVolumeDbConstMeta,
+        argValues: [db],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetOutputVolumeDbConstMeta =>
+      const TaskConstMeta(debugName: "set_output_volume_db", argNames: ["db"]);
+
+  @override
   Future<void> crateApiMumblewaySetSelfMute({
     required String serverId,
     required bool muted,
@@ -623,7 +1055,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 32,
             port: port_,
           );
         },
@@ -651,7 +1083,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_bool(on_, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 33)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_unit,
@@ -668,6 +1100,117 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "set_transmitting", argNames: ["on_"]);
 
   @override
+  Future<void> crateApiMumblewaySetUserLocalMute({
+    required String serverId,
+    required int session,
+    required bool muted,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          sse_encode_u_32(session, serializer);
+          sse_encode_bool(muted, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 34,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetUserLocalMuteConstMeta,
+        argValues: [serverId, session, muted],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetUserLocalMuteConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_user_local_mute",
+        argNames: ["serverId", "session", "muted"],
+      );
+
+  @override
+  Future<void> crateApiMumblewaySetUserServerDeaf({
+    required String serverId,
+    required int session,
+    required bool deaf,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          sse_encode_u_32(session, serializer);
+          sse_encode_bool(deaf, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 35,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetUserServerDeafConstMeta,
+        argValues: [serverId, session, deaf],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetUserServerDeafConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_user_server_deaf",
+        argNames: ["serverId", "session", "deaf"],
+      );
+
+  @override
+  Future<void> crateApiMumblewaySetUserServerMute({
+    required String serverId,
+    required int session,
+    required bool muted,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(serverId, serializer);
+          sse_encode_u_32(session, serializer);
+          sse_encode_bool(muted, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 36,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewaySetUserServerMuteConstMeta,
+        argValues: [serverId, session, muted],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewaySetUserServerMuteConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_user_server_mute",
+        argNames: ["serverId", "session", "muted"],
+      );
+
+  @override
   Future<void> crateApiMumblewayStartEngine({required StartupOptions options}) {
     return handler.executeNormal(
       NormalTask(
@@ -677,7 +1220,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 37,
             port: port_,
           );
         },
@@ -694,6 +1237,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
   TaskConstMeta get kCrateApiMumblewayStartEngineConstMeta =>
       const TaskConstMeta(debugName: "start_engine", argNames: ["options"]);
+
+  @override
+  void crateApiMumblewayStopTestTone() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 38)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMumblewayStopTestToneConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayStopTestToneConstMeta =>
+      const TaskConstMeta(debugName: "stop_test_tone", argNames: []);
 
   @protected
   AnyhowException dco_decode_AnyhowException(dynamic raw) {
@@ -753,6 +1318,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           serverId: dco_decode_String(raw[1]),
           text: dco_decode_String(raw[2]),
         );
+      case 8:
+        return AppEvent_SelfSession(
+          serverId: dco_decode_String(raw[1]),
+          session: dco_decode_u_32(raw[2]),
+        );
       default:
         throw Exception("unreachable");
     }
@@ -807,6 +1377,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double dco_decode_f_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
+  }
+
+  @protected
   int dco_decode_i_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -819,9 +1395,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Float32List dco_decode_list_prim_f_32_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as Float32List;
+  }
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  List<ServerConfig> dco_decode_list_server_config(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_server_config).toList();
   }
 
   @protected
@@ -858,6 +1446,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  (String?, String?) dco_decode_record_opt_string_opt_string(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2) {
+      throw Exception('Expected 2 elements, got ${arr.length}');
+    }
+    return (dco_decode_opt_String(arr[0]), dco_decode_opt_String(arr[1]));
   }
 
   @protected
@@ -933,13 +1531,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChannel dco_decode_ui_channel(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 4)
-      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return UiChannel(
       id: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
       parent: dco_decode_opt_box_autoadd_u_32(arr[2]),
       description: dco_decode_String(arr[3]),
+      userCount: dco_decode_u_32(arr[4]),
+      maxUsers: dco_decode_u_32(arr[5]),
+    );
+  }
+
+  @protected
+  UiServerStatus dco_decode_ui_server_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return UiServerStatus(
+      serverId: dco_decode_String(arr[0]),
+      reachable: dco_decode_bool(arr[1]),
+      pingMs: dco_decode_f_64(arr[2]),
+      users: dco_decode_u_32(arr[3]),
+      maxUsers: dco_decode_u_32(arr[4]),
+      version: dco_decode_String(arr[5]),
     );
   }
 
@@ -961,8 +1577,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiUser dco_decode_ui_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return UiUser(
       session: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -970,6 +1586,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       talking: dco_decode_bool(arr[3]),
       muted: dco_decode_bool(arr[4]),
       deafened: dco_decode_bool(arr[5]),
+      localMute: dco_decode_bool(arr[6]),
+      status: dco_decode_String(arr[7]),
     );
   }
 
@@ -1053,6 +1671,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_serverId = sse_decode_String(deserializer);
         var var_text = sse_decode_String(deserializer);
         return AppEvent_Welcome(serverId: var_serverId, text: var_text);
+      case 8:
+        var var_serverId = sse_decode_String(deserializer);
+        var var_session = sse_decode_u_32(deserializer);
+        return AppEvent_SelfSession(
+          serverId: var_serverId,
+          session: var_session,
+        );
       default:
         throw UnimplementedError('');
     }
@@ -1114,6 +1739,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double sse_decode_f_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat64();
+  }
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getInt32();
@@ -1132,10 +1763,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getFloat32List(len_);
+  }
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  List<ServerConfig> sse_decode_list_server_config(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ServerConfig>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_server_config(deserializer));
+    }
+    return ans_;
   }
 
   @protected
@@ -1196,6 +1848,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     } else {
       return null;
     }
+  }
+
+  @protected
+  (String?, String?) sse_decode_record_opt_string_opt_string(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_field0 = sse_decode_opt_String(deserializer);
+    var var_field1 = sse_decode_opt_String(deserializer);
+    return (var_field0, var_field1);
   }
 
   @protected
@@ -1280,11 +1942,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_name = sse_decode_String(deserializer);
     var var_parent = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_description = sse_decode_String(deserializer);
+    var var_userCount = sse_decode_u_32(deserializer);
+    var var_maxUsers = sse_decode_u_32(deserializer);
     return UiChannel(
       id: var_id,
       name: var_name,
       parent: var_parent,
       description: var_description,
+      userCount: var_userCount,
+      maxUsers: var_maxUsers,
+    );
+  }
+
+  @protected
+  UiServerStatus sse_decode_ui_server_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_serverId = sse_decode_String(deserializer);
+    var var_reachable = sse_decode_bool(deserializer);
+    var var_pingMs = sse_decode_f_64(deserializer);
+    var var_users = sse_decode_u_32(deserializer);
+    var var_maxUsers = sse_decode_u_32(deserializer);
+    var var_version = sse_decode_String(deserializer);
+    return UiServerStatus(
+      serverId: var_serverId,
+      reachable: var_reachable,
+      pingMs: var_pingMs,
+      users: var_users,
+      maxUsers: var_maxUsers,
+      version: var_version,
     );
   }
 
@@ -1312,6 +1997,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_talking = sse_decode_bool(deserializer);
     var var_muted = sse_decode_bool(deserializer);
     var var_deafened = sse_decode_bool(deserializer);
+    var var_localMute = sse_decode_bool(deserializer);
+    var var_status = sse_decode_String(deserializer);
     return UiUser(
       session: var_session,
       name: var_name,
@@ -1319,6 +2006,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       talking: var_talking,
       muted: var_muted,
       deafened: var_deafened,
+      localMute: var_localMute,
+      status: var_status,
     );
   }
 
@@ -1409,6 +2098,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_i_32(7, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(text, serializer);
+      case AppEvent_SelfSession(
+        serverId: final serverId,
+        session: final session,
+      ):
+        sse_encode_i_32(8, serializer);
+        sse_encode_String(serverId, serializer);
+        sse_encode_u_32(session, serializer);
     }
   }
 
@@ -1470,6 +2166,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_f_64(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat64(self);
+  }
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putInt32(self);
@@ -1485,6 +2187,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_prim_f_32_strict(
+    Float32List self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putFloat32List(self);
+  }
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
     SseSerializer serializer,
@@ -1492,6 +2204,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_list_server_config(
+    List<ServerConfig> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_server_config(item, serializer);
+    }
   }
 
   @protected
@@ -1545,6 +2269,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     if (self != null) {
       sse_encode_box_autoadd_u_32(self, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_record_opt_string_opt_string(
+    (String?, String?) self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_String(self.$1, serializer);
+    sse_encode_opt_String(self.$2, serializer);
   }
 
   @protected
@@ -1611,6 +2345,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.name, serializer);
     sse_encode_opt_box_autoadd_u_32(self.parent, serializer);
     sse_encode_String(self.description, serializer);
+    sse_encode_u_32(self.userCount, serializer);
+    sse_encode_u_32(self.maxUsers, serializer);
+  }
+
+  @protected
+  void sse_encode_ui_server_status(
+    UiServerStatus self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.serverId, serializer);
+    sse_encode_bool(self.reachable, serializer);
+    sse_encode_f_64(self.pingMs, serializer);
+    sse_encode_u_32(self.users, serializer);
+    sse_encode_u_32(self.maxUsers, serializer);
+    sse_encode_String(self.version, serializer);
   }
 
   @protected
@@ -1631,6 +2381,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.talking, serializer);
     sse_encode_bool(self.muted, serializer);
     sse_encode_bool(self.deafened, serializer);
+    sse_encode_bool(self.localMute, serializer);
+    sse_encode_String(self.status, serializer);
   }
 
   @protected

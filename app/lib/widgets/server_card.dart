@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'channel_panel.dart';
 import 'status_badge.dart';
 
-/// One server: status, connection controls, and who is in the channel.
+/// One server: status, live ping, connection controls, channels and who is here.
 class ServerCard extends StatelessWidget {
   const ServerCard({super.key, required this.server});
 
@@ -46,9 +47,8 @@ class ServerCard extends StatelessWidget {
                             '${server.host}:${server.port}  ·  ${server.username}',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -60,13 +60,15 @@ class ServerCard extends StatelessWidget {
                   ],
                 ),
 
+                const SizedBox(height: 10),
+                _ProbeLine(probe: rt.probe),
+
                 if (rt.status == ConnStatus.reconnecting) ...[
                   const SizedBox(height: 12),
                   _ReconnectNotice(rt: rt),
                 ],
 
-                if (rt.detail.isNotEmpty &&
-                    rt.status == ConnStatus.failed) ...[
+                if (rt.detail.isNotEmpty && rt.status == ConnStatus.failed) ...[
                   const SizedBox(height: 12),
                   _Banner(
                     color: StatusColors.failed,
@@ -86,23 +88,42 @@ class ServerCard extends StatelessWidget {
                     children: [
                       TransportChip(
                         transport: rt.transport,
-                        pingMs: rt.transport == 'udp'
-                            ? rt.udpPingMs
-                            : rt.tcpPingMs,
+                        pingMs:
+                            rt.transport == 'udp' ? rt.udpPingMs : rt.tcpPingMs,
                       ),
                       const SizedBox(width: 16),
-                      Icon(Icons.people_outline,
+                      Icon(Icons.tag,
                           size: 14,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
                       const SizedBox(width: 4),
-                      Text('${rt.users.length}',
-                          style: const TextStyle(fontSize: 12)),
+                      Expanded(
+                        child: Text(
+                          rt.currentChannel?.name ?? 'joining…',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
                     ],
                   ),
-                  if (rt.users.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    _UserStrip(users: rt.users),
-                  ],
+                  const SizedBox(height: 6),
+                  _CollapsibleSection(
+                    title: 'In this channel (${rt.channelPeers.length})',
+                    initiallyExpanded: true,
+                    child: ChannelUserList(
+                      serverId: server.id,
+                      users: rt.channelPeers,
+                    ),
+                  ),
+                  _CollapsibleSection(
+                    title: 'Channels (${rt.channels.length})',
+                    child: ChannelTree(
+                      serverId: server.id,
+                      channels: rt.channels,
+                      currentChannelId: rt.currentChannelId,
+                      defaultChannelName: server.defaultChannel,
+                    ),
+                  ),
                 ],
 
                 const SizedBox(height: 14),
@@ -157,6 +178,122 @@ class ServerCard extends StatelessWidget {
       ),
     );
     if (ok == true) await state.forgetServer(server.id);
+  }
+}
+
+/// Live reachability line from the unauthenticated status probe. This works
+/// whether or not we are connected, so the user can see a server is up before
+/// bothering to join it.
+class _ProbeLine extends StatelessWidget {
+  const _ProbeLine({required this.probe});
+
+  final UiServerStatus? probe;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final p = probe;
+
+    if (p == null) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 2, color: muted),
+          ),
+          const SizedBox(width: 8),
+          Text('Checking…', style: TextStyle(fontSize: 12, color: muted)),
+        ],
+      );
+    }
+
+    if (!p.reachable) {
+      return Row(
+        children: const [
+          Icon(Icons.cloud_off, size: 14, color: StatusColors.idle),
+          SizedBox(width: 6),
+          Text('Not responding',
+              style: TextStyle(fontSize: 12, color: StatusColors.idle)),
+        ],
+      );
+    }
+
+    final ping = p.pingMs.round();
+    final quality = ping < 60
+        ? StatusColors.connected
+        : ping < 150
+            ? StatusColors.connecting
+            : StatusColors.reconnecting;
+
+    return Row(
+      children: [
+        Icon(Icons.network_ping, size: 14, color: quality),
+        const SizedBox(width: 6),
+        Text('$ping ms',
+            style: TextStyle(
+                fontSize: 12, color: quality, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 12),
+        Icon(Icons.people_outline, size: 14, color: muted),
+        const SizedBox(width: 4),
+        Text(
+          p.maxUsers > 0 ? '${p.users}/${p.maxUsers}' : '${p.users}',
+          style: TextStyle(fontSize: 12, color: muted),
+        ),
+        if (p.version.isNotEmpty) ...[
+          const SizedBox(width: 12),
+          Text('v${p.version}', style: TextStyle(fontSize: 11, color: muted)),
+        ],
+      ],
+    );
+  }
+}
+
+/// A lightweight disclosure that keeps the card compact without the heavy
+/// chrome of an ExpansionTile.
+class _CollapsibleSection extends StatefulWidget {
+  const _CollapsibleSection({
+    required this.title,
+    required this.child,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  late bool _open = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(_open ? Icons.expand_less : Icons.expand_more, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  widget.title,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_open) widget.child,
+      ],
+    );
   }
 }
 
@@ -248,53 +385,6 @@ class _Banner extends StatelessWidget {
           Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
         ],
       ),
-    );
-  }
-}
-
-/// Compact list of who is present, highlighting whoever is speaking.
-class _UserStrip extends StatelessWidget {
-  const _UserStrip({required this.users});
-  final List<UiUser> users;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: users.map((u) {
-        final color = u.talking
-            ? StatusColors.talking
-            : Theme.of(context).colorScheme.surfaceContainerHighest;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: u.talking ? 0.25 : 1.0),
-            borderRadius: BorderRadius.circular(999),
-            border: u.talking
-                ? Border.all(color: StatusColors.talking, width: 1.5)
-                : null,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                u.deafened
-                    ? Icons.hearing_disabled
-                    : u.muted
-                        ? Icons.mic_off
-                        : u.talking
-                            ? Icons.volume_up
-                            : Icons.person,
-                size: 14,
-                color: u.talking ? StatusColors.talking : null,
-              ),
-              const SizedBox(width: 6),
-              Text(u.name, style: const TextStyle(fontSize: 12)),
-            ],
-          ),
-        );
-      }).toList(),
     );
   }
 }

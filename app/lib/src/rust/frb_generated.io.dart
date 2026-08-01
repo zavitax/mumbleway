@@ -55,13 +55,22 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   double dco_decode_f_32(dynamic raw);
 
   @protected
+  double dco_decode_f_64(dynamic raw);
+
+  @protected
   int dco_decode_i_32(dynamic raw);
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
 
   @protected
+  Float32List dco_decode_list_prim_f_32_strict(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<ServerConfig> dco_decode_list_server_config(dynamic raw);
 
   @protected
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw);
@@ -80,6 +89,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  (String?, String?) dco_decode_record_opt_string_opt_string(dynamic raw);
 
   @protected
   ServerConfig dco_decode_server_config(dynamic raw);
@@ -104,6 +116,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiChannel dco_decode_ui_channel(dynamic raw);
+
+  @protected
+  UiServerStatus dco_decode_ui_server_status(dynamic raw);
 
   @protected
   UiStats dco_decode_ui_stats(dynamic raw);
@@ -159,13 +174,24 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   double sse_decode_f_32(SseDeserializer deserializer);
 
   @protected
+  double sse_decode_f_64(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
 
   @protected
+  Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<ServerConfig> sse_decode_list_server_config(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<UiChannel> sse_decode_list_ui_channel(SseDeserializer deserializer);
@@ -184,6 +210,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  (String?, String?) sse_decode_record_opt_string_opt_string(
+    SseDeserializer deserializer,
+  );
 
   @protected
   ServerConfig sse_decode_server_config(SseDeserializer deserializer);
@@ -208,6 +239,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiChannel sse_decode_ui_channel(SseDeserializer deserializer);
+
+  @protected
+  UiServerStatus sse_decode_ui_server_status(SseDeserializer deserializer);
 
   @protected
   UiStats sse_decode_ui_stats(SseDeserializer deserializer);
@@ -270,14 +304,29 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_f_32(double self, SseSerializer serializer);
 
   @protected
+  void sse_encode_f_64(double self, SseSerializer serializer);
+
+  @protected
   void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_prim_f_32_strict(
+    Float32List self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_strict(
     Uint8List self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_server_config(
+    List<ServerConfig> self,
     SseSerializer serializer,
   );
 
@@ -301,6 +350,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_record_opt_string_opt_string(
+    (String?, String?) self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_server_config(ServerConfig self, SseSerializer serializer);
@@ -328,6 +383,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_channel(UiChannel self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_server_status(
+    UiServerStatus self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ui_stats(UiStats self, SseSerializer serializer);

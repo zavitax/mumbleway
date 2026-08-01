@@ -1,6 +1,7 @@
 //! A single server session: connect, authenticate, stay alive, reconnect.
 
 pub mod manager;
+pub mod profile;
 pub mod reconnect;
 pub mod types;
 
@@ -25,9 +26,11 @@ use crate::proto::{mumble, version_v1, version_v2, MessageType};
 const PING_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Declare the link dead if the server says nothing at all for this long.
-/// Three missed pings — long enough to ride out a brief stall, short enough that
-/// a rider notices the reconnect rather than a long silence.
-const SERVER_SILENCE_TIMEOUT: Duration = Duration::from_secs(16);
+///
+/// 15 s is the specified budget: with a 5 s ping interval that is three missed
+/// pings — long enough to ride out a brief stall, short enough that a rider
+/// hears the drop cue promptly rather than talking into a dead link.
+const SERVER_SILENCE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Cap on how long the Version/Authenticate/ServerSync exchange may take.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -77,9 +80,33 @@ impl LiveState {
     }
 
     fn channel_list(&self) -> Vec<ChannelInfo> {
-        let mut v: Vec<_> = self.channels.values().cloned().collect();
+        let mut v: Vec<ChannelInfo> = self.channels.values().cloned().collect();
+        // Occupancy is derived rather than tracked: the server never sends it,
+        // and deriving it keeps it correct as users move between channels.
+        for c in v.iter_mut() {
+            c.user_count = self.users.values().filter(|u| u.channel_id == c.id).count() as u32;
+        }
         v.sort_by(|a, b| a.position.cmp(&b.position).then(a.name.cmp(&b.name)));
         v
+    }
+
+    /// Finds a channel by name, case-insensitively.
+    fn channel_by_name(&self, name: &str) -> Option<u32> {
+        self.channels
+            .values()
+            .find(|c| c.name.eq_ignore_ascii_case(name))
+            .map(|c| c.id)
+    }
+
+    fn is_locally_muted(&self, session: u32) -> bool {
+        self.users.get(&session).is_some_and(|u| u.local_mute)
+    }
+
+    /// Which channel a session is currently in, if we know about it.
+    fn self_channel(&self, session: Option<u32>) -> Option<u32> {
+        session
+            .and_then(|s| self.users.get(&s))
+            .map(|u| u.channel_id)
     }
 
     fn user_list(&self) -> Vec<UserInfo> {
@@ -331,6 +358,30 @@ impl Session {
             }
         }
 
+        // Join the remembered default channel. The server places us in the
+        // root channel on connect, so this has to be an explicit move; matching
+        // by name rather than id keeps it working if the server renumbers.
+        if let Some(name) = self.config.profile.auto_join_channel.clone() {
+            match state.channel_by_name(&name) {
+                Some(id) if Some(id) != state.self_channel(state.self_session) => {
+                    let m = mumble::UserState {
+                        session: state.self_session,
+                        channel_id: Some(id),
+                        ..Default::default()
+                    };
+                    writer.send(MessageType::UserState, &m).await?;
+                }
+                Some(_) => {}
+                None => {
+                    self.emit(SessionEvent::Text {
+                        from: "MumbleWay".into(),
+                        message: format!("Default channel \"{name}\" no longer exists."),
+                    })
+                    .await;
+                }
+            }
+        }
+
         // --- UDP setup -----------------------------------------------------
         let mut udp = match state.crypt.take() {
             Some(crypt) => match VoiceSocket::bind(peer, crypt).await {
@@ -503,6 +554,14 @@ impl Session {
     }
 
     async fn on_voice(&self, packet: VoicePacket, state: &mut LiveState) {
+        // Locally muted users are dropped here, before the mixer ever sees
+        // them. Doing it at this point rather than in the audio engine means
+        // one check covers both the UDP and tunnelled paths.
+        if let Some(session) = packet.session {
+            if state.is_locally_muted(session) {
+                return;
+            }
+        }
         if let Some(session) = packet.session {
             if let Some(u) = state.users.get_mut(&session) {
                 if !u.talking {
@@ -586,6 +645,7 @@ impl Session {
                         description: String::new(),
                         position: 0,
                         max_users: 0,
+                        user_count: 0,
                     });
                     if let Some(p) = m.parent {
                         e.parent = Some(p);
@@ -624,6 +684,7 @@ impl Session {
                         self_mute: false,
                         self_deaf: false,
                         talking: false,
+                        local_mute: false,
                     });
                     if let Some(n) = m.name {
                         e.name = n;
@@ -744,6 +805,35 @@ impl Session {
                     writer.send(MessageType::UserState, &m).await?;
                 }
             }
+            SessionCommand::SetUserLocalMute { session, muted } => {
+                // Purely client-side, so it needs no permission and no round
+                // trip; report it straight back so the UI updates immediately.
+                if let Some(u) = state.users.get_mut(&session) {
+                    u.local_mute = muted;
+                }
+                self.emit(SessionEvent::Users(state.user_list())).await;
+            }
+            SessionCommand::SetUserServerMute { session, muted } => {
+                let m = mumble::UserState {
+                    session: Some(session),
+                    mute: Some(muted),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::SetUserServerDeaf { session, deaf } => {
+                let m = mumble::UserState {
+                    session: Some(session),
+                    deaf: Some(deaf),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::SetDefaultChannel(name) => {
+                // Remembered for the next connect; the UI persists it too.
+                self.config.profile.auto_join_channel = name;
+            }
+
             // Transmission gating happens in the audio engine, not here.
             SessionCommand::SetTransmitting(_)
             | SessionCommand::Connect

@@ -38,6 +38,38 @@ audio logic is unit-testable without a device or a UI.
 | 5 | Five platforms | one Rust core + one Flutter UI; cpal covers all backends |
 | 6 | Status indication | `ConnectionState` → `widgets/status_badge.dart` |
 | 7 | Two servers at once (bonus) | `session/manager.rs` |
+| 8 | Audio device selection, testing and levels | `audio/engine.rs`, Settings screen |
+| 9 | Always-visible input meter | `widgets/ptt_button.dart` |
+| 10 | Server profile import and public directory | `session/profile.rs`, Import screen |
+| 11 | Live ping per server | `net/ping.rs` |
+| 12 | Channel tree, roster and per-user mute | `widgets/channel_panel.dart` |
+| 13 | Drop/resume audio cues | `audio/engine.rs` (`AudioCue`) |
+| 14 | Floating push-to-talk island | `android/.../OverlayService.kt` |
+
+## Working in the background
+
+A rider is normally looking at a navigation app, not at this one, so anything
+that only appears on screen is something they will miss.
+
+* **Audible connection cues.** A falling two-tone when the link drops, a rising
+  one when it comes back. Deliberately not on the first connect — the user is
+  looking at the screen then, and a chime on every launch is noise. They also
+  bypass the deafen flag, because "the connection dropped" is exactly what a
+  deafened user still needs to know.
+* **The 15 s rule.** Fifteen seconds of total silence from the server counts as
+  a drop and triggers reconnection. With a 5 s ping interval that is three
+  missed pings.
+* **Floating island (Android).** A small draggable overlay with a talk button
+  and the names of whoever is speaking, drawn over the navigation app. It runs
+  from a foreground service, which is also what keeps the audio engine alive
+  while another app is in front. Needs the "display over other apps"
+  permission, which Android only grants from its own settings screen.
+
+**iOS has no equivalent.** Apple permits no system-wide overlay from a
+third-party app at any privilege level, so the option is hidden there rather
+than offered and then failing. The realistic iOS route is Apple's PushToTalk
+framework, which surfaces a system-provided talk control — a separate piece of
+work, not a variation on this one.
 
 ## The noise-cancellation chain
 

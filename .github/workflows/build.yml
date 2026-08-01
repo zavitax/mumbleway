@@ -157,6 +157,10 @@ jobs:
       # engine separately first to get a readable error if it breaks.
       - name: Build engine
         working-directory: app/rust
+        env:
+          # Match the Xcode project so libopus's C objects and the Rust code
+          # target the same OS version.
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
         run: cargo build --release
 
       - uses: subosito/flutter-action@v2
@@ -199,14 +203,26 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Cross-compile the engine for the device target first. Flutter reports
+      # Compile-check the engine for the device target first. Flutter reports
       # any Xcode failure as "requires a selected Development Team", which is a
       # guess and hides the real cause; this surfaces it directly.
-      - name: Build engine for aarch64-apple-ios
+      #
+      # `check` rather than `build`: it still runs the build scripts, so a
+      # broken libopus compile is caught, but it does not link. A full `cargo
+      # build` also links the cdylib, which the real build never does -- for
+      # iOS, cargokit produces a static library that Xcode links, and Xcode is
+      # what supplies libclang_rt (without it, libopus's stack probes leave
+      # ___chkstk_darwin undefined).
+      - name: Compile-check engine for aarch64-apple-ios
         working-directory: app/rust
+        env:
+          # Match the Xcode project, so libopus's C objects and the Rust code
+          # agree. Left unset, the C build follows the SDK (26.5) while Rust
+          # targets 10.0, and the linker complains the objects are too new.
+          IPHONEOS_DEPLOYMENT_TARGET: '13.0'
         run: |
           rustup target add aarch64-apple-ios
-          cargo build --release --target aarch64-apple-ios
+          cargo check --release --target aarch64-apple-ios
 
       - uses: subosito/flutter-action@v2
         with:
@@ -218,6 +234,8 @@ jobs:
       # provisioning profile. It proves the target compiles and links.
       - name: Build (unsigned)
         working-directory: app
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: '13.0'
         run: |
           flutter pub get
           flutter build ios --release --no-codesign

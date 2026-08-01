@@ -232,13 +232,24 @@ jobs:
 
       # Unsigned: installing this on a device requires re-signing with your own
       # provisioning profile. It proves the target compiles and links.
+      # --verbose is deliberate. Flutter reports every iOS build failure as
+      # "requires a selected Development Team" and otherwise swallows
+      # xcodebuild's output entirely, leaving nothing to diagnose. The extra
+      # log volume is worth being able to see the actual error.
       - name: Build (unsigned)
         working-directory: app
         env:
           IPHONEOS_DEPLOYMENT_TARGET: '13.0'
         run: |
           flutter pub get
-          flutter build ios --release --no-codesign
+          if ! flutter build ios --release --no-codesign --verbose > /tmp/ios-build.log 2>&1; then
+            echo "===== compiler and linker errors ====="
+            grep -nE "error:|Undefined symbols|ld: |clang: error|fatal error" /tmp/ios-build.log \
+              | grep -viE "warning:" | head -60
+            echo "===== last 120 lines ====="
+            tail -120 /tmp/ios-build.log
+            exit 1
+          fi
 
       - name: Package
         working-directory: app/build/ios/iphoneos

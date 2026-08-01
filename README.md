@@ -130,9 +130,49 @@ start ms-settings:developers
 This is a Flutter/Windows requirement for any project with plugins, not
 something specific to this app.
 
-Two further Windows-specific fixes are already applied; they are recorded here
-because both are non-obvious and neither shows up when you build the Rust crate
-on its own with `cargo build`.
+### Toolchain quirks already handled
+
+Every item below is fixed in the repository. They are recorded because none of
+them is obvious from the error message, and several only appear on newer
+toolchains than a given machine may have.
+
+**libopus versus CMake 4 (all platforms).** `audiopus_sys` builds libopus from
+source, and libopus declares `cmake_minimum_required` below 3.5, which CMake 4
+refuses:
+
+```
+CMake Error at CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 has been removed from CMake.
+```
+
+`CMAKE_POLICY_VERSION_MINIMUM=3.5` is set in **two** places, and both are
+needed. `.cargo/config.toml` covers local builds. The CI workflow also sets it
+as an environment variable, because cargo locates `.cargo/config.toml` by
+walking up from the *working directory* rather than from `--manifest-path`, and
+cargokit builds the iOS pod from an Xcode script phase that runs under
+`DerivedData`, outside the repository, where the file is never found.
+
+**Gradle 9 (Android).** cargokit's Gradle plugin calls `Project.exec()`, which
+Gradle 9 removed; Flutter 3.44 scaffolds Gradle 9.1 with AGP 9. The task in
+`rust_builder/cargokit/gradle/plugin.gradle` now injects `ExecOperations`.
+
+**compileSdk (Android).** cargokit's `rust_builder` module pinned `compileSdk 33`
+while the AndroidX libraries Flutter depends on require 34 or later, failing in
+`checkReleaseAarMetadata`. Raised to 36.
+
+**Audio frameworks (macOS and iOS).** cpal's CoreAudio backend emits
+`cargo:rustc-link-lib=framework=` directives, but those do not survive into a
+static library — Xcode links the `.a` and never sees them, so the app failed
+with undefined `_AudioUnitRender` and friends. Both podspecs now declare the
+frameworks explicitly.
+
+**Deployment targets (macOS and iOS).** Left unset, libopus's C objects follow
+the SDK while Rust targets a much older OS, and the linker complains the objects
+are "built for newer 'iOS' version". The podspecs and workflow pin iOS 13.0 and
+macOS 10.15 to match the Xcode projects.
+
+The remaining two are Windows-specific, and neither shows up when you build the
+Rust crate on its own with `cargo build`.
 
 **CMake nested inside MSBuild.** `audiopus_sys` compiles libopus from source with
 CMake, and under `flutter build windows` that CMake runs inside an MSBuild

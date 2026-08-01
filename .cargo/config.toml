@@ -1,0 +1,14 @@
+# Cargo reads config from the working directory and every parent, so this one
+# file covers both `core/` and `app/rust/`.
+
+[env]
+# libopus (vendored by audiopus_sys) declares `cmake_minimum_required` below
+# 3.5, and CMake 4 removed compatibility with that:
+#
+#   CMake Error at CMakeLists.txt:1 (cmake_minimum_required):
+#     Compatibility with CMake < 3.5 has been removed from CMake.
+#
+# This is the escape hatch CMake itself suggests. libopus builds correctly with
+# modern CMake; only its declared minimum is stale. Setting it here rather than
+# in CI means local builds on a machine with CMake 4 work too.
+CMAKE_POLICY_VERSION_MINIMUM = "3.5"

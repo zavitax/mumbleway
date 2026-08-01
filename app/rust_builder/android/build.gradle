@@ -29,9 +29,11 @@ android {
         namespace 'com.flutter_rust_bridge.rust_lib_mumbleway'
     }
 
-    // Bumping the plugin compileSdkVersion requires all clients of this plugin
-    // to bump the version in their app.
-    compileSdkVersion 33
+    // MumbleWay: raised from cargokit's default of 33. AndroidX libraries that
+    // Flutter pulls in (androidx.fragment 1.7.1 and friends) now require their
+    // consumers to compile against API 34 or later, so the release build failed
+    // in checkReleaseAarMetadata with 15 such complaints.
+    compileSdkVersion 36
 
     // Use the NDK version
     // declared in /android/app/build.gradle file of the Flutter project.
@@ -45,7 +47,9 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 19
+        // Matches the app module: cpal's Android backend uses ndk::audio
+        // (AAudio), which requires API 26.
+        minSdkVersion 26
     }
 }
 

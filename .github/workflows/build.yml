@@ -15,6 +15,14 @@ concurrency:
 
 env:
   FLUTTER_VERSION: '3.44.8'
+
+  # libopus declares cmake_minimum_required below 3.5 and CMake 4 removed that
+  # compatibility. .cargo/config.toml sets this too, for local builds, but cargo
+  # finds that file by walking up from the *working directory* -- and the Xcode
+  # script phase that cargokit runs for iOS executes from DerivedData, outside
+  # the repository, so the file is never seen. Setting it here puts it in the
+  # environment, which every nested process inherits regardless.
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
   # Deliberately no global RUSTFLAGS=-D warnings: that applies to dependencies
   # as well, so an upstream crate's warning would break our build. Warnings are
   # denied for our own code through clippy instead.

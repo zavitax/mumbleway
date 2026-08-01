@@ -1,0 +1,561 @@
+//! Flutter-facing API.
+//!
+//! Everything here is deliberately plain data: `flutter_rust_bridge` mirrors
+//! these types into Dart, so they avoid lifetimes, generics and borrowed data.
+//! All real work happens on a background Tokio runtime owned by [`App`], and the
+//! UI observes it through a single event stream.
+
+use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
+
+use flutter_rust_bridge::frb;
+use parking_lot::Mutex;
+use tokio::sync::mpsc;
+
+use mumbleway_core::audio::engine::{AudioConfig, AudioEngine, AudioShared, TransmitMode};
+use mumbleway_core::audio::{NoiseProfile, Quality};
+use mumbleway_core::net::tls::Identity;
+use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
+use mumbleway_core::session::{
+    AudioBridge, ConnectionState, ServerProfile, SessionCommand, SessionEvent, Transport,
+    TransportStat,
+};
+
+use crate::frb_generated::StreamSink;
+
+/// Required by flutter_rust_bridge; runs before any other call.
+#[frb(init)]
+pub fn init_app() {
+    flutter_rust_bridge::setup_default_user_utils();
+}
+
+// ---------------------------------------------------------------------------
+// Data mirrored into Dart
+// ---------------------------------------------------------------------------
+
+/// A server the user has configured.
+#[derive(Debug, Clone)]
+pub struct ServerConfig {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: Option<String>,
+    pub cert_fingerprint: Option<String>,
+}
+
+/// Connection status, flattened for easy rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnStatus {
+    Idle,
+    Connecting,
+    Handshaking,
+    Connected,
+    Reconnecting,
+    Disconnected,
+    Failed,
+}
+
+/// A status change for one server.
+#[derive(Debug, Clone)]
+pub struct StatusUpdate {
+    pub server_id: String,
+    pub status: ConnStatus,
+    /// Human-readable detail: the failure reason, or empty when healthy.
+    pub detail: String,
+    /// Reconnect attempt number, 0 when not reconnecting.
+    pub attempt: u32,
+    /// Milliseconds until the next retry, for a countdown.
+    pub retry_in_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiUser {
+    pub session: u32,
+    pub name: String,
+    pub channel_id: u32,
+    pub talking: bool,
+    pub muted: bool,
+    pub deafened: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiChannel {
+    pub id: u32,
+    pub name: String,
+    pub parent: Option<u32>,
+    pub description: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiStats {
+    pub server_id: String,
+    pub tcp_ping_ms: f32,
+    pub udp_ping_ms: f32,
+    /// "udp" for the low-latency path, "tcp" when tunnelling.
+    pub transport: String,
+}
+
+/// Everything the UI can be told about.
+#[derive(Debug, Clone)]
+pub enum AppEvent {
+    Status(StatusUpdate),
+    Users {
+        server_id: String,
+        users: Vec<UiUser>,
+    },
+    Channels {
+        server_id: String,
+        channels: Vec<UiChannel>,
+    },
+    Text {
+        server_id: String,
+        from: String,
+        message: String,
+    },
+    Stats(UiStats),
+    /// Microphone level and speech detection, for the input meter.
+    InputLevel {
+        level_db: f32,
+        speaking: bool,
+    },
+    /// The server presented a certificate. `changed` means it differs from the
+    /// pinned one and the user must decide.
+    Certificate {
+        server_id: String,
+        fingerprint: String,
+        changed: bool,
+    },
+    Welcome {
+        server_id: String,
+        text: String,
+    },
+}
+
+/// Noise-suppression strength, exposed as a simple selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoiseSetting {
+    Off,
+    Light,
+    Standard,
+    /// Aggressive profile for a motorcycle helmet.
+    Helmet,
+}
+
+fn to_profile(v: NoiseSetting) -> NoiseProfile {
+    match v {
+        NoiseSetting::Off => NoiseProfile::Off,
+        NoiseSetting::Light => NoiseProfile::Light,
+        NoiseSetting::Standard => NoiseProfile::Standard,
+        NoiseSetting::Helmet => NoiseProfile::Helmet,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MicMode {
+    VoiceActivity,
+    PushToTalk,
+    Continuous,
+}
+
+fn to_transmit(v: MicMode) -> TransmitMode {
+    match v {
+        MicMode::VoiceActivity => TransmitMode::VoiceActivity,
+        MicMode::PushToTalk => TransmitMode::PushToTalk,
+        MicMode::Continuous => TransmitMode::Continuous,
+    }
+}
+
+/// Startup options.
+#[derive(Debug, Clone)]
+pub struct StartupOptions {
+    /// Writable directory for the client identity certificate.
+    pub storage_dir: String,
+    pub noise: NoiseSetting,
+    pub mic_mode: MicMode,
+}
+
+// ---------------------------------------------------------------------------
+// Global application state
+// ---------------------------------------------------------------------------
+
+struct App {
+    rt: tokio::runtime::Runtime,
+    manager: tokio::sync::Mutex<SessionManager>,
+    shared: Arc<AudioShared>,
+    /// Kept alive for as long as the app runs; dropping it stops audio.
+    _audio: AudioEngine,
+    /// One sender per connected session, so a single encoded frame can be fanned
+    /// out to every server at once.
+    outgoing: Arc<Mutex<Vec<mpsc::Sender<(u64, Vec<u8>, bool)>>>>,
+    /// Maps a server id to its audio slot, which namespaces speaker streams.
+    slots: Mutex<HashMap<String, u16>>,
+    identity: Identity,
+}
+
+static APP: OnceLock<App> = OnceLock::new();
+static EVENT_SINK: OnceLock<Mutex<Option<StreamSink<AppEvent>>>> = OnceLock::new();
+
+fn app() -> anyhow::Result<&'static App> {
+    APP.get()
+        .ok_or_else(|| anyhow::anyhow!("call startEngine() before using the client"))
+}
+
+fn emit(event: AppEvent) {
+    if let Some(cell) = EVENT_SINK.get() {
+        if let Some(sink) = cell.lock().as_ref() {
+            let _ = sink.add(event);
+        }
+    }
+}
+
+fn status_of(state: &ConnectionState) -> StatusUpdate {
+    let (status, detail, attempt, retry_in_ms) = match state {
+        ConnectionState::Idle => (ConnStatus::Idle, String::new(), 0, 0),
+        ConnectionState::Connecting => (ConnStatus::Connecting, String::new(), 0, 0),
+        ConnectionState::Handshaking => (ConnStatus::Handshaking, String::new(), 0, 0),
+        ConnectionState::Connected => (ConnStatus::Connected, String::new(), 0, 0),
+        ConnectionState::Reconnecting {
+            attempt,
+            retry_in_ms,
+            reason,
+        } => (
+            ConnStatus::Reconnecting,
+            reason.clone(),
+            *attempt,
+            *retry_in_ms,
+        ),
+        ConnectionState::Disconnected { reason } => {
+            (ConnStatus::Disconnected, reason.clone(), 0, 0)
+        }
+        ConnectionState::Failed { reason } => (ConnStatus::Failed, reason.clone(), 0, 0),
+    };
+    StatusUpdate {
+        server_id: String::new(),
+        status,
+        detail,
+        attempt,
+        retry_in_ms,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Exposed functions
+// ---------------------------------------------------------------------------
+
+/// Starts the engine. Must be called once before anything else.
+pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
+    if APP.get().is_some() {
+        return Ok(());
+    }
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()?;
+
+    let dir = std::path::PathBuf::from(&options.storage_dir);
+    let identity = Identity::load_or_create(&dir, "MumbleWay")?;
+
+    let outgoing: Arc<Mutex<Vec<mpsc::Sender<(u64, Vec<u8>, bool)>>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    // The audio engine hands every encoded frame to all connected sessions.
+    let fanout = outgoing.clone();
+    let audio = AudioEngine::start(
+        AudioConfig {
+            noise_profile: to_profile(options.noise),
+            quality: Quality::Balanced,
+            transmit_mode: to_transmit(options.mic_mode),
+            input_device: None,
+            output_device: None,
+        },
+        move |seq, packet, terminator| {
+            let senders = fanout.lock();
+            for s in senders.iter() {
+                // Never block the DSP thread on a slow session.
+                let _ = s.try_send((seq, packet.clone(), terminator));
+            }
+        },
+    )?;
+    let shared = audio.shared();
+
+    // Aggregate every session's events onto the Dart stream.
+    let (ev_tx, mut ev_rx) = mpsc::channel::<TaggedEvent>(512);
+    let manager = SessionManager::new(identity.clone(), "MumbleWay 0.1", ev_tx);
+
+    let level_shared = shared.clone();
+    rt.spawn(async move {
+        while let Some(TaggedEvent { server_id, event }) = ev_rx.recv().await {
+            match event {
+                SessionEvent::State(s) => {
+                    let mut u = status_of(&s);
+                    u.server_id = server_id;
+                    emit(AppEvent::Status(u));
+                }
+                SessionEvent::Users(users) => emit(AppEvent::Users {
+                    server_id,
+                    users: users
+                        .into_iter()
+                        .map(|u| UiUser {
+                            session: u.session,
+                            name: u.name,
+                            channel_id: u.channel_id,
+                            talking: u.talking,
+                            muted: u.mute || u.self_mute,
+                            deafened: u.deaf || u.self_deaf,
+                        })
+                        .collect(),
+                }),
+                SessionEvent::Channels(chans) => emit(AppEvent::Channels {
+                    server_id,
+                    channels: chans
+                        .into_iter()
+                        .map(|c| UiChannel {
+                            id: c.id,
+                            name: c.name,
+                            parent: c.parent,
+                            description: c.description,
+                        })
+                        .collect(),
+                }),
+                SessionEvent::Text { from, message } => emit(AppEvent::Text {
+                    server_id,
+                    from,
+                    message,
+                }),
+                SessionEvent::Stats(s) => emit(AppEvent::Stats(UiStats {
+                    server_id,
+                    tcp_ping_ms: s.tcp_ping_ms,
+                    udp_ping_ms: s.udp_ping_ms,
+                    transport: match s.transport {
+                        Some(TransportStat::Udp) => "udp".to_string(),
+                        _ => "tcp".to_string(),
+                    },
+                })),
+                SessionEvent::TransportChanged(t) => emit(AppEvent::Stats(UiStats {
+                    server_id,
+                    tcp_ping_ms: 0.0,
+                    udp_ping_ms: 0.0,
+                    transport: match t {
+                        Transport::Udp => "udp".to_string(),
+                        Transport::TcpTunnel => "tcp".to_string(),
+                    },
+                })),
+                SessionEvent::ServerCertificate {
+                    fingerprint,
+                    changed,
+                } => emit(AppEvent::Certificate {
+                    server_id,
+                    fingerprint,
+                    changed,
+                }),
+                SessionEvent::Welcome(text) => emit(AppEvent::Welcome { server_id, text }),
+                SessionEvent::SelfSession(_) | SessionEvent::Talking { .. } => {}
+            }
+        }
+    });
+
+    // Publish the microphone level a few times a second for the meter.
+    rt.spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_millis(100));
+        loop {
+            tick.tick().await;
+            emit(AppEvent::InputLevel {
+                level_db: level_shared.input_level_db(),
+                speaking: level_shared.speech_detected(),
+            });
+        }
+    });
+
+    let _ = APP.set(App {
+        rt,
+        manager: tokio::sync::Mutex::new(manager),
+        shared,
+        _audio: audio,
+        outgoing,
+        slots: Mutex::new(HashMap::new()),
+        identity,
+    });
+    Ok(())
+}
+
+/// Opens the event stream the UI listens on.
+pub fn app_events(sink: StreamSink<AppEvent>) -> anyhow::Result<()> {
+    let cell = EVENT_SINK.get_or_init(|| Mutex::new(None));
+    *cell.lock() = Some(sink);
+    Ok(())
+}
+
+/// Registers a server and starts its (initially idle) session.
+pub fn add_server(config: ServerConfig) -> anyhow::Result<String> {
+    let app = app()?;
+
+    let mut profile = ServerProfile::new(
+        config.name.clone(),
+        config.host.clone(),
+        config.port,
+        config.username.clone(),
+    );
+    profile.password = config.password;
+    profile.cert_fingerprint = config.cert_fingerprint;
+    let id = profile.id.clone();
+
+    // Wire this session into the audio engine.
+    let (out_tx, out_rx) = mpsc::channel::<(u64, Vec<u8>, bool)>(64);
+    let (in_tx, mut in_rx) = mpsc::channel::<mumbleway_core::net::VoicePacket>(256);
+
+    let slot = {
+        let mut slots = app.slots.lock();
+        let next = slots.len() as u16;
+        *slots.entry(id.clone()).or_insert(next)
+    };
+
+    let shared = app.shared.clone();
+    app.rt.spawn(async move {
+        while let Some(packet) = in_rx.recv().await {
+            shared.push_incoming(slot, &packet);
+        }
+    });
+
+    let bridge = AudioBridge {
+        outgoing: out_rx,
+        incoming: in_tx,
+    };
+
+    let result = app.rt.block_on(async {
+        let mut m = app.manager.lock().await;
+        m.add(profile, bridge)
+    });
+
+    match result {
+        Ok(id) => {
+            app.outgoing.lock().push(out_tx);
+            Ok(id)
+        }
+        Err(e) => {
+            app.slots.lock().remove(&id);
+            Err(anyhow::anyhow!(e.to_string()))
+        }
+    }
+}
+
+fn send_command(server_id: String, cmd: SessionCommand) -> anyhow::Result<()> {
+    let app = app()?;
+    app.rt
+        .block_on(async {
+            let m = app.manager.lock().await;
+            m.send(&server_id, cmd).await
+        })
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    Ok(())
+}
+
+/// Connects (or reconnects) a server.
+pub fn connect_server(server_id: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::Connect)
+}
+
+/// Disconnects a server. This is user-initiated, so it will not auto-reconnect.
+pub fn disconnect_server(server_id: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::Disconnect)
+}
+
+/// Accepts a changed server certificate and re-pins it.
+pub fn accept_certificate(server_id: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::AcceptCertificate)
+}
+
+pub fn join_channel(server_id: String, channel_id: u32) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::JoinChannel(channel_id))
+}
+
+pub fn send_text(server_id: String, message: String) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::SendText {
+            channel_id: None,
+            message,
+        },
+    )
+}
+
+pub fn set_self_mute(server_id: String, muted: bool) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::SetSelfMute(muted))
+}
+
+/// Removes a server and stops its session.
+pub fn remove_server(server_id: String) -> anyhow::Result<()> {
+    let app = app()?;
+    app.rt
+        .block_on(async {
+            let mut m = app.manager.lock().await;
+            m.remove(&server_id).await
+        })
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    app.slots.lock().remove(&server_id);
+    Ok(())
+}
+
+/// Mutes or unmutes the local microphone.
+#[frb(sync)]
+pub fn set_microphone_muted(muted: bool) -> anyhow::Result<()> {
+    app()?.shared.set_muted(muted);
+    Ok(())
+}
+
+/// Silences all incoming audio.
+#[frb(sync)]
+pub fn set_deafened(deafened: bool) -> anyhow::Result<()> {
+    app()?.shared.set_deafened(deafened);
+    Ok(())
+}
+
+/// Push-to-talk key state.
+#[frb(sync)]
+pub fn set_transmitting(on: bool) -> anyhow::Result<()> {
+    app()?.shared.set_transmitting(on);
+    Ok(())
+}
+
+/// Current microphone level in dBFS.
+#[frb(sync)]
+pub fn input_level_db() -> anyhow::Result<f32> {
+    Ok(app()?.shared.input_level_db())
+}
+
+/// Available audio input device names.
+pub fn audio_input_devices() -> Vec<String> {
+    mumbleway_core::audio::engine::list_devices().0
+}
+
+/// Available audio output device names.
+pub fn audio_output_devices() -> Vec<String> {
+    mumbleway_core::audio::engine::list_devices().1
+}
+
+/// The SHA-256 fingerprint of our own client certificate, which servers use to
+/// recognise a registered user.
+pub fn client_certificate_fingerprint() -> anyhow::Result<String> {
+    let app = app()?;
+    let certs = rustls_pemfile::certs(&mut app.identity.cert_pem.as_bytes())
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|e| anyhow::anyhow!("reading identity: {e}"))?;
+    let first = certs
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("identity certificate was empty"))?;
+    Ok(mumbleway_core::net::tls::fingerprint_of(first.as_ref()))
+}
+
+/// How many servers may be connected at once.
+#[frb(sync)]
+pub fn max_concurrent_servers() -> u32 {
+    mumbleway_core::session::manager::MAX_CONCURRENT_SESSIONS as u32
+}
+
+/// Default Mumble port, so the UI can prefill it.
+#[frb(sync)]
+pub fn default_port() -> u16 {
+    64738
+}

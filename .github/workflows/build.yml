@@ -1,0 +1,292 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run redundant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+  # Deliberately no global RUSTFLAGS=-D warnings: that applies to dependencies
+  # as well, so an upstream crate's warning would break our build. Warnings are
+  # denied for our own code through clippy instead.
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Engine and UI tests. Runs first and gates the platform builds.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'core -> target'
+
+      # prost-build shells out to protoc; cpal needs the ALSA headers on Linux.
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install ALSA development headers
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Check formatting
+        working-directory: core
+        run: cargo fmt --check
+
+      - name: Clippy
+        working-directory: core
+        run: cargo clippy --all-targets -- -D warnings
+
+      # The hardware tests are #[ignore]d and stay excluded: CI runners have no
+      # audio devices, so they would fail for reasons unrelated to the code.
+      - name: Engine tests
+        working-directory: core
+        run: cargo test --lib
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve Dart dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze
+
+      - name: Widget tests
+        working-directory: app
+        run: flutter test
+
+  # ---------------------------------------------------------------------------
+  # Windows desktop
+  # ---------------------------------------------------------------------------
+  windows:
+    name: Windows
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'app/rust -> target'
+
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # libopus is built from source by audiopus_sys via CMake. That CMake runs
+      # inside MSBuild, whose Visual Studio generator breaks there, so cargokit
+      # forces the Ninja generator on Windows -- which means ninja must be on
+      # PATH. See rust_builder/cargokit/cmake/cargokit.cmake.
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      - name: Package
+        working-directory: app/build/windows/x64/runner/Release
+        run: 7z a -tzip ../../../../../../mumbleway-windows-x64.zip .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-x64
+          path: mumbleway-windows-x64.zip
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # macOS desktop
+  # ---------------------------------------------------------------------------
+  macos:
+    name: macOS
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'app/rust -> target'
+
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build macos --release
+
+      - name: Package
+        working-directory: app/build/macos/Build/Products/Release
+        run: ditto -c -k --sequesterRsrc --keepParent mumbleway.app "$GITHUB_WORKSPACE/mumbleway-macos.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-macos
+          path: mumbleway-macos.zip
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # iOS and iPadOS (one universal build; unsigned, as CI has no signing identity)
+  # ---------------------------------------------------------------------------
+  ios:
+    name: iOS
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'app/rust -> target'
+
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Unsigned: installing this on a device requires re-signing with your own
+      # provisioning profile. It proves the target compiles and links.
+      - name: Build (unsigned)
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign
+
+      - name: Package
+        working-directory: app/build/ios/iphoneos
+        run: ditto -c -k --sequesterRsrc --keepParent Runner.app "$GITHUB_WORKSPACE/mumbleway-ios-unsigned.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-ios-unsigned
+          path: mumbleway-ios-unsigned.zip
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Android phones and tablets
+  # ---------------------------------------------------------------------------
+  android:
+    name: Android
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'app/rust -> target'
+
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      # cargokit cross-compiles the engine for each ABI, so those Rust targets
+      # must exist before Gradle runs.
+      - name: Add Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build APKs
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build apk --release --split-per-abi
+
+      - name: Build App Bundle
+        working-directory: app
+        run: flutter build appbundle --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-android
+          path: |
+            app/build/app/outputs/flutter-apk/*.apk
+            app/build/app/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Publish a GitHub release when a v* tag is pushed.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos, ios, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '*.zip' -o -name '*.apk' -o -name '*.aab' \) \
+            -exec cp {} release/ \;
+          ls -lh release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          body: |
+            Desktop and mobile builds of MumbleWay.
+
+            The iOS build is **unsigned** — re-sign it with your own provisioning
+            profile before installing on a device.

@@ -1,0 +1,45 @@
+[package]
+name = "rust_lib_mumbleway"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.12.0"
+
+# The whole client engine lives in the core crate; this crate is only the
+# Flutter-facing shim, so the protocol and audio code stays testable on its own.
+mumbleway-core = { path = "../../core" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+parking_lot = "0.12"
+anyhow = "1"
+rustls-pemfile = "2"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+# Always optimise the native audio dependencies, even in debug builds.
+#
+# Two reasons, both necessary:
+#
+# 1. Correctness on Windows. `audiopus_sys` builds libopus with the `cmake`
+#    crate, which infers CMAKE_BUILD_TYPE from opt-level: at opt-level 0 it
+#    picks Debug, so libopus links the *debug* CRT (/MDd) and pulls in
+#    _CrtDbgReportW. Rust's MSVC target always uses the release CRT, so the
+#    link fails with unresolved externals. Any non-zero opt-level selects a
+#    release-CRT build type and the mismatch disappears.
+#
+# 2. Realtime headroom. Opus and RNNoise run on every 10 ms block; compiled
+#    unoptimised they are far too slow to keep up, so a debug build would
+#    glitch constantly even though it "works".
+[profile.dev.package.audiopus_sys]
+opt-level = 2
+
+[profile.dev.package.opus]
+opt-level = 2
+
+[profile.dev.package.nnnoiseless]
+opt-level = 2

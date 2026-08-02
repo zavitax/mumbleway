@@ -9,9 +9,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/button_controller.dart';
+import '../services/cloud_sync.dart';
 import '../services/overlay.dart';
 import '../services/proxy.dart';
 import '../src/rust/api/mumbleway.dart';
+import 'server_sync.dart';
 import '../widgets/voice_meter.dart';
 
 /// A server the user saved, persisted between launches.
@@ -25,6 +27,7 @@ class SavedServer {
     this.certFingerprint,
     this.defaultChannel,
     String? localId,
+    this.updatedAt = 0,
   }) : localId = localId ?? '$host:$port';
 
   final String name;
@@ -44,7 +47,36 @@ class SavedServer {
   /// different username or channel, say. Duplicates get a suffix.
   final String localId;
 
+  /// When this entry was last edited, in milliseconds since the epoch.
+  ///
+  /// Only sync reads it, to settle which of two devices' versions of the same
+  /// entry is the current one. Entries saved before sync existed carry 0 and
+  /// so lose every such contest, which is right: anything with a real
+  /// timestamp has been touched since, and this one has not.
+  final int updatedAt;
+
   String get id => localId;
+
+  /// A copy marked as changed just now.
+  ///
+  /// Called at the few points where the user actually alters the list, rather
+  /// than inside [copyWith], which is also used for edits that are nobody
+  /// else's business — and stamping those would have this device win conflicts
+  /// it took no part in.
+  SavedServer stamped() =>
+      copyWith(updatedAt: DateTime.now().millisecondsSinceEpoch);
+
+  /// Whether two versions differ in anything the live session is built from.
+  ///
+  /// A renamed server does not need its connection torn down and rebuilt; a
+  /// re-hosted one does.
+  bool sameConnection(SavedServer o) =>
+      host == o.host &&
+      port == o.port &&
+      username == o.username &&
+      password == o.password &&
+      certFingerprint == o.certFingerprint &&
+      defaultChannel == o.defaultChannel;
 
   SavedServer copyWith({
     String? name,
@@ -52,8 +84,10 @@ class SavedServer {
     String? certFingerprint,
     String? defaultChannel,
     String? localId,
+    int? updatedAt,
     bool clearDefaultChannel = false,
   }) => SavedServer(
+    updatedAt: updatedAt ?? this.updatedAt,
     name: name ?? this.name,
     host: host,
     port: port,
@@ -75,6 +109,7 @@ class SavedServer {
     'password': password,
     'certFingerprint': certFingerprint,
     'defaultChannel': defaultChannel,
+    'updatedAt': updatedAt,
   };
 
   static SavedServer fromJson(Map<String, dynamic> j) => SavedServer(
@@ -88,6 +123,7 @@ class SavedServer {
     password: j['password'] as String?,
     certFingerprint: j['certFingerprint'] as String?,
     defaultChannel: j['defaultChannel'] as String?,
+    updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
   );
 
   ServerConfig toConfig() => ServerConfig(
@@ -251,6 +287,8 @@ class AppState extends ChangeNotifier {
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
   static const _prefsButtons = 'mumbleway.buttonBindings';
+  static const _prefsCloudSync = 'mumbleway.cloudSync';
+  static const _prefsDeleted = 'mumbleway.deletedServers';
 
   /// Languages the interface is available in.
   static const supportedLocales = [Locale('en'), Locale('ru')];
@@ -407,6 +445,12 @@ class AppState extends ChangeNotifier {
       await refreshDevices();
       await _loadServers(prefs);
 
+      // After the local list is up, so the first merge has something to merge
+      // against, and not awaited, so a slow or absent iCloud cannot hold up
+      // startup. The app is usable from its own copy either way.
+      CloudSync.instance.onRemoteChange = () => unawaited(syncNow());
+      unawaited(syncNow());
+
       _pingTimer = Timer.periodic(_pingInterval, (_) => refreshPings());
       unawaited(refreshPings());
 
@@ -440,6 +484,9 @@ class AppState extends ChangeNotifier {
     echoCancellation = prefs.getBool(_prefsEchoCancellation) ?? true;
     normaliseLevels = prefs.getBool(_prefsNormaliseLevels) ?? true;
     reverb = prefs.getBool(_prefsReverb) ?? true;
+    // On by default: a user with two devices almost always wants the same
+    // servers on both, and there is nothing to configure for it to work.
+    cloudSync = prefs.getBool(_prefsCloudSync) ?? true;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -460,6 +507,10 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _loadServers(SharedPreferences prefs) async {
+    _deleted
+      ..clear()
+      ..addAll(_decodeTombstones(prefs.getString(_prefsDeleted)));
+
     final raw = prefs.getStringList(_prefsKey) ?? const [];
     servers
       ..clear()
@@ -474,8 +525,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _persist() async {
+  /// Saves to disk and, unless told otherwise, queues an upload.
+  ///
+  /// [publish] is false only when the write is itself the result of a sync:
+  /// storing what the merge produced and immediately offering it back as news
+  /// would have two devices talking past each other indefinitely.
+  Future<void> _persist({bool publish = true}) async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsDeleted, jsonEncode(_deleted));
     await prefs.setStringList(
       _prefsKey,
       servers.map((s) => jsonEncode(s.toJson())).toList(),
@@ -494,6 +551,7 @@ class AppState extends ChangeNotifier {
     } else {
       await prefs.setString(_prefsOutputDevice, selectedOutput!);
     }
+    if (publish) _scheduleSync();
   }
 
   Future<void> _register(SavedServer s) async {
@@ -516,9 +574,11 @@ class AppState extends ChangeNotifier {
     // The same host is a legitimate second entry: a different username, a
     // different default channel, or simply a spare. Only the key has to be
     // unique, so a colliding one is renamed rather than refused.
-    final entry = servers.any((e) => e.id == s.id)
-        ? s.copyWith(localId: _uniqueId(s.host, s.port))
-        : s;
+    final entry =
+        (servers.any((e) => e.id == s.id)
+                ? s.copyWith(localId: _uniqueId(s.host, s.port))
+                : s)
+            .stamped();
     servers.add(entry);
     // Only the first `maxServers` get a live session; the rest stay as saved
     // entries the user can swap in.
@@ -538,7 +598,7 @@ class AppState extends ChangeNotifier {
     if (index < 0) return 'That server is no longer in your list.';
 
     final wasLive = runtimeFor(updated.id).isLive;
-    servers[index] = updated;
+    servers[index] = updated.stamped();
     await _persist();
 
     // Connection details are baked into the session when it is registered, so
@@ -578,7 +638,7 @@ class AppState extends ChangeNotifier {
           certFingerprint: c.certFingerprint,
         );
         if (servers.any((e) => e.id == s.id)) continue;
-        servers.add(s);
+        servers.add(s.stamped());
         if (runtimes.length < maxServers) await _register(s);
         added++;
       }
@@ -626,16 +686,208 @@ class AppState extends ChangeNotifier {
   /// Copies a saved server, so the same host can be kept under a different
   /// username or default channel.
   Future<String?> duplicateServer(SavedServer s) async {
-    final copy = s.copyWith(
-      name: '${s.name} (copy)',
-      localId: _uniqueId(s.host, s.port),
-    );
+    final copy = s
+        .copyWith(name: '${s.name} (copy)', localId: _uniqueId(s.host, s.port))
+        .stamped();
     servers.add(copy);
     if (runtimes.length < maxServers) await _register(copy);
     await _persist();
     notifyListeners();
     unawaited(refreshPings());
     return null;
+  }
+
+  // --- syncing between the user's devices -----------------------------------
+
+  /// Whether to use the platform's sync facility, where there is one.
+  bool cloudSync = true;
+
+  /// Whether that facility is actually usable — signed in, and switched on for
+  /// this app. Distinct from [cloudSync]: the user can want this and still not
+  /// have it, and being told which is which is the difference between a
+  /// setting that looks broken and one that explains itself.
+  bool cloudReady = false;
+
+  /// What went wrong last time, if anything.
+  String? cloudError;
+
+  /// Deletions, kept so they can outlive the entry and reach other devices.
+  final Map<String, int> _deleted = {};
+
+  Timer? _syncTimer;
+  bool _syncing = false;
+
+  CloudKind get cloudKind => CloudSync.instance.kind;
+
+  Future<void> setCloudSync(bool on) async {
+    cloudSync = on;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsCloudSync, on);
+    if (on) await syncNow();
+  }
+
+  static Map<String, int> _decodeTombstones(String? raw) {
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final j = jsonDecode(raw);
+      if (j is! Map) return const {};
+      return {
+        for (final e in j.entries)
+          if (e.value is num) '${e.key}': (e.value as num).toInt(),
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Publishes shortly, rather than at once.
+  ///
+  /// Editing a server saves on every keystroke, and each save would otherwise
+  /// be a round trip to iCloud carrying a half-typed hostname. Waiting for the
+  /// typing to stop sends one copy of the finished thing.
+  void _scheduleSync() {
+    if (!cloudSync || !CloudSync.instance.isLive) return;
+    _syncTimer?.cancel();
+    _syncTimer = Timer(const Duration(seconds: 2), () => unawaited(syncNow()));
+  }
+
+  /// Reconciles this device's list with the cloud's, both ways.
+  ///
+  /// Deliberately one path for both directions. Reading and writing are the
+  /// same operation seen from either end — merge, keep what came of it, and
+  /// publish it if it differs from what was there — and splitting them into a
+  /// download and an upload invites the two to disagree about what a merge
+  /// means.
+  Future<bool> syncNow() async {
+    if (!cloudSync || !CloudSync.instance.isLive) return false;
+    // Reads are cheap but applying one is not, and a burst of remote-change
+    // notifications during the initial pull would otherwise have several
+    // merges rebuilding the same sessions underneath each other.
+    if (_syncing) return false;
+    _syncing = true;
+    try {
+      final blob = await CloudSync.instance.read();
+      cloudReady = await CloudSync.instance.isReady();
+
+      final mine = _localSnapshot();
+      final theirs = _withPasswords(
+        SyncSnapshot.decode(blob?.payload) ?? const SyncSnapshot(),
+        blob?.secrets ?? const {},
+      );
+      final merged = mergeSnapshots(
+        mine,
+        theirs,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      if (!sameSnapshot(merged, mine)) await _applyMerged(merged);
+      if (!sameSnapshot(merged, theirs)) {
+        final (payload, secrets) = _withoutPasswords(merged);
+        cloudError = await CloudSync.instance.write(
+          CloudBlob(payload: payload.encode(), secrets: secrets),
+          liveIds: [for (final s in merged.servers) syncIdOf(s)],
+        );
+      } else {
+        cloudError = null;
+      }
+      notifyListeners();
+      return true;
+    } catch (e) {
+      cloudError = e.toString();
+      notifyListeners();
+      return false;
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  SyncSnapshot _localSnapshot() => SyncSnapshot(
+    servers: [for (final s in servers) s.toJson()],
+    deleted: Map.of(_deleted),
+  );
+
+  /// Lifts passwords out of the list, to be stored somewhere better protected.
+  ///
+  /// Which store that is, and why it is a different one, is the platform's
+  /// business — see `shared/CloudStore.swift`. All that matters here is that a
+  /// password never goes into the payload.
+  static (SyncSnapshot, Map<String, String>) _withoutPasswords(SyncSnapshot s) {
+    final secrets = <String, String>{};
+    final servers = <Map<String, dynamic>>[];
+    for (final e in s.servers) {
+      final copy = Map<String, dynamic>.of(e);
+      final password = copy.remove('password');
+      if (password is String && password.isNotEmpty) {
+        secrets[syncIdOf(e)] = password;
+      }
+      servers.add(copy);
+    }
+    return (SyncSnapshot(servers: servers, deleted: s.deleted), secrets);
+  }
+
+  /// Puts them back, before the merge rather than after.
+  ///
+  /// A remote entry has to arrive whole for the comparison to be fair: reunite
+  /// it afterwards and an incoming entry that wins on recency wins as a server
+  /// with no password, silently discarding one that was never lost.
+  static SyncSnapshot _withPasswords(
+    SyncSnapshot s,
+    Map<String, String> secrets,
+  ) => SyncSnapshot(
+    deleted: s.deleted,
+    servers: [
+      for (final e in s.servers)
+        if (secrets[syncIdOf(e)] case final password?)
+          {...e, 'password': password}
+        else
+          e,
+    ],
+  );
+
+  /// Adopts a merged list, rebuilding only the sessions that need it.
+  Future<void> _applyMerged(SyncSnapshot merged) async {
+    final before = {for (final s in servers) s.id: s};
+    final next = [for (final j in merged.servers) SavedServer.fromJson(j)];
+
+    servers
+      ..clear()
+      ..addAll(next);
+    _deleted
+      ..clear()
+      ..addAll(merged.deleted);
+    await _persist(publish: false);
+
+    for (final id in before.keys) {
+      if (next.any((s) => s.id == id)) continue;
+      runtimes.remove(id);
+      try {
+        await removeServer(serverId: id);
+      } catch (_) {
+        // Never registered — only the first few entries ever are.
+      }
+    }
+
+    for (final s in next.take(maxServers)) {
+      final old = before[s.id];
+      if (old == null) {
+        if (runtimes.length < maxServers) await _register(s);
+        continue;
+      }
+      // A renamed server keeps talking. Connection details are baked into the
+      // session when it is registered, so only those warrant an interruption.
+      if (old.sameConnection(s)) continue;
+      final wasLive = runtimeFor(s.id).isLive;
+      try {
+        await removeServer(serverId: s.id);
+      } catch (_) {}
+      runtimes.remove(s.id);
+      await _register(s);
+      if (wasLive) unawaited(connect(s.id));
+    }
+
+    notifyListeners();
+    unawaited(refreshPings());
   }
 
   // --- export and import --------------------------------------------------
@@ -741,6 +993,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> forgetServer(String id) async {
+    // Recorded before the entry goes, so the other devices are told it was
+    // deleted rather than left to notice it missing and put it back.
+    _deleted[id] = DateTime.now().millisecondsSinceEpoch;
     servers.removeWhere((s) => s.id == id);
     runtimes.remove(id);
     try {
@@ -1371,6 +1626,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _pingTimer?.cancel();
     _events?.cancel();
     super.dispose();

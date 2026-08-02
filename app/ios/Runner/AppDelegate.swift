@@ -6,6 +6,7 @@ import UIKit
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var pip: AnyObject?
   private var overlayChannel: FlutterMethodChannel?
+  private var cloud: CloudStore?
 
   override func application(
     _ application: UIApplication,
@@ -22,6 +23,9 @@ import UIKit
     // a plugin would do.
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayOverlay") {
       registerOverlayChannel(with: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayCloud") {
+      cloud = CloudStore(messenger: registrar.messenger())
     }
   }
 

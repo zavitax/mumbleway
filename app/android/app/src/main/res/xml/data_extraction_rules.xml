@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What leaves this device, on Android 12 and later.
+
+  Android splits the question in two, and the two deserve different answers.
+
+  cloud-backup goes to the user's Google account and comes back when they set
+  up a new phone. The server list belongs there: losing it is the thing worth
+  protecting against.
+
+  device-transfer is the direct handover between an old phone and a new one
+  during setup. Nothing goes near a server, so the client identity can go too —
+  and it should, because Mumble servers recognise a returning user by that
+  certificate. Carry it over and the new phone is still you; leave it behind
+  and every server treats you as a stranger.
+
+  The identity is not in cloud-backup for the same reason passwords are kept
+  out of the iCloud key-value store on Apple platforms: a private key gets the
+  channel that does not involve leaving a copy anywhere.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="."/>
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="."/>
+        <include domain="file" path="identity.crt"/>
+        <include domain="file" path="identity.key"/>
+    </device-transfer>
+</data-extraction-rules>

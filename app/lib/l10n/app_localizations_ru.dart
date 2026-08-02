@@ -639,4 +639,34 @@ class LRu extends L {
 
   @override
   String get messages => 'Сообщения';
+
+  @override
+  String get syncTitle => 'Синхронизация';
+
+  @override
+  String get syncServers => 'Синхронизировать серверы между устройствами';
+
+  @override
+  String get syncBodyICloud =>
+      'Список серверов передаётся через iCloud на все устройства, где выполнен вход в вашу учётную запись Apple. Пароли идут отдельно, через «Связку ключей iCloud», со сквозным шифрованием.';
+
+  @override
+  String get syncSignedOut =>
+      'Войдите в iCloud на этом устройстве, чтобы включить синхронизацию.';
+
+  @override
+  String get syncBodyAndroid =>
+      'Список серверов входит в резервную копию Android и вернётся при настройке нового телефона. Но пока вы пользуетесь двумя телефонами, он их не синхронизирует.';
+
+  @override
+  String get syncBodyNone =>
+      'Windows отказалась от места, где приложения синхронизировали настройки, и замены не появилось. Перенести серверы между компьютерами по-прежнему можно экспортом и импортом — сохраните файл в OneDrive, и получится почти то же самое.';
+
+  @override
+  String get syncNow => 'Синхронизировать сейчас';
+
+  @override
+  String syncFailed(String error) {
+    return 'Последняя синхронизация не удалась: $error';
+  }
 }

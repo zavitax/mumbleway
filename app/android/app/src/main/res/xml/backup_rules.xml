@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Android's backup service carries, on Android 11 and earlier.
+
+  Preferences only, which is where the server list and every setting live. An
+  <include> makes this a list rather than a filter: nothing outside it is
+  backed up, so the client identity under files/ stays on this device by
+  omission. See data_extraction_rules.xml for the modern equivalent, and for
+  why the identity is treated differently from the list.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="."/>
+</full-backup-content>

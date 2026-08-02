@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/button_controller.dart';
+import '../services/cloud_sync.dart';
 import '../services/overlay.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import '../theme.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 
@@ -90,6 +92,10 @@ class SettingsScreen extends StatelessWidget {
           _SectionHeader(l.network),
           _Explainer(l.networkBody),
           const _ProxyTile(),
+
+          const Divider(height: 32),
+          _SectionHeader(l.syncTitle),
+          const _SyncTile(),
 
           const Divider(height: 32),
           _SectionHeader(l.identity),
@@ -266,6 +272,85 @@ class _MonitorTile extends StatelessWidget {
       value: state.monitoring,
       onChanged: (_) => state.toggleMonitoring(),
     );
+  }
+}
+
+/// Syncing the server list, and what that means on this platform.
+///
+/// Three sentences rather than one switch, because the facilities behind them
+/// are genuinely different and a user who assumes iCloud behaviour on Android
+/// will believe their phone is broken when the laptop does not catch up.
+class _SyncTile extends StatelessWidget {
+  const _SyncTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+
+    switch (state.cloudKind) {
+      case CloudKind.none:
+        return ListTile(
+          leading: const Icon(Icons.cloud_off),
+          title: Text(l.syncServers),
+          subtitle: Text(l.syncBodyNone),
+          isThreeLine: true,
+          enabled: false,
+        );
+
+      case CloudKind.androidBackup:
+        // No switch: this is Android's setting, not ours, and offering a
+        // control that cannot actually turn it off would be a lie.
+        return ListTile(
+          leading: const Icon(Icons.settings_backup_restore),
+          title: Text(l.syncServers),
+          subtitle: Text(l.syncBodyAndroid),
+          isThreeLine: true,
+        );
+
+      case CloudKind.icloud:
+        final error = state.cloudError;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SwitchListTile(
+              secondary: Icon(
+                state.cloudSync ? Icons.cloud_sync : Icons.cloud_off,
+              ),
+              title: Text(l.syncServers),
+              subtitle: Text(
+                state.cloudReady ? l.syncBodyICloud : l.syncSignedOut,
+              ),
+              isThreeLine: true,
+              value: state.cloudSync,
+              onChanged: (v) => state.setCloudSync(v),
+            ),
+            if (state.cloudSync && error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  l.syncFailed(error),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: StatusColors.failed,
+                  ),
+                ),
+              ),
+            if (state.cloudSync && state.cloudReady)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: TextButton.icon(
+                    onPressed: () => state.syncNow(),
+                    icon: const Icon(Icons.sync, size: 18),
+                    label: Text(l.syncNow),
+                  ),
+                ),
+              ),
+          ],
+        );
+    }
   }
 }
 

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Syncing the server list between the user's own devices.
+	     Key-value storage only: no iCloud container, no CloudKit, nothing to
+	     provision beyond ticking iCloud on the App ID.
+
+	     Passwords do not travel in here. They go to iCloud Keychain, which is
+	     end-to-end encrypted; this store is not. See shared/CloudStore.swift. -->
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+</dict>
+</plist>

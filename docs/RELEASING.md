@@ -109,10 +109,25 @@ Keychain Access.
 ### 2c. Register the app and a provisioning profile
 
 1. **Identifiers** → **+** → App ID, bundle id `com.mumbleway.mumbleway`.
-   Enable the **Push to Talk** and **Background Modes** capabilities if you
+2. Enable **iCloud**, and under it **Key-value storage**. This one is not
+   optional: the app declares
+   `com.apple.developer.ubiquity-kvstore-identifier` so it can sync the server
+   list between the user's devices, and signing fails outright against an App
+   ID that does not grant it —
+
+   ```
+   Provisioning profile "..." doesn't include the
+   com.apple.developer.ubiquity-kvstore-identifier entitlement.
+   ```
+
+   Do the same for the macOS App ID. Nothing else about iCloud needs setting
+   up: key-value storage has no container and no CloudKit schema.
+3. Enable the **Push to Talk** and **Background Modes** capabilities if you
    later want them; the app works without.
-2. **Profiles** → **+** → *App Store Connect* distribution, select the App ID
-   and the certificate, download the `.mobileprovision`.
+4. **Profiles** → **+** → *App Store Connect* distribution, select the App ID
+   and the certificate, download the `.mobileprovision`. Regenerate the
+   profile after changing capabilities — an existing one does not pick them
+   up, and the error above is what you get if you forget.
 
 ### 2d. Create the App Store Connect app record
 

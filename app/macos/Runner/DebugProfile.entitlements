@@ -14,5 +14,10 @@
 	<!-- Microphone capture. -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- Syncing the server list between the user's own devices. Key-value
+	     storage only; passwords go to iCloud Keychain instead, which is
+	     end-to-end encrypted. See shared/CloudStore.swift. -->
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
 </dict>
 </plist>

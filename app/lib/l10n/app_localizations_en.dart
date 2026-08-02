@@ -635,4 +635,33 @@ class LEn extends L {
 
   @override
   String get messages => 'Messages';
+
+  @override
+  String get syncTitle => 'Sync';
+
+  @override
+  String get syncServers => 'Sync servers across devices';
+
+  @override
+  String get syncBodyICloud =>
+      'Your server list travels through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.';
+
+  @override
+  String get syncSignedOut => 'Sign in to iCloud on this device to use this.';
+
+  @override
+  String get syncBodyAndroid =>
+      'Your server list rides along with Android\'s backup, so it returns when you set up a new phone. It does not keep two phones in step while you are using them.';
+
+  @override
+  String get syncBodyNone =>
+      'Windows retired the place apps used to sync settings, and nothing replaced it. Export and Import still move your servers between machines — save the file into OneDrive and it does much the same job.';
+
+  @override
+  String get syncNow => 'Sync now';
+
+  @override
+  String syncFailed(String error) {
+    return 'Last sync failed: $error';
+  }
 }

@@ -3,6 +3,7 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   private var callPanel: FloatingPanel?
+  private var cloud: CloudStore?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -12,6 +13,7 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerOverlayChannel(with: flutterViewController.engine.binaryMessenger)
+    cloud = CloudStore(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }

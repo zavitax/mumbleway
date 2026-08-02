@@ -17,7 +17,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
 use std::collections::{HashMap, VecDeque};
 
-use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES};
+use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
 use super::dsp::interleaved_to_mono;
 use super::jitter::SpeakerBuffer;
@@ -85,6 +85,28 @@ pub struct AudioShared {
     /// Loopback: route the processed microphone straight to playback so the
     /// user can hear exactly what the far end would hear.
     monitor: AtomicBool,
+    /// Samples the output callback had to invent because the playback queue
+    /// was dry, and samples the input callback threw away because the worker
+    /// was behind.
+    ///
+    /// Choppy audio has several possible causes that sound identical, and
+    /// these two counters separate them: an output underrun means nothing was
+    /// ready to play, a capture drop means the microphone outran the DSP, and
+    /// neither moving means the gaps are arriving already in the stream.
+    underrun_samples: AtomicU64,
+    capture_dropped_samples: AtomicU64,
+    /// How many speakers the mixer last found streaming.
+    ///
+    /// The underrun counter is gated on this. An empty playback queue is the
+    /// normal, correct state when nobody is talking — counting that as a
+    /// dropout buries the real ones under hours of ordinary silence.
+    active_speakers: AtomicU32,
+    /// Frames of incoming audio invented by concealment, and decoded from real
+    /// packets. Reported so a hiss can be attributed rather than argued about.
+    concealed_frames: AtomicU64,
+    decoded_frames: AtomicU64,
+    /// Whether incoming speakers are levelled towards a common loudness.
+    normalise_levels: AtomicBool,
     /// Whether the echo canceller is active.
     ///
     /// Worth exposing rather than always-on: on a headset there is no acoustic
@@ -279,6 +301,12 @@ impl AudioShared {
             output_volume_db: AtomicI32::new(0),
             monitor: AtomicBool::new(false),
             echo_cancellation: AtomicBool::new(true),
+            normalise_levels: AtomicBool::new(true),
+            concealed_frames: AtomicU64::new(0),
+            decoded_frames: AtomicU64::new(0),
+            underrun_samples: AtomicU64::new(0),
+            capture_dropped_samples: AtomicU64::new(0),
+            active_speakers: AtomicU32::new(0),
             cue_queue: Mutex::new(VecDeque::new()),
             echo_reference: Mutex::new(VecDeque::new()),
             device_request: Mutex::new((None, None)),
@@ -318,6 +346,35 @@ impl AudioShared {
 
     pub fn is_monitoring(&self) -> bool {
         self.monitor.load(Ordering::Relaxed)
+    }
+
+    /// `(output underruns, capture drops)` in samples since start.
+    pub fn glitch_counts(&self) -> (u64, u64) {
+        (
+            self.underrun_samples.load(Ordering::Relaxed),
+            self.capture_dropped_samples.load(Ordering::Relaxed),
+        )
+    }
+
+    pub fn reset_glitch_counts(&self) {
+        self.underrun_samples.store(0, Ordering::Relaxed);
+        self.capture_dropped_samples.store(0, Ordering::Relaxed);
+    }
+
+    /// `(invented, decoded)` frames of incoming audio.
+    pub fn frame_counts(&self) -> (u64, u64) {
+        (
+            self.concealed_frames.load(Ordering::Relaxed),
+            self.decoded_frames.load(Ordering::Relaxed),
+        )
+    }
+
+    pub fn set_normalise_levels(&self, on: bool) {
+        self.normalise_levels.store(on, Ordering::Relaxed);
+    }
+
+    pub fn normalise_levels_enabled(&self) -> bool {
+        self.normalise_levels.load(Ordering::Relaxed)
     }
 
     pub fn set_echo_cancellation(&self, on: bool) {
@@ -502,30 +559,52 @@ pub fn stream_key(slot: u16, session: u32) -> u64 {
 ///
 /// Split out so it can be tested without any audio hardware.
 pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Vec<f32>) {
-    scratch.resize(FRAME_SAMPLES, 0.0);
     mixed.clear();
-    mixed.resize(FRAME_SAMPLES, 0.0);
 
     let mut speakers = shared.speakers.lock();
     let mut active = 0usize;
 
+    let normalise = shared.normalise_levels_enabled();
     speakers.retain(|_, buf| {
         if buf.is_finished() {
             return false;
         }
+        buf.set_normalisation(normalise);
         if !buf.ready() {
             return true;
         }
-        if buf.pop(scratch).is_some() {
-            for (m, s) in mixed.iter_mut().zip(scratch.iter()) {
+        // Mix exactly what was decoded. Mixing the whole scratch buffer
+        // regardless would append whatever the previous frame left in its tail
+        // whenever a packet is shorter than the buffer, which is heard as a
+        // hiss riding under everything.
+        if let Some(n) = buf.pop(scratch) {
+            if mixed.len() < n {
+                mixed.resize(n, 0.0);
+            }
+            for (m, s) in mixed.iter_mut().zip(scratch[..n].iter()) {
                 *m += *s;
             }
             active += 1;
         }
         true
     });
+
+    // Anyone still holding frames is audio we owe the listener, whether or not
+    // it was played this round. Counting only what was played would leave the
+    // underrun meter blind to a buffer that is holding back — which is exactly
+    // the failure worth catching.
+    let expecting = speakers.values().filter(|b| b.buffered() > 0).count();
+    let (invented, decoded) = speakers
+        .values()
+        .map(|b| b.frame_counts())
+        .fold((0u64, 0u64), |(a, c), (x, y)| (a + x, c + y));
+    shared.concealed_frames.store(invented, Ordering::Relaxed);
+    shared.decoded_frames.store(decoded, Ordering::Relaxed);
     drop(speakers);
 
+    shared
+        .active_speakers
+        .store(active.max(expecting) as u32, Ordering::Relaxed);
     if active == 0 {
         mixed.clear();
         return;
@@ -826,6 +905,9 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                     let excess = q.len() + resampled.len() - MAX_QUEUED_INPUT_SAMPLES;
                     let drop_count = excess.min(q.len());
                     q.drain(..drop_count);
+                    cap_shared
+                        .capture_dropped_samples
+                        .fetch_add(drop_count as u64, Ordering::Relaxed);
                 }
                 q.extend(resampled.iter().copied());
             },
@@ -865,12 +947,30 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                 // loopback monitor and the test tone alike.
                 let vol = 10f32.powf(play_shared.output_volume_db() / 20.0);
                 let mut peak = 0.0f32;
+                let mut underruns = 0u64;
                 for frame in data.chunks_mut(out_channels.max(1)) {
-                    let s = (pending.pop_front().unwrap_or(0.0) * vol).clamp(-1.0, 1.0);
+                    let raw = match pending.pop_front() {
+                        Some(v) => v,
+                        None => {
+                            // Nothing ready: this is a real gap in the audio,
+                            // not silence anyone asked for.
+                            underruns += 1;
+                            0.0
+                        }
+                    };
+                    let s = (raw * vol).clamp(-1.0, 1.0);
                     peak = peak.max(s.abs());
                     for ch in frame.iter_mut() {
                         *ch = s;
                     }
+                }
+                // Only a gap if somebody was actually talking. Silence while
+                // nobody is is not a dropout, and counting it hides the ones
+                // that matter under hours of idle.
+                if underruns > 0 && play_shared.active_speakers.load(Ordering::Relaxed) > 0 {
+                    play_shared
+                        .underrun_samples
+                        .fetch_add(underruns, Ordering::Relaxed);
                 }
                 play_shared.store_output_level(super::dsp::to_dbfs(peak));
             },
@@ -986,7 +1086,7 @@ where
                 if allowed {
                     if let Ok(packet) = encoder.encode(&frame[..FRAME_SAMPLES]) {
                         on_frame(sequence, packet, false);
-                        sequence += 1;
+                        sequence += SEQ_UNITS_PER_FRAME;
                         was_transmitting = true;
                     }
                 } else if was_transmitting {
@@ -995,8 +1095,14 @@ where
                     // time out.
                     if let Ok(packet) = encoder.encode(&vec![0.0; FRAME_SAMPLES]) {
                         on_frame(sequence, packet, true);
+                        sequence += SEQ_UNITS_PER_FRAME;
                     }
-                    sequence = 0;
+                    // The counter keeps climbing for the life of the session.
+                    // Restarting it at zero puts every later burst *behind*
+                    // the receiver's play head, and a jitter buffer discards
+                    // what is behind its play head as arriving too late — so
+                    // the opening of every utterance after the first is thrown
+                    // away, and more of it the longer the session runs.
                     was_transmitting = false;
                 }
                 frame.clear();
@@ -1101,8 +1207,9 @@ mod tests {
     fn finished_speakers_are_reaped() {
         let shared = AudioShared::new();
         let frames = encoded_frames(2);
+        // Numbered in 10 ms units, as a conforming sender of 20 ms frames does.
         shared.push_incoming(0, &packet(7, 0, frames[0].clone(), false));
-        shared.push_incoming(0, &packet(7, 1, frames[1].clone(), true));
+        shared.push_incoming(0, &packet(7, SEQ_UNITS_PER_FRAME, frames[1].clone(), true));
 
         let (mut a, mut b) = (Vec::new(), Vec::new());
         for _ in 0..6 {

@@ -328,7 +328,10 @@ class _StartupFailure extends StatelessWidget {
                     color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
-              Text(
+              // Selectable, because this is the only text on the screen that
+              // says what actually went wrong, and the headline above it
+              // guesses at the microphone whatever the cause really was.
+              SelectableText(
                 message,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 11),

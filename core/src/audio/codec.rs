@@ -13,6 +13,14 @@ pub const SAMPLE_RATE: u32 = 48_000;
 /// 20 ms frames: the usual latency/overhead compromise, and what Mumble expects.
 pub const FRAME_SAMPLES: usize = 960;
 
+/// Sequence numbers count 10 ms units, not packets.
+///
+/// This is Mumble's convention, not ours: a client sending 20 ms frames steps
+/// the counter by two. Stepping by one instead leaves an apparently missing
+/// slot between every pair of packets, which a receiver conceals with invented
+/// audio — half the stream, synthesised, which sounds like a broken link.
+pub const SEQ_UNITS_PER_FRAME: u64 = (FRAME_SAMPLES / 480) as u64;
+
 /// Generous upper bound for one encoded frame.
 const MAX_PACKET: usize = 4000;
 

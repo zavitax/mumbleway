@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,6 +8,7 @@ import '../services/button_controller.dart';
 import '../services/overlay.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import '../theme.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 
@@ -30,6 +33,7 @@ class SettingsScreen extends StatelessWidget {
           const Divider(height: 32),
           _SectionHeader(l.levels),
           const _LevelsSection(),
+          const _GlitchCounters(),
 
           const Divider(height: 32),
           _SectionHeader(l.noiseCancellation),
@@ -100,30 +104,30 @@ class SettingsScreen extends StatelessWidget {
   }
 
   static String _noiseTitle(L l, NoiseSetting n) => switch (n) {
-        NoiseSetting.off => l.noiseOff,
-        NoiseSetting.light => l.noiseLight,
-        NoiseSetting.standard => l.noiseStandard,
-        NoiseSetting.helmet => l.noiseHelmet,
-      };
+    NoiseSetting.off => l.noiseOff,
+    NoiseSetting.light => l.noiseLight,
+    NoiseSetting.standard => l.noiseStandard,
+    NoiseSetting.helmet => l.noiseHelmet,
+  };
 
   static String _noiseSubtitle(L l, NoiseSetting n) => switch (n) {
-        NoiseSetting.off => l.noiseOffBody,
-        NoiseSetting.light => l.noiseLightBody,
-        NoiseSetting.standard => l.noiseStandardBody,
-        NoiseSetting.helmet => l.noiseHelmetBody,
-      };
+    NoiseSetting.off => l.noiseOffBody,
+    NoiseSetting.light => l.noiseLightBody,
+    NoiseSetting.standard => l.noiseStandardBody,
+    NoiseSetting.helmet => l.noiseHelmetBody,
+  };
 
   static String _micTitle(L l, MicMode m) => switch (m) {
-        MicMode.pushToTalk => l.micPushToTalk,
-        MicMode.voiceActivity => l.micVoiceActivated,
-        MicMode.continuous => l.micAlwaysOn,
-      };
+    MicMode.pushToTalk => l.micPushToTalk,
+    MicMode.voiceActivity => l.micVoiceActivated,
+    MicMode.continuous => l.micAlwaysOn,
+  };
 
   static String _micSubtitle(L l, MicMode m) => switch (m) {
-        MicMode.pushToTalk => l.micPushToTalkBody,
-        MicMode.voiceActivity => l.micVoiceActivatedBody,
-        MicMode.continuous => l.micAlwaysOnBody,
-      };
+    MicMode.pushToTalk => l.micPushToTalkBody,
+    MicMode.voiceActivity => l.micVoiceActivatedBody,
+    MicMode.continuous => l.micAlwaysOnBody,
+  };
 }
 
 /// Device pickers plus the two test controls.
@@ -137,8 +141,8 @@ class _DeviceSection extends StatelessWidget {
 
     // Desktop hosts enumerate real devices. Phones generally expose a single
     // logical route that the OS switches for you, so there is nothing to pick.
-    final canChoose = state.inputDevices.length > 1 ||
-        state.outputDevices.length > 1;
+    final canChoose =
+        state.inputDevices.length > 1 || state.outputDevices.length > 1;
 
     if (!canChoose) {
       return Column(
@@ -151,6 +155,7 @@ class _DeviceSection extends StatelessWidget {
           ),
           const _MonitorTile(),
           const _EchoCancellationTile(),
+          const _NormaliseTile(),
           const _TestOutputTile(),
         ],
       );
@@ -180,6 +185,7 @@ class _DeviceSection extends StatelessWidget {
         ),
         const _MonitorTile(),
         const _EchoCancellationTile(),
+        const _NormaliseTile(),
         const _TestOutputTile(),
       ],
     );
@@ -229,8 +235,10 @@ class _DevicePicker extends StatelessWidget {
               isExpanded: true,
               decoration: InputDecoration(
                 labelText: label,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
               ),
               items: items,
               onChanged: onChanged,
@@ -257,6 +265,26 @@ class _MonitorTile extends StatelessWidget {
       ),
       value: state.monitoring,
       onChanged: (_) => state.toggleMonitoring(),
+    );
+  }
+}
+
+class _NormaliseTile extends StatelessWidget {
+  const _NormaliseTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: const Icon(Icons.equalizer),
+      title: const Text('Even out speaker loudness'),
+      subtitle: const Text(
+        'Brings everyone to a similar level. Adapts on what it hears, so if '
+        'a hiss rises between sentences, turn this off to check.',
+      ),
+      isThreeLine: true,
+      value: state.normaliseLevels,
+      onChanged: (v) => state.setNormaliseLevels(value: v),
     );
   }
 }
@@ -300,6 +328,75 @@ class _TestOutputTile extends StatelessWidget {
 
 /// Input gain and output volume, with the live meter alongside so the effect
 /// of a change is immediately visible.
+/// Live dropout counters.
+///
+/// Choppy audio sounds identical whatever causes it, and the three candidates
+/// need different fixes: the playback queue running dry, the microphone
+/// outrunning the processing, or gaps that were already in the stream when it
+/// arrived. Two numbers tell them apart in seconds, where listening cannot.
+class _GlitchCounters extends StatefulWidget {
+  const _GlitchCounters();
+
+  @override
+  State<_GlitchCounters> createState() => _GlitchCountersState();
+}
+
+class _GlitchCountersState extends State<_GlitchCounters> {
+  Timer? _tick;
+  List<int> _ms = const [0, 0];
+  List<int> _incoming = const [0, 0];
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      try {
+        // u64 crosses the bridge as BigInt; these are millisecond counts.
+        setState(() {
+          _ms = audioGlitchMs().map((v) => v.toInt()).toList();
+          _incoming = incomingAudioMs().map((v) => v.toInt()).toList();
+        });
+      } catch (_) {
+        // The engine is not up; nothing to report.
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final quiet = Theme.of(context).colorScheme.onSurfaceVariant;
+    final bad = _ms[0] > 0 || _ms[1] > 0;
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        bad ? Icons.warning_amber : Icons.check_circle_outline,
+        size: 20,
+        color: bad ? StatusColors.connecting : quiet,
+      ),
+      title: Text(
+        'Playback gaps ${_ms[0]} ms · microphone dropped ${_ms[1]} ms\n'
+        'Incoming: ${_incoming[1]} ms real · ${_incoming[0]} ms invented',
+        style: const TextStyle(fontSize: 12),
+      ),
+      isThreeLine: true,
+      trailing: TextButton(
+        onPressed: () {
+          resetAudioGlitches();
+          setState(() => _ms = const [0, 0]);
+        },
+        child: const Text('Reset'),
+      ),
+    );
+  }
+}
+
 class _LevelsSection extends StatelessWidget {
   const _LevelsSection();
 
@@ -433,8 +530,7 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
         if (state.buttonBindings.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            child: Text(l.noButtonsBound,
-                style: const TextStyle(fontSize: 12)),
+            child: Text(l.noButtonsBound, style: const TextStyle(fontSize: 12)),
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
@@ -447,7 +543,9 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
                   decoration: InputDecoration(
                     labelText: l.action,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                   ),
                   items: [
                     for (final a in ButtonAction.values)
@@ -461,11 +559,11 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
                 onPressed: learning
                     ? state.cancelLearningButton
                     : () => state.learnButton(_action, (b) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(l.boundButton(b.displayName))),
-                          );
-                        }),
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(l.boundButton(b.displayName))),
+                        );
+                      }),
                 child: Text(learning ? l.cancel : l.learn),
               ),
             ],
@@ -477,9 +575,10 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
             child: Row(
               children: [
                 const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -507,9 +606,9 @@ class _ProxyTile extends StatelessWidget {
         SwitchListTile(
           secondary: const Icon(Icons.vpn_lock),
           title: Text(l.useSystemProxy),
-          subtitle: Text(state.proxyEnabled
-              ? state.proxyDescription
-              : l.proxyOffDirect),
+          subtitle: Text(
+            state.proxyEnabled ? state.proxyDescription : l.proxyOffDirect,
+          ),
           value: state.proxyEnabled,
           onChanged: state.setProxyEnabled,
         ),
@@ -542,8 +641,7 @@ class _ProxyTile extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c), child: Text(l.cancel)),
+          TextButton(onPressed: () => Navigator.pop(c), child: Text(l.cancel)),
           FilledButton(
             onPressed: () => Navigator.pop(c, controller.text),
             child: Text(l.save),
@@ -597,7 +695,10 @@ class _OverlayTileState extends State<_OverlayTile> {
         SwitchListTile(
           secondary: _busy
               ? const SizedBox(
-                  width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Icon(Icons.picture_in_picture_alt),
           title: Text(l.floatingWindow),
           subtitle: Text(_subtitleFor(kind)),
@@ -639,11 +740,13 @@ class _FingerprintTileState extends State<_FingerprintTile> {
   @override
   void initState() {
     super.initState();
-    clientCertificateFingerprint().then((v) {
-      if (mounted) setState(() => _fp = v);
-    }).catchError((Object _) {
-      if (mounted) setState(() => _fp = 'unavailable');
-    });
+    clientCertificateFingerprint()
+        .then((v) {
+          if (mounted) setState(() => _fp = v);
+        })
+        .catchError((Object _) {
+          if (mounted) setState(() => _fp = 'unavailable');
+        });
   }
 
   @override

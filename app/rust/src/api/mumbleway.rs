@@ -845,6 +845,48 @@ pub fn is_monitoring() -> anyhow::Result<bool> {
     Ok(app()?.shared.is_monitoring())
 }
 
+/// Dropout counters, in milliseconds of audio, since the last reset.
+///
+/// `(playback gaps, microphone discarded)`. Choppy audio sounds the same
+/// whatever causes it; these separate "nothing was ready to play" from "the
+/// microphone outran the processing" from "the gaps arrived that way".
+#[frb(sync)]
+pub fn audio_glitch_ms() -> anyhow::Result<Vec<u64>> {
+    let (underrun, dropped) = app()?.shared.glitch_counts();
+    let ms = |samples: u64| samples * 1000 / mumbleway_core::audio::denoise::SAMPLE_RATE as u64;
+    Ok(vec![ms(underrun), ms(dropped)])
+}
+
+/// `(invented ms, decoded ms)` of incoming audio.
+///
+/// Concealment and real speech are hard to tell apart by ear once a link is
+/// misbehaving; this says outright whether a hiss was synthesised here or sent
+/// by the far end.
+#[frb(sync)]
+pub fn incoming_audio_ms() -> anyhow::Result<Vec<u64>> {
+    let (invented, decoded) = app()?.shared.frame_counts();
+    // Every frame the buffer hands out is 20 ms of audio.
+    Ok(vec![invented * 20, decoded * 20])
+}
+
+#[frb(sync)]
+pub fn reset_audio_glitches() -> anyhow::Result<()> {
+    app()?.shared.reset_glitch_counts();
+    Ok(())
+}
+
+/// Levels incoming speakers towards a common loudness.
+#[frb(sync)]
+pub fn set_level_normalisation(on: bool) -> anyhow::Result<()> {
+    app()?.shared.set_normalise_levels(on);
+    Ok(())
+}
+
+#[frb(sync)]
+pub fn is_level_normalisation_enabled() -> anyhow::Result<bool> {
+    Ok(app()?.shared.normalise_levels_enabled())
+}
+
 /// Acoustic echo cancellation, applied to the microphone before anything else.
 #[frb(sync)]
 pub fn set_echo_cancellation(on: bool) -> anyhow::Result<()> {

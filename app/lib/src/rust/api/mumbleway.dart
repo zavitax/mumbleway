@@ -140,6 +140,32 @@ void setMonitoring({required bool on_}) =>
 
 bool isMonitoring() => RustLib.instance.api.crateApiMumblewayIsMonitoring();
 
+/// Dropout counters, in milliseconds of audio, since the last reset.
+///
+/// `(playback gaps, microphone discarded)`. Choppy audio sounds the same
+/// whatever causes it; these separate "nothing was ready to play" from "the
+/// microphone outran the processing" from "the gaps arrived that way".
+Uint64List audioGlitchMs() =>
+    RustLib.instance.api.crateApiMumblewayAudioGlitchMs();
+
+/// `(invented ms, decoded ms)` of incoming audio.
+///
+/// Concealment and real speech are hard to tell apart by ear once a link is
+/// misbehaving; this says outright whether a hiss was synthesised here or sent
+/// by the far end.
+Uint64List incomingAudioMs() =>
+    RustLib.instance.api.crateApiMumblewayIncomingAudioMs();
+
+void resetAudioGlitches() =>
+    RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
+
+/// Levels incoming speakers towards a common loudness.
+void setLevelNormalisation({required bool on_}) =>
+    RustLib.instance.api.crateApiMumblewaySetLevelNormalisation(on_: on_);
+
+bool isLevelNormalisationEnabled() =>
+    RustLib.instance.api.crateApiMumblewayIsLevelNormalisationEnabled();
+
 /// Acoustic echo cancellation, applied to the microphone before anything else.
 void setEchoCancellation({required bool on_}) =>
     RustLib.instance.api.crateApiMumblewaySetEchoCancellation(on_: on_);

@@ -197,6 +197,7 @@ class AppState extends ChangeNotifier {
   static const _prefsInputGain = 'mumbleway.inputGain';
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
   static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
+  static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -381,8 +382,11 @@ class AppState extends ChangeNotifier {
     // Proxy use defaults to on: a machine behind one usually cannot reach
     // anything without it, and detection reports "direct" when there is none.
     SystemProxy.instance.enabled = prefs.getBool(_prefsProxyEnabled) ?? true;
+    // Read here, pushed to the engine in _applyAudioSettings. This runs before
+    // the engine is started, and anything that reaches across before then
+    // throws.
     echoCancellation = prefs.getBool(_prefsEchoCancellation) ?? true;
-    setEchoCancellation(on_: echoCancellation);
+    normaliseLevels = prefs.getBool(_prefsNormaliseLevels) ?? true;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -394,6 +398,8 @@ class AppState extends ChangeNotifier {
   Future<void> _applyAudioSettings() async {
     setInputGainDb(db: inputGainDbValue);
     setOutputVolumeDb(db: outputVolumeDbValue);
+    setEchoCancellation(on_: echoCancellation);
+    setLevelNormalisation(on_: normaliseLevels);
     if (selectedInput != null || selectedOutput != null) {
       await setAudioDevices(input: selectedInput, output: selectedOutput);
     }
@@ -847,6 +853,17 @@ class AppState extends ChangeNotifier {
   /// Acoustic echo cancellation. On by default, because a speaker in the same
   /// room as the microphone is the common case.
   bool echoCancellation = true;
+
+  /// Levels incoming speakers towards a common loudness.
+  bool normaliseLevels = true;
+
+  Future<void> setNormaliseLevels({required bool value}) async {
+    normaliseLevels = value;
+    setLevelNormalisation(on_: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsNormaliseLevels, value);
+  }
 
   Future<void> setEchoCancellationEnabled({required bool value}) async {
     echoCancellation = value;

@@ -239,11 +239,15 @@ jobs:
           api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
 
+      # Kept even when the upload fails: a build that archived and exported
+      # correctly is worth having in hand, and losing it because App Store
+      # Connect rejected the credentials wastes twenty minutes to learn nothing.
       - uses: actions/upload-artifact@v4
-        if: steps.gate.outputs.ready == 'true'
+        if: always() && steps.gate.outputs.ready == 'true'
         with:
           name: mumbleway-ios-ipa
           path: app/build/ios/ipa/*.ipa
+          if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
   # Microsoft Store — MSIX package

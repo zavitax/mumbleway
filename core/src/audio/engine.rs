@@ -180,6 +180,10 @@ pub enum AudioCue {
     /// Push-to-talk released: the "roger beep" and squelch tail a walkie-talkie
     /// makes when you let go.
     TransmitEnd,
+    /// Someone joined the channel.
+    ParticipantJoined,
+    /// Someone left it.
+    ParticipantLeft,
     /// Steady tone for checking the chosen output device.
     Test,
 }
@@ -200,6 +204,14 @@ impl AudioCue {
             // Deliberately unobtrusive: this plays every connection attempt,
             // including the automatic retries during a bad stretch of road.
             AudioCue::Dialing => &[(587.33, 90), (0.0, 90), (587.33, 90)],
+
+            // Quieter and shorter than the connection cues, and deliberately
+            // so: on a busy channel these fire often, and anything with the
+            // weight of "you have been disconnected" would wear out fast.
+            // Rising for an arrival, falling for a departure, which is the
+            // same grammar the connection cues use.
+            AudioCue::ParticipantJoined => &[(587.33, 55), (0.0, 20), (880.0, 75)],
+            AudioCue::ParticipantLeft => &[(880.0, 55), (0.0, 20), (587.33, 75)],
 
             AudioCue::MutedByOther => &[(659.25, 110), (0.0, 30), (440.0, 170)],
             AudioCue::UnmutedByOther => &[(440.0, 110), (0.0, 30), (659.25, 170)],
@@ -238,6 +250,10 @@ impl AudioCue {
     fn amplitude(self) -> f32 {
         match self {
             AudioCue::TransmitStart | AudioCue::TransmitEnd => 0.12,
+            // Someone coming or going is worth noticing, not worth
+            // interrupting a sentence for, and on a busy channel it happens
+            // often.
+            AudioCue::ParticipantJoined | AudioCue::ParticipantLeft => 0.14,
             _ => 0.22,
         }
     }
@@ -1422,6 +1438,34 @@ mod tests {
         s.set_monitor(false);
         assert!(!s.is_monitoring());
         assert!(s.monitor_queue.lock().is_empty());
+    }
+
+    #[test]
+    fn arrival_and_departure_cues_are_short_quiet_and_mirrored() {
+        // These fire whenever anyone comes or goes, so on a busy channel they
+        // are heard constantly. Anything with the weight of a disconnection
+        // tone would wear out within a ride.
+        let join = render_cue(AudioCue::ParticipantJoined);
+        let leave = render_cue(AudioCue::ParticipantLeft);
+        let drop = render_cue(AudioCue::Disconnected);
+
+        for pcm in [&join, &leave] {
+            let millis = pcm.len() * 1000 / SAMPLE_RATE as usize;
+            assert!(millis <= 200, "cue runs for {millis} ms");
+            assert!(
+                super::super::dsp::peak(pcm) < super::super::dsp::peak(&drop),
+                "an arrival should not be as loud as losing the connection"
+            );
+        }
+
+        // Rising for an arrival and falling for a departure, the same grammar
+        // the connection cues use, so neither has to be learned separately.
+        let rises = |c: AudioCue| {
+            let s = c.segments();
+            s.first().unwrap().0 < s.last().unwrap().0
+        };
+        assert!(rises(AudioCue::ParticipantJoined));
+        assert!(!rises(AudioCue::ParticipantLeft));
     }
 
     #[test]

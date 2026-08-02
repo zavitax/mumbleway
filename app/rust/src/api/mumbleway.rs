@@ -977,6 +977,20 @@ pub fn reset_audio_glitches() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Sounds an arrival or a departure from the channel.
+///
+/// Driven from the roster rather than the audio path, because someone joining
+/// makes no sound of their own — which is exactly why it needs a cue.
+#[frb(sync)]
+pub fn play_participant_cue(joined: bool) -> anyhow::Result<()> {
+    app()?.shared.play_cue(if joined {
+        AudioCue::ParticipantJoined
+    } else {
+        AudioCue::ParticipantLeft
+    });
+    Ok(())
+}
+
 /// A short room tail under incoming voices, so a gated talker does not stop
 /// like a switch being thrown.
 #[frb(sync)]

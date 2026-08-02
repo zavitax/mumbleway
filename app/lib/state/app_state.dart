@@ -189,6 +189,17 @@ class ServerRuntime {
   /// the roster cannot know it.
   final Map<int, double> speakerLevels = {};
 
+  /// Sessions seen in our own channel at the last roster update.
+  ///
+  /// Null until the first roster for a given channel arrives: joining a busy
+  /// channel would otherwise announce everybody already sitting in it, which
+  /// is noise rather than news.
+  Set<int>? knownPeers;
+
+  /// The channel [knownPeers] was collected for, so moving channels starts a
+  /// fresh comparison rather than reporting the whole new room as arrivals.
+  int? knownPeersChannel;
+
   /// Names of everyone currently talking, for the floating island.
   /// Above this a speaker counts as talking, and the meter lights up.
   static const speakingFloorDb = -55.0;
@@ -1084,6 +1095,36 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sounds a cue for anyone who has joined or left our channel.
+  ///
+  /// Compared here rather than in the core because this is the only place that
+  /// knows which channel we are in and who was in it a moment ago; the server
+  /// sends a whole roster and leaves the difference to the reader.
+  void _announceChannelChanges(ServerRuntime rt) {
+    final channel = rt.currentChannelId;
+    if (channel == null) {
+      // Not in a channel yet; nothing to compare against.
+      rt.knownPeers = null;
+      rt.knownPeersChannel = null;
+      return;
+    }
+
+    final now = rt.channelPeers.map((u) => u.session).toSet();
+    final before = rt.knownPeersChannel == channel ? rt.knownPeers : null;
+    rt.knownPeers = now;
+    rt.knownPeersChannel = channel;
+    if (before == null) return;
+
+    // One cue per event, not per person: three people leaving at once is one
+    // thing happening, and three overlapping tones is just a noise.
+    if (now.difference(before).isNotEmpty) {
+      playParticipantCue(joined: true);
+    }
+    if (before.difference(now).isNotEmpty) {
+      playParticipantCue(joined: false);
+    }
+  }
+
   void toggleMute() {
     _muted = !_muted;
     setMicrophoneMuted(muted: _muted);
@@ -1230,7 +1271,9 @@ class AppState extends ChangeNotifier {
             ? DateTime.now().add(Duration(milliseconds: rt.retryInMs))
             : null;
       case AppEvent_Users(:final serverId, :final users):
-        runtimeFor(serverId).users = users;
+        final rt = runtimeFor(serverId);
+        rt.users = users;
+        _announceChannelChanges(rt);
       case AppEvent_Channels(:final serverId, :final channels):
         runtimeFor(serverId).channels = channels;
       case AppEvent_SelfSession(:final serverId, :final session):

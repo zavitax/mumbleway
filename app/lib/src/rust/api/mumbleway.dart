@@ -146,6 +146,13 @@ UiDiagnostics audioDiagnostics() =>
 void resetAudioGlitches() =>
     RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
 
+/// Sounds an arrival or a departure from the channel.
+///
+/// Driven from the roster rather than the audio path, because someone joining
+/// makes no sound of their own — which is exactly why it needs a cue.
+void playParticipantCue({required bool joined}) =>
+    RustLib.instance.api.crateApiMumblewayPlayParticipantCue(joined: joined);
+
 /// A short room tail under incoming voices, so a gated talker does not stop
 /// like a switch being thrown.
 void setReverb({required bool on_}) =>

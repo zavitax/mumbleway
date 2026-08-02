@@ -219,12 +219,6 @@ class _UserRow extends StatelessWidget {
                 -120.0,
             muted: user.muted || user.localMute,
           ),
-          // Prominent, because a participant who is muted without realising it
-          // is the commonest way a conversation quietly goes wrong.
-          if (user.muted || user.localMute) ...[
-            const SizedBox(width: 5),
-            const Icon(Icons.mic_off, size: 16, color: StatusColors.failed),
-          ],
           const SizedBox(width: 2),
           // Local mute always works and affects only us, so it is the primary
           // action. Server-side mute needs a permission most users lack, so it
@@ -345,6 +339,15 @@ class _UserRow extends StatelessWidget {
     );
   }
 
+  /// `speaking` comes from the audio, not the roster: the server never says
+  /// who is talking, so `UiUser.talking` only ever changes when the server
+  /// happens to send an unrelated roster update.
+  /// The whole state of a participant in one glyph, at the head of the row.
+  ///
+  /// Everything lives here rather than being spread along the row: the icons
+  /// line up in a column, so a channel can be scanned down the left edge
+  /// instead of read across every entry.
+  ///
   /// `speaking` comes from the audio, not the roster: the server never says
   /// who is talking, so `UiUser.talking` only ever changes when the server
   /// happens to send an unrelated roster update.

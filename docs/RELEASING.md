@@ -114,17 +114,48 @@ Keychain Access.
 2. **Profiles** → **+** → *App Store Connect* distribution, select the App ID
    and the certificate, download the `.mobileprovision`.
 
-### 2d. Create an App Store Connect API key
+### 2d. Create the App Store Connect app record
+
+Separate from the App ID in step 2c, and easy to skip because signing does not
+need it. Uploading does: without a record, a perfectly signed build is rejected
+with
+
+```
+Cannot determine the Apple ID from Bundle ID 'com.mumbleway.mumbleway'
+and platform 'IOS'. (19)
+```
+
+<https://appstoreconnect.apple.com/apps> → **+** → **New App**
+
+* **Platform** iOS
+* **Bundle ID** `com.mumbleway.mumbleway`, offered in the dropdown once the App
+  ID from 2c exists
+* **Name** — the public store name, and unique across the whole store, so it
+  may already be taken
+* **Primary language**, and an **SKU**, which is any private string
+  (`mumbleway-001` will do)
+
+### 2e. Create an App Store Connect API key
 
 This is what lets CI upload builds without your Apple ID password.
 
 1. <https://appstoreconnect.apple.com/access/integrations/api> → **+**
-2. Role **App Manager**. Download the `.p8` — *it is downloadable exactly once.*
+2. Role **App Manager** or higher. A *Developer* key authenticates but cannot
+   resolve the app, and fails with the same "Cannot determine the Apple ID"
+   message as a missing record — worth knowing before hunting the wrong fault.
+   Download the `.p8` — *it is downloadable exactly once.*
 3. Note the **Issuer ID** and **Key ID** shown on that page.
 
-### 2e. Add the secrets
+### 2f. Add the secrets
 
-Base64 the binary files so they survive as text:
+Base64 the binary files so they survive as text — **except the `.p8`**, which
+goes in as its raw contents, `-----BEGIN PRIVATE KEY-----` line and all.
+Base64-encoding that one is the natural thing to do after encoding the `.p12`
+directly above it, and produces `Failed to load AuthKey file. (-39)`:
+
+```bash
+gh secret set APP_STORE_CONNECT_API_KEY < AuthKey_XXXXXXXXXX.p8
+```
 
 ```bash
 base64 -i distribution.p12            | pbcopy   # macOS

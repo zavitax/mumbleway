@@ -248,6 +248,25 @@ struct App {
 /// Split out as a pure function so the rules are testable: cues that fire on
 /// the wrong edge are worse than none, since a rider trusts them without
 /// looking at the screen.
+/// How often the dialing cue repeats while a connection is being chased.
+///
+/// Long enough not to nag over an engine, short enough that the gap never
+/// reads as "it stopped trying" — the retry interval is ten seconds, so this
+/// lands two or three times across one wait.
+const WAITING_CUE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Whether a status means "still trying to get connected".
+///
+/// Covers the wait between attempts as well as the attempts themselves: from
+/// the rider's side those are the same situation, and the silence in between is
+/// the part that most needs filling.
+fn is_waiting(status: ConnStatus) -> bool {
+    matches!(
+        status,
+        ConnStatus::Connecting | ConnStatus::Handshaking | ConnStatus::Reconnecting
+    )
+}
+
 fn cue_for_transition(previous: Option<ConnStatus>, next: ConnStatus) -> Option<AudioCue> {
     let was_live = matches!(previous, Some(ConnStatus::Connected));
     match next {
@@ -510,6 +529,29 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 threshold_db: level_shared.activation_threshold_db(),
                 noise_floor_db: level_shared.noise_floor_db(),
             });
+        }
+    });
+
+    // Keep the dialing cue going for as long as a connection is being chased.
+    //
+    // The transition cue alone marks the moment the attempt starts and then
+    // leaves silence, which is indistinguishable from having given up — and a
+    // rider cannot look at the screen to tell the difference. Repeating it says
+    // "still trying" without needing a glance, and stops on its own the moment
+    // the status leaves the waiting states.
+    let waiting_shared = shared.clone();
+    let waiting_status = last_status.clone();
+    rt.spawn(async move {
+        let mut tick = tokio::time::interval(WAITING_CUE_INTERVAL);
+        // The first tick resolves immediately, and the transition cue has just
+        // played; skipping it avoids a double beep at the start.
+        tick.tick().await;
+        loop {
+            tick.tick().await;
+            let waiting = waiting_status.lock().values().copied().any(is_waiting);
+            if waiting {
+                waiting_shared.play_cue(AudioCue::Dialing);
+            }
         }
     });
 
@@ -973,6 +1015,28 @@ mod tests {
             cue_for_transition(Some(ConnStatus::Connected), ConnStatus::Failed),
             Some(AudioCue::Disconnected)
         );
+    }
+
+    #[test]
+    fn waiting_covers_the_gap_between_attempts_too() {
+        // The silence while waiting for the next attempt is the part that most
+        // needs the cue: from the rider's side it is the same situation as an
+        // attempt in progress, and silence there reads as having given up.
+        for s in [
+            ConnStatus::Connecting,
+            ConnStatus::Handshaking,
+            ConnStatus::Reconnecting,
+        ] {
+            assert!(is_waiting(s), "{s:?} should keep the cue going");
+        }
+        for s in [
+            ConnStatus::Idle,
+            ConnStatus::Connected,
+            ConnStatus::Disconnected,
+            ConnStatus::Failed,
+        ] {
+            assert!(!is_waiting(s), "{s:?} should not keep the cue going");
+        }
     }
 
     #[test]

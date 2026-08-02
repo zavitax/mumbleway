@@ -180,6 +180,355 @@ class LRu extends L {
   }
 
   @override
+  String get connectionLost => 'Связь потеряна.';
+
+  @override
+  String retryingInSeconds(int seconds, int attempt) {
+    return 'Повтор через $seconds с (попытка $attempt).';
+  }
+
+  @override
+  String retryingNow(int attempt) {
+    return 'Повторяем сейчас (попытка $attempt)…';
+  }
+
+  @override
+  String switchToLanguage(String name) {
+    return 'Нажмите, чтобы переключиться на $name';
+  }
+
+  @override
+  String get more => 'Ещё';
+
+  @override
+  String get edit => 'Изменить';
+
+  @override
+  String get editServer => 'Изменить сервер';
+
+  @override
+  String get saveChanges => 'Сохранить изменения';
+
+  @override
+  String get savingChanges => 'Сохранение…';
+
+  @override
+  String get displayName => 'Название';
+
+  @override
+  String get displayNameHint => 'Воскресный выезд';
+
+  @override
+  String get displayNameMissing => 'Введите название';
+
+  @override
+  String get serverAddress => 'Адрес сервера';
+
+  @override
+  String get serverAddressHint => 'mumble.example.com';
+
+  @override
+  String get serverAddressMissing => 'Введите адрес';
+
+  @override
+  String get port => 'Порт';
+
+  @override
+  String get portOutOfRange => 'Порт 1-65535';
+
+  @override
+  String get username => 'Имя пользователя';
+
+  @override
+  String get usernameMissing => 'Введите имя пользователя';
+
+  @override
+  String get passwordOptional => 'Пароль (необязательно)';
+
+  @override
+  String get passwordHelp => 'Только если сервер его требует';
+
+  @override
+  String get addingServer => 'Добавление…';
+
+  @override
+  String get quickerWays => 'Быстрые способы добавить сервер';
+
+  @override
+  String get browsePublic => 'Публичные серверы';
+
+  @override
+  String get importLabel => 'Импорт';
+
+  @override
+  String get publicServers => 'Публичные серверы';
+
+  @override
+  String get search => 'Поиск';
+
+  @override
+  String get reload => 'Обновить';
+
+  @override
+  String get addToMyServers => 'Добавить к моим серверам';
+
+  @override
+  String get noServersMatchSearch => 'Ничего не найдено по этому запросу.';
+
+  @override
+  String get importServers => 'Импорт серверов';
+
+  @override
+  String get addFromText => 'Добавить из текста';
+
+  @override
+  String get profileFileFormat => 'Формат файла профиля';
+
+  @override
+  String get serversAdded => 'Серверы добавлены';
+
+  @override
+  String get audioDevices => 'Аудиоустройства';
+
+  @override
+  String get levels => 'Уровни';
+
+  @override
+  String get network => 'Сеть';
+
+  @override
+  String get microphone => 'Микрофон';
+
+  @override
+  String get speakers => 'Динамики';
+
+  @override
+  String get systemDefault => 'Системное по умолчанию';
+
+  @override
+  String get detectedAutomatically => 'Определяется автоматически';
+
+  @override
+  String get recheckDevices => 'Обновить список устройств';
+
+  @override
+  String get testSpeakers => 'Проверить динамики';
+
+  @override
+  String get play => 'Воспроизвести';
+
+  @override
+  String get stop => 'Остановить';
+
+  @override
+  String get speakerVolume => 'Громкость динамиков';
+
+  @override
+  String get inputGain => 'Усиление микрофона';
+
+  @override
+  String get hearMyself => 'Слышать себя';
+
+  @override
+  String get hearMyselfHelp =>
+      'Воспроизводит ваш обработанный голос. Используйте наушники — через динамики возникнет обратная связь.';
+
+  @override
+  String get useSystemProxy => 'Использовать системный прокси';
+
+  @override
+  String get overrideProxy => 'Задать прокси вручную';
+
+  @override
+  String get proxyOverride => 'Свой прокси';
+
+  @override
+  String get proxyHostPort => 'хост:порт';
+
+  @override
+  String get proxyHostPortHint => '127.0.0.1:8080';
+
+  @override
+  String get proxyAutoDetect => 'Оставьте пустым для автоопределения';
+
+  @override
+  String get copy => 'Копировать';
+
+  @override
+  String get copied => 'Скопировано';
+
+  @override
+  String get noiseSuppression => 'Шумоподавление';
+
+  @override
+  String get noiseOff => 'Выключено';
+
+  @override
+  String get noiseLight => 'Слабое';
+
+  @override
+  String get noiseStandard => 'Обычное';
+
+  @override
+  String get noiseHelmet => 'Шлем / мотоцикл';
+
+  @override
+  String get micMode => 'Режим микрофона';
+
+  @override
+  String get micPushToTalk => 'По нажатию';
+
+  @override
+  String get micVoiceActivated => 'По голосу';
+
+  @override
+  String get micContinuous => 'Открытый микрофон';
+
+  @override
+  String get buttons => 'Кнопки';
+
+  @override
+  String get addBinding => 'Добавить кнопку…';
+
+  @override
+  String get removeBinding => 'Удалить привязку';
+
+  @override
+  String get action => 'Действие';
+
+  @override
+  String get pressAButton => 'Нажмите кнопку, которую хотите использовать';
+
+  @override
+  String get waitingForButton => 'Ожидание…';
+
+  @override
+  String get buttonActionTalk => 'Удерживать для передачи';
+
+  @override
+  String get buttonActionToggleTalk => 'Переключать передачу';
+
+  @override
+  String get buttonActionToggleMute => 'Переключать микрофон';
+
+  @override
+  String get buttonActionToggleDeafen => 'Переключать звук';
+
+  @override
+  String get floatingWindow => 'Плавающее окно вызова';
+
+  @override
+  String get identityFingerprint => 'Отпечаток вашего сертификата';
+
+  @override
+  String get noiseCancellation => 'Шумоподавление';
+
+  @override
+  String get noiseCancellationBody =>
+      'Отфильтровывает из микрофона ветер, двигатель и дорожный шум. Изменения вступят в силу при следующем запуске приложения.';
+
+  @override
+  String get micModeBody =>
+      'На скорости надёжнее всего режим «по нажатию»: ничто, задетое в дороге, не откроет канал случайно.';
+
+  @override
+  String get floatingTalkButton => 'Плавающая кнопка передачи';
+
+  @override
+  String get floatingTalkButtonBody =>
+      'Небольшая перетаскиваемая кнопка передачи поверх остальных приложений.';
+
+  @override
+  String get buttonsBody =>
+      'Привяжите Bluetooth-пульт на руле, кнопку гарнитуры или клавишу. На Android они продолжают работать, пока приложение свёрнуто.';
+
+  @override
+  String get networkBody =>
+      'Загрузки — каталог публичных серверов и файлы профилей — идут через указанный здесь прокси.';
+
+  @override
+  String get identity => 'Идентификация';
+
+  @override
+  String get identityBody =>
+      'Серверы Mumble узнают вас по сертификату, созданному этим приложением. Передайте этот отпечаток администратору сервера, чтобы зарегистрировать учётную запись.';
+
+  @override
+  String get noiseOffBody =>
+      'Без подавления, только мягкий фильтр низких частот.';
+
+  @override
+  String get noiseLightBody =>
+      'Для тихих помещений; сохраняет самое естественное звучание.';
+
+  @override
+  String get noiseStandardBody =>
+      'Универсальный режим для большинства условий.';
+
+  @override
+  String get noiseHelmetBody =>
+      'Крутой фильтр шума ветра, полное подавление и жёсткий порог. Рассчитан на микрофон в шлеме на скорости.';
+
+  @override
+  String get micAlwaysOn => 'Всегда включён';
+
+  @override
+  String get micPushToTalkBody => 'Передавать только при удержании кнопки.';
+
+  @override
+  String get micVoiceActivatedBody =>
+      'Передавать автоматически, когда вы говорите.';
+
+  @override
+  String get micAlwaysOnBody =>
+      'Передавать постоянно. Расходует больше всего трафика.';
+
+  @override
+  String get platformRoutesAudio =>
+      'Эта платформа выбирает аудиоустройство сама — при подключении гарнитуры звук переключится на неё.';
+
+  @override
+  String get recheckDevicesBody => 'После подключения или сопряжения гарнитуры';
+
+  @override
+  String get testMicrophone => 'Проверить микрофон (слышать себя)';
+
+  @override
+  String get testMicrophoneBody =>
+      'Воспроизводит ваш обработанный голос ровно так, как его слышат собеседники. Используйте наушники: через динамики возникнет обратная связь.';
+
+  @override
+  String get testSpeakersBody =>
+      'Воспроизводит короткий сигнал на выбранном устройстве';
+
+  @override
+  String get microphoneGain => 'Усиление микрофона';
+
+  @override
+  String get levelsHint =>
+      'При обычной речи индикатор должен доходить примерно до трёх четвертей.';
+
+  @override
+  String get noButtonsBound => 'Кнопки ещё не привязаны.';
+
+  @override
+  String boundButton(String name) {
+    return 'Привязана $name';
+  }
+
+  @override
+  String get learn => 'Обучить';
+
+  @override
+  String get pressButtonNow => 'Нажмите кнопку на пульте…';
+
+  @override
+  String get proxyOffDirect => 'Выключено — прямое подключение';
+
+  @override
+  String get certificateFingerprint => 'Отпечаток сертификата';
+
+  @override
   String inThisChannel(int count) {
     return 'В этом канале ($count)';
   }

@@ -173,10 +173,19 @@ stays muted for a 150 ms warm-up (`WARMUP_BLOCKS`).
 ## Reconnection
 
 Everything except a user-initiated disconnect is retried, including ping
-timeouts. Backoff starts at 500 ms and is capped at **20 s** — deliberately low,
-because a rider coming out of a tunnel should be back in seconds. Jitter avoids
-a stampede when a server restarts. A connection that stays healthy for 30 s
-resets the backoff.
+timeouts. The interval is a flat **10 s**, not a growing one.
+
+Backoff exists to spare a struggling server, but this is a voice client for a
+small group, and a rider who has been out of signal for a while is exactly the
+person a lengthening delay punishes most — the wait would be longest at the
+moment coverage returns. A fixed interval is also something the countdown can
+state honestly. When the OS reports connectivity is back the pending retry is
+cancelled outright, so the common case does not wait at all.
+
+The UI counts the interval down rather than printing it once, and the dialing
+cue repeats every 4 s throughout, so "still trying" is audible without looking
+at the screen. The mechanism still supports growth and jitter for a caller with
+a different server population; only the default is flat.
 
 Ping timeout is detected as 16 s of total silence from the server (Mumble itself
 drops clients after 30 s without a ping, and we ping every 5 s).
@@ -324,6 +333,24 @@ the reconnect policy's treatment of every disconnect reason.
 devices. It asserts the capture path keeps up with real time — roughly 100
 encoded frames per 2 seconds — which is the one property no amount of offline
 unit testing can establish.
+
+## Hearing yourself
+
+*Settings → Test microphone* loops your processed voice back to the speakers.
+It is a **headphone** feature, and the code enforces the distinction that makes
+it work: the monitored audio reaches the output but is deliberately kept out of
+the echo canceller's reference.
+
+The canceller's premise is that its reference is a *far-end* signal —
+uncorrelated with whoever is at the microphone. Monitoring makes the reference a
+copy of the near-end talker, so an adaptive filter told that the person
+speaking is the echo will duly learn to remove them. The symptom is your own
+voice vanishing under a howl, which sounds like broken hardware rather than a
+routing mistake, so `fill_output_block` is a separate tested function rather
+than inline in the audio callback.
+
+On speakers the loop is a real acoustic one, and nothing can cancel a signal it
+is forbidden to reference. That is why the setting says to use headphones.
 
 ## Signing and publishing
 

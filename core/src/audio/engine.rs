@@ -47,6 +47,15 @@ pub struct AudioShared {
     capture_queue: Mutex<VecDeque<f32>>,
     /// Mixed mono 48 kHz samples awaiting playback.
     playback_queue: Mutex<VecDeque<f32>>,
+    /// Loopback monitoring, kept apart from [`Self::playback_queue`].
+    ///
+    /// It has to bypass the echo reference. The canceller's whole premise is
+    /// that the reference is a far-end signal, uncorrelated with whoever is
+    /// talking into the microphone. Monitoring makes the reference a copy of
+    /// the near-end talker, so the filter converges on subtracting the user's
+    /// own voice — which is heard as the wanted signal vanishing and only the
+    /// residual howl remaining.
+    monitor_queue: Mutex<VecDeque<f32>>,
     /// Per-speaker decode buffers.
     ///
     /// Keyed by a *stream key*, not a bare session id: two servers hand out
@@ -248,6 +257,7 @@ impl AudioShared {
         Self {
             capture_queue: Mutex::new(VecDeque::with_capacity(MAX_QUEUED_INPUT_SAMPLES)),
             playback_queue: Mutex::new(VecDeque::with_capacity(MAX_QUEUED_OUTPUT_SAMPLES)),
+            monitor_queue: Mutex::new(VecDeque::new()),
             speakers: Mutex::new(HashMap::new()),
             transmitting: AtomicBool::new(false),
             muted: AtomicBool::new(false),
@@ -294,7 +304,7 @@ impl AudioShared {
     pub fn set_monitor(&self, on: bool) {
         self.monitor.store(on, Ordering::Relaxed);
         if !on {
-            self.playback_queue.lock().clear();
+            self.monitor_queue.lock().clear();
         }
     }
 
@@ -543,6 +553,53 @@ impl Default for AudioConfig {
     }
 }
 
+/// Collects up to `want` samples of what should be played, and records the
+/// echo reference for the capture chain.
+///
+/// The ordering is the whole point, so it lives here rather than inline in the
+/// output callback where it cannot be tested. Remote audio becomes the echo
+/// reference; monitoring is mixed in afterwards and never referenced.
+///
+/// Referencing the monitor would hand the canceller the near-end talker as its
+/// far-end signal, and an adaptive filter told that the person at the
+/// microphone is the echo will duly learn to remove them — heard as one's own
+/// voice disappearing under a howl, which is the opposite of a microphone test.
+fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
+    out.clear();
+    {
+        let mut queue = shared.playback_queue.lock();
+        for _ in 0..want {
+            match queue.pop_front() {
+                Some(s) => out.push(s),
+                None => break,
+            }
+        }
+    }
+
+    // Taken at 48 kHz before resampling, so it matches what capture sees.
+    {
+        let mut echo = shared.echo_reference.lock();
+        if echo.len() + out.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
+            echo.extend(out.iter().copied());
+        } else {
+            // The worker has fallen behind; resync rather than feed the
+            // canceller a stale reference.
+            echo.clear();
+        }
+    }
+
+    // Monitoring has to be able to drive the output on its own: testing a
+    // microphone is precisely the case where nothing else is playing.
+    let mut monitor = shared.monitor_queue.lock();
+    for i in 0..want {
+        let Some(m) = monitor.pop_front() else { break };
+        match out.get_mut(i) {
+            Some(s) => *s = (*s + m).clamp(-1.0, 1.0),
+            None => out.push(m.clamp(-1.0, 1.0)),
+        }
+    }
+}
+
 /// Lists the available input and output device names.
 pub fn list_devices() -> (Vec<String>, Vec<String>) {
     let host = cpal::default_host();
@@ -755,31 +812,9 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                 // Top up the device-rate buffer from the 48 kHz mix.
                 while pending.len() < frames_needed {
                     let want = 480;
-                    pull.clear();
-                    {
-                        let mut q = play_shared.playback_queue.lock();
-                        for _ in 0..want {
-                            match q.pop_front() {
-                                Some(s) => pull.push(s),
-                                None => break,
-                            }
-                        }
-                    }
+                    fill_output_block(&play_shared, want, &mut pull);
                     if pull.is_empty() {
                         break; // nothing to play; the rest becomes silence
-                    }
-
-                    // Keep a copy as the echo reference, at 48 kHz before
-                    // resampling so it matches what the capture chain sees.
-                    {
-                        let mut echo = play_shared.echo_reference.lock();
-                        if echo.len() + pull.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
-                            echo.extend(pull.iter().copied());
-                        } else {
-                            // The worker has fallen behind; resync rather than
-                            // feed the canceller a stale reference.
-                            echo.clear();
-                        }
                     }
 
                     converted.clear();
@@ -888,7 +923,7 @@ where
 
             // Loopback monitoring: hear exactly what would be transmitted.
             if shared.is_monitoring() {
-                let mut q = shared.playback_queue.lock();
+                let mut q = shared.monitor_queue.lock();
                 if q.len() + block.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
                     q.extend(block.iter().copied());
                 }
@@ -1176,13 +1211,98 @@ mod tests {
         let s = AudioShared::new();
         s.set_monitor(true);
         assert!(s.is_monitoring());
-        s.playback_queue
+        s.monitor_queue
             .lock()
             .extend(std::iter::repeat_n(0.4, 4800));
 
         s.set_monitor(false);
         assert!(!s.is_monitoring());
-        assert!(s.playback_queue.lock().is_empty());
+        assert!(s.monitor_queue.lock().is_empty());
+    }
+
+    #[test]
+    fn monitored_audio_never_becomes_the_echo_reference() {
+        // The bug this guards against is subtle and sounds like a hardware
+        // fault: with monitoring referenced, the canceller is told the person
+        // at the microphone is the echo, converges on removing them, and the
+        // user hears a howl instead of themselves.
+        let shared = AudioShared::new();
+        shared.set_monitor(true);
+        shared
+            .monitor_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.5, 480));
+
+        let mut out = Vec::new();
+        fill_output_block(&shared, 480, &mut out);
+
+        assert_eq!(out.len(), 480, "monitoring must drive output on its own");
+        assert!(out.iter().all(|s| (*s - 0.5).abs() < 1e-6));
+        assert!(
+            shared.echo_reference.lock().is_empty(),
+            "the near-end talker must never be handed back as the far end"
+        );
+    }
+
+    #[test]
+    fn remote_audio_is_referenced_and_monitoring_mixes_on_top() {
+        let shared = AudioShared::new();
+        shared
+            .playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.25, 480));
+        shared.set_monitor(true);
+        shared
+            .monitor_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.5, 480));
+
+        let mut out = Vec::new();
+        fill_output_block(&shared, 480, &mut out);
+
+        // Heard: both. Referenced: only what came from the far end.
+        assert!(out.iter().all(|s| (*s - 0.75).abs() < 1e-6));
+        let echo = shared.echo_reference.lock();
+        assert_eq!(echo.len(), 480);
+        assert!(echo.iter().all(|s| (*s - 0.25).abs() < 1e-6));
+    }
+
+    #[test]
+    fn output_mixing_clamps_rather_than_wrapping() {
+        let shared = AudioShared::new();
+        shared
+            .playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.9, 480));
+        shared.set_monitor(true);
+        shared
+            .monitor_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.9, 480));
+
+        let mut out = Vec::new();
+        fill_output_block(&shared, 480, &mut out);
+        assert!(out.iter().all(|s| *s <= 1.0 && *s >= -1.0));
+    }
+
+    #[test]
+    fn monitoring_does_not_leave_remote_audio_behind() {
+        // Switching the microphone test off must not silence people who are
+        // actually talking, so the two queues have to stay separate.
+        let s = AudioShared::new();
+        s.playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.3, 960));
+        s.set_monitor(true);
+        s.monitor_queue.lock().extend(std::iter::repeat_n(0.4, 960));
+
+        s.set_monitor(false);
+        assert!(s.monitor_queue.lock().is_empty());
+        assert_eq!(
+            s.playback_queue.lock().len(),
+            960,
+            "remote audio was dropped when monitoring stopped"
+        );
     }
 
     #[test]

@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
+import '../screens/add_server_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'channel_panel.dart';
@@ -31,6 +35,7 @@ class ServerCard extends StatelessWidget {
     final state = AppStateScope.of(context);
     final rt = state.runtimeFor(server.id);
     final visual = StatusVisual.of(rt.status);
+    final l = L.of(context);
 
     return Card(
       shape: RoundedRectangleBorder(
@@ -121,7 +126,7 @@ class ServerCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          rt.currentChannel?.name ?? 'joining…',
+                          rt.currentChannel?.name ?? l.joining,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12),
                         ),
@@ -131,7 +136,7 @@ class ServerCard extends StatelessWidget {
                   if (showDetails) ...[
                     const SizedBox(height: 6),
                     _CollapsibleSection(
-                      title: 'In this channel (${rt.channelPeers.length})',
+                      title: l.inThisChannel(rt.channelPeers.length),
                       initiallyExpanded: true,
                       child: ChannelUserList(
                         serverId: server.id,
@@ -139,7 +144,7 @@ class ServerCard extends StatelessWidget {
                       ),
                     ),
                     _CollapsibleSection(
-                      title: 'Channels (${rt.channels.length})',
+                      title: l.channelsHeading(rt.channels.length),
                       child: ChannelTree(
                         serverId: server.id,
                         channels: rt.channels,
@@ -158,12 +163,12 @@ class ServerCard extends StatelessWidget {
                           ? OutlinedButton.icon(
                               onPressed: () => state.disconnect(server.id),
                               icon: const Icon(Icons.stop_circle_outlined),
-                              label: const Text('Disconnect'),
+                              label: Text(l.disconnect),
                             )
                           : FilledButton.icon(
                               onPressed: () => state.connect(server.id),
                               icon: const Icon(Icons.play_arrow_rounded),
-                              label: const Text('Connect'),
+                              label: Text(l.connect),
                             ),
                     ),
                     const SizedBox(width: 10),
@@ -171,10 +176,18 @@ class ServerCard extends StatelessWidget {
                       width: 52,
                       height: 52,
                       child: PopupMenuButton<String>(
-                        tooltip: 'More',
+                        tooltip: l.more,
                         icon: const Icon(Icons.more_horiz),
                         onSelected: (v) {
                           switch (v) {
+                            case 'edit':
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      AddServerScreen(existing: server),
+                                ),
+                              );
                             case 'link':
                               _share(context, state, rt, asFile: false);
                             case 'file':
@@ -185,14 +198,23 @@ class ServerCard extends StatelessWidget {
                               _confirmForget(context, state);
                           }
                         },
-                        itemBuilder: (_) => const [
+                        itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: 'edit',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: const Icon(Icons.edit_outlined),
+                              title: Text(l.edit),
+                            ),
+                          ),
                           PopupMenuItem(
                             value: 'link',
                             child: ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.link),
-                              title: Text('Share invite link'),
+                              leading: const Icon(Icons.link),
+                              title: Text(l.shareInviteLink),
                             ),
                           ),
                           PopupMenuItem(
@@ -200,8 +222,8 @@ class ServerCard extends StatelessWidget {
                             child: ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.description_outlined),
-                              title: Text('Share profile file'),
+                              leading: const Icon(Icons.description_outlined),
+                              title: Text(l.shareProfileFile),
                             ),
                           ),
                           PopupMenuItem(
@@ -209,20 +231,21 @@ class ServerCard extends StatelessWidget {
                             child: ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.copy_all_outlined),
-                              title: Text('Duplicate'),
+                              leading: const Icon(Icons.copy_all_outlined),
+                              title: Text(l.duplicate),
                             ),
                           ),
-                          PopupMenuDivider(),
+                          const PopupMenuDivider(),
                           PopupMenuItem(
                             value: 'remove',
                             child: ListTile(
                               dense: true,
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(Icons.delete_outline,
+                              leading: const Icon(Icons.delete_outline,
                                   color: StatusColors.failed),
-                              title: Text('Remove',
-                                  style: TextStyle(color: StatusColors.failed)),
+                              title: Text(l.remove,
+                                  style: const TextStyle(
+                                      color: StatusColors.failed)),
                             ),
                           ),
                         ],
@@ -250,6 +273,7 @@ class ServerCard extends StatelessWidget {
     ServerRuntime rt, {
     required bool asFile,
   }) async {
+    final l = L.of(context);
     final channel = rt.currentChannel?.name ?? server.defaultChannel;
     final hasPassword = (server.password ?? '').isNotEmpty;
     final messenger = ScaffoldMessenger.of(context);
@@ -259,7 +283,7 @@ class ServerCard extends StatelessWidget {
       final choice = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
-          title: const Text('Include the password?'),
+          title: Text(l.includePasswordTitle),
           content: Text(
             'Anyone who receives this can join ${server.name}'
             '${channel == null ? '' : ' and land in $channel'} without being '
@@ -270,11 +294,11 @@ class ServerCard extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(c, false),
-              child: const Text('Without password'),
+              child: Text(l.withoutPassword),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(c, true),
-              child: const Text('Include it'),
+              child: Text(l.includeIt),
             ),
           ],
         ),
@@ -295,18 +319,19 @@ class ServerCard extends StatelessWidget {
   }
 
   Future<void> _confirmForget(BuildContext context, AppState state) async {
+    final l = L.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Remove server?'),
-        content: Text('${server.name} will be removed from your list.'),
+        title: Text(l.removeServerTitle),
+        content: Text(l.removeServerBody(server.name)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(c, false),
-              child: const Text('Cancel')),
+              child: Text(l.cancel)),
           FilledButton(
               onPressed: () => Navigator.pop(c, true),
-              child: const Text('Remove')),
+              child: Text(l.remove)),
         ],
       ),
     );
@@ -430,19 +455,51 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
   }
 }
 
-class _ReconnectNotice extends StatelessWidget {
+/// "Retrying in Ns", counted down rather than stated once.
+///
+/// The core reports the wait when it schedules the attempt and says nothing
+/// further until it fires, so a static number sits unchanged for the whole
+/// interval and reads as a frozen app at exactly the moment the user is
+/// wondering whether it has hung.
+class _ReconnectNotice extends StatefulWidget {
   const _ReconnectNotice({required this.rt});
   final ServerRuntime rt;
 
   @override
+  State<_ReconnectNotice> createState() => _ReconnectNoticeState();
+}
+
+class _ReconnectNoticeState extends State<_ReconnectNotice> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // Half-second so the displayed second changes promptly after the deadline
+    // moves, rather than lagging by up to a full second.
+    _tick = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final secs = (rt.retryInMs / 1000).ceil();
+    final l = L.of(context);
+    final rt = widget.rt;
+    final seconds = rt.retrySecondsLeft;
+    final detail = rt.detail.isEmpty ? l.connectionLost : rt.detail;
     return _Banner(
       color: StatusColors.reconnecting,
       icon: Icons.sync_problem,
-      text: rt.detail.isEmpty
-          ? 'Connection lost. Retrying in ${secs}s (attempt ${rt.attempt}).'
-          : '${rt.detail}. Retrying in ${secs}s (attempt ${rt.attempt}).',
+      text: seconds > 0
+          ? '$detail ${l.retryingInSeconds(seconds, rt.attempt)}'
+          : '$detail ${l.retryingNow(rt.attempt)}',
     );
   }
 }

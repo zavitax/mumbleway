@@ -88,14 +88,19 @@ msix_config:
 # App icon generation. Regenerate after changing assets/icon/*.svg with:
 #   rsvg-convert -w 1024 -h 1024 -o assets/icon/mumbleway.png assets/icon/mumbleway.svg
 #   dart run flutter_launcher_icons
+#   python ../tool/make_ico.py <tmpdir> windows/runner/resources/app_icon.ico
 flutter_launcher_icons:
   image_path: "assets/icon/mumbleway.png"
   android: true
   ios: true
+  # Windows is built by tool/make_ico.py instead. This package writes a single
+  # 256px PNG-compressed entry, which Windows has to downscale for the 16px
+  # title bar and 32px taskbar, and which some shell paths skip entirely in
+  # favour of the generic executable glyph. The script emits real BMP entries
+  # at 16/24/32/48/64 alongside the PNG ones, so leaving this enabled would
+  # overwrite the better icon with the worse one.
   windows:
-    generate: true
-    image_path: "assets/icon/mumbleway.png"
-    icon_size: 256
+    generate: false
   macos:
     generate: true
     image_path: "assets/icon/mumbleway.png"
@@ -121,6 +126,7 @@ flutter:
 
   assets:
     - assets/icon/
+    - assets/flags/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../widgets/language_button.dart';
 
@@ -64,13 +65,13 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Public servers'),
+        title: Text(L.of(context).publicServers),
         actions: [
           const LanguageButton(),
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Reload',
+            tooltip: L.of(context).reload,
           ),
         ],
       ),
@@ -86,9 +87,9 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: TextField(
-              decoration: const InputDecoration(
-                hintText: 'Search',
-                prefixIcon: Icon(Icons.search),
+              decoration: InputDecoration(
+                hintText: L.of(context).search,
+                prefixIcon: const Icon(Icons.search),
               ),
               onChanged: (v) => setState(() => _filter = v),
             ),
@@ -100,10 +101,9 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
                   text: 'Could not load the list: $e',
                 ),
               (null, _) => const Center(child: CircularProgressIndicator()),
-              (final List<PublicServer> list, _) when list.isEmpty =>
-                const _Notice(
+              (final List<PublicServer> list, _) when list.isEmpty => _Notice(
                   icon: Icons.search_off,
-                  text: 'No servers match that search.',
+                  text: L.of(context).noServersMatchSearch,
                 ),
               (final List<PublicServer> list, _) => ListView.builder(
                   itemCount: list.length,
@@ -148,7 +148,7 @@ class _PublicServerTileState extends State<_PublicServerTile> {
             )
           : IconButton(
               icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'Add to my servers',
+              tooltip: L.of(context).addToMyServers,
               onPressed: _add,
             ),
       onTap: _adding ? null : _add,
@@ -217,7 +217,7 @@ class _UsernameDialogState extends State<_UsernameDialog> {
             onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
           onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('Add'),
+          child: Text(L.of(context).add),
         ),
       ],
     );

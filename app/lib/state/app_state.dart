@@ -121,6 +121,17 @@ class ServerRuntime {
   String detail = '';
   int attempt = 0;
   int retryInMs = 0;
+
+  /// When the next attempt is due, so the notice can count down in real time.
+  DateTime? retryDeadline;
+
+  /// Whole seconds left before the next attempt, floored at zero.
+  int get retrySecondsLeft {
+    final deadline = retryDeadline;
+    if (deadline == null) return 0;
+    final left = deadline.difference(DateTime.now()).inMilliseconds;
+    return left <= 0 ? 0 : (left / 1000).ceil();
+  }
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
   double tcpPingMs = 0;
@@ -436,16 +447,45 @@ class AppState extends ChangeNotifier {
   // --- servers ----------------------------------------------------------
 
   Future<String?> addNewServer(SavedServer s) async {
-    if (servers.any((e) => e.id == s.id)) {
-      return 'That server is already in your list.';
-    }
-    servers.add(s);
+    // The same host is a legitimate second entry: a different username, a
+    // different default channel, or simply a spare. Only the key has to be
+    // unique, so a colliding one is renamed rather than refused.
+    final entry = servers.any((e) => e.id == s.id)
+        ? s.copyWith(localId: _uniqueId(s.host, s.port))
+        : s;
+    servers.add(entry);
     // Only the first `maxServers` get a live session; the rest stay as saved
     // entries the user can swap in.
     if (runtimes.length < maxServers) {
-      await _register(s);
+      await _register(entry);
     }
     await _persist();
+    notifyListeners();
+    unawaited(refreshPings());
+    return null;
+  }
+
+  /// Replaces a saved server in place, keeping its key so the live session and
+  /// anything pointing at it stay attached to the same entry.
+  Future<String?> updateServer(SavedServer updated) async {
+    final index = servers.indexWhere((e) => e.id == updated.id);
+    if (index < 0) return 'That server is no longer in your list.';
+
+    final wasLive = runtimeFor(updated.id).isLive;
+    servers[index] = updated;
+    await _persist();
+
+    // Connection details are baked into the session when it is registered, so
+    // a changed host or username needs the session rebuilt rather than nudged.
+    try {
+      await removeServer(serverId: updated.id);
+    } catch (_) {
+      // Never registered, which is fine — _register puts it back either way.
+    }
+    runtimes.remove(updated.id);
+    await _register(updated);
+    if (wasLive) unawaited(connect(updated.id));
+
     notifyListeners();
     unawaited(refreshPings());
     return null;
@@ -1088,6 +1128,12 @@ class AppState extends ChangeNotifier {
           ..detail = field0.detail
           ..attempt = field0.attempt
           ..retryInMs = field0.retryInMs.toInt();
+        // The core reports the wait once, when it starts. Turning it into a
+        // deadline is what lets the UI count down instead of showing the same
+        // number until the next event arrives.
+        rt.retryDeadline = field0.retryInMs > BigInt.zero
+            ? DateTime.now().add(Duration(milliseconds: rt.retryInMs))
+            : null;
       case AppEvent_Users(:final serverId, :final users):
         runtimeFor(serverId).users = users;
       case AppEvent_Channels(:final serverId, :final channels):

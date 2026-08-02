@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import 'channel_panel.dart';
 import 'status_badge.dart';
@@ -21,7 +22,7 @@ class ServerDetailPane extends StatelessWidget {
     if (s == null) {
       return _Placeholder(
         icon: Icons.dns_outlined,
-        title: 'No server selected',
+        title: L.of(context).noServerSelected,
         body: 'Add a server to see its channels and who is on it.',
       );
     }
@@ -91,7 +92,7 @@ class ServerDetailPane extends StatelessWidget {
 
         if (rt.welcome.isNotEmpty) ...[
           const SizedBox(height: 22),
-          _Heading('Welcome message'),
+          _Heading(L.of(context).welcomeMessage),
           Text(
             // Servers routinely put HTML in this; strip the tags rather than
             // rendering them as literal text.
@@ -102,7 +103,7 @@ class ServerDetailPane extends StatelessWidget {
 
         if (rt.messages.isNotEmpty) ...[
           const SizedBox(height: 22),
-          _Heading('Messages'),
+          _Heading(L.of(context).messages),
           for (final m in rt.messages.reversed.take(30))
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),

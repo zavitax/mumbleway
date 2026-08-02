@@ -1,13 +1,26 @@
 //! Reconnection policy.
 //!
-//! Tuned for mobile use: a rider losing signal in a tunnel should be back within
-//! seconds of regaining it, so the ceiling is deliberately low (10 s rather than
-//! the minutes a desktop app might use). Jitter keeps a room full of clients from
-//! stampeding a server that just restarted.
+//! Tuned for mobile use: a rider losing signal in a tunnel should be back
+//! within seconds of regaining it.
+//!
+//! The interval is a flat ten seconds rather than a growing one. Backoff exists
+//! to spare a struggling server, but this is a voice client for a small group,
+//! and a rider who has been out of signal for a while is exactly the person a
+//! lengthening delay punishes most — the wait would be longest at the moment
+//! coverage returns. A fixed interval is also something a countdown can state
+//! honestly, and the reconnect is cancelled outright when the OS reports
+//! connectivity is back, so the common case does not wait at all.
+//!
+//! The mechanism still takes a multiplier and a ceiling, because a caller with
+//! a different server population may want them; it is only the default that is
+//! flat.
 
 use std::time::Duration;
 
 use crate::error::DisconnectReason;
+
+/// Wait between reconnection attempts.
+pub const RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub struct BackoffPolicy {
@@ -21,10 +34,12 @@ pub struct BackoffPolicy {
 impl Default for BackoffPolicy {
     fn default() -> Self {
         Self {
-            initial: Duration::from_millis(500),
-            max: Duration::from_secs(10),
-            multiplier: 1.8,
-            jitter: 0.25,
+            initial: RETRY_INTERVAL,
+            max: RETRY_INTERVAL,
+            // Flat, and with no jitter, so the countdown the user is watching
+            // matches the wait exactly.
+            multiplier: 1.0,
+            jitter: 0.0,
         }
     }
 }
@@ -133,31 +148,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn backoff_grows_then_saturates_at_the_ceiling() {
+    fn the_wait_is_a_flat_ten_seconds_at_every_attempt() {
+        // The countdown the user watches has to match the wait, which rules
+        // out both growth and jitter.
         let p = BackoffPolicy::default();
-        let d0 = p.base_delay(0);
-        let d1 = p.base_delay(1);
-        let d2 = p.base_delay(2);
-        assert!(d1 > d0 && d2 > d1, "delay must grow");
-
-        // It must plateau rather than growing without bound.
-        let far = p.base_delay(50);
-        assert_eq!(far, p.max);
-        assert!(p.base_delay(100) <= p.max, "must never exceed the ceiling");
+        for attempt in [0, 1, 2, 5, 20, 100] {
+            assert_eq!(
+                p.base_delay(attempt),
+                RETRY_INTERVAL,
+                "attempt {attempt} did not wait the flat interval"
+            );
+            for sample in [0.0, 0.5, 1.0] {
+                assert_eq!(
+                    p.delay_with_sample(attempt, sample),
+                    RETRY_INTERVAL,
+                    "attempt {attempt} at sample {sample} drifted off the interval"
+                );
+            }
+        }
     }
 
     #[test]
-    fn ceiling_stays_low_enough_for_mobile_use() {
-        // A rider leaving a tunnel should not wait minutes to rejoin.
-        assert_eq!(BackoffPolicy::default().max, Duration::from_secs(10));
-    }
-
-    #[test]
-    fn jitter_never_pushes_the_wait_past_the_ceiling() {
-        // The ceiling is a promise about the longest wait a rider can see, so
-        // it has to hold after jitter as well. Sampling the top of the range
-        // is the case that used to exceed it.
-        let p = BackoffPolicy::default();
+    fn a_growing_policy_still_honours_its_ceiling() {
+        // The default is flat, but the mechanism is not, and a caller that
+        // configures growth must still never exceed its own ceiling.
+        let p = BackoffPolicy {
+            initial: Duration::from_millis(500),
+            max: Duration::from_secs(8),
+            multiplier: 1.8,
+            jitter: 0.25,
+        };
+        assert!(p.base_delay(1) > p.base_delay(0), "delay must grow");
+        assert_eq!(p.base_delay(50), p.max);
         for attempt in 0..40 {
             for sample in [0.0, 0.5, 1.0] {
                 assert!(

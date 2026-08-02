@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/app_bar_title.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/server_card.dart';
@@ -28,7 +29,7 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(l.appTitle),
+        title: AppBarTitle(l.appTitle),
         actions: [
           const LanguageButton(),
           IconButton(
@@ -44,7 +45,7 @@ class HomeScreen extends StatelessWidget {
             color: state.muted ? StatusColors.failed : null,
           ),
           PopupMenuButton<String>(
-            tooltip: 'More',
+            tooltip: l.more,
             icon: const Icon(Icons.more_vert),
             onSelected: (v) async {
               final messenger = ScaffoldMessenger.of(context);

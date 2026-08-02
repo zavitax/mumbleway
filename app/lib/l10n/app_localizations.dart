@@ -415,6 +415,654 @@ abstract class L {
   /// **'Connection lost. Retrying in {seconds}s (attempt {attempt}).'**
   String reconnectingIn(int seconds, int attempt);
 
+  /// No description provided for @connectionLost.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection lost.'**
+  String get connectionLost;
+
+  /// No description provided for @retryingInSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'Retrying in {seconds}s (attempt {attempt}).'**
+  String retryingInSeconds(int seconds, int attempt);
+
+  /// No description provided for @retryingNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Retrying now (attempt {attempt})…'**
+  String retryingNow(int attempt);
+
+  /// No description provided for @switchToLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to switch to {name}'**
+  String switchToLanguage(String name);
+
+  /// No description provided for @more.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get more;
+
+  /// No description provided for @edit.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit'**
+  String get edit;
+
+  /// No description provided for @editServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit server'**
+  String get editServer;
+
+  /// No description provided for @saveChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Save changes'**
+  String get saveChanges;
+
+  /// No description provided for @savingChanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving…'**
+  String get savingChanges;
+
+  /// No description provided for @displayName.
+  ///
+  /// In en, this message translates to:
+  /// **'Display name'**
+  String get displayName;
+
+  /// No description provided for @displayNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Sunday ride'**
+  String get displayNameHint;
+
+  /// No description provided for @displayNameMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Give it a name'**
+  String get displayNameMissing;
+
+  /// No description provided for @serverAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Server address'**
+  String get serverAddress;
+
+  /// No description provided for @serverAddressHint.
+  ///
+  /// In en, this message translates to:
+  /// **'mumble.example.com'**
+  String get serverAddressHint;
+
+  /// No description provided for @serverAddressMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter an address'**
+  String get serverAddressMissing;
+
+  /// No description provided for @port.
+  ///
+  /// In en, this message translates to:
+  /// **'Port'**
+  String get port;
+
+  /// No description provided for @portOutOfRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Port 1-65535'**
+  String get portOutOfRange;
+
+  /// No description provided for @username.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get username;
+
+  /// No description provided for @usernameMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a username'**
+  String get usernameMissing;
+
+  /// No description provided for @passwordOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Password (optional)'**
+  String get passwordOptional;
+
+  /// No description provided for @passwordHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Only if the server requires one'**
+  String get passwordHelp;
+
+  /// No description provided for @addingServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Adding…'**
+  String get addingServer;
+
+  /// No description provided for @quickerWays.
+  ///
+  /// In en, this message translates to:
+  /// **'Quicker ways to add a server'**
+  String get quickerWays;
+
+  /// No description provided for @browsePublic.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse public'**
+  String get browsePublic;
+
+  /// No description provided for @importLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importLabel;
+
+  /// No description provided for @publicServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Public servers'**
+  String get publicServers;
+
+  /// No description provided for @search.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get search;
+
+  /// No description provided for @reload.
+  ///
+  /// In en, this message translates to:
+  /// **'Reload'**
+  String get reload;
+
+  /// No description provided for @addToMyServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to my servers'**
+  String get addToMyServers;
+
+  /// No description provided for @noServersMatchSearch.
+  ///
+  /// In en, this message translates to:
+  /// **'No servers match that search.'**
+  String get noServersMatchSearch;
+
+  /// No description provided for @importServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Import servers'**
+  String get importServers;
+
+  /// No description provided for @addFromText.
+  ///
+  /// In en, this message translates to:
+  /// **'Add from text'**
+  String get addFromText;
+
+  /// No description provided for @profileFileFormat.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile file format'**
+  String get profileFileFormat;
+
+  /// No description provided for @serversAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Servers added'**
+  String get serversAdded;
+
+  /// No description provided for @audioDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio devices'**
+  String get audioDevices;
+
+  /// No description provided for @levels.
+  ///
+  /// In en, this message translates to:
+  /// **'Levels'**
+  String get levels;
+
+  /// No description provided for @network.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get network;
+
+  /// No description provided for @microphone.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone'**
+  String get microphone;
+
+  /// No description provided for @speakers.
+  ///
+  /// In en, this message translates to:
+  /// **'Speakers'**
+  String get speakers;
+
+  /// No description provided for @systemDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get systemDefault;
+
+  /// No description provided for @detectedAutomatically.
+  ///
+  /// In en, this message translates to:
+  /// **'Detected automatically'**
+  String get detectedAutomatically;
+
+  /// No description provided for @recheckDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-check devices'**
+  String get recheckDevices;
+
+  /// No description provided for @testSpeakers.
+  ///
+  /// In en, this message translates to:
+  /// **'Test speakers'**
+  String get testSpeakers;
+
+  /// No description provided for @play.
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get play;
+
+  /// No description provided for @stop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get stop;
+
+  /// No description provided for @speakerVolume.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaker volume'**
+  String get speakerVolume;
+
+  /// No description provided for @inputGain.
+  ///
+  /// In en, this message translates to:
+  /// **'Input gain'**
+  String get inputGain;
+
+  /// No description provided for @hearMyself.
+  ///
+  /// In en, this message translates to:
+  /// **'Hear myself'**
+  String get hearMyself;
+
+  /// No description provided for @hearMyselfHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Plays your processed voice back. Use headphones — on speakers it will feed back.'**
+  String get hearMyselfHelp;
+
+  /// No description provided for @useSystemProxy.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the system proxy'**
+  String get useSystemProxy;
+
+  /// No description provided for @overrideProxy.
+  ///
+  /// In en, this message translates to:
+  /// **'Override proxy'**
+  String get overrideProxy;
+
+  /// No description provided for @proxyOverride.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy override'**
+  String get proxyOverride;
+
+  /// No description provided for @proxyHostPort.
+  ///
+  /// In en, this message translates to:
+  /// **'host:port'**
+  String get proxyHostPort;
+
+  /// No description provided for @proxyHostPortHint.
+  ///
+  /// In en, this message translates to:
+  /// **'127.0.0.1:8080'**
+  String get proxyHostPortHint;
+
+  /// No description provided for @proxyAutoDetect.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave empty to detect automatically'**
+  String get proxyAutoDetect;
+
+  /// No description provided for @copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy'**
+  String get copy;
+
+  /// No description provided for @copied.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied'**
+  String get copied;
+
+  /// No description provided for @noiseSuppression.
+  ///
+  /// In en, this message translates to:
+  /// **'Noise suppression'**
+  String get noiseSuppression;
+
+  /// No description provided for @noiseOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get noiseOff;
+
+  /// No description provided for @noiseLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get noiseLight;
+
+  /// No description provided for @noiseStandard.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get noiseStandard;
+
+  /// No description provided for @noiseHelmet.
+  ///
+  /// In en, this message translates to:
+  /// **'Helmet / motorcycle'**
+  String get noiseHelmet;
+
+  /// No description provided for @micMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone mode'**
+  String get micMode;
+
+  /// No description provided for @micPushToTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Push to talk'**
+  String get micPushToTalk;
+
+  /// No description provided for @micVoiceActivated.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice activated'**
+  String get micVoiceActivated;
+
+  /// No description provided for @micContinuous.
+  ///
+  /// In en, this message translates to:
+  /// **'Open mic'**
+  String get micContinuous;
+
+  /// No description provided for @buttons.
+  ///
+  /// In en, this message translates to:
+  /// **'Buttons'**
+  String get buttons;
+
+  /// No description provided for @addBinding.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a button…'**
+  String get addBinding;
+
+  /// No description provided for @removeBinding.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove binding'**
+  String get removeBinding;
+
+  /// No description provided for @action.
+  ///
+  /// In en, this message translates to:
+  /// **'Action'**
+  String get action;
+
+  /// No description provided for @pressAButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Press the button you want to use'**
+  String get pressAButton;
+
+  /// No description provided for @waitingForButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting…'**
+  String get waitingForButton;
+
+  /// No description provided for @buttonActionTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold to talk'**
+  String get buttonActionTalk;
+
+  /// No description provided for @buttonActionToggleTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle transmit'**
+  String get buttonActionToggleTalk;
+
+  /// No description provided for @buttonActionToggleMute.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle mute'**
+  String get buttonActionToggleMute;
+
+  /// No description provided for @buttonActionToggleDeafen.
+  ///
+  /// In en, this message translates to:
+  /// **'Toggle deafen'**
+  String get buttonActionToggleDeafen;
+
+  /// No description provided for @floatingWindow.
+  ///
+  /// In en, this message translates to:
+  /// **'Show floating call window'**
+  String get floatingWindow;
+
+  /// No description provided for @identityFingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your certificate fingerprint'**
+  String get identityFingerprint;
+
+  /// No description provided for @noiseCancellation.
+  ///
+  /// In en, this message translates to:
+  /// **'Noise cancellation'**
+  String get noiseCancellation;
+
+  /// No description provided for @noiseCancellationBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Filters wind, engine and road noise out of your microphone. Changes take effect next time the app starts.'**
+  String get noiseCancellationBody;
+
+  /// No description provided for @micModeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Push-to-talk is the safest choice at speed: nothing you hit on the road opens the channel by accident.'**
+  String get micModeBody;
+
+  /// No description provided for @floatingTalkButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Floating talk button'**
+  String get floatingTalkButton;
+
+  /// No description provided for @floatingTalkButtonBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Puts a small draggable push-to-talk button over whatever else is on screen.'**
+  String get floatingTalkButtonBody;
+
+  /// No description provided for @buttonsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Bind a handlebar Bluetooth remote, headset button or keyboard key. On Android these keep working with the app in the background while riding.'**
+  String get buttonsBody;
+
+  /// No description provided for @networkBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloads — the public server directory and profile files — go through the proxy configured here.'**
+  String get networkBody;
+
+  /// No description provided for @identity.
+  ///
+  /// In en, this message translates to:
+  /// **'Identity'**
+  String get identity;
+
+  /// No description provided for @identityBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Mumble servers recognise you by a certificate this app generated. Give this fingerprint to a server admin to register your account.'**
+  String get identityBody;
+
+  /// No description provided for @noiseOffBody.
+  ///
+  /// In en, this message translates to:
+  /// **'No suppression, only a gentle rumble filter.'**
+  String get noiseOffBody;
+
+  /// No description provided for @noiseLightBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet indoor use; keeps the most natural sound.'**
+  String get noiseLightBody;
+
+  /// No description provided for @noiseStandardBody.
+  ///
+  /// In en, this message translates to:
+  /// **'General purpose, for most environments.'**
+  String get noiseStandardBody;
+
+  /// No description provided for @noiseHelmetBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Steep wind-noise filter, full suppression and an assertive gate. Built for a microphone inside a helmet at speed.'**
+  String get noiseHelmetBody;
+
+  /// No description provided for @micAlwaysOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Always on'**
+  String get micAlwaysOn;
+
+  /// No description provided for @micPushToTalkBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Transmit only while holding the talk button.'**
+  String get micPushToTalkBody;
+
+  /// No description provided for @micVoiceActivatedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Transmit automatically when you speak.'**
+  String get micVoiceActivatedBody;
+
+  /// No description provided for @micAlwaysOnBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Transmit constantly. Uses the most data.'**
+  String get micAlwaysOnBody;
+
+  /// No description provided for @platformRoutesAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'This platform routes audio automatically — connecting a headset switches to it.'**
+  String get platformRoutesAudio;
+
+  /// No description provided for @recheckDevicesBody.
+  ///
+  /// In en, this message translates to:
+  /// **'After plugging in or pairing a headset'**
+  String get recheckDevicesBody;
+
+  /// No description provided for @testMicrophone.
+  ///
+  /// In en, this message translates to:
+  /// **'Test microphone (hear yourself)'**
+  String get testMicrophone;
+
+  /// No description provided for @testMicrophoneBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Plays your processed voice back, exactly as the far end hears it. Use headphones: through speakers it becomes a feedback loop.'**
+  String get testMicrophoneBody;
+
+  /// No description provided for @testSpeakersBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Plays a short tone on the selected output'**
+  String get testSpeakersBody;
+
+  /// No description provided for @microphoneGain.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone gain'**
+  String get microphoneGain;
+
+  /// No description provided for @levelsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Aim for the meter to peak around three quarters while speaking normally.'**
+  String get levelsHint;
+
+  /// No description provided for @noButtonsBound.
+  ///
+  /// In en, this message translates to:
+  /// **'No buttons bound yet.'**
+  String get noButtonsBound;
+
+  /// No description provided for @boundButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Bound {name}'**
+  String boundButton(String name);
+
+  /// No description provided for @learn.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn'**
+  String get learn;
+
+  /// No description provided for @pressButtonNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Press the button on your remote now…'**
+  String get pressButtonNow;
+
+  /// No description provided for @proxyOffDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'Off — connecting directly'**
+  String get proxyOffDirect;
+
+  /// No description provided for @certificateFingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate fingerprint'**
+  String get certificateFingerprint;
+
   /// No description provided for @inThisChannel.
   ///
   /// In en, this message translates to:

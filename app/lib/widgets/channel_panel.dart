@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../src/rust/api/mumbleway.dart';
+import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -176,6 +177,7 @@ class _UserRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     final (icon, color) = _statusVisual(user);
 
@@ -214,7 +216,7 @@ class _UserRow extends StatelessWidget {
           IconButton(
             iconSize: 20,
             visualDensity: VisualDensity.compact,
-            tooltip: user.localMute ? 'Unmute for me' : 'Mute for me',
+            tooltip: user.localMute ? l.unmuteForMe : l.muteForMe,
             icon: Icon(
               user.localMute ? Icons.volume_off : Icons.volume_up,
               color: user.localMute ? StatusColors.failed : null,
@@ -247,10 +249,10 @@ class _UserRow extends StatelessWidget {
                     Text(user.deafened ? 'Undeafen on server' : 'Deafen on server'),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'kick',
-                child: Text('Kick from server…',
-                    style: TextStyle(color: StatusColors.failed)),
+                child: Text(l.kickFromServer,
+                    style: const TextStyle(color: StatusColors.failed)),
               ),
             ],
           ),
@@ -262,6 +264,7 @@ class _UserRow extends StatelessWidget {
   /// Kicking removes someone from the server for everyone, so it asks first and
   /// offers a reason — the server shows it to the person being removed.
   Future<void> _confirmKick(BuildContext context, AppState state) async {
+    final l = L.of(context);
     final reason = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
 
@@ -297,7 +300,7 @@ class _UserRow extends StatelessWidget {
             style: FilledButton.styleFrom(
                 backgroundColor: StatusColors.failed),
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('Kick'),
+            child: Text(l.kick),
           ),
         ],
       ),

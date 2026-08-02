@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../widgets/language_button.dart';
 
@@ -33,7 +34,7 @@ class _ImportScreenState extends State<ImportScreen> {
     setState(() => _busy = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? 'Servers added')),
+      SnackBar(content: Text(error ?? L.of(context).serversAdded)),
     );
     if (error == null) Navigator.pop(context);
   }
@@ -44,7 +45,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Import servers'),
+        title: Text(L.of(context).importServers),
         actions: const [LanguageButton()],
       ),
       body: ListView(
@@ -70,7 +71,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 ? null
                 : () => _run(() => state.importFromText(_text.text)),
             icon: const Icon(Icons.playlist_add),
-            label: const Text('Add from text'),
+            label: Text(L.of(context).addFromText),
           ),
 
           const SizedBox(height: 28),
@@ -104,7 +105,7 @@ class _ImportScreenState extends State<ImportScreen> {
           ),
 
           const SizedBox(height: 28),
-          const _Header('Profile file format'),
+          _Header(L.of(context).profileFileFormat),
           const _Hint('Either a single object or an array of them. Only the '
               'host is required.'),
           Container(

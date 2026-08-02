@@ -180,6 +180,351 @@ class LEn extends L {
   }
 
   @override
+  String get connectionLost => 'Connection lost.';
+
+  @override
+  String retryingInSeconds(int seconds, int attempt) {
+    return 'Retrying in ${seconds}s (attempt $attempt).';
+  }
+
+  @override
+  String retryingNow(int attempt) {
+    return 'Retrying now (attempt $attempt)…';
+  }
+
+  @override
+  String switchToLanguage(String name) {
+    return 'Tap to switch to $name';
+  }
+
+  @override
+  String get more => 'More';
+
+  @override
+  String get edit => 'Edit';
+
+  @override
+  String get editServer => 'Edit server';
+
+  @override
+  String get saveChanges => 'Save changes';
+
+  @override
+  String get savingChanges => 'Saving…';
+
+  @override
+  String get displayName => 'Display name';
+
+  @override
+  String get displayNameHint => 'Sunday ride';
+
+  @override
+  String get displayNameMissing => 'Give it a name';
+
+  @override
+  String get serverAddress => 'Server address';
+
+  @override
+  String get serverAddressHint => 'mumble.example.com';
+
+  @override
+  String get serverAddressMissing => 'Enter an address';
+
+  @override
+  String get port => 'Port';
+
+  @override
+  String get portOutOfRange => 'Port 1-65535';
+
+  @override
+  String get username => 'Username';
+
+  @override
+  String get usernameMissing => 'Enter a username';
+
+  @override
+  String get passwordOptional => 'Password (optional)';
+
+  @override
+  String get passwordHelp => 'Only if the server requires one';
+
+  @override
+  String get addingServer => 'Adding…';
+
+  @override
+  String get quickerWays => 'Quicker ways to add a server';
+
+  @override
+  String get browsePublic => 'Browse public';
+
+  @override
+  String get importLabel => 'Import';
+
+  @override
+  String get publicServers => 'Public servers';
+
+  @override
+  String get search => 'Search';
+
+  @override
+  String get reload => 'Reload';
+
+  @override
+  String get addToMyServers => 'Add to my servers';
+
+  @override
+  String get noServersMatchSearch => 'No servers match that search.';
+
+  @override
+  String get importServers => 'Import servers';
+
+  @override
+  String get addFromText => 'Add from text';
+
+  @override
+  String get profileFileFormat => 'Profile file format';
+
+  @override
+  String get serversAdded => 'Servers added';
+
+  @override
+  String get audioDevices => 'Audio devices';
+
+  @override
+  String get levels => 'Levels';
+
+  @override
+  String get network => 'Network';
+
+  @override
+  String get microphone => 'Microphone';
+
+  @override
+  String get speakers => 'Speakers';
+
+  @override
+  String get systemDefault => 'System default';
+
+  @override
+  String get detectedAutomatically => 'Detected automatically';
+
+  @override
+  String get recheckDevices => 'Re-check devices';
+
+  @override
+  String get testSpeakers => 'Test speakers';
+
+  @override
+  String get play => 'Play';
+
+  @override
+  String get stop => 'Stop';
+
+  @override
+  String get speakerVolume => 'Speaker volume';
+
+  @override
+  String get inputGain => 'Input gain';
+
+  @override
+  String get hearMyself => 'Hear myself';
+
+  @override
+  String get hearMyselfHelp =>
+      'Plays your processed voice back. Use headphones — on speakers it will feed back.';
+
+  @override
+  String get useSystemProxy => 'Use the system proxy';
+
+  @override
+  String get overrideProxy => 'Override proxy';
+
+  @override
+  String get proxyOverride => 'Proxy override';
+
+  @override
+  String get proxyHostPort => 'host:port';
+
+  @override
+  String get proxyHostPortHint => '127.0.0.1:8080';
+
+  @override
+  String get proxyAutoDetect => 'Leave empty to detect automatically';
+
+  @override
+  String get copy => 'Copy';
+
+  @override
+  String get copied => 'Copied';
+
+  @override
+  String get noiseSuppression => 'Noise suppression';
+
+  @override
+  String get noiseOff => 'Off';
+
+  @override
+  String get noiseLight => 'Light';
+
+  @override
+  String get noiseStandard => 'Standard';
+
+  @override
+  String get noiseHelmet => 'Helmet / motorcycle';
+
+  @override
+  String get micMode => 'Microphone mode';
+
+  @override
+  String get micPushToTalk => 'Push to talk';
+
+  @override
+  String get micVoiceActivated => 'Voice activated';
+
+  @override
+  String get micContinuous => 'Open mic';
+
+  @override
+  String get buttons => 'Buttons';
+
+  @override
+  String get addBinding => 'Add a button…';
+
+  @override
+  String get removeBinding => 'Remove binding';
+
+  @override
+  String get action => 'Action';
+
+  @override
+  String get pressAButton => 'Press the button you want to use';
+
+  @override
+  String get waitingForButton => 'Waiting…';
+
+  @override
+  String get buttonActionTalk => 'Hold to talk';
+
+  @override
+  String get buttonActionToggleTalk => 'Toggle transmit';
+
+  @override
+  String get buttonActionToggleMute => 'Toggle mute';
+
+  @override
+  String get buttonActionToggleDeafen => 'Toggle deafen';
+
+  @override
+  String get floatingWindow => 'Show floating call window';
+
+  @override
+  String get identityFingerprint => 'Your certificate fingerprint';
+
+  @override
+  String get noiseCancellation => 'Noise cancellation';
+
+  @override
+  String get noiseCancellationBody =>
+      'Filters wind, engine and road noise out of your microphone. Changes take effect next time the app starts.';
+
+  @override
+  String get micModeBody =>
+      'Push-to-talk is the safest choice at speed: nothing you hit on the road opens the channel by accident.';
+
+  @override
+  String get floatingTalkButton => 'Floating talk button';
+
+  @override
+  String get floatingTalkButtonBody =>
+      'Puts a small draggable push-to-talk button over whatever else is on screen.';
+
+  @override
+  String get buttonsBody =>
+      'Bind a handlebar Bluetooth remote, headset button or keyboard key. On Android these keep working with the app in the background while riding.';
+
+  @override
+  String get networkBody =>
+      'Downloads — the public server directory and profile files — go through the proxy configured here.';
+
+  @override
+  String get identity => 'Identity';
+
+  @override
+  String get identityBody =>
+      'Mumble servers recognise you by a certificate this app generated. Give this fingerprint to a server admin to register your account.';
+
+  @override
+  String get noiseOffBody => 'No suppression, only a gentle rumble filter.';
+
+  @override
+  String get noiseLightBody =>
+      'Quiet indoor use; keeps the most natural sound.';
+
+  @override
+  String get noiseStandardBody => 'General purpose, for most environments.';
+
+  @override
+  String get noiseHelmetBody =>
+      'Steep wind-noise filter, full suppression and an assertive gate. Built for a microphone inside a helmet at speed.';
+
+  @override
+  String get micAlwaysOn => 'Always on';
+
+  @override
+  String get micPushToTalkBody =>
+      'Transmit only while holding the talk button.';
+
+  @override
+  String get micVoiceActivatedBody => 'Transmit automatically when you speak.';
+
+  @override
+  String get micAlwaysOnBody => 'Transmit constantly. Uses the most data.';
+
+  @override
+  String get platformRoutesAudio =>
+      'This platform routes audio automatically — connecting a headset switches to it.';
+
+  @override
+  String get recheckDevicesBody => 'After plugging in or pairing a headset';
+
+  @override
+  String get testMicrophone => 'Test microphone (hear yourself)';
+
+  @override
+  String get testMicrophoneBody =>
+      'Plays your processed voice back, exactly as the far end hears it. Use headphones: through speakers it becomes a feedback loop.';
+
+  @override
+  String get testSpeakersBody => 'Plays a short tone on the selected output';
+
+  @override
+  String get microphoneGain => 'Microphone gain';
+
+  @override
+  String get levelsHint =>
+      'Aim for the meter to peak around three quarters while speaking normally.';
+
+  @override
+  String get noButtonsBound => 'No buttons bound yet.';
+
+  @override
+  String boundButton(String name) {
+    return 'Bound $name';
+  }
+
+  @override
+  String get learn => 'Learn';
+
+  @override
+  String get pressButtonNow => 'Press the button on your remote now…';
+
+  @override
+  String get proxyOffDirect => 'Off — connecting directly';
+
+  @override
+  String get certificateFingerprint => 'Certificate fingerprint';
+
+  @override
   String inThisChannel(int count) {
     return 'In this channel ($count)';
   }

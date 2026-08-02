@@ -15,27 +15,25 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    final l = L.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(L.of(context).settings),
+        title: Text(l.settings),
         actions: const [LanguageButton()],
       ),
       body: ListView(
         children: [
-          const _SectionHeader('Audio devices'),
+          _SectionHeader(l.audioDevices),
           const _DeviceSection(),
 
           const Divider(height: 32),
-          const _SectionHeader('Levels'),
+          _SectionHeader(l.levels),
           const _LevelsSection(),
 
           const Divider(height: 32),
-          const _SectionHeader('Noise cancellation'),
-          const _Explainer(
-            'Filters wind, engine and road noise out of your microphone. '
-            'Changes take effect next time the app starts.',
-          ),
+          _SectionHeader(l.noiseCancellation),
+          _Explainer(l.noiseCancellationBody),
           RadioGroup<NoiseSetting>(
             groupValue: state.noise,
             onChanged: (v) {
@@ -46,8 +44,8 @@ class SettingsScreen extends StatelessWidget {
                 for (final n in NoiseSetting.values)
                   RadioListTile<NoiseSetting>(
                     value: n,
-                    title: Text(_noiseTitle(n)),
-                    subtitle: Text(_noiseSubtitle(n)),
+                    title: Text(_noiseTitle(l, n)),
+                    subtitle: Text(_noiseSubtitle(l, n)),
                     isThreeLine: true,
                   ),
               ],
@@ -55,11 +53,8 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const Divider(height: 32),
-          const _SectionHeader('Microphone mode'),
-          const _Explainer(
-            'Push-to-talk is the safest choice at speed: nothing you hit on the '
-            'road can key the microphone by accident.',
-          ),
+          _SectionHeader(l.micMode),
+          _Explainer(l.micModeBody),
           RadioGroup<MicMode>(
             groupValue: state.micMode,
             onChanged: (v) {
@@ -70,8 +65,8 @@ class SettingsScreen extends StatelessWidget {
                 for (final m in MicMode.values)
                   RadioListTile<MicMode>(
                     value: m,
-                    title: Text(_micTitle(m)),
-                    subtitle: Text(_micSubtitle(m)),
+                    title: Text(_micTitle(l, m)),
+                    subtitle: Text(_micSubtitle(l, m)),
                   ),
               ],
             ),
@@ -79,39 +74,24 @@ class SettingsScreen extends StatelessWidget {
 
           if (state.overlaySupported) ...[
             const Divider(height: 32),
-            const _SectionHeader('Floating talk button'),
-            const _Explainer(
-              'Puts a small draggable push-to-talk button over whatever else '
-              'is on screen, with the names of whoever is speaking. Made for '
-              'riding with a navigation app in front.',
-            ),
+            _SectionHeader(l.floatingTalkButton),
+            _Explainer(l.floatingTalkButtonBody),
             const _OverlayTile(),
           ],
 
           const Divider(height: 32),
-          const _SectionHeader('Buttons'),
-          const _Explainer(
-            'Bind a handlebar Bluetooth remote, headset button or keyboard key. '
-            'On Android these keep working with the app in the background while '
-            'the floating button is enabled.',
-          ),
+          _SectionHeader(l.buttons),
+          _Explainer(l.buttonsBody),
           const _ButtonBindings(),
 
           const Divider(height: 32),
-          const _SectionHeader('Network'),
-          const _Explainer(
-            'Downloads — the public server directory and profile files — go '
-            'through the proxy your system is configured with. On a machine '
-            'behind one, going direct usually fails outright.',
-          ),
+          _SectionHeader(l.network),
+          _Explainer(l.networkBody),
           const _ProxyTile(),
 
           const Divider(height: 32),
-          const _SectionHeader('Identity'),
-          const _Explainer(
-            'Mumble servers recognise you by a certificate this app generated. '
-            'Give this fingerprint to a server admin to register your account.',
-          ),
+          _SectionHeader(l.identity),
+          _Explainer(l.identityBody),
           const _FingerprintTile(),
           const SizedBox(height: 32),
         ],
@@ -119,32 +99,30 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  static String _noiseTitle(NoiseSetting n) => switch (n) {
-        NoiseSetting.off => 'Off',
-        NoiseSetting.light => 'Light',
-        NoiseSetting.standard => 'Standard',
-        NoiseSetting.helmet => 'Helmet / motorcycle',
+  static String _noiseTitle(L l, NoiseSetting n) => switch (n) {
+        NoiseSetting.off => l.noiseOff,
+        NoiseSetting.light => l.noiseLight,
+        NoiseSetting.standard => l.noiseStandard,
+        NoiseSetting.helmet => l.noiseHelmet,
       };
 
-  static String _noiseSubtitle(NoiseSetting n) => switch (n) {
-        NoiseSetting.off => 'No suppression, only a gentle rumble filter.',
-        NoiseSetting.light => 'Quiet indoor use; keeps the most natural sound.',
-        NoiseSetting.standard => 'General purpose, for most environments.',
-        NoiseSetting.helmet =>
-          'Steep wind-noise filter, full suppression and an assertive gate. '
-              'Built for a microphone inside a helmet at speed.',
+  static String _noiseSubtitle(L l, NoiseSetting n) => switch (n) {
+        NoiseSetting.off => l.noiseOffBody,
+        NoiseSetting.light => l.noiseLightBody,
+        NoiseSetting.standard => l.noiseStandardBody,
+        NoiseSetting.helmet => l.noiseHelmetBody,
       };
 
-  static String _micTitle(MicMode m) => switch (m) {
-        MicMode.pushToTalk => 'Push to talk',
-        MicMode.voiceActivity => 'Voice activated',
-        MicMode.continuous => 'Always on',
+  static String _micTitle(L l, MicMode m) => switch (m) {
+        MicMode.pushToTalk => l.micPushToTalk,
+        MicMode.voiceActivity => l.micVoiceActivated,
+        MicMode.continuous => l.micAlwaysOn,
       };
 
-  static String _micSubtitle(MicMode m) => switch (m) {
-        MicMode.pushToTalk => 'Transmit only while holding the talk button.',
-        MicMode.voiceActivity => 'Transmit automatically when you speak.',
-        MicMode.continuous => 'Transmit constantly. Uses the most data.',
+  static String _micSubtitle(L l, MicMode m) => switch (m) {
+        MicMode.pushToTalk => l.micPushToTalkBody,
+        MicMode.voiceActivity => l.micVoiceActivatedBody,
+        MicMode.continuous => l.micAlwaysOnBody,
       };
 }
 
@@ -155,6 +133,7 @@ class _DeviceSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    final l = L.of(context);
 
     // Desktop hosts enumerate real devices. Phones generally expose a single
     // logical route that the OS switches for you, so there is nothing to pick.
@@ -164,14 +143,10 @@ class _DeviceSection extends StatelessWidget {
     if (!canChoose) {
       return Column(
         children: [
-          const _Explainer(
-            'This platform routes audio automatically — connecting a headset '
-            'switches the app over. Use the system audio settings to choose a '
-            'different device.',
-          ),
+          _Explainer(l.platformRoutesAudio),
           ListTile(
             leading: const Icon(Icons.refresh),
-            title: const Text('Re-check devices'),
+            title: Text(l.recheckDevices),
             onTap: state.refreshDevices,
           ),
           const _MonitorTile(),
@@ -183,14 +158,14 @@ class _DeviceSection extends StatelessWidget {
     return Column(
       children: [
         _DevicePicker(
-          label: 'Microphone',
+          label: l.microphone,
           icon: Icons.mic_none,
           devices: state.inputDevices,
           selected: state.selectedInput,
           onChanged: state.chooseInputDevice,
         ),
         _DevicePicker(
-          label: 'Speakers',
+          label: l.speakers,
           icon: Icons.speaker,
           devices: state.outputDevices,
           selected: state.selectedOutput,
@@ -198,8 +173,8 @@ class _DeviceSection extends StatelessWidget {
         ),
         ListTile(
           leading: const Icon(Icons.refresh),
-          title: const Text('Re-check devices'),
-          subtitle: const Text('After plugging in or pairing a headset'),
+          title: Text(l.recheckDevices),
+          subtitle: Text(l.recheckDevicesBody),
           onTap: state.refreshDevices,
         ),
         const _MonitorTile(),
@@ -226,10 +201,11 @@ class _DevicePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     // `null` is a first-class choice meaning "follow the system default",
     // which is what most users want and what survives replugging a headset.
     final items = <DropdownMenuItem<String?>>[
-      const DropdownMenuItem(value: null, child: Text('System default')),
+      DropdownMenuItem(value: null, child: Text(l.systemDefault)),
       for (final d in devices)
         DropdownMenuItem(
           value: d,
@@ -269,10 +245,11 @@ class _MonitorTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     return SwitchListTile(
       secondary: const Icon(Icons.hearing),
-      title: const Text('Test microphone (hear yourself)'),
+      title: Text(l.testMicrophone),
       subtitle: const Text(
         'Plays your processed voice back, exactly as the far end hears it.',
       ),
@@ -287,14 +264,15 @@ class _TestOutputTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     return ListTile(
       leading: const Icon(Icons.volume_up),
-      title: const Text('Test speakers'),
-      subtitle: const Text('Plays a short tone on the selected output'),
+      title: Text(l.testSpeakers),
+      subtitle: Text(l.testSpeakersBody),
       trailing: FilledButton.tonal(
         onPressed: state.testOutput,
-        child: const Text('Play'),
+        child: Text(l.play),
       ),
     );
   }
@@ -307,6 +285,7 @@ class _LevelsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     final minIn = state.gainRange[0];
     final maxIn = state.gainRange[1];
@@ -323,14 +302,14 @@ class _LevelsSection extends StatelessWidget {
             child: LevelMeter(showScale: true),
           ),
           _LabelledSlider(
-            label: 'Microphone gain',
+            label: l.microphoneGain,
             value: state.inputGainDbValue.clamp(minIn, maxIn),
             min: minIn,
             max: maxIn,
             onChanged: state.updateInputGain,
           ),
           _LabelledSlider(
-            label: 'Speaker volume',
+            label: l.speakerVolume,
             value: state.outputVolumeDbValue.clamp(minOut, maxOut),
             min: minOut,
             max: maxOut,
@@ -414,6 +393,7 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     final learning = state.buttons.isLearning;
 
@@ -426,15 +406,15 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
             subtitle: Text(b.action.label),
             trailing: IconButton(
               icon: const Icon(Icons.close),
-              tooltip: 'Remove binding',
+              tooltip: l.removeBinding,
               onPressed: () => state.removeButtonBinding(b.keyId),
             ),
           ),
         if (state.buttonBindings.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            child: Text('No buttons bound yet.',
-                style: TextStyle(fontSize: 12)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: Text(l.noButtonsBound,
+                style: const TextStyle(fontSize: 12)),
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
@@ -444,10 +424,10 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
                 child: DropdownButtonFormField<ButtonAction>(
                   initialValue: _action,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Action',
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: InputDecoration(
+                    labelText: l.action,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                   ),
                   items: [
                     for (final a in ButtonAction.values)
@@ -463,28 +443,28 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
                     : () => state.learnButton(_action, (b) {
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Bound ${b.displayName}')),
+                            SnackBar(content: Text(l.boundButton(b.displayName))),
                           );
                         }),
-                child: Text(learning ? 'Cancel' : 'Learn'),
+                child: Text(learning ? l.cancel : l.learn),
               ),
             ],
           ),
         ),
         if (learning)
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
             child: Row(
               children: [
-                SizedBox(
+                const SizedBox(
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Press the button on your remote now…',
-                    style: TextStyle(fontSize: 12),
+                    l.pressButtonNow,
+                    style: const TextStyle(fontSize: 12),
                   ),
                 ),
               ],
@@ -500,23 +480,24 @@ class _ProxyTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     return Column(
       children: [
         SwitchListTile(
           secondary: const Icon(Icons.vpn_lock),
-          title: const Text('Use the system proxy'),
+          title: Text(l.useSystemProxy),
           subtitle: Text(state.proxyEnabled
               ? state.proxyDescription
-              : 'Off — connecting directly'),
+              : l.proxyOffDirect),
           value: state.proxyEnabled,
           onChanged: state.setProxyEnabled,
         ),
         if (state.proxyEnabled)
           ListTile(
             leading: const Icon(Icons.edit_outlined),
-            title: const Text('Override proxy'),
-            subtitle: Text(state.manualProxy ?? 'Detected automatically'),
+            title: Text(l.overrideProxy),
+            subtitle: Text(state.manualProxy ?? l.detectedAutomatically),
             onTap: () => _editOverride(context, state),
           ),
       ],
@@ -524,27 +505,28 @@ class _ProxyTile extends StatelessWidget {
   }
 
   Future<void> _editOverride(BuildContext context, AppState state) async {
+    final l = L.of(context);
     final controller = TextEditingController(text: state.manualProxy ?? '');
     final value = await showDialog<String?>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Proxy override'),
+        title: Text(l.proxyOverride),
         content: TextField(
           controller: controller,
           autofocus: true,
           autocorrect: false,
-          decoration: const InputDecoration(
-            labelText: 'host:port',
-            hintText: '127.0.0.1:8080',
-            helperText: 'Leave empty to detect automatically',
+          decoration: InputDecoration(
+            labelText: l.proxyHostPort,
+            hintText: l.proxyHostPortHint,
+            helperText: l.proxyAutoDetect,
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(c), child: Text(l.cancel)),
           FilledButton(
             onPressed: () => Navigator.pop(c, controller.text),
-            child: const Text('Save'),
+            child: Text(l.save),
           ),
         ],
       ),
@@ -586,6 +568,7 @@ class _OverlayTileState extends State<_OverlayTile> {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final state = AppStateScope.of(context);
     final kind = state.overlayKind;
     return Column(
@@ -596,7 +579,7 @@ class _OverlayTileState extends State<_OverlayTile> {
               ? const SizedBox(
                   width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.picture_in_picture_alt),
-          title: const Text('Show floating call window'),
+          title: Text(l.floatingWindow),
           subtitle: Text(_subtitleFor(kind)),
           isThreeLine: kind == FloatingKind.iosPictureInPicture,
           value: state.overlayEnabled,
@@ -645,10 +628,11 @@ class _FingerprintTileState extends State<_FingerprintTile> {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final fp = _fp;
     return ListTile(
       leading: const Icon(Icons.badge_outlined),
-      title: const Text('Certificate fingerprint'),
+      title: Text(l.certificateFingerprint),
       subtitle: Text(
         fp ?? 'Loading…',
         style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
@@ -657,7 +641,7 @@ class _FingerprintTileState extends State<_FingerprintTile> {
           ? null
           : IconButton(
               icon: const Icon(Icons.copy),
-              tooltip: 'Copy',
+              tooltip: l.copy,
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: fp));
                 if (!context.mounted) return;

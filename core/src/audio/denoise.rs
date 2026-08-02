@@ -94,7 +94,11 @@ impl NoiseProfile {
     /// tonal, which is exactly what fools the network.
     fn snr_margin_db(self) -> f32 {
         match self {
-            NoiseProfile::Off => 0.0,
+            // Not zero. Even with no suppression, voice activation still has
+            // to decide whether anyone is talking, and a margin of zero means
+            // anything at all above the noise floor counts — which is
+            // everything, permanently.
+            NoiseProfile::Off => 6.0,
             NoiseProfile::Light => 6.0,
             NoiseProfile::Standard => 8.0,
             NoiseProfile::Helmet => 10.0,
@@ -290,7 +294,14 @@ impl CaptureProcessor {
         let speech_now = if warming_up {
             false
         } else if self.profile == NoiseProfile::Off {
-            true
+            // How hard the audio is cleaned and whether anyone is talking are
+            // separate questions. Answering "always" here meant turning
+            // suppression off also turned voice activation off, and the far end
+            // saw an open microphone for the whole session.
+            //
+            // RNNoise is not running to be asked, so the level against the
+            // tracked floor decides on its own.
+            snr_says_speech
         } else {
             vad_says_speech && snr_says_speech
         };
@@ -304,7 +315,15 @@ impl CaptureProcessor {
 
         // 5. Gate. Feed it an artificially low level when the VAD disagrees, so
         // loud-but-not-speech blocks stay shut.
-        let gate_level = if voice_active { level_db } else { -120.0 };
+        //
+        // Except with suppression off, where the audio must come through
+        // untouched. Deciding not to transmit is not a licence to alter what
+        // is transmitted when we do.
+        let gate_level = if voice_active || self.profile == NoiseProfile::Off {
+            level_db
+        } else {
+            -120.0
+        };
         let gate_open = self.gate.process(block, gate_level);
 
         // 6. Level the result, then catch transients.
@@ -328,6 +347,53 @@ impl CaptureProcessor {
 mod tests {
     use super::*;
     use crate::audio::dsp::peak;
+
+    #[test]
+    fn a_quiet_room_never_keys_the_transmitter() {
+        // Whether the audio is cleaned and whether anyone is talking are
+        // separate questions. Answering the second with "always" whenever
+        // suppression is off left the far end seeing an open microphone for
+        // the entire session, which is both rude and a waste of the link.
+        for profile in [
+            NoiseProfile::Off,
+            NoiseProfile::Light,
+            NoiseProfile::Standard,
+            NoiseProfile::Helmet,
+        ] {
+            let mut p = CaptureProcessor::new(profile);
+            let mut keyed = 0;
+            // Well past the warm-up hold, so the floor estimate has settled.
+            for i in 0..200 {
+                let mut block = white_noise(FRAME_SIZE, 0.004, i as u32);
+                if p.process(&mut block).speaking {
+                    keyed += 1;
+                }
+            }
+            assert!(
+                keyed < 20,
+                "{profile:?}: room tone keyed {keyed}/200 blocks"
+            );
+        }
+    }
+
+    #[test]
+    fn speech_still_keys_the_transmitter_with_suppression_off() {
+        // The fix must not overshoot into never transmitting at all.
+        let mut p = CaptureProcessor::new(NoiseProfile::Off);
+        for i in 0..60 {
+            let mut quiet = white_noise(FRAME_SIZE, 0.004, i as u32);
+            p.process(&mut quiet);
+        }
+
+        let mut keyed = 0;
+        for i in 0..60 {
+            let mut block = white_noise(FRAME_SIZE, 0.25, 1_000 + i as u32);
+            if p.process(&mut block).speaking {
+                keyed += 1;
+            }
+        }
+        assert!(keyed > 30, "speech keyed only {keyed}/60 blocks");
+    }
 
     fn white_noise(len: usize, amp: f32, seed: u32) -> Vec<f32> {
         // Deterministic LCG so tests are reproducible.

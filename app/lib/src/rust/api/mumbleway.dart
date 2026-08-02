@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -312,6 +312,13 @@ sealed class AppEvent with _$AppEvent {
     required double noiseFloorDb,
   }) = AppEvent_InputLevel;
 
+  /// Level of each speaker currently producing audio.
+  ///
+  /// The server never reports who is talking, so the only honest source is
+  /// the audio itself.
+  const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
+      AppEvent_SpeakerLevels;
+
   /// Someone else changed our mute or deafen state.
   const factory AppEvent.moderated({
     required String serverId,
@@ -554,6 +561,33 @@ class UiServerStatus {
           users == other.users &&
           maxUsers == other.maxUsers &&
           version == other.version;
+}
+
+/// One speaker's current loudness.
+class UiSpeakerLevel {
+  final String serverId;
+  final int session;
+
+  /// dBFS, falling towards silence when they stop.
+  final double levelDb;
+
+  const UiSpeakerLevel({
+    required this.serverId,
+    required this.session,
+    required this.levelDb,
+  });
+
+  @override
+  int get hashCode => serverId.hashCode ^ session.hashCode ^ levelDb.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiSpeakerLevel &&
+          runtimeType == other.runtimeType &&
+          serverId == other.serverId &&
+          session == other.session &&
+          levelDb == other.levelDb;
 }
 
 class UiStats {

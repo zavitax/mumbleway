@@ -279,6 +279,54 @@ void main() {
     expect(find.textContaining('TCP'), findsOneWidget);
   });
 
+  test('who is speaking comes from the audio, not the roster', () {
+    // The server never reports it. Reading it off UiUser.talking left every
+    // participant showing "silent" for as long as the roster went unchanged,
+    // which is most of the time.
+    final rt = ServerRuntime();
+    expect(rt.isSpeaking(7), isFalse, reason: 'nothing heard yet');
+
+    rt.speakerLevels[7] = -20;
+    expect(rt.isSpeaking(7), isTrue);
+    expect(rt.speakerLevels[7], -20);
+
+    // Falls back to silent as the level decays.
+    rt.speakerLevels[7] = -90;
+    expect(rt.isSpeaking(7), isFalse);
+  });
+
+  test('a meter falls to silence when its speaker stops being reported', () {
+    // A speaker who stops talking is reaped from the mixer and simply drops
+    // out of the reports. Without decay their meter freezes at whatever it
+    // last showed, so a full bar sits beside someone who went quiet long ago.
+    final rt = ServerRuntime();
+    rt.noteSpeakerLevel(3, -18);
+    expect(rt.isSpeaking(3), isTrue);
+
+    var previous = rt.speakerLevels[3]!;
+    for (var i = 0; i < 40 && rt.speakerLevels.containsKey(3); i++) {
+      rt.decayUnreported(const <int>{});
+      final now = rt.speakerLevels[3];
+      if (now != null) {
+        expect(now, lessThan(previous), reason: 'must keep falling');
+        previous = now;
+      }
+    }
+    expect(rt.isSpeaking(3), isFalse, reason: 'never reached silence');
+  });
+
+  test('a meter rises at once but falls gradually', () {
+    // Rising slowly would clip the start of every word; falling instantly
+    // would make the meter flicker between syllables.
+    final rt = ServerRuntime();
+    rt.noteSpeakerLevel(1, -20);
+    expect(rt.speakerLevels[1], -20, reason: 'a rise is immediate');
+
+    rt.noteSpeakerLevel(1, -90);
+    expect(rt.speakerLevels[1], greaterThan(-90.0), reason: 'a fall is paced');
+    expect(rt.speakerLevels[1], lessThan(-20.0));
+  });
+
   test('the meter scale is shared and clamped', () {
     // Every surface that draws a level, a threshold or a noise floor goes
     // through this, so a drift here would silently misreport the margin

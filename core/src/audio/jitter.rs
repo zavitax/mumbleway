@@ -49,6 +49,15 @@ const MAX_CONSECUTIVE_CONCEALS: u32 = 5;
 /// the sender's activation threshold produces, over and over.
 const STALL_ROUNDS_BEFORE_START: u32 = 40;
 
+/// Level reported for a speaker producing nothing.
+pub const SILENT_DB: f32 = -120.0;
+
+/// How quickly a meter falls once a speaker stops, in dB per idle round.
+///
+/// Fast enough that the meter empties as speech ends, slow enough that the
+/// gaps between words do not make it flicker.
+const LEVEL_DECAY_DB: f32 = 1.5;
+
 /// Buffers and decodes one speaker's stream.
 pub struct SpeakerBuffer {
     decoder: VoiceDecoder,
@@ -98,6 +107,12 @@ pub struct SpeakerBuffer {
     decoded_total: u64,
     /// Mixer rounds spent holding audio that is not yet judged ready.
     stalled_rounds: u32,
+    /// Smoothed output level in dBFS, for this speaker's meter.
+    ///
+    /// Measured after decoding rather than taken from the roster, because the
+    /// server never says who is talking — that is only knowable from the audio
+    /// actually arriving.
+    level_db: f32,
 }
 
 impl SpeakerBuffer {
@@ -118,6 +133,7 @@ impl SpeakerBuffer {
             concealed_total: 0,
             decoded_total: 0,
             stalled_rounds: 0,
+            level_db: SILENT_DB,
         })
     }
 
@@ -238,6 +254,17 @@ impl SpeakerBuffer {
     /// visible as time passing with nothing new turning up.
     pub fn note_waiting(&mut self) {
         self.stalled_rounds = self.stalled_rounds.saturating_add(1);
+        self.decay_level();
+    }
+
+    /// Current smoothed level in dBFS.
+    pub fn level_db(&self) -> f32 {
+        self.level_db
+    }
+
+    /// Lets the meter fall while this speaker produces nothing.
+    pub fn decay_level(&mut self) {
+        self.level_db = (self.level_db - LEVEL_DECAY_DB).max(SILENT_DB);
     }
 
     /// Produces the next frame of PCM, concealing genuine losses.
@@ -329,6 +356,15 @@ impl SpeakerBuffer {
         if self.normalise {
             self.normalizer.process(&mut out[..n]);
         }
+        // Rises immediately and falls gradually, so a meter tracks speech
+        // rather than flickering on every syllable boundary.
+        let level = super::dsp::to_dbfs(super::dsp::rms(&out[..n]));
+        self.level_db = if level > self.level_db {
+            level
+        } else {
+            (self.level_db - LEVEL_DECAY_DB).max(level)
+        };
+
         // That was the last frame held: rebuild a cushion before starting again
         // rather than stuttering along one frame at a time.
         self.playing = !self.pending.is_empty();

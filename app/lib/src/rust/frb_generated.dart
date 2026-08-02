@@ -1654,24 +1654,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           noiseFloorDb: dco_decode_f_32(raw[4]),
         );
       case 6:
+        return AppEvent_SpeakerLevels(
+          levels: dco_decode_list_ui_speaker_level(raw[1]),
+        );
+      case 7:
         return AppEvent_Moderated(
           serverId: dco_decode_String(raw[1]),
           muted: dco_decode_opt_box_autoadd_bool(raw[2]),
           deafened: dco_decode_opt_box_autoadd_bool(raw[3]),
           by: dco_decode_String(raw[4]),
         );
-      case 7:
+      case 8:
         return AppEvent_Certificate(
           serverId: dco_decode_String(raw[1]),
           fingerprint: dco_decode_String(raw[2]),
           changed: dco_decode_bool(raw[3]),
         );
-      case 8:
+      case 9:
         return AppEvent_Welcome(
           serverId: dco_decode_String(raw[1]),
           text: dco_decode_String(raw[2]),
         );
-      case 9:
+      case 10:
         return AppEvent_SelfSession(
           serverId: dco_decode_String(raw[1]),
           session: dco_decode_u_32(raw[2]),
@@ -1781,6 +1785,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_ui_channel).toList();
+  }
+
+  @protected
+  List<UiSpeakerLevel> dco_decode_list_ui_speaker_level(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_ui_speaker_level).toList();
   }
 
   @protected
@@ -1931,6 +1941,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiSpeakerLevel dco_decode_ui_speaker_level(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return UiSpeakerLevel(
+      serverId: dco_decode_String(arr[0]),
+      session: dco_decode_u_32(arr[1]),
+      levelDb: dco_decode_f_32(arr[2]),
+    );
+  }
+
+  @protected
   UiStats dco_decode_ui_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -2034,6 +2057,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           noiseFloorDb: var_noiseFloorDb,
         );
       case 6:
+        var var_levels = sse_decode_list_ui_speaker_level(deserializer);
+        return AppEvent_SpeakerLevels(levels: var_levels);
+      case 7:
         var var_serverId = sse_decode_String(deserializer);
         var var_muted = sse_decode_opt_box_autoadd_bool(deserializer);
         var var_deafened = sse_decode_opt_box_autoadd_bool(deserializer);
@@ -2044,7 +2070,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           deafened: var_deafened,
           by: var_by,
         );
-      case 7:
+      case 8:
         var var_serverId = sse_decode_String(deserializer);
         var var_fingerprint = sse_decode_String(deserializer);
         var var_changed = sse_decode_bool(deserializer);
@@ -2053,11 +2079,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           fingerprint: var_fingerprint,
           changed: var_changed,
         );
-      case 8:
+      case 9:
         var var_serverId = sse_decode_String(deserializer);
         var var_text = sse_decode_String(deserializer);
         return AppEvent_Welcome(serverId: var_serverId, text: var_text);
-      case 9:
+      case 10:
         var var_serverId = sse_decode_String(deserializer);
         var var_session = sse_decode_u_32(deserializer);
         return AppEvent_SelfSession(
@@ -2197,6 +2223,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <UiChannel>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_ui_channel(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<UiSpeakerLevel> sse_decode_list_ui_speaker_level(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <UiSpeakerLevel>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_ui_speaker_level(deserializer));
     }
     return ans_;
   }
@@ -2384,6 +2424,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiSpeakerLevel sse_decode_ui_speaker_level(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_serverId = sse_decode_String(deserializer);
+    var var_session = sse_decode_u_32(deserializer);
+    var var_levelDb = sse_decode_f_32(deserializer);
+    return UiSpeakerLevel(
+      serverId: var_serverId,
+      session: var_session,
+      levelDb: var_levelDb,
+    );
+  }
+
+  @protected
   UiStats sse_decode_ui_stats(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_serverId = sse_decode_String(deserializer);
@@ -2499,13 +2552,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_bool(speaking, serializer);
         sse_encode_f_32(thresholdDb, serializer);
         sse_encode_f_32(noiseFloorDb, serializer);
+      case AppEvent_SpeakerLevels(levels: final levels):
+        sse_encode_i_32(6, serializer);
+        sse_encode_list_ui_speaker_level(levels, serializer);
       case AppEvent_Moderated(
         serverId: final serverId,
         muted: final muted,
         deafened: final deafened,
         by: final by,
       ):
-        sse_encode_i_32(6, serializer);
+        sse_encode_i_32(7, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_opt_box_autoadd_bool(muted, serializer);
         sse_encode_opt_box_autoadd_bool(deafened, serializer);
@@ -2515,19 +2571,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         fingerprint: final fingerprint,
         changed: final changed,
       ):
-        sse_encode_i_32(7, serializer);
+        sse_encode_i_32(8, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(fingerprint, serializer);
         sse_encode_bool(changed, serializer);
       case AppEvent_Welcome(serverId: final serverId, text: final text):
-        sse_encode_i_32(8, serializer);
+        sse_encode_i_32(9, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(text, serializer);
       case AppEvent_SelfSession(
         serverId: final serverId,
         session: final session,
       ):
-        sse_encode_i_32(9, serializer);
+        sse_encode_i_32(10, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_u_32(session, serializer);
     }
@@ -2672,6 +2728,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_ui_speaker_level(
+    List<UiSpeakerLevel> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_ui_speaker_level(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_ui_user(List<UiUser> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -2812,6 +2880,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.users, serializer);
     sse_encode_u_32(self.maxUsers, serializer);
     sse_encode_String(self.version, serializer);
+  }
+
+  @protected
+  void sse_encode_ui_speaker_level(
+    UiSpeakerLevel self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.serverId, serializer);
+    sse_encode_u_32(self.session, serializer);
+    sse_encode_f_32(self.levelDb, serializer);
   }
 
   @protected

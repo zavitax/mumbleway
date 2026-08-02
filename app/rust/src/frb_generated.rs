@@ -1806,6 +1806,11 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                 };
             }
             6 => {
+                let mut var_levels =
+                    <Vec<crate::api::mumbleway::UiSpeakerLevel>>::sse_decode(deserializer);
+                return crate::api::mumbleway::AppEvent::SpeakerLevels { levels: var_levels };
+            }
+            7 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_muted = <Option<bool>>::sse_decode(deserializer);
                 let mut var_deafened = <Option<bool>>::sse_decode(deserializer);
@@ -1817,7 +1822,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     by: var_by,
                 };
             }
-            7 => {
+            8 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_fingerprint = <String>::sse_decode(deserializer);
                 let mut var_changed = <bool>::sse_decode(deserializer);
@@ -1827,7 +1832,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     changed: var_changed,
                 };
             }
-            8 => {
+            9 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_text = <String>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Welcome {
@@ -1835,7 +1840,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     text: var_text,
                 };
             }
-            9 => {
+            10 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_session = <u32>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::SelfSession {
@@ -1964,6 +1969,20 @@ impl SseDecode for Vec<crate::api::mumbleway::UiChannel> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::api::mumbleway::UiChannel>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::mumbleway::UiSpeakerLevel> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::mumbleway::UiSpeakerLevel>::sse_decode(
+                deserializer,
+            ));
         }
         return ans_;
     }
@@ -2168,6 +2187,20 @@ impl SseDecode for crate::api::mumbleway::UiServerStatus {
             users: var_users,
             max_users: var_maxUsers,
             version: var_version,
+        };
+    }
+}
+
+impl SseDecode for crate::api::mumbleway::UiSpeakerLevel {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_serverId = <String>::sse_decode(deserializer);
+        let mut var_session = <u32>::sse_decode(deserializer);
+        let mut var_levelDb = <f32>::sse_decode(deserializer);
+        return crate::api::mumbleway::UiSpeakerLevel {
+            server_id: var_serverId,
+            session: var_session,
+            level_db: var_levelDb,
         };
     }
 }
@@ -2389,13 +2422,16 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 noise_floor_db.into_into_dart().into_dart(),
             ]
             .into_dart(),
+            crate::api::mumbleway::AppEvent::SpeakerLevels { levels } => {
+                [6.into_dart(), levels.into_into_dart().into_dart()].into_dart()
+            }
             crate::api::mumbleway::AppEvent::Moderated {
                 server_id,
                 muted,
                 deafened,
                 by,
             } => [
-                6.into_dart(),
+                7.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 muted.into_into_dart().into_dart(),
                 deafened.into_into_dart().into_dart(),
@@ -2407,20 +2443,20 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 fingerprint,
                 changed,
             } => [
-                7.into_dart(),
+                8.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 fingerprint.into_into_dart().into_dart(),
                 changed.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Welcome { server_id, text } => [
-                8.into_dart(),
+                9.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 text.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::SelfSession { server_id, session } => [
-                9.into_dart(),
+                10.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 session.into_into_dart().into_dart(),
             ]
@@ -2636,6 +2672,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiServerStatus>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiSpeakerLevel {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.server_id.into_into_dart().into_dart(),
+            self.session.into_into_dart().into_dart(),
+            self.level_db.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::UiSpeakerLevel
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiSpeakerLevel>
+    for crate::api::mumbleway::UiSpeakerLevel
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::UiSpeakerLevel {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiStats {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -2753,13 +2811,17 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 <f32>::sse_encode(threshold_db, serializer);
                 <f32>::sse_encode(noise_floor_db, serializer);
             }
+            crate::api::mumbleway::AppEvent::SpeakerLevels { levels } => {
+                <i32>::sse_encode(6, serializer);
+                <Vec<crate::api::mumbleway::UiSpeakerLevel>>::sse_encode(levels, serializer);
+            }
             crate::api::mumbleway::AppEvent::Moderated {
                 server_id,
                 muted,
                 deafened,
                 by,
             } => {
-                <i32>::sse_encode(6, serializer);
+                <i32>::sse_encode(7, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <Option<bool>>::sse_encode(muted, serializer);
                 <Option<bool>>::sse_encode(deafened, serializer);
@@ -2770,18 +2832,18 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 fingerprint,
                 changed,
             } => {
-                <i32>::sse_encode(7, serializer);
+                <i32>::sse_encode(8, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <String>::sse_encode(fingerprint, serializer);
                 <bool>::sse_encode(changed, serializer);
             }
             crate::api::mumbleway::AppEvent::Welcome { server_id, text } => {
-                <i32>::sse_encode(8, serializer);
+                <i32>::sse_encode(9, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <String>::sse_encode(text, serializer);
             }
             crate::api::mumbleway::AppEvent::SelfSession { server_id, session } => {
-                <i32>::sse_encode(9, serializer);
+                <i32>::sse_encode(10, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <u32>::sse_encode(session, serializer);
             }
@@ -2897,6 +2959,16 @@ impl SseEncode for Vec<crate::api::mumbleway::UiChannel> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::api::mumbleway::UiChannel>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::mumbleway::UiSpeakerLevel> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::mumbleway::UiSpeakerLevel>::sse_encode(item, serializer);
         }
     }
 }
@@ -3066,6 +3138,15 @@ impl SseEncode for crate::api::mumbleway::UiServerStatus {
         <u32>::sse_encode(self.users, serializer);
         <u32>::sse_encode(self.max_users, serializer);
         <String>::sse_encode(self.version, serializer);
+    }
+}
+
+impl SseEncode for crate::api::mumbleway::UiSpeakerLevel {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.server_id, serializer);
+        <u32>::sse_encode(self.session, serializer);
+        <f32>::sse_encode(self.level_db, serializer);
     }
 }
 

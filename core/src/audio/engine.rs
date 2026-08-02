@@ -361,6 +361,18 @@ impl AudioShared {
         self.capture_dropped_samples.store(0, Ordering::Relaxed);
     }
 
+    /// Current level per speaker, keyed by [`stream_key`].
+    ///
+    /// Reported from the audio rather than the roster: the server never says
+    /// who is talking, so it is only knowable from what actually arrives.
+    pub fn speaker_levels(&self) -> Vec<(u64, f32)> {
+        self.speakers
+            .lock()
+            .iter()
+            .map(|(key, buf)| (*key, buf.level_db()))
+            .collect()
+    }
+
     /// `(invented, decoded)` frames of incoming audio.
     pub fn frame_counts(&self) -> (u64, u64) {
         (

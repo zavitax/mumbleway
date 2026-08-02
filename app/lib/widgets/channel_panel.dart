@@ -138,6 +138,96 @@ class ChannelTree extends StatelessWidget {
 }
 
 /// Live roster of everyone in our current channel.
+
+/// One participant's voice level.
+///
+/// A meter rather than a word: "talking" and "silent" answer a question nobody
+/// is asking by the time they can read it, whereas a level shows who is on the
+/// channel, whether their microphone is working, and how loud they are, all at
+/// a glance. Grey while quiet so a busy channel is not a wall of colour, and
+/// green through red once they speak, so a talker who is clipping is obvious.
+class _VoiceMeter extends StatelessWidget {
+  const _VoiceMeter({required this.levelDb, required this.muted});
+
+  final double levelDb;
+  final bool muted;
+
+  /// Track size. Narrow and beside the name rather than under it: it is
+  /// glanced at, not read, and a full-width bar makes a quiet talker a sliver
+  /// too small to notice.
+  static const _width = 81.0;
+  static const _height = 7.0;
+
+  /// Quietest level worth showing. Speech arrives around -30 dBFS, so a floor
+  /// of -50 puts a normal voice comfortably past halfway rather than hard
+  /// against the left edge.
+  static const _floorDb = -50.0;
+
+  /// Matches the interval between level reports.
+  ///
+  /// Levels arrive ten times a second and fall in steps, which on screen is a
+  /// visible stutter. Interpolating across exactly one interval turns the steps
+  /// into a continuous slide; longer would lag behind the voice, shorter would
+  /// leave a gap before the next value arrives. Linear on purpose — easing
+  /// between consecutive steps would speed up and slow down within every one.
+  static const _tween = Duration(milliseconds: 100);
+
+  @override
+  Widget build(BuildContext context) {
+    final filled =
+        muted ? 0.0 : ((levelDb - _floorDb) / -_floorDb).clamp(0.0, 1.0);
+    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return SizedBox(
+      width: _width,
+      height: _height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_height / 2),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ColoredBox(color: grey.withValues(alpha: 0.22)),
+            ),
+            // `widthFactor` shrinks this Align to a fraction of its child while
+            // the child keeps its full width, so the gradient always spans the
+            // whole track and a given colour always means the same loudness.
+            // Sizing the gradient to the filled part instead would paint a
+            // quiet talker red at full scale.
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: filled),
+              duration: _tween,
+              curve: Curves.linear,
+              builder: (context, value, child) => value <= 0.001
+                  ? const SizedBox.shrink()
+                  : ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: value,
+                        child: child,
+                      ),
+                    ),
+              child: Container(
+                width: _width,
+                height: _height,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      StatusColors.connected,
+                      StatusColors.connecting,
+                      StatusColors.failed,
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ChannelUserList extends StatelessWidget {
   const ChannelUserList({
     super.key,
@@ -179,37 +269,40 @@ class _UserRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     final state = AppStateScope.of(context);
-    final (icon, color) = _statusVisual(user);
+    final speaking = state.runtimeFor(serverId).isSpeaking(user.session);
+    final (icon, color) = _statusVisual(user, speaking: speaking);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(icon, size: 18, color: color),
           const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  user.name,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: user.talking ? FontWeight.w700 : FontWeight.w400,
-                    color: user.talking ? StatusColors.talking : null,
-                  ),
-                ),
-                Text(
-                  user.status,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+            child: Text(
+              user.name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: speaking ? FontWeight.w700 : FontWeight.w400,
+                color: speaking ? StatusColors.talking : null,
+              ),
             ),
           ),
+          const SizedBox(width: 8),
+          _VoiceMeter(
+            levelDb: state.runtimeFor(serverId).speakerLevels[user.session] ??
+                -120.0,
+            muted: user.muted || user.localMute,
+          ),
+          // Prominent, because a participant who is muted without realising it
+          // is the commonest way a conversation quietly goes wrong.
+          if (user.muted || user.localMute) ...[
+            const SizedBox(width: 5),
+            const Icon(Icons.mic_off, size: 16, color: StatusColors.failed),
+          ],
+          const SizedBox(width: 2),
           // Local mute always works and affects only us, so it is the primary
           // action. Server-side mute needs a permission most users lack, so it
           // lives in the overflow menu.
@@ -320,11 +413,14 @@ class _UserRow extends StatelessWidget {
     ));
   }
 
-  static (IconData, Color) _statusVisual(UiUser u) {
+  /// `speaking` comes from the audio, not the roster: the server never says
+  /// who is talking, so `UiUser.talking` only ever changes when the server
+  /// happens to send an unrelated roster update.
+  static (IconData, Color) _statusVisual(UiUser u, {required bool speaking}) {
     if (u.deafened) return (Icons.hearing_disabled, StatusColors.failed);
     if (u.localMute) return (Icons.volume_off, StatusColors.failed);
-    if (u.muted) return (Icons.mic_off, StatusColors.idle);
-    if (u.talking) return (Icons.volume_up, StatusColors.talking);
+    if (u.muted) return (Icons.mic_off, StatusColors.failed);
+    if (speaking) return (Icons.volume_up, StatusColors.talking);
     return (Icons.person_outline, StatusColors.idle);
   }
 }

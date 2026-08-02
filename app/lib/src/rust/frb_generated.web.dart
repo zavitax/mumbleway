@@ -84,6 +84,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw);
 
   @protected
+  List<UiSpeakerLevel> dco_decode_list_ui_speaker_level(dynamic raw);
+
+  @protected
   List<UiUser> dco_decode_list_ui_user(dynamic raw);
 
   @protected
@@ -130,6 +133,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiServerStatus dco_decode_ui_server_status(dynamic raw);
+
+  @protected
+  UiSpeakerLevel dco_decode_ui_speaker_level(dynamic raw);
 
   @protected
   UiStats dco_decode_ui_stats(dynamic raw);
@@ -214,6 +220,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> sse_decode_list_ui_channel(SseDeserializer deserializer);
 
   @protected
+  List<UiSpeakerLevel> sse_decode_list_ui_speaker_level(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<UiUser> sse_decode_list_ui_user(SseDeserializer deserializer);
 
   @protected
@@ -262,6 +273,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiServerStatus sse_decode_ui_server_status(SseDeserializer deserializer);
+
+  @protected
+  UiSpeakerLevel sse_decode_ui_speaker_level(SseDeserializer deserializer);
 
   @protected
   UiStats sse_decode_ui_stats(SseDeserializer deserializer);
@@ -366,6 +380,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_ui_speaker_level(
+    List<UiSpeakerLevel> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ui_user(List<UiUser> self, SseSerializer serializer);
 
   @protected
@@ -419,6 +439,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_ui_server_status(
     UiServerStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_ui_speaker_level(
+    UiSpeakerLevel self,
     SseSerializer serializer,
   );
 

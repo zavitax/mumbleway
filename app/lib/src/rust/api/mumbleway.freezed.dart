@@ -55,7 +55,7 @@ extension AppEventPatterns on AppEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_Moderated value)?  moderated,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult Function( AppEvent_Moderated value)?  moderated,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -64,7 +64,8 @@ return users(_that);case AppEvent_Channels() when channels != null:
 return channels(_that);case AppEvent_Text() when text != null:
 return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
-return inputLevel(_that);case AppEvent_Moderated() when moderated != null:
+return inputLevel(_that);case AppEvent_SpeakerLevels() when speakerLevels != null:
+return speakerLevels(_that);case AppEvent_Moderated() when moderated != null:
 return moderated(_that);case AppEvent_Certificate() when certificate != null:
 return certificate(_that);case AppEvent_Welcome() when welcome != null:
 return welcome(_that);case AppEvent_SelfSession() when selfSession != null:
@@ -86,7 +87,7 @@ return selfSession(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_Moderated value)  moderated,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_SpeakerLevels value)  speakerLevels,required TResult Function( AppEvent_Moderated value)  moderated,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status():
@@ -95,7 +96,8 @@ return users(_that);case AppEvent_Channels():
 return channels(_that);case AppEvent_Text():
 return text(_that);case AppEvent_Stats():
 return stats(_that);case AppEvent_InputLevel():
-return inputLevel(_that);case AppEvent_Moderated():
+return inputLevel(_that);case AppEvent_SpeakerLevels():
+return speakerLevels(_that);case AppEvent_Moderated():
 return moderated(_that);case AppEvent_Certificate():
 return certificate(_that);case AppEvent_Welcome():
 return welcome(_that);case AppEvent_SelfSession():
@@ -113,7 +115,7 @@ return selfSession(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_Moderated value)?  moderated,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult? Function( AppEvent_Moderated value)?  moderated,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -122,7 +124,8 @@ return users(_that);case AppEvent_Channels() when channels != null:
 return channels(_that);case AppEvent_Text() when text != null:
 return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
-return inputLevel(_that);case AppEvent_Moderated() when moderated != null:
+return inputLevel(_that);case AppEvent_SpeakerLevels() when speakerLevels != null:
+return speakerLevels(_that);case AppEvent_Moderated() when moderated != null:
 return moderated(_that);case AppEvent_Certificate() when certificate != null:
 return certificate(_that);case AppEvent_Welcome() when welcome != null:
 return welcome(_that);case AppEvent_SelfSession() when selfSession != null:
@@ -143,7 +146,7 @@ return selfSession(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -151,7 +154,8 @@ return users(_that.serverId,_that.users);case AppEvent_Channels() when channels 
 return channels(_that.serverId,_that.channels);case AppEvent_Text() when text != null:
 return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when stats != null:
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
-return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_Moderated() when moderated != null:
+return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels() when speakerLevels != null:
+return speakerLevels(_that.levels);case AppEvent_Moderated() when moderated != null:
 return moderated(_that.serverId,_that.muted,_that.deafened,_that.by);case AppEvent_Certificate() when certificate != null:
 return certificate(_that.serverId,_that.fingerprint,_that.changed);case AppEvent_Welcome() when welcome != null:
 return welcome(_that.serverId,_that.text);case AppEvent_SelfSession() when selfSession != null:
@@ -173,7 +177,7 @@ return selfSession(_that.serverId,_that.session);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)  inputLevel,required TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)  moderated,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)  inputLevel,required TResult Function( List<UiSpeakerLevel> levels)  speakerLevels,required TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)  moderated,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status():
 return status(_that.field0);case AppEvent_Users():
@@ -181,7 +185,8 @@ return users(_that.serverId,_that.users);case AppEvent_Channels():
 return channels(_that.serverId,_that.channels);case AppEvent_Text():
 return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats():
 return stats(_that.field0);case AppEvent_InputLevel():
-return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_Moderated():
+return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels():
+return speakerLevels(_that.levels);case AppEvent_Moderated():
 return moderated(_that.serverId,_that.muted,_that.deafened,_that.by);case AppEvent_Certificate():
 return certificate(_that.serverId,_that.fingerprint,_that.changed);case AppEvent_Welcome():
 return welcome(_that.serverId,_that.text);case AppEvent_SelfSession():
@@ -199,7 +204,7 @@ return selfSession(_that.serverId,_that.session);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult? Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult? Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult? Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -207,7 +212,8 @@ return users(_that.serverId,_that.users);case AppEvent_Channels() when channels 
 return channels(_that.serverId,_that.channels);case AppEvent_Text() when text != null:
 return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when stats != null:
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
-return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_Moderated() when moderated != null:
+return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels() when speakerLevels != null:
+return speakerLevels(_that.levels);case AppEvent_Moderated() when moderated != null:
 return moderated(_that.serverId,_that.muted,_that.deafened,_that.by);case AppEvent_Certificate() when certificate != null:
 return certificate(_that.serverId,_that.fingerprint,_that.changed);case AppEvent_Welcome() when welcome != null:
 return welcome(_that.serverId,_that.text);case AppEvent_SelfSession() when selfSession != null:
@@ -639,6 +645,78 @@ as double,speaking: null == speaking ? _self.speaking : speaking // ignore: cast
 as bool,thresholdDb: null == thresholdDb ? _self.thresholdDb : thresholdDb // ignore: cast_nullable_to_non_nullable
 as double,noiseFloorDb: null == noiseFloorDb ? _self.noiseFloorDb : noiseFloorDb // ignore: cast_nullable_to_non_nullable
 as double,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppEvent_SpeakerLevels extends AppEvent {
+  const AppEvent_SpeakerLevels({required final  List<UiSpeakerLevel> levels}): _levels = levels,super._();
+  
+
+ final  List<UiSpeakerLevel> _levels;
+ List<UiSpeakerLevel> get levels {
+  if (_levels is EqualUnmodifiableListView) return _levels;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_levels);
+}
+
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppEvent_SpeakerLevelsCopyWith<AppEvent_SpeakerLevels> get copyWith => _$AppEvent_SpeakerLevelsCopyWithImpl<AppEvent_SpeakerLevels>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppEvent_SpeakerLevels&&const DeepCollectionEquality().equals(other._levels, _levels));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_levels));
+
+@override
+String toString() {
+  return 'AppEvent.speakerLevels(levels: $levels)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppEvent_SpeakerLevelsCopyWith<$Res> implements $AppEventCopyWith<$Res> {
+  factory $AppEvent_SpeakerLevelsCopyWith(AppEvent_SpeakerLevels value, $Res Function(AppEvent_SpeakerLevels) _then) = _$AppEvent_SpeakerLevelsCopyWithImpl;
+@useResult
+$Res call({
+ List<UiSpeakerLevel> levels
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppEvent_SpeakerLevelsCopyWithImpl<$Res>
+    implements $AppEvent_SpeakerLevelsCopyWith<$Res> {
+  _$AppEvent_SpeakerLevelsCopyWithImpl(this._self, this._then);
+
+  final AppEvent_SpeakerLevels _self;
+  final $Res Function(AppEvent_SpeakerLevels) _then;
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? levels = null,}) {
+  return _then(AppEvent_SpeakerLevels(
+levels: null == levels ? _self._levels : levels // ignore: cast_nullable_to_non_nullable
+as List<UiSpeakerLevel>,
   ));
 }
 

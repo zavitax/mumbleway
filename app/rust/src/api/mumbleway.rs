@@ -147,6 +147,13 @@ pub enum AppEvent {
         /// wind rather than as a mis-set control.
         noise_floor_db: f32,
     },
+    /// Level of each speaker currently producing audio.
+    ///
+    /// The server never reports who is talking, so the only honest source is
+    /// the audio itself.
+    SpeakerLevels {
+        levels: Vec<UiSpeakerLevel>,
+    },
     /// Someone else changed our mute or deafen state.
     Moderated {
         server_id: String,
@@ -171,6 +178,15 @@ pub enum AppEvent {
         server_id: String,
         session: u32,
     },
+}
+
+/// One speaker's current loudness.
+#[derive(Debug, Clone)]
+pub struct UiSpeakerLevel {
+    pub server_id: String,
+    pub session: u32,
+    /// dBFS, falling towards silence when they stop.
+    pub level_db: f32,
 }
 
 /// Noise-suppression strength, exposed as a simple selector.
@@ -235,7 +251,7 @@ struct App {
     /// out to every server at once.
     outgoing: OutgoingFanout,
     /// Maps a server id to its audio slot, which namespaces speaker streams.
-    slots: Mutex<HashMap<String, u16>>,
+    slots: Arc<Mutex<HashMap<String, u16>>>,
     /// Last status seen per server, so connection cues fire on transitions
     /// rather than on every repeated status event. Held only to keep the map
     /// alive alongside the task that reads it.
@@ -405,6 +421,9 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     let manager = SessionManager::new(identity.clone(), "MumbleWay 0.1", ev_tx);
 
     let level_shared = shared.clone();
+    // Shared with App so the level task can name the server a stream belongs to.
+    let slots: Arc<Mutex<HashMap<String, u16>>> = Arc::new(Mutex::new(HashMap::new()));
+    let level_slots = slots.clone();
     let cue_shared = shared.clone();
     let last_status: Arc<Mutex<HashMap<String, ConnStatus>>> = Arc::new(Mutex::new(HashMap::new()));
     let status_tracker = last_status.clone();
@@ -529,6 +548,27 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 threshold_db: level_shared.activation_threshold_db(),
                 noise_floor_db: level_shared.noise_floor_db(),
             });
+
+            // Who is speaking, and how loudly. Derived from the decoded audio
+            // because nothing on the wire says it.
+            let slots = level_slots.lock().clone();
+            let levels: Vec<UiSpeakerLevel> = level_shared
+                .speaker_levels()
+                .into_iter()
+                .filter_map(|(key, level_db)| {
+                    let slot = (key >> 32) as u16;
+                    let session = key as u32;
+                    slots
+                        .iter()
+                        .find(|(_, s)| **s == slot)
+                        .map(|(id, _)| UiSpeakerLevel {
+                            server_id: id.clone(),
+                            session,
+                            level_db,
+                        })
+                })
+                .collect();
+            emit(AppEvent::SpeakerLevels { levels });
         }
     });
 
@@ -561,7 +601,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         shared,
         _audio: audio,
         outgoing,
-        slots: Mutex::new(HashMap::new()),
+        slots,
         _last_status: last_status,
         identity,
     });

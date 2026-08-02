@@ -182,9 +182,55 @@ class ServerRuntime {
         .toList();
   }
 
+  /// Current loudness per speaker session, in dBFS.
+  ///
+  /// Comes from the decoded audio: the server never says who is talking, so
+  /// the roster cannot know it.
+  final Map<int, double> speakerLevels = {};
+
   /// Names of everyone currently talking, for the floating island.
-  List<String> get speakingNames =>
-      users.where((u) => u.talking).map((u) => u.name).toList();
+  /// Above this a speaker counts as talking, and the meter lights up.
+  static const speakingFloorDb = -55.0;
+
+  bool isSpeaking(int session) =>
+      (speakerLevels[session] ?? _silentDb) > speakingFloorDb;
+
+  static const _silentDb = -120.0;
+
+  /// How fast a meter may fall, in dB per report.
+  ///
+  /// Reports arrive ten times a second, so this empties a normal speaking
+  /// level in about a third of a second: fast enough to read as "they
+  /// stopped", slow enough not to flicker between words.
+  static const _fallPerReportDb = 9.0;
+
+  /// Records a level, rising at once and falling no faster than the limit.
+  void noteSpeakerLevel(int session, double levelDb) {
+    final current = speakerLevels[session] ?? _silentDb;
+    speakerLevels[session] =
+        levelDb >= current ? levelDb : _fall(current, levelDb);
+  }
+
+  /// Lets everyone absent from a report fall towards silence.
+  void decayUnreported(Set<int> reported) {
+    for (final session in speakerLevels.keys.toList()) {
+      if (reported.contains(session)) continue;
+      final current = speakerLevels[session]!;
+      if (current <= _silentDb) {
+        speakerLevels.remove(session);
+      } else {
+        speakerLevels[session] = _fall(current, _silentDb);
+      }
+    }
+  }
+
+  static double _fall(double from, double towards) =>
+      (from - _fallPerReportDb).clamp(towards, from);
+
+  List<String> get speakingNames => users
+      .where((u) => isSpeaking(u.session))
+      .map((u) => u.name)
+      .toList();
 }
 
 /// Central application state.
@@ -1192,6 +1238,22 @@ class AppState extends ChangeNotifier {
         _speaking = speaking;
         _thresholdDb = thresholdDb;
         _noiseFloorDb = noiseFloorDb;
+        _pushOverlay();
+      case AppEvent_SpeakerLevels(:final levels):
+        final reported = <String, Set<int>>{};
+        for (final entry in levels) {
+          runtimeFor(entry.serverId).noteSpeakerLevel(
+            entry.session,
+            entry.levelDb,
+          );
+          (reported[entry.serverId] ??= <int>{}).add(entry.session);
+        }
+        // A speaker who stops is reaped from the mixer and simply stops being
+        // reported, so without this their meter freezes at whatever it last
+        // showed — a full bar for someone who went quiet a minute ago.
+        for (final entry in runtimes.entries) {
+          entry.value.decayUnreported(reported[entry.key] ?? const <int>{});
+        }
         _pushOverlay();
       case AppEvent_Moderated(
           :final muted,

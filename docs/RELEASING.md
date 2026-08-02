@@ -108,6 +108,17 @@ Keychain Access.
 
 ### 2c. Register the app and a provisioning profile
 
+An App ID is scoped to a platform, so iOS and macOS need **two separate
+records** — both carrying the bundle id `com.mumbleway.mumbleway`, which the
+two targets share. In **Identifiers** they show up as two rows reading
+identically, told apart only by the platform column. Nothing done to one
+affects the other, and the commonest way to lose an afternoon here is to fix a
+capability on the iOS record and expect the Mac build to notice.
+
+Do the steps below for the iOS record now. Do them again for the macOS record
+whenever you first build for the Mac — step 2 in particular, since the build
+fails without it.
+
 1. **Identifiers** → **+** → App ID, bundle id `com.mumbleway.mumbleway`.
 2. Enable **iCloud**, and under it **Key-value storage**. This one is not
    optional: the app declares
@@ -193,6 +204,40 @@ plus its password is your signing identity; anyone holding both can ship
 software as you. If one leaks, revoke the certificate in the developer portal
 immediately — revocation is instant and free.
 
+### 2g. macOS
+
+There is no macOS job. `publish.yml` builds three things — Play, TestFlight and
+MSIX — and the Mac build is something you run locally.
+
+So there is **no secret for a macOS provisioning profile**, and in particular
+`APPLE_PROVISIONING_PROFILE` is not it: that one is read by the TestFlight job
+and holds the `.mobileprovision` for iOS. A macOS profile placed there breaks
+the iOS build without saying anything about macOS.
+
+For a local Mac build, nothing needs to reach GitHub at all. Enable iCloud on
+the macOS App ID per 2c and let Xcode's automatic signing refresh the profile;
+that is usually the whole job. Without it the build stops before compiling
+anything:
+
+```
+error: "Runner" has entitlements that require signing with a development
+certificate. Enable development signing in the Signing & Capabilities editor.
+```
+
+Shipping to the **Mac App Store** would mean adding a fourth job, and it cannot
+reuse the iOS material: macOS wants *Mac App Distribution* to sign the app and
+*Mac Installer Distribution* to sign the `.pkg` around it, which are different
+certificate types from the iOS one in 2b. That job would need:
+
+| Secret | Contents |
+|---|---|
+| `MACOS_PROVISIONING_PROFILE` | base64 of the `.provisionprofile` |
+| `MACOS_CERTIFICATE_P12` | base64 of the Mac App Distribution certificate |
+| `MACOS_INSTALLER_CERTIFICATE_P12` | base64 of the Mac Installer Distribution certificate |
+
+The three `APP_STORE_CONNECT_*` secrets and `APPLE_TEAM_ID` carry over as they
+are — an API key is per-account, not per-platform.
+
 ---
 
 ## 3. Android — upload key and Play access
@@ -234,6 +279,7 @@ reset by support — but that is a support ticket you would rather not file.
 | Direct download | signed `.zip` | what CI publishes today |
 | App Store | `.ipa` | uploaded to TestFlight first; review takes days |
 | Google Play | `.aab` | APKs are for direct install only; Play requires a bundle |
+| Mac App Store | `.pkg` | no CI job; built locally, and see 2g for what one would need |
 
 ---
 

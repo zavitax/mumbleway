@@ -112,11 +112,32 @@ final class PipController: NSObject {
 
     render()
     startRenderTimer()
+    beginWhenPossible(attemptsLeft: 12)
+  }
 
-    // Starting while already backgrounded is rejected; automatic start covers
-    // that case, so a failure here is not fatal.
-    if let pipController, !pipController.isPictureInPictureActive {
+  /// Starts once the controller says it can.
+  ///
+  /// `isPictureInPicturePossible` only turns true after the layer has been
+  /// handed at least one frame and laid out, which has not happened yet on the
+  /// call that creates it. Starting anyway fails, and the failure is silent
+  /// from the user's side — the window simply never appears — so this waits
+  /// for the flag instead of firing once and hoping.
+  private func beginWhenPossible(attemptsLeft: Int) {
+    guard let pipController else { return }
+    guard !pipController.isPictureInPictureActive else { return }
+
+    if pipController.isPictureInPicturePossible {
       pipController.startPictureInPicture()
+      return
+    }
+    guard attemptsLeft > 0 else {
+      // Not an error: automatic start still covers leaving the app, which is
+      // how the window normally appears.
+      NSLog("MumbleWay: Picture in Picture not ready; leaving it to auto-start.")
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+      self?.beginWhenPossible(attemptsLeft: attemptsLeft - 1)
     }
   }
 

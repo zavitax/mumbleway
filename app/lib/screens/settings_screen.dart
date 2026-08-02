@@ -575,7 +575,7 @@ class _OverlayTileState extends State<_OverlayTile> {
       case FloatingKind.iosPictureInPicture:
         return 'Picture in Picture, appearing when you leave the app. '
             'The system allows three buttons: play/pause talks, '
-            'skip back mutes, skip forward deafens.';
+            'skip back mutes, skip forward hangs up (twice to confirm).';
       case FloatingKind.macosPanel:
         return 'A small always-on-top panel with talk, mute, deafen '
             'and hang up.';
@@ -618,21 +618,6 @@ class _OverlayTileState extends State<_OverlayTile> {
                   }
                 },
         ),
-        // Off by default, and only offered where it is the only way to get a
-        // hang-up at all: closing a window is not an action anyone expects to
-        // drop their call.
-        if (kind == FloatingKind.iosPictureInPicture)
-          SwitchListTile(
-            secondary: const Icon(Icons.call_end),
-            title: const Text('Closing the window hangs up'),
-            subtitle: const Text(
-              'Picture in Picture has no spare button for hanging up. '
-              'Returning to the app never disconnects.',
-            ),
-            isThreeLine: true,
-            value: state.closeHangsUp,
-            onChanged: (v) => state.setCloseHangsUp(value: v),
-          ),
       ],
     );
   }

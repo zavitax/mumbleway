@@ -65,15 +65,16 @@ class OverlayBridge {
   /// Whether a floating window is possible on this platform at all.
   bool get isSupported => kind != FloatingKind.none;
 
-  /// Whether the platform gives the window its own hang-up control.
+  /// Whether the window offers a deafen control.
   ///
-  /// iOS does not: Picture in Picture exposes play/pause and the two skip
-  /// buttons and nothing else, and those are spent on talk, mute and deafen.
-  bool get hasHangup => hasHangupFor(kind);
+  /// iOS does not. Picture in Picture exposes play/pause and the two skip
+  /// buttons and nothing else, and those go to talk, mute and hang up —
+  /// deafen is the one that gives way, being a comfort setting rather than a
+  /// control the call needs. It stays available in the app.
+  bool get hasDeafen => hasDeafenFor(kind);
 
-  static bool hasHangupFor(FloatingKind kind) =>
-      kind != FloatingKind.iosPictureInPicture &&
-      kind != FloatingKind.none;
+  static bool hasDeafenFor(FloatingKind kind) =>
+      kind != FloatingKind.iosPictureInPicture && kind != FloatingKind.none;
 
   void _ensureHandler() {
     if (_handlerInstalled) return;
@@ -203,19 +204,4 @@ class OverlayBridge {
     }
   }
 
-  /// iOS only: whether dismissing the Picture in Picture window also leaves
-  /// the server.
-  ///
-  /// Off by default. Picture in Picture has no spare button for hang-up, and
-  /// wiring it to the close button by default would mean tidying the window
-  /// away drops the call — a mistake that is silent until someone talks into a
-  /// dead connection.
-  Future<void> setCloseHangsUp({required bool value}) async {
-    if (kind != FloatingKind.iosPictureInPicture) return;
-    try {
-      await _channel.invokeMethod<void>('setCloseHangsUp', value);
-    } catch (_) {
-      // Nothing to configure if the controller is not up yet; show() re-sends.
-    }
-  }
 }

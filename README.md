@@ -68,7 +68,7 @@ than hidden behind one abstraction.
 | Platform | Mechanism | Controls |
 | --- | --- | --- |
 | Android | Overlay window, `SYSTEM_ALERT_WINDOW` | talk, mute, deafen, hang up |
-| iOS / iPadOS | Picture in Picture | talk, mute, deafen |
+| iOS / iPadOS | Picture in Picture | talk, mute, hang up |
 | macOS | Floating `NSPanel` | talk, mute, deafen, hang up |
 | Windows | — | the window is already there |
 
@@ -102,10 +102,16 @@ All of them show the same two things as the main screen:
 
   The system owns the buttons. There are exactly three programmable ones and no
   API to add a fourth or relabel them, so they go to **play/pause → talk,
-  skip back → mute, skip forward → deafen**. Hang-up does not fit; it can be
-  bound to the close button, but only behind a setting that is off by default,
-  because tidying a window away should not silently drop a call. Returning to
-  the app never disconnects.
+  skip back → mute, skip forward → hang up**. Deafen is the one that gives way,
+  being a comfort setting rather than a control the call needs; it stays in the
+  app and on the other platforms.
+
+  Hang-up takes two presses. The skip buttons are momentary and unlabelled,
+  they sit next to the talk control, and ending a call is the one action here
+  that cannot be undone — so the first press arms it and says so in the frame,
+  and the arming lapses after about five seconds. Since the buttons carry no
+  labels of their own and cannot be given any, the frame spells out what each
+  one does. Closing the window only closes the window.
 
 * **macOS** uses a non-activating floating panel, so clicking talk does not pull
   the app forward and steal focus from whatever is in front.

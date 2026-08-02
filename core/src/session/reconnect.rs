@@ -1,7 +1,7 @@
 //! Reconnection policy.
 //!
 //! Tuned for mobile use: a rider losing signal in a tunnel should be back within
-//! seconds of regaining it, so the ceiling is deliberately low (20 s rather than
+//! seconds of regaining it, so the ceiling is deliberately low (10 s rather than
 //! the minutes a desktop app might use). Jitter keeps a room full of clients from
 //! stampeding a server that just restarted.
 
@@ -22,7 +22,7 @@ impl Default for BackoffPolicy {
     fn default() -> Self {
         Self {
             initial: Duration::from_millis(500),
-            max: Duration::from_secs(20),
+            max: Duration::from_secs(10),
             multiplier: 1.8,
             jitter: 0.25,
         }
@@ -46,7 +46,10 @@ impl BackoffPolicy {
         // Centre the jitter on the base delay: base +/- spread/2.
         let offset = spread * (sample.clamp(0.0, 1.0) - 0.5);
         let millis = (base + offset).max(0.0);
-        Duration::from_millis(millis as u64)
+        // Clamped after jitter, not before: `max` is a ceiling on the wait a
+        // rider actually sees, and upward jitter at the top of the curve would
+        // otherwise push past it.
+        Duration::from_millis(millis as u64).min(self.max)
     }
 
     /// Applies jitter from the thread RNG.
@@ -146,7 +149,23 @@ mod tests {
     #[test]
     fn ceiling_stays_low_enough_for_mobile_use() {
         // A rider leaving a tunnel should not wait minutes to rejoin.
-        assert!(BackoffPolicy::default().max <= Duration::from_secs(30));
+        assert_eq!(BackoffPolicy::default().max, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn jitter_never_pushes_the_wait_past_the_ceiling() {
+        // The ceiling is a promise about the longest wait a rider can see, so
+        // it has to hold after jitter as well. Sampling the top of the range
+        // is the case that used to exceed it.
+        let p = BackoffPolicy::default();
+        for attempt in 0..40 {
+            for sample in [0.0, 0.5, 1.0] {
+                assert!(
+                    p.delay_with_sample(attempt, sample) <= p.max,
+                    "attempt {attempt} at sample {sample} exceeded the ceiling"
+                );
+            }
+        }
     }
 
     #[test]

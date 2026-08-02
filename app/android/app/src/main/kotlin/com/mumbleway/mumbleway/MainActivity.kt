@@ -129,10 +129,6 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
 
-                // iOS only, where the close button has to stand in for a
-                // hang-up control the system does not offer.
-                "setCloseHangsUp" -> result.success(true)
-
                 else -> result.notImplemented()
             }
         }

@@ -53,11 +53,6 @@ class MainFlutterWindow: NSWindow {
           speaking: arguments["speaking"] as? Bool ?? false)
         result(true)
 
-      case "setCloseHangsUp":
-        // iOS only: the panel has a hang-up button of its own, so closing it
-        // never needs to stand in for one.
-        result(true)
-
       default:
         result(FlutterMethodNotImplemented)
       }

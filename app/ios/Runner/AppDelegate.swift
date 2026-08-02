@@ -89,10 +89,6 @@ import UIKit
         (self.pip as? PipController)?.update(snapshot)
         result(true)
 
-      case "setCloseHangsUp":
-        (self.pip as? PipController)?.setCloseHangsUp(call.arguments as? Bool ?? false)
-        result(true)
-
       default:
         result(FlutterMethodNotImplemented)
       }

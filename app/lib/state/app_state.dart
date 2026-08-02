@@ -185,7 +185,6 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
   static const _prefsInputGain = 'mumbleway.inputGain';
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
-  static const _kCloseHangsUp = 'mumbleway.closeHangsUp';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -370,7 +369,6 @@ class AppState extends ChangeNotifier {
     // Proxy use defaults to on: a machine behind one usually cannot reach
     // anything without it, and detection reports "direct" when there is none.
     SystemProxy.instance.enabled = prefs.getBool(_prefsProxyEnabled) ?? true;
-    _closeHangsUp = prefs.getBool(_kCloseHangsUp) ?? false;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -870,22 +868,10 @@ class AppState extends ChangeNotifier {
 
   final OverlayBridge overlay = OverlayBridge.instance;
   bool overlayEnabled = false;
-  bool _closeHangsUp = false;
   String _lastOverlaySignature = '';
 
   bool get overlaySupported => overlay.isSupported;
   FloatingKind get overlayKind => overlay.kind;
-
-  /// Whether dismissing the iOS floating window also leaves the server.
-  bool get closeHangsUp => _closeHangsUp;
-
-  Future<void> setCloseHangsUp({required bool value}) async {
-    _closeHangsUp = value;
-    await overlay.setCloseHangsUp(value: value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kCloseHangsUp, value);
-    notifyListeners();
-  }
 
   /// Shows the floating window. Returns an error message, or null on success.
   Future<String?> enableOverlay() async {
@@ -914,9 +900,6 @@ class AppState extends ChangeNotifier {
 
     final error = await overlay.show();
     overlayEnabled = error == null;
-    if (overlayEnabled) {
-      await overlay.setCloseHangsUp(value: _closeHangsUp);
-    }
     notifyListeners();
     _lastOverlaySignature = '';
     _pushOverlay();

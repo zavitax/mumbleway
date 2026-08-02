@@ -31,17 +31,20 @@ struct CallSnapshot {
 ///
 /// The system owns the buttons. There are exactly three programmable ones —
 /// play/pause and the two skip buttons — and no API to add a fourth or to
-/// relabel them, so they are spent on the three actions worth having a glove
-/// on a handlebar reach for:
+/// relabel them:
 ///
 ///   * play/pause     → talk
 ///   * skip backward  → mute
-///   * skip forward   → deafen
+///   * skip forward   → hang up
 ///
-/// Hang-up does not fit. The close button can be wired to it, but only behind
-/// an explicit setting: tidying the window away is not a thing anyone expects
-/// to drop their call, and the mistake is silent until someone talks into a
-/// connection that is no longer there.
+/// Deafen is the one that does not fit, and it is the right one to drop: it is
+/// a comfort setting, while the other three are the controls a call needs.
+/// Deafen stays available in the app and on the other platforms.
+///
+/// Hang-up takes two taps. The skip buttons are momentary and unlabelled, they
+/// sit next to the talk control, and ending a call is the one action here that
+/// cannot be undone — so the first tap arms it and says so in the frame, and
+/// the arming lapses on its own.
 @available(iOS 15.0, *)
 final class PipController: NSObject {
   private let channel: FlutterMethodChannel
@@ -53,9 +56,8 @@ final class PipController: NSObject {
   private var renderTimer: Timer?
 
   private var snapshot = CallSnapshot()
-  private var closeHangsUp = false
-  /// Set when the user taps restore, so a close can be told from a return.
-  private var restoring = false
+  /// Frame at which an armed hang-up stops counting, or nil when not armed.
+  private var hangupArmedUntil: UInt64?
 
   /// 16:9 at a size that stays legible when the system shrinks the window.
   private static let frameSize = CGSize(width: 480, height: 270)
@@ -154,8 +156,9 @@ final class PipController: NSObject {
     render()
   }
 
-  func setCloseHangsUp(_ value: Bool) {
-    closeHangsUp = value
+  private var hangupArmed: Bool {
+    guard let hangupArmedUntil else { return false }
+    return frame < hangupArmedUntil
   }
 
   // MARK: - Frame production
@@ -356,6 +359,18 @@ final class PipController: NSObject {
   }
 
   private func drawTitle(in bounds: CGRect) {
+    // The arming prompt outranks everything: it is the only state here with a
+    // deadline, and the frame is the only place it can be said.
+    if hangupArmed {
+      drawText(
+        "Skip forward again to hang up",
+        in: CGRect(x: 12, y: 136, width: bounds.width - 24, height: 26),
+        size: 17, weight: .heavy,
+        colour: UIColor(red: 1.0, green: 0.42, blue: 0.38, alpha: 1),
+        alignment: .center)
+      return
+    }
+
     let text: String
     if !snapshot.connected {
       text = "Not connected"
@@ -430,6 +445,14 @@ final class PipController: NSObject {
       "open", in: CGRect(x: bounds.width - 42, y: 193, width: 38, height: 16),
       size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
       alignment: .left)
+
+    // The system controls carry no labels and cannot be given any, so what
+    // they do is spelled out here — the only surface this window has.
+    drawText(
+      "\u{25C0} mute      \u{25B6}\u{2016} talk      \u{25B6}\u{25B6} hang up",
+      in: CGRect(x: 8, y: 246, width: bounds.width - 16, height: 16),
+      size: 10, weight: .semibold, colour: UIColor(white: 1, alpha: 0.45),
+      alignment: .center)
   }
 
   private func drawTick(
@@ -522,9 +545,19 @@ extension PipController: AVPictureInPictureSampleBufferPlaybackDelegate {
     _ pictureInPictureController: AVPictureInPictureController,
     skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void
   ) {
-    // Only the direction carries meaning. Backward mutes, forward deafens —
-    // the wider action is the one further forward.
-    channel.invokeMethod(skipInterval.seconds < 0 ? "toggleMute" : "toggleDeafen", arguments: nil)
+    // Only the direction carries meaning; the interval is ignored.
+    if skipInterval.seconds < 0 {
+      channel.invokeMethod("toggleMute", arguments: nil)
+    } else if hangupArmed {
+      hangupArmedUntil = nil
+      channel.invokeMethod("hangup", arguments: nil)
+    } else {
+      // Roughly five seconds at ten frames a second: long enough to read the
+      // prompt and press again, short enough that a stray tap does not leave
+      // the call one press from ending for the rest of the ride.
+      hangupArmedUntil = frame &+ 50
+    }
+    render()
     completionHandler()
   }
 }
@@ -543,21 +576,15 @@ extension PipController: AVPictureInPictureControllerDelegate {
     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler
       completionHandler: @escaping (Bool) -> Void
   ) {
-    restoring = true
     completionHandler(true)
   }
 
   func pictureInPictureControllerDidStopPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
-    let wasRestore = restoring
-    restoring = false
-
-    // Only a genuine dismissal counts, and only when the user asked for it to
-    // mean hang up. Coming back into the app must never drop the call.
-    if closeHangsUp && !wasRestore {
-      channel.invokeMethod("hangup", arguments: nil)
-    }
+    // Closing the window only closes the window. Hang-up has a button of its
+    // own now, so dismissing this must never drop the call.
+    hangupArmedUntil = nil
     channel.invokeMethod("dismissed", arguments: nil)
   }
 }

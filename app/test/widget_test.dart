@@ -315,15 +315,13 @@ void main() {
     expect(opacityNow(), greaterThan(0.25));
   });
 
-  test('only Picture in Picture lacks a hang-up control', () {
+  test('only Picture in Picture lacks a deafen control', () {
     // The system owns the buttons there and offers exactly three, which go to
-    // talk, mute and deafen. Everywhere else the window draws its own.
-    expect(
-      OverlayBridge.hasHangupFor(FloatingKind.iosPictureInPicture),
-      isFalse,
-    );
-    expect(OverlayBridge.hasHangupFor(FloatingKind.androidOverlay), isTrue);
-    expect(OverlayBridge.hasHangupFor(FloatingKind.macosPanel), isTrue);
-    expect(OverlayBridge.hasHangupFor(FloatingKind.none), isFalse);
+    // talk, mute and hang up. Deafen is the one that gives way, being a
+    // comfort setting rather than a control the call needs.
+    expect(OverlayBridge.hasDeafenFor(FloatingKind.iosPictureInPicture), isFalse);
+    expect(OverlayBridge.hasDeafenFor(FloatingKind.androidOverlay), isTrue);
+    expect(OverlayBridge.hasDeafenFor(FloatingKind.macosPanel), isTrue);
+    expect(OverlayBridge.hasDeafenFor(FloatingKind.none), isFalse);
   });
 }

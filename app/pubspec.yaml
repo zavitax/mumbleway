@@ -65,6 +65,25 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  msix: ^3.18.0
+
+# Windows packaging, after a Windows release build:
+#   dart run msix:create --build-windows false --install-certificate false
+# (without that last flag the tool stops on an interactive prompt).
+#
+# These defaults produce a test-signed package for sideloading, which is what a
+# developer without a store account can actually install and run. A store
+# submission needs the identity and publisher strings Partner Center reserves,
+# which are account-specific and cannot be guessed, so the publish workflow
+# passes them in from secrets rather than hard-coding placeholders here that
+# would yield a package Partner Center silently rejects. See docs/RELEASING.md.
+msix_config:
+  display_name: MumbleWay
+  publisher_display_name: MumbleWay
+  identity_name: com.mumbleway.mumbleway
+  msix_version: 1.0.0.0
+  logo_path: assets/icon/mumbleway.png
+  capabilities: microphone, internetClient, internetClientServer, privateNetworkClientServer
 
 # App icon generation. Regenerate after changing assets/icon/*.svg with:
 #   rsvg-convert -w 1024 -h 1024 -o assets/icon/mumbleway.png assets/icon/mumbleway.svg

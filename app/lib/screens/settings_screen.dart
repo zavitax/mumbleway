@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/button_controller.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../widgets/language_button.dart';
@@ -85,6 +86,15 @@ class SettingsScreen extends StatelessWidget {
             ),
             const _OverlayTile(),
           ],
+
+          const Divider(height: 32),
+          const _SectionHeader('Buttons'),
+          const _Explainer(
+            'Bind a handlebar Bluetooth remote, headset button or keyboard key. '
+            'On Android these keep working with the app in the background while '
+            'the floating button is enabled.',
+          ),
+          const _ButtonBindings(),
 
           const Divider(height: 32),
           const _SectionHeader('Network'),
@@ -380,6 +390,105 @@ class _LabelledSlider extends StatelessWidget {
           divisions: (max - min).round(),
           onChanged: onChanged,
         ),
+      ],
+    );
+  }
+}
+
+/// Lists bound buttons and learns new ones.
+///
+/// Learning captures whatever the device sends rather than offering a list of
+/// keys: Bluetooth remotes report all sorts of codes, including ones Flutter
+/// has no name for, and the only reliable way to know what a given remote
+/// sends is to press it.
+class _ButtonBindings extends StatefulWidget {
+  const _ButtonBindings();
+
+  @override
+  State<_ButtonBindings> createState() => _ButtonBindingsState();
+}
+
+class _ButtonBindingsState extends State<_ButtonBindings> {
+  ButtonAction _action = ButtonAction.pushToTalk;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    final learning = state.buttons.isLearning;
+
+    return Column(
+      children: [
+        for (final b in state.buttonBindings)
+          ListTile(
+            leading: const Icon(Icons.radio_button_checked),
+            title: Text(b.displayName),
+            subtitle: Text(b.action.label),
+            trailing: IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Remove binding',
+              onPressed: () => state.removeButtonBinding(b.keyId),
+            ),
+          ),
+        if (state.buttonBindings.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            child: Text('No buttons bound yet.',
+                style: TextStyle(fontSize: 12)),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<ButtonAction>(
+                  initialValue: _action,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Action',
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  ),
+                  items: [
+                    for (final a in ButtonAction.values)
+                      DropdownMenuItem(value: a, child: Text(a.label)),
+                  ],
+                  onChanged: (v) => setState(() => _action = v ?? _action),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.tonal(
+                onPressed: learning
+                    ? state.cancelLearningButton
+                    : () => state.learnButton(_action, (b) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Bound ${b.displayName}')),
+                          );
+                        }),
+                child: Text(learning ? 'Cancel' : 'Learn'),
+              ),
+            ],
+          ),
+        ),
+        if (learning)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: Row(
+              children: [
+                SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Press the button on your remote now…',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

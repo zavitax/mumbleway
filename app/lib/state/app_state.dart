@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/button_controller.dart';
 import '../services/overlay.dart';
 import '../services/proxy.dart';
 import '../src/rust/api/mumbleway.dart';
@@ -187,6 +188,7 @@ class AppState extends ChangeNotifier {
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
+  static const _prefsButtons = 'mumbleway.buttonBindings';
 
   /// Languages the interface is available in.
   static const supportedLocales = [Locale('en'), Locale('ru')];
@@ -328,6 +330,8 @@ class AppState extends ChangeNotifier {
       // Resolve the proxy once at startup; createClient() uses the cached
       // result, so no request pays for a subprocess.
       await SystemProxy.instance.refresh();
+
+      _setUpButtons(prefs);
 
       await _applyAudioSettings();
       await refreshDevices();
@@ -800,6 +804,59 @@ class AppState extends ChangeNotifier {
     setTransmitting(on_: on);
     notifyListeners();
     _pushOverlay();
+  }
+
+  // --- hardware and Bluetooth buttons -------------------------------------
+
+  final ButtonController buttons = ButtonController.instance;
+
+  List<ButtonBinding> get buttonBindings => buttons.bindings;
+
+  void _setUpButtons(SharedPreferences prefs) {
+    buttons.onTransmit = setTransmit;
+    buttons.onToggleMute = toggleMute;
+    buttons.onToggleDeafen = toggleDeafen;
+
+    final raw = prefs.getStringList(_prefsButtons) ?? const [];
+    final loaded = <ButtonBinding>[];
+    for (final s in raw) {
+      final b = ButtonBinding.fromJson(jsonDecode(s) as Map<String, dynamic>);
+      if (b != null) loaded.add(b);
+    }
+    buttons.setBindings(loaded);
+    buttons.install();
+  }
+
+  Future<void> _persistBindings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      _prefsButtons,
+      buttons.bindings.map((b) => jsonEncode(b.toJson())).toList(),
+    );
+  }
+
+  /// Waits for the next button press and binds it to [action].
+  void learnButton(ButtonAction action, void Function(ButtonBinding) onBound) {
+    buttons.learnNext((keyId, label) async {
+      final binding =
+          ButtonBinding(keyId: keyId, action: action, label: label);
+      buttons.addBinding(binding);
+      await _persistBindings();
+      notifyListeners();
+      onBound(binding);
+    });
+    notifyListeners();
+  }
+
+  void cancelLearningButton() {
+    buttons.cancelLearning();
+    notifyListeners();
+  }
+
+  Future<void> removeButtonBinding(int keyId) async {
+    buttons.removeBinding(keyId);
+    await _persistBindings();
+    notifyListeners();
   }
 
   // --- floating island ---------------------------------------------------

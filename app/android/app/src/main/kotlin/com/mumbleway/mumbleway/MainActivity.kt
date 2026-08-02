@@ -18,6 +18,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
 
     private var channel: MethodChannel? = null
+    private var buttonChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -33,6 +34,23 @@ class MainActivity : FlutterActivity() {
         // button from disagreeing.
         OverlayService.onTransmit = { pressed ->
             runOnUiThread { ch.invokeMethod("setTransmitting", pressed) }
+        }
+
+        // Bluetooth media buttons captured by the service's media session.
+        // Dart owns the key-to-action binding, so this only reports what was
+        // pressed rather than deciding what it means.
+        val buttons = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/buttons",
+        )
+        buttonChannel = buttons
+        OverlayService.onMediaButton = { keyCode, pressed ->
+            runOnUiThread {
+                buttons.invokeMethod(
+                    "mediaButton",
+                    mapOf("keyCode" to keyCode, "pressed" to pressed),
+                )
+            }
         }
 
         ch.setMethodCallHandler { call, result ->
@@ -100,7 +118,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         OverlayService.onTransmit = null
+        OverlayService.onMediaButton = null
         channel?.setMethodCallHandler(null)
+        buttonChannel?.setMethodCallHandler(null)
         super.onDestroy()
     }
 }

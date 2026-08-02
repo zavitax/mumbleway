@@ -120,6 +120,11 @@ pub enum AudioCue {
     DeafenedByOther,
     /// Someone else undeafened us.
     UndeafenedByOther,
+    /// Push-to-talk pressed: a short crisp click, like keying a radio.
+    TransmitStart,
+    /// Push-to-talk released: the "roger beep" and squelch tail a walkie-talkie
+    /// makes when you let go.
+    TransmitEnd,
     /// Steady tone for checking the chosen output device.
     Test,
 }
@@ -158,7 +163,27 @@ impl AudioCue {
                 (659.25, 200),
             ],
 
+            // Keying a radio: one short, bright click. Brief on purpose — this
+            // plays before every transmission, so anything longer would be in
+            // the way within a minute of use.
+            AudioCue::TransmitStart => &[(1318.5, 40)],
+            // Letting go: the "roger beep" followed by a squelch tail. The
+            // negative frequency is the noise marker; see `render_segments`.
+            AudioCue::TransmitEnd => &[(1046.5, 90), (0.0, 15), (-1.0, 45)],
+
             AudioCue::Test => &[(440.0, 600)],
+        }
+    }
+
+    /// Peak level for this cue.
+    ///
+    /// The transmit cues are quieter than the rest: they fire constantly, and
+    /// something you hear on every press has to sit under the conversation
+    /// rather than on top of it.
+    fn amplitude(self) -> f32 {
+        match self {
+            AudioCue::TransmitStart | AudioCue::TransmitEnd => 0.12,
+            _ => 0.22,
         }
     }
 }
@@ -168,11 +193,20 @@ impl AudioCue {
 /// Each segment is faded in and out over a few milliseconds; without that the
 /// abrupt start and stop produce an audible click that is worse than the tone.
 pub fn render_cue(cue: AudioCue) -> Vec<f32> {
-    render_segments(cue.segments(), 0.22)
+    render_segments(cue.segments(), cue.amplitude())
 }
 
+/// Renders `(frequency_hz, milliseconds)` segments.
+///
+/// Frequency `0` is silence and a *negative* frequency is a burst of noise,
+/// which is what gives the release cue its squelch tail — a pure tone alone
+/// sounds like a doorbell rather than a radio.
 fn render_segments(segments: &[(f32, u32)], amplitude: f32) -> Vec<f32> {
     let mut out = Vec::new();
+    // Deterministic, so a cue sounds identical every time and the tests can
+    // assert on it.
+    let mut rng: u32 = 0x9E37_79B9;
+
     for &(freq, millis) in segments {
         let n = (SAMPLE_RATE as u64 * millis as u64 / 1000) as usize;
         if n == 0 {
@@ -188,7 +222,10 @@ fn render_segments(segments: &[(f32, u32)], amplitude: f32) -> Vec<f32> {
             } else {
                 1.0
             };
-            let s = if freq <= 0.0 {
+            let s = if freq < 0.0 {
+                rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (rng >> 8) as f32 / 8_388_608.0 - 1.0
+            } else if freq == 0.0 {
                 0.0
             } else {
                 (std::f32::consts::TAU * freq * i as f32 / SAMPLE_RATE as f32).sin()
@@ -312,8 +349,24 @@ impl AudioShared {
         self.device_generation.load(Ordering::Acquire)
     }
 
+    /// Keys or unkeys the microphone, with the radio-style confirmation cue.
+    ///
+    /// The cue lives here rather than in the UI so every route into
+    /// transmitting sounds the same: the on-screen button, the floating
+    /// overlay and a Bluetooth handlebar remote. It only fires on an actual
+    /// change, so a remote that repeats while held stays quiet.
+    ///
+    /// This plays into the *playback* queue, so it is heard locally and never
+    /// reaches the far end.
     pub fn set_transmitting(&self, on: bool) {
-        self.transmitting.store(on, Ordering::Relaxed);
+        let previous = self.transmitting.swap(on, Ordering::Relaxed);
+        if previous != on {
+            self.play_cue(if on {
+                AudioCue::TransmitStart
+            } else {
+                AudioCue::TransmitEnd
+            });
+        }
     }
 
     pub fn set_muted(&self, on: bool) {
@@ -1159,6 +1212,104 @@ mod tests {
             assert!(pcm[0].abs() < 0.02, "{cue:?} starts with a click");
             assert!(pcm[pcm.len() - 1].abs() < 0.02, "{cue:?} ends with a click");
         }
+    }
+
+    /// Every cue, so coverage cannot silently miss a newly added one.
+    const ALL_CUES: [AudioCue; 9] = [
+        AudioCue::Disconnected,
+        AudioCue::Reconnected,
+        AudioCue::Dialing,
+        AudioCue::MutedByOther,
+        AudioCue::UnmutedByOther,
+        AudioCue::DeafenedByOther,
+        AudioCue::UndeafenedByOther,
+        AudioCue::TransmitStart,
+        AudioCue::TransmitEnd,
+    ];
+
+    #[test]
+    fn every_cue_is_in_range_and_free_of_clicks() {
+        for cue in ALL_CUES {
+            let pcm = render_cue(cue);
+            assert!(!pcm.is_empty(), "{cue:?} rendered nothing");
+            assert!(
+                pcm.iter().all(|s| s.is_finite() && s.abs() <= 1.0),
+                "{cue:?} out of range"
+            );
+            assert!(pcm[0].abs() < 0.02, "{cue:?} starts with a click");
+            assert!(pcm[pcm.len() - 1].abs() < 0.02, "{cue:?} ends with a click");
+        }
+    }
+
+    #[test]
+    fn transmit_cues_are_short_enough_to_stay_out_of_the_way() {
+        // These fire on every press. Anything long becomes intrusive within a
+        // minute of riding, and delays the start of speech.
+        let start = render_cue(AudioCue::TransmitStart);
+        let end = render_cue(AudioCue::TransmitEnd);
+        let ms = |n: usize| n as f32 * 1000.0 / SAMPLE_RATE as f32;
+
+        assert!(
+            ms(start.len()) <= 60.0,
+            "press cue is {}ms",
+            ms(start.len())
+        );
+        assert!(ms(end.len()) <= 200.0, "release cue is {}ms", ms(end.len()));
+    }
+
+    #[test]
+    fn transmit_cues_sit_below_the_status_cues() {
+        let peak = |c| render_cue(c).iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!(
+            peak(AudioCue::TransmitStart) < peak(AudioCue::Disconnected),
+            "the press cue should be quieter than a status change"
+        );
+        assert!(peak(AudioCue::TransmitEnd) < peak(AudioCue::Disconnected));
+    }
+
+    #[test]
+    fn the_release_cue_ends_in_a_squelch_tail() {
+        // A pure tone alone sounds like a doorbell; the noise burst is what
+        // makes it read as a radio.
+        let pcm = render_cue(AudioCue::TransmitEnd);
+        let tail = &pcm[pcm.len() * 3 / 4..];
+
+        // Noise crosses zero far more often than a ~1 kHz tone over the same
+        // span, which distinguishes the two without a spectrum analysis.
+        let crossings = tail
+            .windows(2)
+            .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+            .count();
+        let tone_crossings = 2.0 * 1046.5 * tail.len() as f32 / SAMPLE_RATE as f32;
+        assert!(
+            crossings as f32 > tone_crossings * 1.5,
+            "tail looks tonal, not like noise ({crossings} crossings)"
+        );
+    }
+
+    #[test]
+    fn keying_the_microphone_plays_a_cue_only_on_a_change() {
+        let s = AudioShared::new();
+
+        s.set_transmitting(true);
+        assert!(s.test_tone_active(), "no cue on key down");
+        let keyed = s.cue_queue.lock().len();
+        assert_eq!(keyed, render_cue(AudioCue::TransmitStart).len());
+
+        // A remote that repeats while held must not retrigger it.
+        s.set_transmitting(true);
+        assert_eq!(
+            s.cue_queue.lock().len(),
+            keyed,
+            "repeat retriggered the cue"
+        );
+
+        s.set_transmitting(false);
+        assert_eq!(
+            s.cue_queue.lock().len(),
+            render_cue(AudioCue::TransmitEnd).len(),
+            "release should play the roger beep"
+        );
     }
 
     #[test]

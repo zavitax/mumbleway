@@ -67,9 +67,27 @@ that only appears on screen is something they will miss.
 
 **iOS has no equivalent.** Apple permits no system-wide overlay from a
 third-party app at any privilege level, so the option is hidden there rather
-than offered and then failing. The realistic iOS route is Apple's PushToTalk
-framework, which surfaces a system-provided talk control — a separate piece of
-work, not a variation on this one.
+than offered and then failing.
+
+## Buttons
+
+A handlebar Bluetooth remote is the practical way to key a microphone with
+gloves on at speed. Most present as a Bluetooth HID keyboard or media
+controller, so *Settings → Buttons* learns whatever the device actually sends
+rather than offering a list of keys — the only reliable way to find out what a
+given remote emits is to press it.
+
+A button can hold-to-talk, toggle transmit (for remotes that send a click but
+never a release), or toggle mute or deafen.
+
+On Android these keep working with the app in the background: the foreground
+service owns a media session, which is what puts the app at the front of the
+media-button queue ahead of whatever music is playing.
+
+Keying and unkeying play short walkie-talkie cues — a click on press, a roger
+beep and squelch tail on release. They are quieter than the status cues because
+they fire constantly, and they go to the playback queue only, so they are heard
+locally and never reach the far end.
 
 ## The noise-cancellation chain
 
@@ -259,6 +277,17 @@ the reconnect policy's treatment of every disconnect reason.
 devices. It asserts the capture path keeps up with real time — roughly 100
 encoded frames per 2 seconds — which is the one property no amount of offline
 unit testing can establish.
+
+## Signing and publishing
+
+See **[docs/RELEASING.md](docs/RELEASING.md)** for the one-time setup: SignPath
+for Windows code signing (free for open source), Apple certificates and App
+Store Connect keys, and the Google Play upload key.
+
+You generate every credential yourself and paste it in as an encrypted GitHub
+secret — nothing in that process requires sharing account access with anyone.
+Until the secrets exist, builds still succeed and simply come out unsigned,
+with a notice in the job log saying so.
 
 ## Continuous integration
 

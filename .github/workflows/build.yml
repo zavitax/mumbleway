@@ -91,6 +91,10 @@ jobs:
     name: Windows
     needs: test
     runs-on: windows-latest
+    env:
+      # Lifted to job level so the signing steps can test for its presence in
+      # an `if:` — secrets are not readable from `if:` expressions directly.
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -136,6 +140,58 @@ jobs:
       - name: Package
         working-directory: app/build/windows/x64/runner/Release
         run: 7z a -tzip ../../../../../../mumbleway-windows-x64.zip .
+
+      # --- code signing ---------------------------------------------------
+      # Unsigned Windows binaries trip SmartScreen, which tells the user the
+      # app is "unrecognised" — a bad first impression for a voice client that
+      # asks for microphone access.
+      #
+      # SignPath's Foundation tier signs open-source projects for free, and the
+      # private key never leaves their infrastructure: the binary is uploaded,
+      # signed server-side and returned. See README for the one-time setup.
+      #
+      # Everything below is skipped when the token is absent, so forks and pull
+      # requests still produce a usable (unsigned) build rather than failing.
+      - name: Upload unsigned build for signing
+        id: unsigned
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-unsigned
+          path: mumbleway-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        id: signpath
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'mumbleway' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'test-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Replace the package with the signed one
+        if: env.SIGNPATH_API_TOKEN != '' && steps.signpath.outcome == 'success'
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem signed -Filter *.zip -Recurse | Select-Object -First 1
+          if (-not $signed) { throw "SignPath returned no signed package" }
+          Move-Item $signed.FullName mumbleway-windows-x64.zip -Force
+          Write-Host "Replaced package with signed build: $($signed.Name)"
+
+      - name: Report signing status
+        shell: pwsh
+        run: |
+          if ('${{ env.SIGNPATH_API_TOKEN }}' -eq '') {
+            Write-Host "::notice::SIGNPATH_API_TOKEN is not set - this build is UNSIGNED."
+          } else {
+            Write-Host "::notice::Windows build signed via SignPath."
+          }
 
       - uses: actions/upload-artifact@v4
         with:

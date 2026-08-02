@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Export settings for `flutter build ipa`.
+
+	  teamID is read from the APPLE_TEAM_ID secret at build time by the publish
+	  workflow, which rewrites this key. It is left as a placeholder here so the
+	  file can live in the repository without carrying an account identifier.
+	-->
+	<key>method</key>
+	<string>app-store-connect</string>
+
+	<key>teamID</key>
+	<string>$(APPLE_TEAM_ID)</string>
+
+	<!-- Let Xcode pick the matching distribution profile rather than pinning a
+	     name that changes whenever the profile is regenerated. -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+
+	<key>uploadSymbols</key>
+	<true/>
+
+	<!-- Bitcode has been removed from the toolchain; leaving this true makes
+	     newer Xcode versions warn on every export. -->
+	<key>uploadBitcode</key>
+	<false/>
+
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>

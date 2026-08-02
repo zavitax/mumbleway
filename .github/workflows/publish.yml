@@ -1,0 +1,254 @@
+name: publish
+
+# Store submissions. Separate from `build` on purpose: that runs on every push
+# and must stay fast and side-effect free, while this uploads to real stores.
+#
+# Every job is gated on its own secrets and skips cleanly when they are absent,
+# so this is safe to have in the repository before any store account exists.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Google Play track'
+        required: false
+        default: 'internal'
+        type: choice
+        options: [internal, alpha, beta, production]
+
+env:
+  FLUTTER_VERSION: '3.44.8'
+  CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Google Play — signed App Bundle to the internal track
+  # ---------------------------------------------------------------------------
+  google-play:
+    name: Google Play
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for signing material
+        id: gate
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "::notice::ANDROID_KEYSTORE is not set - skipping Play upload."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.gate.outputs.ready == 'true'
+      - uses: arduino/setup-protoc@v3
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-java@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        if: steps.gate.outputs.ready == 'true'
+
+      - name: Add Android Rust targets
+        if: steps.gate.outputs.ready == 'true'
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+      - uses: subosito/flutter-action@v2
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Written to disk only inside the runner, and only for this job. Gradle
+      # reads it through key.properties; nothing lands in the repository.
+      - name: Restore the upload key
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          echo "$ANDROID_KEYSTORE" | base64 -d > app/android/upload-keystore.jks
+          cat > app/android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build App Bundle
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build appbundle --release
+
+      - name: Upload to Play
+        if: steps.gate.outputs.ready == 'true' && env.PLAY_SERVICE_ACCOUNT != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.mumbleway.mumbleway
+          releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
+          track: ${{ inputs.track || 'internal' }}
+          # Draft, not live: a release should be promoted by a human who has
+          # looked at it.
+          status: draft
+
+      - name: Remove signing material
+        if: always() && steps.gate.outputs.ready == 'true'
+        run: rm -f app/android/upload-keystore.jks app/android/key.properties
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          name: mumbleway-play-bundle
+          path: app/build/app/outputs/bundle/release/*.aab
+
+  # ---------------------------------------------------------------------------
+  # App Store Connect — signed build to TestFlight
+  # ---------------------------------------------------------------------------
+  testflight:
+    name: TestFlight
+    runs-on: macos-latest
+    env:
+      APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for signing material
+        id: gate
+        run: |
+          if [ -z "$APPLE_CERTIFICATE_P12" ]; then
+            echo "::notice::APPLE_CERTIFICATE_P12 is not set - skipping TestFlight upload."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.gate.outputs.ready == 'true'
+      - uses: arduino/setup-protoc@v3
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Imports into a temporary keychain that is discarded with the runner, so
+      # the certificate never persists anywhere.
+      - name: Import signing certificate
+        if: steps.gate.outputs.ready == 'true'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Install provisioning profile
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.APPLE_PROVISIONING_PROFILE }}" | base64 -d \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.mobileprovision
+
+      - uses: subosito/flutter-action@v2
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # The checked-in plist carries a placeholder rather than a real team id,
+      # so the repository holds no account identifiers.
+      - name: Fill in the team id
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          /usr/libexec/PlistBuddy -c \
+            "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" app/ios/ExportOptions.plist
+
+      - name: Build signed IPA
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: app
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: '13.0'
+        run: |
+          flutter pub get
+          flutter build ipa --release \
+            --export-options-plist=ios/ExportOptions.plist
+
+      - name: Upload to TestFlight
+        if: steps.gate.outputs.ready == 'true'
+        uses: apple-actions/upload-testflight-build@v3
+        with:
+          app-path: app/build/ios/ipa/mumbleway.ipa
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          name: mumbleway-ios-ipa
+          path: app/build/ios/ipa/*.ipa
+
+  # ---------------------------------------------------------------------------
+  # Microsoft Store — MSIX package
+  # ---------------------------------------------------------------------------
+  # Partner Center submission needs an Azure AD application tied to the store
+  # account, which is more setup than most projects want. This produces the
+  # package and attaches it; uploading it is a drag-and-drop in Partner Center.
+  msix:
+    name: Windows MSIX
+    runs-on: windows-latest
+    env:
+      MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      # Two different artifacts, and the difference matters. A store package is
+      # unsigned here because Partner Center re-signs it, so it cannot be
+      # installed locally; the sideload package is test-signed and can. Which
+      # one gets built depends on whether the store identity is configured.
+      - name: Package for the Store
+        if: env.MSIX_PUBLISHER != ''
+        working-directory: app
+        run: >
+          dart run msix:create --build-windows false --store
+          --publisher "${{ secrets.MSIX_PUBLISHER }}"
+          --identity-name "${{ secrets.MSIX_IDENTITY_NAME }}"
+          --publisher-display-name "${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}"
+
+      - name: Package for sideloading
+        if: env.MSIX_PUBLISHER == ''
+        working-directory: app
+        run: |
+          echo "::notice::MSIX_PUBLISHER is not set - building a test-signed sideload package instead of a Store package."
+          dart run msix:create --build-windows false --install-certificate false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-msix
+          path: app/build/windows/x64/runner/Release/*.msix
+          if-no-files-found: error

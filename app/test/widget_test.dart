@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
+import 'package:mumbleway/services/button_controller.dart';
 import 'package:mumbleway/services/proxy.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
@@ -82,6 +84,107 @@ void main() {
       for (final s in ConnStatus.values) {
         expect(StatusVisual.of(s).icon, isNotNull, reason: 'no icon for $s');
       }
+    });
+  });
+
+  group('ButtonController', () {
+    late ButtonController c;
+    late List<bool> transmits;
+    late int mutes;
+
+    setUp(() {
+      c = ButtonController.instance;
+      c.setBindings([]);
+      transmits = [];
+      mutes = 0;
+      c.onTransmit = transmits.add;
+      c.onToggleMute = () => mutes++;
+    });
+
+    test('media key ids cannot collide with keyboard keys', () {
+      // A remote's "play/pause" and some ordinary key must never map to the
+      // same binding, or one would silently trigger the other.
+      //
+      // Flutter allocates logical key ids in two ranges: Unicode characters up
+      // to 0x10FFFF, and everything else from 0x0100000000 upwards. The media
+      // ids are placed in the gap between them, which is where nothing else
+      // lives.
+      const unicodeMax = 0x10FFFF;
+      const flutterPlaneStart = 0x0100000000;
+
+      for (final code in [24, 79, 85, 87, 88, 126, 127]) {
+        final id = ButtonController.mediaKeyId(code);
+        expect(id, greaterThan(unicodeMax), reason: 'code $code');
+        expect(id, lessThan(flutterPlaneStart), reason: 'code $code');
+      }
+
+      expect(ButtonController.mediaKeyId(85),
+          isNot(LogicalKeyboardKey.mediaPlayPause.keyId));
+      expect(ButtonController.mediaKeyId(85), isNot(LogicalKeyboardKey.space.keyId));
+
+      // Distinct codes stay distinct.
+      expect(ButtonController.mediaKeyId(85),
+          isNot(ButtonController.mediaKeyId(87)));
+    });
+
+    test('hold-to-talk keys on press and unkeys on release', () {
+      final id = ButtonController.mediaKeyId(79); // headset hook
+      c.addBinding(ButtonBinding(keyId: id, action: ButtonAction.pushToTalk));
+
+      c.handleMediaButton(79, true);
+      c.handleMediaButton(79, false);
+      expect(transmits, [true, false]);
+    });
+
+    test('toggle mode alternates and ignores the release', () {
+      // Some remotes only ever send a click, never a release; toggle mode is
+      // what makes those usable.
+      final id = ButtonController.mediaKeyId(85);
+      c.addBinding(
+          ButtonBinding(keyId: id, action: ButtonAction.toggleTransmit));
+
+      c.handleMediaButton(85, true);
+      c.handleMediaButton(85, false);
+      c.handleMediaButton(85, true);
+      c.handleMediaButton(85, false);
+      expect(transmits, [true, false]);
+    });
+
+    test('unbound buttons do nothing', () {
+      c.handleMediaButton(87, true);
+      expect(transmits, isEmpty);
+      expect(mutes, 0);
+    });
+
+    test('rebinding a key replaces the previous action', () {
+      // Otherwise one press would fire two things at once.
+      final id = ButtonController.mediaKeyId(85);
+      c.addBinding(ButtonBinding(keyId: id, action: ButtonAction.pushToTalk));
+      c.addBinding(ButtonBinding(keyId: id, action: ButtonAction.toggleMute));
+
+      expect(c.bindings.where((b) => b.keyId == id).length, 1);
+      c.handleMediaButton(85, true);
+      expect(transmits, isEmpty);
+      expect(mutes, 1);
+    });
+
+    test('bindings survive a round trip through JSON', () {
+      final original = ButtonBinding(
+        keyId: ButtonController.mediaKeyId(85),
+        action: ButtonAction.toggleTransmit,
+        label: 'Play / pause',
+      );
+      final back = ButtonBinding.fromJson(original.toJson())!;
+      expect(back.keyId, original.keyId);
+      expect(back.action, original.action);
+      expect(back.label, original.label);
+      expect(back.displayName, 'Play / pause');
+    });
+
+    test('malformed stored bindings are discarded rather than crashing', () {
+      expect(ButtonBinding.fromJson({'keyId': 'nope', 'action': 0}), isNull);
+      expect(ButtonBinding.fromJson({'keyId': 1, 'action': 999}), isNull);
+      expect(ButtonBinding.fromJson({}), isNull);
     });
   });
 

@@ -10,8 +10,11 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.IBinder
+import android.view.KeyEvent
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -36,6 +39,7 @@ import kotlin.math.abs
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
+    private var mediaSession: MediaSession? = null
     private var root: LinearLayout? = null
     private var talkButton: TextView? = null
     private var namesView: TextView? = null
@@ -51,6 +55,13 @@ class OverlayService : Service() {
         /** Set by [MainActivity] so the button can reach the Flutter engine. */
         @Volatile
         var onTransmit: ((Boolean) -> Unit)? = null
+
+        /**
+         * Set by [MainActivity] to receive Bluetooth media-button presses as
+         * `(androidKeyCode, pressed)`.
+         */
+        @Volatile
+        var onMediaButton: ((Int, Boolean) -> Unit)? = null
 
         @Volatile
         private var instance: OverlayService? = null
@@ -69,7 +80,62 @@ class OverlayService : Service() {
         super.onCreate()
         instance = this
         startAsForeground()
+        setUpMediaSession()
         addOverlay()
+    }
+
+    /**
+     * Registers a media session so Bluetooth remotes reach us in the background.
+     *
+     * A handlebar remote is the practical way to key a microphone with gloves
+     * on, and most present as a Bluetooth HID device sending media keys. Those
+     * only reach an app that owns an *active* media session with a playback
+     * state — a session that reports "stopped" is skipped in favour of whatever
+     * music app is actually playing.
+     */
+    private fun setUpMediaSession() {
+        if (mediaSession != null) return
+        val session = MediaSession(this, "MumbleWay")
+
+        session.setCallback(object : MediaSession.Callback() {
+            override fun onMediaButtonEvent(intent: Intent): Boolean {
+                val event: KeyEvent? =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
+                    }
+                if (event == null) return false
+
+                // Ignore auto-repeat: holding a remote button should not fire
+                // a toggle over and over.
+                if (event.repeatCount > 0) return true
+
+                val pressed = event.action == KeyEvent.ACTION_DOWN
+                onMediaButton?.invoke(event.keyCode, pressed)
+                return true
+            }
+        })
+
+        session.setPlaybackState(
+            PlaybackState.Builder()
+                .setActions(
+                    PlaybackState.ACTION_PLAY_PAUSE or
+                        PlaybackState.ACTION_PLAY or
+                        PlaybackState.ACTION_PAUSE or
+                        PlaybackState.ACTION_SKIP_TO_NEXT or
+                        PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackState.ACTION_STOP,
+                )
+                // Claiming "playing" is what puts us at the front of the media
+                // button queue. The session carries no audio of its own; voice
+                // goes through the engine's own stream.
+                .setState(PlaybackState.STATE_PLAYING, 0L, 1.0f)
+                .build(),
+        )
+        session.isActive = true
+        mediaSession = session
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -84,6 +150,11 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         removeOverlay()
+        mediaSession?.apply {
+            isActive = false
+            release()
+        }
+        mediaSession = null
         instance = null
         super.onDestroy()
     }

@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../widgets/voice_meter.dart';
+
 /// Which mechanism a platform uses for the floating call window.
 ///
 /// The three are not interchangeable, and the difference leaks into the UI:
@@ -159,17 +161,11 @@ class OverlayBridge {
 
   /// Maps a dBFS reading onto the 0..1 range the meters draw in.
   ///
-  /// Done here rather than in each of the three renderers so that the meter,
-  /// the threshold marker and the noise marker cannot end up on different
-  /// scales and quietly misreport the margin between them.
-  static double meterFraction(double db) {
-    if (!db.isFinite) return 0;
-    return ((db + kMeterFloorDb) / kMeterFloorDb).clamp(0.0, 1.0);
-  }
-
-  /// Quietest level the meters show. Below this everything is silence, and
-  /// stretching the scale further just makes the useful part unreadable.
-  static const double kMeterFloorDb = 60;
+  /// Deliberately the same function the on-screen meters use. The floating
+  /// window draws its own meter in native code, and a window showing half full
+  /// where the app shows three quarters is worse than showing nothing: the
+  /// whole point of a meter is that a length means a loudness.
+  static double meterFraction(double db) => VoiceMeter.fractionFor(db);
 
   /// Pushes the current call state onto the window.
   ///
@@ -203,5 +199,4 @@ class OverlayBridge {
       // The service may have been killed; the next show() re-establishes it.
     }
   }
-
 }

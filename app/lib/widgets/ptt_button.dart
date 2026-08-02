@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
-import '../services/overlay.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'voice_meter.dart';
 
 /// Horizontal padding kept clear inside the talk button.
 ///
@@ -34,8 +34,8 @@ class PttButton extends StatelessWidget {
     final color = !enabled
         ? StatusColors.idle
         : live
-            ? StatusColors.talking
-            : Theme.of(context).colorScheme.surfaceContainerHighest;
+        ? StatusColors.talking
+        : Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return Semantics(
       button: ptt,
@@ -61,78 +61,78 @@ class PttButton extends StatelessWidget {
     Color color,
   ) {
     return GestureDetector(
-        onTapDown: ptt && enabled ? (_) => _press(state) : null,
-        onTapUp: ptt && enabled ? (_) => _release(state) : null,
-        onTapCancel: ptt && enabled ? () => _release(state) : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          height: height,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: live ? StatusColors.talking : Colors.transparent,
-              width: 3,
-            ),
-            boxShadow: live
-                ? [
-                    BoxShadow(
-                      color: StatusColors.talking.withValues(alpha: 0.45),
-                      blurRadius: 28,
-                      spreadRadius: 2,
-                    )
-                  ]
-                : null,
+      onTapDown: ptt && enabled ? (_) => _press(state) : null,
+      onTapUp: ptt && enabled ? (_) => _release(state) : null,
+      onTapCancel: ptt && enabled ? () => _release(state) : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        height: height,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: live ? StatusColors.talking : Colors.transparent,
+            width: 3,
           ),
-          child: Padding(
-            // Keeps the contents clear of the rounded corners and the border.
-            padding: const EdgeInsets.symmetric(
-              horizontal: _kLabelMargin,
-              vertical: 12,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Icon(
-                      state.muted
-                          ? Icons.mic_off
-                          : live
-                              ? Icons.mic
-                              : Icons.mic_none,
-                      size: 44,
+          boxShadow: live
+              ? [
+                  BoxShadow(
+                    color: StatusColors.talking.withValues(alpha: 0.45),
+                    blurRadius: 28,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : null,
+        ),
+        child: Padding(
+          // Keeps the contents clear of the rounded corners and the border.
+          padding: const EdgeInsets.symmetric(
+            horizontal: _kLabelMargin,
+            vertical: 12,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Icon(
+                    state.muted
+                        ? Icons.mic_off
+                        : live
+                        ? Icons.mic
+                        : Icons.mic_none,
+                    size: 44,
+                    color: live ? Colors.white : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              // Scale-down rather than wrap or clip: the label must stay on
+              // one line and inside the margin at every text scale.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _label(context, state, ptt, live),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.6,
                       color: live ? Colors.white : null,
                     ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                // Scale-down rather than wrap or clip: the label must stay on
-                // one line and inside the margin at every text scale.
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      _label(context, state, ptt, live),
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.6,
-                        color: live ? Colors.white : null,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
+      ),
     );
   }
 
@@ -159,36 +159,6 @@ class PttButton extends StatelessWidget {
   void _release(AppState state) {
     HapticFeedback.lightImpact();
     state.setTransmit(false);
-  }
-}
-
-/// A tick on the level meter.
-class _Marker extends StatelessWidget {
-  const _Marker({
-    required this.at,
-    required this.width,
-    required this.colour,
-    required this.height,
-  });
-
-  final double at;
-  final double width;
-  final Color colour;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: (width * at - 1).clamp(0.0, width - 2),
-      child: Container(
-        width: 2,
-        height: height,
-        decoration: BoxDecoration(
-          color: colour,
-          borderRadius: BorderRadius.circular(1),
-        ),
-      ),
-    );
   }
 }
 
@@ -259,15 +229,10 @@ class LevelMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
-    // Shared with the floating windows so the meter, the threshold and the
-    // noise marker cannot end up on different scales.
-    final t = OverlayBridge.meterFraction(state.inputLevelDb);
 
     // The activation threshold only means anything in voice-activated mode,
     // where it tells the rider how far above the engine they have to speak.
     final showThreshold = state.micMode == MicMode.voiceActivity;
-    final threshold = OverlayBridge.meterFraction(state.activationThresholdDb);
-    final noiseFloor = OverlayBridge.meterFraction(state.noiseFloorDb);
 
     return Row(
       children: [
@@ -275,62 +240,41 @@ class LevelMeter extends StatelessWidget {
           state.muted
               ? Icons.mic_off
               : state.speaking
-                  ? Icons.graphic_eq
-                  : Icons.mic_none,
+              ? Icons.graphic_eq
+              : Icons.mic_none,
           size: 18,
           color: state.muted
               ? StatusColors.failed
               : state.speaking
-                  ? StatusColors.talking
-                  : StatusColors.idle,
+              ? StatusColors.talking
+              : StatusColors.idle,
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) => Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: t),
-                    duration: const Duration(milliseconds: 90),
-                    builder: (context, v, _) => LinearProgressIndicator(
-                      value: v,
-                      minHeight: 10,
-                      backgroundColor:
-                          Theme.of(context).colorScheme.surfaceContainerHighest,
-                      valueColor: AlwaysStoppedAnimation(
-                        state.muted
-                            ? StatusColors.failed
-                            : state.speaking
-                                ? StatusColors.talking
-                                : StatusColors.idle,
-                      ),
+          // The same meter the roster uses. Two meters that look alike and
+          // fill differently are worse than no meter at all.
+          child: VoiceMeter(
+            levelDb: state.inputLevelDb,
+            muted: state.muted,
+            // The tracked background noise, and above it the level voice
+            // activation opens at. Both are shown because the gap between them
+            // is the margin: at speed the floor climbs, and seeing only the
+            // threshold makes that look like a control that has drifted rather
+            // than wind.
+            marks: showThreshold
+                ? [
+                    VoiceMeterMark(
+                      levelDb: state.noiseFloorDb,
+                      color: StatusColors.idle,
+                      overhang: 2,
                     ),
-                  ),
-                ),
-                // The tracked background noise, and above it the level voice
-                // activation opens at. Both are shown because the gap between
-                // them is the margin: at speed the floor climbs, and seeing
-                // only the threshold makes that look like a control that has
-                // drifted rather than wind.
-                if (showThreshold) ...[
-                  _Marker(
-                    at: noiseFloor,
-                    width: constraints.maxWidth,
-                    colour: StatusColors.idle,
-                    height: 12,
-                  ),
-                  _Marker(
-                    at: threshold,
-                    width: constraints.maxWidth,
-                    colour: StatusColors.connecting,
-                    height: 16,
-                  ),
-                ],
-              ],
-            ),
+                    VoiceMeterMark(
+                      levelDb: state.activationThresholdDb,
+                      color: StatusColors.connecting,
+                      overhang: 4,
+                    ),
+                  ]
+                : const [],
           ),
         ),
         if (showScale) ...[
@@ -342,9 +286,10 @@ class LevelMeter extends StatelessWidget {
                   ? '—'
                   : '${state.inputLevelDb.toStringAsFixed(0)} dB',
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 11, fontFeatures: [
-                FontFeature.tabularFigures(),
-              ]),
+              style: const TextStyle(
+                fontSize: 11,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],

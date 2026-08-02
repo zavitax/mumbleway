@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
+import 'voice_meter.dart';
 import '../theme.dart';
 
 /// Channel tree for one connected server.
@@ -44,7 +45,9 @@ class ChannelTree extends StatelessWidget {
     // exactly one, but guard against a partial tree arriving mid-sync.
     final roots = byParent[null] ?? const <UiChannel>[];
     final orphans = channels
-        .where((c) => c.parent != null && !channels.any((p) => p.id == c.parent))
+        .where(
+          (c) => c.parent != null && !channels.any((p) => p.id == c.parent),
+        )
         .toList();
 
     return Column(
@@ -64,13 +67,16 @@ class ChannelTree extends StatelessWidget {
   ) {
     final state = AppStateScope.of(context);
     final isCurrent = channel.id == currentChannelId;
-    final isDefault = defaultChannelName != null &&
+    final isDefault =
+        defaultChannelName != null &&
         defaultChannelName!.toLowerCase() == channel.name.toLowerCase();
     final full = channel.maxUsers > 0 && channel.userCount >= channel.maxUsers;
 
     final rows = <Widget>[
       InkWell(
-        onTap: isCurrent ? null : () => state.joinChannelOn(serverId, channel.id),
+        onTap: isCurrent
+            ? null
+            : () => state.joinChannelOn(serverId, channel.id),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: EdgeInsets.fromLTRB(8.0 + depth * 16, 8, 4, 8),
@@ -96,9 +102,11 @@ class ChannelTree extends StatelessWidget {
                 ),
               ),
               if (channel.userCount > 0) ...[
-                Icon(Icons.person,
-                    size: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.person,
+                  size: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 2),
                 Text(
                   channel.maxUsers > 0
@@ -138,95 +146,6 @@ class ChannelTree extends StatelessWidget {
 }
 
 /// Live roster of everyone in our current channel.
-
-/// One participant's voice level.
-///
-/// A meter rather than a word: "talking" and "silent" answer a question nobody
-/// is asking by the time they can read it, whereas a level shows who is on the
-/// channel, whether their microphone is working, and how loud they are, all at
-/// a glance. Grey while quiet so a busy channel is not a wall of colour, and
-/// green through red once they speak, so a talker who is clipping is obvious.
-class _VoiceMeter extends StatelessWidget {
-  const _VoiceMeter({required this.levelDb, required this.muted});
-
-  final double levelDb;
-  final bool muted;
-
-  /// Track size. Narrow and beside the name rather than under it: it is
-  /// glanced at, not read, and a full-width bar makes a quiet talker a sliver
-  /// too small to notice.
-  static const _width = 81.0;
-  static const _height = 7.0;
-
-  /// Quietest level worth showing. Speech arrives around -30 dBFS, so a floor
-  /// of -50 puts a normal voice comfortably past halfway rather than hard
-  /// against the left edge.
-  static const _floorDb = -50.0;
-
-  /// Matches the interval between level reports.
-  ///
-  /// Levels arrive ten times a second and fall in steps, which on screen is a
-  /// visible stutter. Interpolating across exactly one interval turns the steps
-  /// into a continuous slide; longer would lag behind the voice, shorter would
-  /// leave a gap before the next value arrives. Linear on purpose — easing
-  /// between consecutive steps would speed up and slow down within every one.
-  static const _tween = Duration(milliseconds: 100);
-
-  @override
-  Widget build(BuildContext context) {
-    final filled =
-        muted ? 0.0 : ((levelDb - _floorDb) / -_floorDb).clamp(0.0, 1.0);
-    final grey = Theme.of(context).colorScheme.onSurfaceVariant;
-
-    return SizedBox(
-      width: _width,
-      height: _height,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(_height / 2),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ColoredBox(color: grey.withValues(alpha: 0.22)),
-            ),
-            // `widthFactor` shrinks this Align to a fraction of its child while
-            // the child keeps its full width, so the gradient always spans the
-            // whole track and a given colour always means the same loudness.
-            // Sizing the gradient to the filled part instead would paint a
-            // quiet talker red at full scale.
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: filled),
-              duration: _tween,
-              curve: Curves.linear,
-              builder: (context, value, child) => value <= 0.001
-                  ? const SizedBox.shrink()
-                  : ClipRect(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        widthFactor: value,
-                        child: child,
-                      ),
-                    ),
-              child: Container(
-                width: _width,
-                height: _height,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      StatusColors.connected,
-                      StatusColors.connecting,
-                      StatusColors.failed,
-                    ],
-                    stops: [0.0, 0.6, 1.0],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class ChannelUserList extends StatelessWidget {
   const ChannelUserList({
@@ -291,8 +210,12 @@ class _UserRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _VoiceMeter(
-            levelDb: state.runtimeFor(serverId).speakerLevels[user.session] ??
+          // Same meter as everywhere else, so a given bar length means the
+          // same loudness whether it is a participant or your own microphone.
+          VoiceMeter(
+            width: 81,
+            levelDb:
+                state.runtimeFor(serverId).speakerLevels[user.session] ??
                 -120.0,
             muted: user.muted || user.localMute,
           ),
@@ -332,20 +255,25 @@ class _UserRow extends StatelessWidget {
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'mute',
-                child: Text(user.muted
-                    ? 'Unmute on server'
-                    : 'Mute on server (for everyone)'),
+                child: Text(
+                  user.muted
+                      ? 'Unmute on server'
+                      : 'Mute on server (for everyone)',
+                ),
               ),
               PopupMenuItem(
                 value: 'deafen',
-                child:
-                    Text(user.deafened ? 'Undeafen on server' : 'Deafen on server'),
+                child: Text(
+                  user.deafened ? 'Undeafen on server' : 'Deafen on server',
+                ),
               ),
               const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'kick',
-                child: Text(l.kickFromServer,
-                    style: const TextStyle(color: StatusColors.failed)),
+                child: Text(
+                  l.kickFromServer,
+                  style: const TextStyle(color: StatusColors.failed),
+                ),
               ),
             ],
           ),
@@ -387,11 +315,11 @@ class _UserRow extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: StatusColors.failed),
+            style: FilledButton.styleFrom(backgroundColor: StatusColors.failed),
             onPressed: () => Navigator.pop(c, true),
             child: Text(l.kick),
           ),
@@ -407,10 +335,14 @@ class _UserRow extends StatelessWidget {
     reason.dispose();
 
     final error = await state.kickUserFrom(serverId, user, text);
-    messenger.showSnackBar(SnackBar(
-      content: Text(error ??
-          'Kick sent. If nothing happens, you lack the Kick permission.'),
-    ));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          error ??
+              'Kick sent. If nothing happens, you lack the Kick permission.',
+        ),
+      ),
+    );
   }
 
   /// `speaking` comes from the audio, not the roster: the server never says

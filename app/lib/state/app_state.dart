@@ -12,6 +12,7 @@ import '../services/button_controller.dart';
 import '../services/overlay.dart';
 import '../services/proxy.dart';
 import '../src/rust/api/mumbleway.dart';
+import '../widgets/voice_meter.dart';
 
 /// A server the user saved, persisted between launches.
 class SavedServer {
@@ -195,20 +196,12 @@ class ServerRuntime {
   bool isSpeaking(int session) =>
       (speakerLevels[session] ?? _silentDb) > speakingFloorDb;
 
-  static const _silentDb = -120.0;
-
-  /// How fast a meter may fall, in dB per report.
-  ///
-  /// Reports arrive ten times a second, so this empties a normal speaking
-  /// level in about a third of a second: fast enough to read as "they
-  /// stopped", slow enough not to flicker between words.
-  static const _fallPerReportDb = 9.0;
+  static const _silentDb = VoiceMeter.silentDb;
 
   /// Records a level, rising at once and falling no faster than the limit.
   void noteSpeakerLevel(int session, double levelDb) {
-    final current = speakerLevels[session] ?? _silentDb;
     speakerLevels[session] =
-        levelDb >= current ? levelDb : _fall(current, levelDb);
+        VoiceMeter.follow(speakerLevels[session] ?? _silentDb, levelDb);
   }
 
   /// Lets everyone absent from a report fall towards silence.
@@ -219,13 +212,10 @@ class ServerRuntime {
       if (current <= _silentDb) {
         speakerLevels.remove(session);
       } else {
-        speakerLevels[session] = _fall(current, _silentDb);
+        speakerLevels[session] = VoiceMeter.follow(current, _silentDb);
       }
     }
   }
-
-  static double _fall(double from, double towards) =>
-      (from - _fallPerReportDb).clamp(towards, from);
 
   List<String> get speakingNames => users
       .where((u) => isSpeaking(u.session))
@@ -1249,7 +1239,10 @@ class AppState extends ChangeNotifier {
           :final thresholdDb,
           :final noiseFloorDb
         ):
-        _inputLevelDb = levelDb;
+        // Paced exactly like every other meter, so the microphone and the
+        // participants fade at the same rate rather than one snapping while
+        // the others slide.
+        _inputLevelDb = VoiceMeter.follow(_inputLevelDb, levelDb);
         _speaking = speaking;
         _thresholdDb = thresholdDb;
         _noiseFloorDb = noiseFloorDb;

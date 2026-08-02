@@ -10,6 +10,7 @@ import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/theme.dart';
 import 'package:mumbleway/widgets/ptt_button.dart';
+import 'package:mumbleway/widgets/voice_meter.dart';
 import 'package:mumbleway/widgets/status_badge.dart';
 
 void main() {
@@ -332,13 +333,18 @@ void main() {
     // through this, so a drift here would silently misreport the margin
     // between the markers rather than look wrong.
     expect(OverlayBridge.meterFraction(0), 1.0);
-    expect(OverlayBridge.meterFraction(-60), 0.0);
-    expect(OverlayBridge.meterFraction(-30), closeTo(0.5, 1e-9));
+    expect(OverlayBridge.meterFraction(VoiceMeter.floorDb), 0.0);
+    expect(OverlayBridge.meterFraction(VoiceMeter.floorDb / 2),
+        closeTo(0.5, 1e-9));
     // Silence is reported as -120 dBFS, well below the floor.
     expect(OverlayBridge.meterFraction(-120), 0.0);
     expect(OverlayBridge.meterFraction(12), 1.0);
     expect(OverlayBridge.meterFraction(double.nan), 0.0);
     expect(OverlayBridge.meterFraction(double.negativeInfinity), 0.0);
+
+    // The floating window draws its own meter natively; it must use the very
+    // same scale, or the same voice reads differently in two places at once.
+    expect(OverlayBridge.meterFraction(-25), VoiceMeter.fractionFor(-25));
   });
 
   testWidgets('the on-air light flashes rather than sitting steady',

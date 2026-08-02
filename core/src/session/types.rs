@@ -196,6 +196,16 @@ pub enum SessionEvent {
     },
     Stats(NetworkStats),
     TransportChanged(Transport),
+    /// Someone else changed our own mute or deafen state.
+    ///
+    /// Reported separately from the roster because it needs an audible cue: it
+    /// happens to the user rather than being done by them, and they will not be
+    /// looking at the screen.
+    SelfModerated {
+        muted: Option<bool>,
+        deafened: Option<bool>,
+        by: String,
+    },
     /// The server's certificate, reported so the UI can pin or compare it.
     ServerCertificate {
         fingerprint: String,
@@ -232,6 +242,13 @@ pub enum SessionCommand {
     SetUserServerDeaf {
         session: u32,
         deaf: bool,
+    },
+    /// Remove a user from the server. Requires the Kick permission.
+    ///
+    /// Distinct from a ban: the user may reconnect immediately.
+    KickUser {
+        session: u32,
+        reason: String,
     },
     /// Channel to join automatically on every future connect. `None` clears it.
     SetDefaultChannel(Option<String>),

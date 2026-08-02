@@ -143,12 +143,65 @@ class ServerCard extends StatelessWidget {
                             ),
                     ),
                     const SizedBox(width: 10),
-                    IconButton.outlined(
-                      onPressed: () => _confirmForget(context, state),
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Remove server',
-                      style: IconButton.styleFrom(
-                        minimumSize: const Size(52, 52),
+                    SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: PopupMenuButton<String>(
+                        tooltip: 'More',
+                        icon: const Icon(Icons.more_horiz),
+                        onSelected: (v) {
+                          switch (v) {
+                            case 'link':
+                              _share(context, state, rt, asFile: false);
+                            case 'file':
+                              _share(context, state, rt, asFile: true);
+                            case 'duplicate':
+                              state.duplicateServer(server);
+                            case 'remove':
+                              _confirmForget(context, state);
+                          }
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'link',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.link),
+                              title: Text('Share invite link'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'file',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.description_outlined),
+                              title: Text('Share profile file'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'duplicate',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.copy_all_outlined),
+                              title: Text('Duplicate'),
+                            ),
+                          ),
+                          PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: 'remove',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.delete_outline,
+                                  color: StatusColors.failed),
+                              title: Text('Remove',
+                                  style: TextStyle(color: StatusColors.failed)),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -159,6 +212,61 @@ class ServerCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Shares an invite, asking first whether to include the password.
+  ///
+  /// That question is deliberate rather than a checkbox buried in settings: a
+  /// link carrying a password grants access to anyone who ever sees it,
+  /// including whatever chat app it travels through.
+  Future<void> _share(
+    BuildContext context,
+    AppState state,
+    ServerRuntime rt, {
+    required bool asFile,
+  }) async {
+    final channel = rt.currentChannel?.name ?? server.defaultChannel;
+    final hasPassword = (server.password ?? '').isNotEmpty;
+    final messenger = ScaffoldMessenger.of(context);
+
+    var includePassword = false;
+    if (hasPassword) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Include the password?'),
+          content: Text(
+            'Anyone who receives this can join ${server.name}'
+            '${channel == null ? '' : ' and land in $channel'} without being '
+            'asked for a password. It stays valid for as long as the password '
+            'does, wherever the message ends up.',
+            style: const TextStyle(fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Without password'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Include it'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null) return; // dismissed
+      includePassword = choice;
+    }
+
+    final error = asFile
+        ? await state.shareInviteFile(server,
+            channel: channel, includePassword: includePassword)
+        : await state.shareInviteLink(server,
+            channel: channel, includePassword: includePassword);
+
+    if (error != null) {
+      messenger.showSnackBar(SnackBar(content: Text(error)));
+    }
   }
 
   Future<void> _confirmForget(BuildContext context, AppState state) async {

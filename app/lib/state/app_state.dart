@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show File, Platform;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/overlay.dart';
@@ -19,7 +22,8 @@ class SavedServer {
     this.password,
     this.certFingerprint,
     this.defaultChannel,
-  });
+    String? localId,
+  }) : localId = localId ?? '$host:$port';
 
   final String name;
   final String host;
@@ -31,26 +35,37 @@ class SavedServer {
   /// Channel joined automatically on every connect.
   final String? defaultChannel;
 
-  /// Matches the id the Rust core derives, so the two stay in step.
-  String get id => '$host:$port';
+  /// Unique key for this entry.
+  ///
+  /// Defaults to `host:port`, which is what the Rust core derives, but is
+  /// stored explicitly so the same server can be kept more than once — under a
+  /// different username or channel, say. Duplicates get a suffix.
+  final String localId;
+
+  String get id => localId;
 
   SavedServer copyWith({
+    String? name,
+    String? username,
     String? certFingerprint,
     String? defaultChannel,
+    String? localId,
     bool clearDefaultChannel = false,
   }) =>
       SavedServer(
-        name: name,
+        name: name ?? this.name,
         host: host,
         port: port,
-        username: username,
+        username: username ?? this.username,
         password: password,
         certFingerprint: certFingerprint ?? this.certFingerprint,
         defaultChannel:
             clearDefaultChannel ? null : (defaultChannel ?? this.defaultChannel),
+        localId: localId ?? this.localId,
       );
 
   Map<String, dynamic> toJson() => {
+        'localId': localId,
         'name': name,
         'host': host,
         'port': port,
@@ -61,6 +76,9 @@ class SavedServer {
       };
 
   static SavedServer fromJson(Map<String, dynamic> j) => SavedServer(
+        // Entries saved before duplicates existed have no localId; falling back
+        // to host:port keeps them working and matches their old key exactly.
+        localId: j['localId'] as String?,
         name: j['name'] as String? ?? '',
         host: j['host'] as String? ?? '',
         port: j['port'] as int? ?? 64738,
@@ -182,7 +200,11 @@ class AppState extends ChangeNotifier {
   bool _deafened = false;
   bool _transmitting = false;
   double _inputLevelDb = -120;
+  double _thresholdDb = -120;
   bool _speaking = false;
+
+  /// Most recent moderation applied to us by someone else, for a banner.
+  String? lastModerationMessage;
 
   NoiseSetting noise = NoiseSetting.helmet;
   MicMode micMode = MicMode.pushToTalk;
@@ -206,7 +228,15 @@ class AppState extends ChangeNotifier {
   bool get deafened => _deafened;
   bool get transmitting => _transmitting;
   double get inputLevelDb => _inputLevelDb;
+
+  /// Level voice activation opens at. Tracks the background noise, so it rises
+  /// with engine and wind — which is what makes it worth showing.
+  double get activationThresholdDb => _thresholdDb;
   bool get speaking => _speaking;
+
+  /// Whether the talk button is relevant. In the automatic modes it is not,
+  /// and the vertical space is better spent on the server list.
+  bool get showTalkButton => micMode == MicMode.pushToTalk;
 
   int get activeCount => runtimes.length;
   bool get canAddMore => runtimes.length < maxServers;
@@ -394,6 +424,134 @@ class AppState extends ChangeNotifier {
   String _suggestUsername() =>
       servers.isNotEmpty ? servers.first.username : 'rider';
 
+  /// Picks an unused local id for a new entry.
+  String _uniqueId(String host, int port) {
+    final base = '$host:$port';
+    if (!servers.any((s) => s.localId == base)) return base;
+    var n = 2;
+    while (servers.any((s) => s.localId == '$base#$n')) {
+      n++;
+    }
+    return '$base#$n';
+  }
+
+  /// Copies a saved server, so the same host can be kept under a different
+  /// username or default channel.
+  Future<String?> duplicateServer(SavedServer s) async {
+    final copy = s.copyWith(
+      name: '${s.name} (copy)',
+      localId: _uniqueId(s.host, s.port),
+    );
+    servers.add(copy);
+    if (runtimes.length < maxServers) await _register(copy);
+    await _persist();
+    notifyListeners();
+    unawaited(refreshPings());
+    return null;
+  }
+
+  // --- export and import --------------------------------------------------
+
+  /// Writes every saved server to a JSON file.
+  ///
+  /// Desktop gets a save dialog; mobile has no user-visible filesystem, so the
+  /// file goes to a temporary path and straight into the share sheet.
+  Future<String?> exportServersToFile() async {
+    if (servers.isEmpty) return 'There are no servers to export.';
+    try {
+      final json = await exportServers(
+        configs: servers.map((s) => s.toConfig()).toList(),
+      );
+      const fileName = 'mumbleway-servers.json';
+
+      if (Platform.isAndroid || Platform.isIOS) {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$fileName');
+        await file.writeAsString(json);
+        await SharePlus.instance.share(
+          ShareParams(files: [XFile(file.path)], subject: 'MumbleWay servers'),
+        );
+        return null;
+      }
+
+      final location = await getSaveLocation(
+        suggestedName: fileName,
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'JSON', extensions: ['json'])
+        ],
+      );
+      if (location == null) return null; // cancelled
+      await File(location.path).writeAsString(json);
+      return null;
+    } catch (e) {
+      return 'Export failed: $e';
+    }
+  }
+
+  /// Reads a profile file chosen by the user and adds what it contains.
+  Future<String?> importServersFromFile() async {
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'Server profiles', extensions: ['json', 'mumble'])
+        ],
+      );
+      if (file == null) return null; // cancelled
+      final text = await file.readAsString();
+      return importFromText(text);
+    } catch (e) {
+      return 'Import failed: $e';
+    }
+  }
+
+  // --- sharing ------------------------------------------------------------
+
+  /// Shares an invite for [s] as a link, optionally with the password baked in.
+  Future<String?> shareInviteLink(
+    SavedServer s, {
+    String? channel,
+    bool includePassword = false,
+  }) async {
+    try {
+      final link = await buildInviteLink(
+        config: s.toConfig(),
+        channel: channel,
+        includePassword: includePassword,
+      );
+      await SharePlus.instance.share(
+        ShareParams(text: link, subject: 'Join me on ${s.name}'),
+      );
+      return null;
+    } catch (e) {
+      return 'Could not share: $e';
+    }
+  }
+
+  /// Shares an invite for [s] as a profile file.
+  Future<String?> shareInviteFile(
+    SavedServer s, {
+    String? channel,
+    bool includePassword = false,
+  }) async {
+    try {
+      final json = await buildInviteFile(
+        config: s.toConfig(),
+        channel: channel,
+        includePassword: includePassword,
+      );
+      final dir = await getTemporaryDirectory();
+      final safe = s.name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+      final file = File('${dir.path}/$safe.json');
+      await file.writeAsString(json);
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], subject: 'Join me on ${s.name}'),
+      );
+      return null;
+    } catch (e) {
+      return 'Could not share: $e';
+    }
+  }
+
   Future<void> forgetServer(String id) async {
     servers.removeWhere((s) => s.id == id);
     runtimes.remove(id);
@@ -506,6 +664,18 @@ class AppState extends ChangeNotifier {
         deaf: !user.deafened,
       );
     } catch (_) {}
+  }
+
+  /// Removes a user from the server. Requires the Kick permission; the server
+  /// replies with a permission-denied message if we lack it, which arrives in
+  /// the message log rather than as a thrown error.
+  Future<String?> kickUserFrom(String id, UiUser user, String reason) async {
+    try {
+      await kickUser(serverId: id, session: user.session, reason: reason);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
   // --- audio -------------------------------------------------------------
@@ -644,22 +814,34 @@ class AppState extends ChangeNotifier {
 
   // --- public server directory -------------------------------------------
 
-  /// Fetches the public server directory.
+  /// Fetches the public server directory (around 260 servers).
   ///
-  /// The official endpoint has been answering 501 for every request, so this
-  /// falls back to a small built-in list rather than showing the user nothing.
-  /// [usedFallback] tells the UI which it got.
+  /// Two things this request must get right, both learned the hard way:
+  ///
+  /// * **`Accept-Encoding: gzip` is mandatory.** The endpoint answers
+  ///   `501 Not Implemented` with an empty body to any client that does not
+  ///   advertise gzip — which looks exactly like the service being down. Dart's
+  ///   `HttpClient` sends it by default, and it is requested explicitly here so
+  ///   that stays true if the client is ever swapped out.
+  /// * **`version` is required** — without it the endpoint also returns 501.
+  ///
+  /// [usedFallback] reports whether the network request failed and a small
+  /// built-in list was substituted.
   Future<(List<PublicServer>, bool usedFallback)> fetchPublicServers() async {
     try {
-      final uri = Uri.parse(
-          'https://publist.mumble.info/v1/list?version=1.5.735');
-      final res = await http.get(uri).timeout(const Duration(seconds: 15));
+      final uri =
+          Uri.parse('https://publist.mumble.info/v1/list?version=1.5.735');
+      final res = await http.get(uri, headers: {
+        'Accept-Encoding': 'gzip',
+        'Accept': '*/*',
+      }).timeout(const Duration(seconds: 20));
+
       if (res.statusCode == 200 && res.body.contains('<server')) {
         final parsed = _parsePublicList(res.body);
         if (parsed.isNotEmpty) return (parsed, false);
       }
     } catch (_) {
-      // Fall through to the built-in list.
+      // Network trouble; fall through to the built-in list.
     }
     return (_knownPublicServers, true);
   }
@@ -723,9 +905,24 @@ class AppState extends ChangeNotifier {
           ..tcpPingMs = field0.tcpPingMs
           ..udpPingMs = field0.udpPingMs
           ..transport = field0.transport;
-      case AppEvent_InputLevel(:final levelDb, :final speaking):
+      case AppEvent_InputLevel(
+          :final levelDb,
+          :final speaking,
+          :final thresholdDb
+        ):
         _inputLevelDb = levelDb;
         _speaking = speaking;
+        _thresholdDb = thresholdDb;
+      case AppEvent_Moderated(
+          :final muted,
+          :final deafened,
+          :final by,
+        ):
+        // The cue already played in the core; this is the visible half.
+        final what = deafened != null
+            ? (deafened ? 'deafened you' : 'undeafened you')
+            : (muted == true ? 'muted you' : 'unmuted you');
+        lastModerationMessage = '$by $what';
       case AppEvent_Certificate(
           :final serverId,
           :final fingerprint,

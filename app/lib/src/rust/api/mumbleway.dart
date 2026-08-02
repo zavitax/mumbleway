@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `app`, `cue_for_transition`, `emit`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
@@ -190,6 +190,50 @@ Future<void> setDefaultChannel({required String serverId, String? channel}) =>
       channel: channel,
     );
 
+/// Removes a user from the server. Requires the Kick permission; without it the
+/// server answers with a permission-denied message that arrives as text.
+///
+/// This is a kick, not a ban — they may reconnect immediately.
+Future<void> kickUser({
+  required String serverId,
+  required int session,
+  required String reason,
+}) => RustLib.instance.api.crateApiMumblewayKickUser(
+  serverId: serverId,
+  session: session,
+  reason: reason,
+);
+
+/// Builds a `mumble://` invite link for a server and channel.
+///
+/// `include_password` is a deliberate choice by the caller: a link carrying a
+/// password grants access to anyone who ever sees it, including whatever chat
+/// app it travels through.
+Future<String> buildInviteLink({
+  required ServerConfig config,
+  String? channel,
+  required bool includePassword,
+}) => RustLib.instance.api.crateApiMumblewayBuildInviteLink(
+  config: config,
+  channel: channel,
+  includePassword: includePassword,
+);
+
+/// Builds a shareable JSON profile file for one server.
+Future<String> buildInviteFile({
+  required ServerConfig config,
+  String? channel,
+  required bool includePassword,
+}) => RustLib.instance.api.crateApiMumblewayBuildInviteFile(
+  config: config,
+  channel: channel,
+  includePassword: includePassword,
+);
+
+/// Builds a JSON file containing every supplied server, for backup or transfer.
+Future<String> exportServers({required List<ServerConfig> configs}) =>
+    RustLib.instance.api.crateApiMumblewayExportServers(configs: configs);
+
 /// Parses a `mumble://` link or a JSON profile file into server definitions.
 ///
 /// Nothing is connected or saved here; the caller decides what to keep.
@@ -225,7 +269,18 @@ sealed class AppEvent with _$AppEvent {
   const factory AppEvent.inputLevel({
     required double levelDb,
     required bool speaking,
+
+    /// Level voice activation opens at, tracking the background noise.
+    required double thresholdDb,
   }) = AppEvent_InputLevel;
+
+  /// Someone else changed our mute or deafen state.
+  const factory AppEvent.moderated({
+    required String serverId,
+    bool? muted,
+    bool? deafened,
+    required String by,
+  }) = AppEvent_Moderated;
 
   /// The server presented a certificate. `changed` means it differs from the
   /// pinned one and the user must decide.

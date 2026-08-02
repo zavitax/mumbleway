@@ -149,6 +149,11 @@ class LevelMeter extends StatelessWidget {
     // Map -60..0 dBFS onto 0..1; below -60 there is nothing worth showing.
     final t = ((state.inputLevelDb + 60) / 60).clamp(0.0, 1.0);
 
+    // The activation threshold only means anything in voice-activated mode,
+    // where it tells the rider how far above the engine they have to speak.
+    final showThreshold = state.micMode == MicMode.voiceActivity;
+    final threshold = ((state.activationThresholdDb + 60) / 60).clamp(0.0, 1.0);
+
     return Row(
       children: [
         Icon(
@@ -166,24 +171,47 @@ class LevelMeter extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: t),
-              duration: const Duration(milliseconds: 90),
-              builder: (context, v, _) => LinearProgressIndicator(
-                value: v,
-                minHeight: 10,
-                backgroundColor:
-                    Theme.of(context).colorScheme.surfaceContainerHighest,
-                valueColor: AlwaysStoppedAnimation(
-                  state.muted
-                      ? StatusColors.failed
-                      : state.speaking
-                          ? StatusColors.talking
-                          : StatusColors.idle,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: t),
+                    duration: const Duration(milliseconds: 90),
+                    builder: (context, v, _) => LinearProgressIndicator(
+                      value: v,
+                      minHeight: 10,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation(
+                        state.muted
+                            ? StatusColors.failed
+                            : state.speaking
+                                ? StatusColors.talking
+                                : StatusColors.idle,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                // Where voice activation opens. It moves with the background
+                // noise, so at speed it sits much further right — which is the
+                // useful thing to see: how far above the engine you must speak.
+                if (showThreshold)
+                  Positioned(
+                    left: (constraints.maxWidth * threshold - 1)
+                        .clamp(0.0, constraints.maxWidth - 2),
+                    child: Container(
+                      width: 2,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: StatusColors.connecting,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),

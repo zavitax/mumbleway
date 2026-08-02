@@ -8,7 +8,11 @@
 use std::collections::BTreeMap;
 
 use super::codec::{VoiceDecoder, FRAME_SAMPLES};
+use super::dsp::LevelNormalizer;
 use crate::error::Result;
+
+/// Loudness every speaker is brought towards, in dBFS.
+const NORMALISE_TARGET_DB: f32 = -20.0;
 
 /// Starting backlog, in 20 ms frames. Three frames is 60 ms, a reasonable
 /// compromise between mouth-to-ear delay and cellular jitter.
@@ -34,6 +38,8 @@ pub struct SpeakerBuffer {
     clean_run: u32,
     /// True once the sender has signalled end of transmission.
     finished: bool,
+    /// Per-speaker loudness correction, so everyone arrives at a similar level.
+    normalizer: LevelNormalizer,
 }
 
 impl SpeakerBuffer {
@@ -46,7 +52,13 @@ impl SpeakerBuffer {
             recent_losses: 0,
             clean_run: 0,
             finished: false,
+            normalizer: LevelNormalizer::new(NORMALISE_TARGET_DB),
         })
+    }
+
+    /// Current loudness correction for this speaker, in dB.
+    pub fn normalisation_gain_db(&self) -> f32 {
+        self.normalizer.gain_db()
     }
 
     pub fn target_frames(&self) -> usize {
@@ -114,7 +126,11 @@ impl SpeakerBuffer {
                 self.target -= 1;
                 self.clean_run = 0;
             }
-            return self.decoder.decode(&packet, out).ok();
+            let n = self.decoder.decode(&packet, out).ok()?;
+            // Normalise here rather than in the mixer so each speaker's gain
+            // tracks that speaker, not whatever the mix happens to contain.
+            self.normalizer.process(&mut out[..n]);
+            return Some(n);
         }
 
         // The expected packet is missing. If a later one exists, conceal this
@@ -131,7 +147,9 @@ impl SpeakerBuffer {
         }
 
         let fec_source = next_available.and_then(|s| self.pending.get(&s)).cloned();
-        self.decoder.decode_lost(fec_source.as_deref(), out).ok()
+        let n = self.decoder.decode_lost(fec_source.as_deref(), out).ok()?;
+        self.normalizer.process(&mut out[..n]);
+        Some(n)
     }
 
     pub fn reset(&mut self) {
@@ -140,6 +158,7 @@ impl SpeakerBuffer {
         self.finished = false;
         self.recent_losses = 0;
         self.clean_run = 0;
+        self.normalizer.reset();
         let _ = self.decoder.reset();
     }
 }

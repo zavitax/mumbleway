@@ -60,6 +60,9 @@ pub struct AudioShared {
     input_level: AtomicU32,
     /// Output level in dBFS * 100, so the UI can show playback activity.
     output_level: AtomicU32,
+    /// Level voice activation currently opens at, in dBFS * 100. Tracks the
+    /// background noise, so it is worth showing rather than a fixed number.
+    activation_threshold: AtomicU32,
     /// Whether the last processed block counted as speech.
     speech_detected: AtomicBool,
     running: AtomicBool,
@@ -78,6 +81,15 @@ pub struct AudioShared {
     /// intact even if the worker is busy, and makes a cue a single atomic
     /// action that cannot be half-played.
     cue_queue: Mutex<VecDeque<f32>>,
+
+    /// Copy of what was most recently handed to the output device, used as the
+    /// echo canceller's reference.
+    ///
+    /// Filled by the output callback and drained by the worker at the same
+    /// rate, so the queue's own depth approximates the device's output latency
+    /// and the two stay roughly aligned. The adaptive filter absorbs whatever
+    /// misalignment is left.
+    echo_reference: Mutex<VecDeque<f32>>,
 
     /// Requested capture/playback devices, by name. `None` means system default.
     device_request: Mutex<(Option<String>, Option<String>)>,
@@ -98,18 +110,54 @@ pub enum AudioCue {
     Disconnected,
     /// Rising two-tone — the connection is back.
     Reconnected,
+    /// Repeated soft double-beep while a connection is being established.
+    Dialing,
+    /// Someone else muted us.
+    MutedByOther,
+    /// Someone else unmuted us.
+    UnmutedByOther,
+    /// Someone else deafened us.
+    DeafenedByOther,
+    /// Someone else undeafened us.
+    UndeafenedByOther,
     /// Steady tone for checking the chosen output device.
     Test,
 }
 
 impl AudioCue {
     /// Segments as `(frequency_hz, milliseconds)`; frequency 0 is a gap.
+    ///
+    /// The vocabulary is consistent so it can be learned without a manual:
+    /// falling means something was taken away, rising means it came back, and
+    /// the number of tones tells you how big a deal it is — two for the
+    /// microphone, three for hearing, which matters more.
     fn segments(self) -> &'static [(f32, u32)] {
         match self {
             // Falling, so it reads as "something went wrong" without thinking.
             AudioCue::Disconnected => &[(880.0, 140), (0.0, 40), (440.0, 240)],
             // Rising, the mirror image.
             AudioCue::Reconnected => &[(523.25, 120), (0.0, 30), (783.99, 220)],
+            // Deliberately unobtrusive: this plays every connection attempt,
+            // including the automatic retries during a bad stretch of road.
+            AudioCue::Dialing => &[(587.33, 90), (0.0, 90), (587.33, 90)],
+
+            AudioCue::MutedByOther => &[(659.25, 110), (0.0, 30), (440.0, 170)],
+            AudioCue::UnmutedByOther => &[(440.0, 110), (0.0, 30), (659.25, 170)],
+            AudioCue::DeafenedByOther => &[
+                (659.25, 100),
+                (0.0, 30),
+                (523.25, 100),
+                (0.0, 30),
+                (392.0, 200),
+            ],
+            AudioCue::UndeafenedByOther => &[
+                (392.0, 100),
+                (0.0, 30),
+                (523.25, 100),
+                (0.0, 30),
+                (659.25, 200),
+            ],
+
             AudioCue::Test => &[(440.0, 600)],
         }
     }
@@ -168,12 +216,14 @@ impl AudioShared {
             deafened: AtomicBool::new(false),
             input_level: AtomicU32::new(0),
             output_level: AtomicU32::new(0),
+            activation_threshold: AtomicU32::new(0),
             speech_detected: AtomicBool::new(false),
             running: AtomicBool::new(true),
             input_gain_db: AtomicI32::new(0),
             output_volume_db: AtomicI32::new(0),
             monitor: AtomicBool::new(false),
             cue_queue: Mutex::new(VecDeque::new()),
+            echo_reference: Mutex::new(VecDeque::new()),
             device_request: Mutex::new((None, None)),
             device_generation: AtomicU64::new(0),
         }
@@ -302,6 +352,16 @@ impl AudioShared {
     fn store_output_level(&self, db: f32) {
         let v = ((db + 120.0).clamp(0.0, 120.0) * 100.0) as u32;
         self.output_level.store(v, Ordering::Relaxed);
+    }
+
+    fn store_threshold(&self, db: f32) {
+        let v = ((db + 120.0).clamp(0.0, 120.0) * 100.0) as u32;
+        self.activation_threshold.store(v, Ordering::Relaxed);
+    }
+
+    /// Level voice activation currently opens at, in dBFS.
+    pub fn activation_threshold_db(&self) -> f32 {
+        self.activation_threshold.load(Ordering::Relaxed) as f32 / 100.0 - 120.0
     }
 
     /// Queues a received voice packet for decoding and playback.
@@ -638,6 +698,20 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                     if pull.is_empty() {
                         break; // nothing to play; the rest becomes silence
                     }
+
+                    // Keep a copy as the echo reference, at 48 kHz before
+                    // resampling so it matches what the capture chain sees.
+                    {
+                        let mut echo = play_shared.echo_reference.lock();
+                        if echo.len() + pull.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
+                            echo.extend(pull.iter().copied());
+                        } else {
+                            // The worker has fallen behind; resync rather than
+                            // feed the canceller a stale reference.
+                            echo.clear();
+                        }
+                    }
+
                     converted.clear();
                     out_resampler.process(&pull, &mut converted);
                     pending.extend(converted.iter().copied());
@@ -686,6 +760,7 @@ where
     };
 
     let mut block = vec![0.0f32; FRAME_SIZE];
+    let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
     let mut sequence: u64 = 0;
     let mut was_transmitting = false;
@@ -718,8 +793,24 @@ where
                 }
             }
 
-            let analysis = processor.process(&mut block);
+            // Take the matching stretch of what was played, so the canceller
+            // has a reference for this block. Short-fill with silence rather
+            // than stalling: a missing reference simply means nothing to cancel.
+            echo_ref.clear();
+            {
+                let mut echo = shared.echo_reference.lock();
+                for _ in 0..FRAME_SIZE {
+                    match echo.pop_front() {
+                        Some(s) => echo_ref.push(s),
+                        None => break,
+                    }
+                }
+            }
+            echo_ref.resize(FRAME_SIZE, 0.0);
+
+            let analysis = processor.process_with_reference(&mut block, &echo_ref);
             shared.store_level(analysis.level_db);
+            shared.store_threshold(analysis.activation_threshold_db);
             shared
                 .speech_detected
                 .store(analysis.speaking, Ordering::Relaxed);

@@ -230,6 +230,8 @@ class _UserRow extends StatelessWidget {
                   state.toggleUserServerMute(serverId, user);
                 case 'deafen':
                   state.toggleUserServerDeaf(serverId, user);
+                case 'kick':
+                  _confirmKick(context, state);
               }
             },
             itemBuilder: (_) => [
@@ -241,15 +243,78 @@ class _UserRow extends StatelessWidget {
               ),
               PopupMenuItem(
                 value: 'deafen',
-                child: Text(user.deafened
-                    ? 'Undeafen on server'
-                    : 'Deafen on server'),
+                child:
+                    Text(user.deafened ? 'Undeafen on server' : 'Deafen on server'),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'kick',
+                child: Text('Kick from server…',
+                    style: TextStyle(color: StatusColors.failed)),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// Kicking removes someone from the server for everyone, so it asks first and
+  /// offers a reason — the server shows it to the person being removed.
+  Future<void> _confirmKick(BuildContext context, AppState state) async {
+    final reason = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Kick ${user.name}?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'They will be disconnected from the server. This is not a ban — '
+              'they can reconnect straight away.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: reason,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Reason (optional)',
+                hintText: 'Shown to them as they are removed',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: StatusColors.failed),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Kick'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      reason.dispose();
+      return;
+    }
+    final text = reason.text.trim();
+    reason.dispose();
+
+    final error = await state.kickUserFrom(serverId, user, text);
+    messenger.showSnackBar(SnackBar(
+      content: Text(error ??
+          'Kick sent. If nothing happens, you lack the Kick permission.'),
+    ));
   }
 
   static (IconData, Color) _statusVisual(UiUser u) {

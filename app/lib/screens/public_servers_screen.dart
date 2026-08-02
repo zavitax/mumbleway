@@ -4,9 +4,8 @@ import '../state/app_state.dart';
 
 /// Browser for publicly listed Mumble servers.
 ///
-/// The official directory has been answering 501 for every request, so this
-/// falls back to a small built-in list and says so rather than showing an empty
-/// screen with no explanation.
+/// Falls back to a small built-in list if the directory cannot be reached, and
+/// says so, rather than showing an empty screen with no explanation.
 class PublicServersScreen extends StatefulWidget {
   const PublicServersScreen({super.key});
 

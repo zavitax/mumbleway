@@ -140,6 +140,15 @@ pub enum AppEvent {
     InputLevel {
         level_db: f32,
         speaking: bool,
+        /// Level voice activation opens at, tracking the background noise.
+        threshold_db: f32,
+    },
+    /// Someone else changed our mute or deafen state.
+    Moderated {
+        server_id: String,
+        muted: Option<bool>,
+        deafened: Option<bool>,
+        by: String,
     },
     /// The server presented a certificate. `changed` means it differs from the
     /// pinned one and the user must decide.
@@ -233,9 +242,7 @@ fn cue_for_transition(previous: Option<ConnStatus>, next: ConnStatus) -> Option<
     let was_live = matches!(previous, Some(ConnStatus::Connected));
     match next {
         // Dropped out of a working connection.
-        ConnStatus::Reconnecting | ConnStatus::Failed if was_live => {
-            Some(AudioCue::Disconnected)
-        }
+        ConnStatus::Reconnecting | ConnStatus::Failed if was_live => Some(AudioCue::Disconnected),
         // Back after a drop. Deliberately not on the first connect: the user
         // is looking at the screen then, and a chime on every launch is noise.
         ConnStatus::Connected
@@ -246,7 +253,35 @@ fn cue_for_transition(previous: Option<ConnStatus>, next: ConnStatus) -> Option<
         {
             Some(AudioCue::Reconnected)
         }
+        // Dialing, but only for a connect the user asked for. Automatic retries
+        // pass through Connecting too, and beeping on every one of them during
+        // a bad stretch of road would be maddening — the drop cue already said
+        // what happened.
+        ConnStatus::Connecting
+            if matches!(
+                previous,
+                None | Some(ConnStatus::Idle)
+                    | Some(ConnStatus::Disconnected)
+                    | Some(ConnStatus::Failed)
+            ) =>
+        {
+            Some(AudioCue::Dialing)
+        }
         _ => None,
+    }
+}
+
+/// Picks the cue for having been muted or deafened by someone else.
+///
+/// Deafening is reported in preference to muting when both change at once,
+/// because losing the ability to hear matters more than losing the microphone.
+fn cue_for_moderation(muted: Option<bool>, deafened: Option<bool>) -> Option<AudioCue> {
+    match (deafened, muted) {
+        (Some(true), _) => Some(AudioCue::DeafenedByOther),
+        (Some(false), _) => Some(AudioCue::UndeafenedByOther),
+        (None, Some(true)) => Some(AudioCue::MutedByOther),
+        (None, Some(false)) => Some(AudioCue::UnmutedByOther),
+        (None, None) => None,
     }
 }
 
@@ -343,8 +378,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
 
     let level_shared = shared.clone();
     let cue_shared = shared.clone();
-    let last_status: Arc<Mutex<HashMap<String, ConnStatus>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let last_status: Arc<Mutex<HashMap<String, ConnStatus>>> = Arc::new(Mutex::new(HashMap::new()));
     let status_tracker = last_status.clone();
 
     rt.spawn(async move {
@@ -433,6 +467,23 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::SelfModerated {
+                    muted,
+                    deafened,
+                    by,
+                } => {
+                    // Audible, because this happens *to* the user: they are not
+                    // looking at the screen when someone mutes them.
+                    if let Some(cue) = cue_for_moderation(muted, deafened) {
+                        cue_shared.play_cue(cue);
+                    }
+                    emit(AppEvent::Moderated {
+                        server_id,
+                        muted,
+                        deafened,
+                        by,
+                    });
+                }
                 // Talking state already rides along on the user roster.
                 SessionEvent::Talking { .. } => {}
             }
@@ -447,6 +498,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
             emit(AppEvent::InputLevel {
                 level_db: level_shared.input_level_db(),
                 speaking: level_shared.speech_detected(),
+                threshold_db: level_shared.activation_threshold_db(),
             });
         }
     });
@@ -483,6 +535,14 @@ pub fn add_server(config: ServerConfig) -> anyhow::Result<String> {
     );
     profile.password = config.password;
     profile.cert_fingerprint = config.cert_fingerprint;
+
+    // Honour a caller-supplied id rather than always deriving host:port. That
+    // derivation is a good default, but it makes duplicates impossible — and
+    // keeping the same server twice under different usernames or channels is a
+    // reasonable thing to want.
+    if !config.id.trim().is_empty() {
+        profile.id = config.id.clone();
+    }
     let id = profile.id.clone();
 
     // Wire this session into the audio engine.
@@ -653,12 +713,8 @@ pub fn default_port() -> u16 {
 /// `reachable == false`, because the caller is refreshing a list and a thrown
 /// error per offline server would be noise.
 pub async fn ping_server(server_id: String, host: String, port: u16) -> UiServerStatus {
-    let result = mumbleway_core::net::ping::query(
-        &host,
-        port,
-        std::time::Duration::from_secs(3),
-    )
-    .await;
+    let result =
+        mumbleway_core::net::ping::query(&host, port, std::time::Duration::from_secs(3)).await;
 
     match result {
         Ok(s) => UiServerStatus {
@@ -767,32 +823,102 @@ pub fn gain_limits() -> Vec<f32> {
 // ---------------------------------------------------------------------------
 
 /// Silences another user for us only. Always permitted.
-pub fn set_user_local_mute(
-    server_id: String,
-    session: u32,
-    muted: bool,
-) -> anyhow::Result<()> {
-    send_command(server_id, SessionCommand::SetUserLocalMute { session, muted })
+pub fn set_user_local_mute(server_id: String, session: u32, muted: bool) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::SetUserLocalMute { session, muted },
+    )
 }
 
 /// Silences another user for everyone. Requires the Mute permission; without it
 /// the server replies with a permission-denied message that surfaces as text.
-pub fn set_user_server_mute(
-    server_id: String,
-    session: u32,
-    muted: bool,
-) -> anyhow::Result<()> {
-    send_command(server_id, SessionCommand::SetUserServerMute { session, muted })
+pub fn set_user_server_mute(server_id: String, session: u32, muted: bool) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::SetUserServerMute { session, muted },
+    )
 }
 
 /// Deafens another user server-side. Also permission-gated.
 pub fn set_user_server_deaf(server_id: String, session: u32, deaf: bool) -> anyhow::Result<()> {
-    send_command(server_id, SessionCommand::SetUserServerDeaf { session, deaf })
+    send_command(
+        server_id,
+        SessionCommand::SetUserServerDeaf { session, deaf },
+    )
 }
 
 /// Channel to join automatically on every future connect. `None` clears it.
 pub fn set_default_channel(server_id: String, channel: Option<String>) -> anyhow::Result<()> {
     send_command(server_id, SessionCommand::SetDefaultChannel(channel))
+}
+
+/// Removes a user from the server. Requires the Kick permission; without it the
+/// server answers with a permission-denied message that arrives as text.
+///
+/// This is a kick, not a ban — they may reconnect immediately.
+pub fn kick_user(server_id: String, session: u32, reason: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::KickUser { session, reason })
+}
+
+// ---------------------------------------------------------------------------
+// Sharing
+// ---------------------------------------------------------------------------
+
+/// Builds a `mumble://` invite link for a server and channel.
+///
+/// `include_password` is a deliberate choice by the caller: a link carrying a
+/// password grants access to anyone who ever sees it, including whatever chat
+/// app it travels through.
+pub fn build_invite_link(
+    config: ServerConfig,
+    channel: Option<String>,
+    include_password: bool,
+) -> String {
+    let profile = config_to_profile(config);
+    mumbleway_core::session::profile::build_url(&profile, channel.as_deref(), include_password)
+}
+
+/// Builds a shareable JSON profile file for one server.
+pub fn build_invite_file(
+    config: ServerConfig,
+    channel: Option<String>,
+    include_password: bool,
+) -> anyhow::Result<String> {
+    let profile = config_to_profile(config);
+    mumbleway_core::session::profile::build_json(&profile, channel.as_deref(), include_password)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))
+}
+
+/// Builds a JSON file containing every supplied server, for backup or transfer.
+pub fn export_servers(configs: Vec<ServerConfig>) -> anyhow::Result<String> {
+    let entries: Vec<mumbleway_core::session::profile::ProfileFileEntry> = configs
+        .into_iter()
+        .map(|c| mumbleway_core::session::profile::ProfileFileEntry {
+            host: c.host,
+            name: Some(c.name),
+            port: Some(c.port),
+            username: Some(c.username),
+            password: c.password,
+            channel: None,
+            // Pinned fingerprints stay on the device that made the trust
+            // decision; exporting them would launder it onto another machine.
+            cert_fingerprint: None,
+        })
+        .collect();
+
+    serde_json::to_string_pretty(&entries)
+        .map_err(|e| anyhow::anyhow!("could not build the export: {e}"))
+}
+
+/// Converts the Dart-facing config into the core's profile type.
+fn config_to_profile(c: ServerConfig) -> ServerProfile {
+    let mut p = ServerProfile::new(c.name, c.host, c.port, c.username);
+    p.password = c.password;
+    p.cert_fingerprint = c.cert_fingerprint;
+    if !c.id.trim().is_empty() {
+        p.id = c.id;
+    }
+    p
 }
 
 // ---------------------------------------------------------------------------
@@ -886,6 +1012,54 @@ mod tests {
             cue_for_transition(Some(ConnStatus::Handshaking), ConnStatus::Connected),
             None
         );
+    }
+
+    #[test]
+    fn dialing_plays_for_a_deliberate_connect_only() {
+        // A connect the user asked for.
+        for prev in [
+            None,
+            Some(ConnStatus::Idle),
+            Some(ConnStatus::Disconnected),
+            Some(ConnStatus::Failed),
+        ] {
+            assert_eq!(
+                cue_for_transition(prev, ConnStatus::Connecting),
+                Some(AudioCue::Dialing),
+                "expected dialing from {prev:?}"
+            );
+        }
+
+        // Automatic retries pass through Connecting constantly during a bad
+        // stretch of road; beeping on each one would be maddening.
+        assert_eq!(
+            cue_for_transition(Some(ConnStatus::Reconnecting), ConnStatus::Connecting),
+            None
+        );
+    }
+
+    #[test]
+    fn moderation_cues_prefer_deafening_over_muting() {
+        // Losing the ability to hear matters more than losing the microphone,
+        // so when both change at once that is the one reported.
+        assert_eq!(
+            cue_for_moderation(Some(true), Some(true)),
+            Some(AudioCue::DeafenedByOther)
+        );
+        assert_eq!(
+            cue_for_moderation(Some(false), Some(false)),
+            Some(AudioCue::UndeafenedByOther)
+        );
+
+        assert_eq!(
+            cue_for_moderation(Some(true), None),
+            Some(AudioCue::MutedByOther)
+        );
+        assert_eq!(
+            cue_for_moderation(Some(false), None),
+            Some(AudioCue::UnmutedByOther)
+        );
+        assert_eq!(cue_for_moderation(None, None), None);
     }
 
     #[test]

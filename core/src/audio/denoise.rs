@@ -12,6 +12,7 @@
 
 use nnnoiseless::DenoiseState;
 
+use super::aec::{EchoCanceller, DEFAULT_TAPS};
 use super::dsp::{rms, to_dbfs, Agc, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter};
 
 /// RNNoise works on fixed 10 ms blocks at 48 kHz.
@@ -112,8 +113,16 @@ pub struct BlockAnalysis {
     pub noise_floor_db: f32,
     /// How far the block sits above the noise floor.
     pub snr_db: f32,
+    /// Level a block must reach before voice activation opens, in dBFS.
+    ///
+    /// This is the noise floor plus the profile's SNR margin, so it rises with
+    /// the background — which is what makes it worth showing the user, rather
+    /// than a fixed number that means nothing at 120 km/h.
+    pub activation_threshold_db: f32,
     /// Whether this block should be transmitted.
     pub speaking: bool,
+    /// Echo removed on this block, in dB.
+    pub erle_db: f32,
 }
 
 /// The full microphone chain.
@@ -121,6 +130,9 @@ pub struct CaptureProcessor {
     profile: NoiseProfile,
     rumble: RumbleFilter,
     denoise: Box<DenoiseState<'static>>,
+    /// Runs first: echo is speech, so neither the gate nor RNNoise will remove
+    /// it, and everything downstream works better without it.
+    aec: EchoCanceller,
     gate: NoiseGate,
     agc: Agc,
     limiter: Limiter,
@@ -148,6 +160,7 @@ impl CaptureProcessor {
             profile,
             rumble: RumbleFilter::new(SAMPLE_RATE as f32, profile.cutoff_hz()),
             denoise: DenoiseState::new(),
+            aec: EchoCanceller::new(DEFAULT_TAPS),
             // Hold for ~15 blocks (150 ms) so short pauses inside a sentence do
             // not chop the tail off words.
             gate: NoiseGate::new(open_db, close_db, 15),
@@ -193,7 +206,37 @@ impl CaptureProcessor {
     /// Input and output are `-1.0..=1.0`; the i16 scaling RNNoise expects is
     /// handled internally.
     pub fn process(&mut self, block: &mut [f32]) -> BlockAnalysis {
+        // No reference available means no echo to model; the canceller becomes
+        // a pass-through of its own accord.
+        self.process_with_reference(block, &[])
+    }
+
+    /// Enables or disables echo cancellation.
+    pub fn set_echo_cancellation(&mut self, on: bool) {
+        self.aec.set_enabled(on);
+    }
+
+    pub fn echo_cancellation_enabled(&self) -> bool {
+        self.aec.is_enabled()
+    }
+
+    /// Processes one block, using `reference` — the audio recently sent to the
+    /// speakers — to cancel echo. `reference` may be empty or shorter.
+    pub fn process_with_reference(
+        &mut self,
+        block: &mut [f32],
+        reference: &[f32],
+    ) -> BlockAnalysis {
         debug_assert_eq!(block.len(), FRAME_SIZE);
+
+        // 0. Remove what our own speakers are feeding back into the microphone.
+        // This has to come first: echo is speech, so the gate and RNNoise both
+        // pass it happily, and the AGC would then amplify it.
+        let erle_db = if reference.is_empty() {
+            0.0
+        } else {
+            self.aec.process(block, reference)
+        };
 
         // 1. Strip wind and engine rumble before anything else sees it.
         self.rumble.process(block);
@@ -274,7 +317,9 @@ impl CaptureProcessor {
             level_db,
             noise_floor_db,
             snr_db,
+            activation_threshold_db: noise_floor_db + self.profile.snr_margin_db(),
             speaking,
+            erle_db,
         }
     }
 }

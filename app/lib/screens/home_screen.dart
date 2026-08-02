@@ -41,13 +41,60 @@ class HomeScreen extends StatelessWidget {
             icon: Icon(state.muted ? Icons.mic_off : Icons.mic),
             color: state.muted ? StatusColors.failed : null,
           ),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
-            icon: const Icon(Icons.settings),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) async {
+              final messenger = ScaffoldMessenger.of(context);
+              switch (v) {
+                case 'export':
+                  final e = await state.exportServersToFile();
+                  if (e != null) {
+                    messenger.showSnackBar(SnackBar(content: Text(e)));
+                  }
+                case 'import':
+                  final e = await state.importServersFromFile();
+                  if (e != null) {
+                    messenger.showSnackBar(SnackBar(content: Text(e)));
+                  }
+                case 'settings':
+                  if (!context.mounted) return;
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.upload_file),
+                  title: Text('Export servers…'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.file_open),
+                  title: Text('Import from file…'),
+                ),
+              ),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.settings),
+                  title: Text('Settings'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -129,8 +176,13 @@ class _TalkPanel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const LevelMeter(),
-          const SizedBox(height: 12),
-          const PttButton(),
+          // The talk button only exists for push-to-talk. In the automatic
+          // modes it is a status light the meter already provides, so the
+          // vertical space goes back to the server list.
+          if (state.showTalkButton) ...[
+            const SizedBox(height: 12),
+            const PttButton(),
+          ],
           const SizedBox(height: 8),
           Text(
             live == 0

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    MumbleWay app icon.
+
+    The product is about one thing: being heard clearly from inside a helmet at
+    speed. So the mark is a helmet with a voice carrying cleanly out of it.
+
+    Two things make it read as a helmet rather than an abstract blob at 48 px:
+    the visor opening stops short of the front edge (a slot, not a stripe), and
+    the chin bar below it is left solid so the jaw silhouette survives.
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#1B2735"/>
+      <stop offset="1" stop-color="#0A0F16"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6BC1F2"/>
+      <stop offset="1" stop-color="#2E86C1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+
+  <!-- Helmet shell: dome above, jaw carried forward and down at the front. -->
+  <path d="M 356 236
+           C 500 236 622 350 622 492
+           L 622 606
+           C 622 664 574 706 516 706
+           L 316 706
+           C 190 706 108 606 108 480
+           C 108 344 216 236 356 236 Z"
+        fill="#F4F8FC"/>
+
+  <!-- Visor opening. Deliberately inset from the front edge so it reads as an
+       opening in the shell rather than a band painted across it. -->
+  <path d="M 566 398
+           L 566 516
+           L 360 516
+           C 296 516 262 486 262 458
+           C 262 424 300 398 360 398
+           Z"
+        fill="url(#accent)"/>
+
+  <!-- Lower edge of the jaw, a shade darker so the chin bar separates from the
+       dome without needing an outline. -->
+  <path d="M 316 706
+           C 232 706 166 654 132 578
+           L 228 546
+           C 252 600 288 626 344 626
+           L 516 626
+           C 574 626 622 654 622 706
+           Z"
+        fill="#DEE8F2"/>
+
+  <!-- Voice carrying out, clean and unobstructed. -->
+  <g stroke="url(#accent)" stroke-width="42" fill="none" stroke-linecap="round">
+    <path d="M 706 404 A 118 118 0 0 1 706 604"/>
+    <path d="M 786 344 A 196 196 0 0 1 786 664"/>
+  </g>
+</svg>

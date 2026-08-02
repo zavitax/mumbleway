@@ -674,6 +674,24 @@ impl Session {
             }
             MessageType::UserState => {
                 let m = mumble::UserState::decode(payload)?;
+
+                // Note what changed about *us*, and who did it, before the
+                // roster is updated. An actor other than ourselves means this
+                // was done to the user, which warrants an audible cue.
+                let moderation = m
+                    .session
+                    .filter(|s| Some(*s) == state.self_session)
+                    .and_then(|s| {
+                        let actor = m.actor.filter(|a| Some(*a) != state.self_session)?;
+                        let prev = state.users.get(&s);
+                        let muted = m.mute.filter(|v| prev.map(|p| p.mute) != Some(*v));
+                        let deafened = m.deaf.filter(|v| prev.map(|p| p.deaf) != Some(*v));
+                        if muted.is_none() && deafened.is_none() {
+                            return None;
+                        }
+                        Some((actor, muted, deafened))
+                    });
+
                 if let Some(s) = m.session {
                     let e = state.users.entry(s).or_insert_with(|| UserInfo {
                         session: s,
@@ -705,6 +723,20 @@ impl Session {
                         e.self_deaf = v;
                     }
                     self.emit(SessionEvent::Users(state.user_list())).await;
+                }
+
+                if let Some((actor, muted, deafened)) = moderation {
+                    let by = state
+                        .users
+                        .get(&actor)
+                        .map(|u| u.name.clone())
+                        .unwrap_or_else(|| "an admin".into());
+                    self.emit(SessionEvent::SelfModerated {
+                        muted,
+                        deafened,
+                        by,
+                    })
+                    .await;
                 }
             }
             MessageType::UserRemove => {
@@ -828,6 +860,19 @@ impl Session {
                     ..Default::default()
                 };
                 writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::KickUser { session, reason } => {
+                // UserRemove without `ban` is a kick: the server drops them and
+                // tells every client, and they may reconnect straight away.
+                let m = mumble::UserRemove {
+                    session,
+                    actor: state.self_session,
+                    reason: Some(reason),
+                    ban: Some(false),
+                    ban_certificate: None,
+                    ban_ip: None,
+                };
+                writer.send(MessageType::UserRemove, &m).await?;
             }
             SessionCommand::SetDefaultChannel(name) => {
                 // Remembered for the next connect; the UI persists it too.

@@ -1,5 +1,6 @@
 //! Audio capture, processing, coding and playback.
 
+pub mod aec;
 pub mod codec;
 pub mod denoise;
 pub mod dsp;

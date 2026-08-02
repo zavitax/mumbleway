@@ -333,6 +333,62 @@ impl Agc {
     }
 }
 
+/// Brings every speaker to a similar loudness.
+///
+/// Riders arrive with wildly different microphones, gains and helmet acoustics,
+/// so without this one person is inaudible under the engine while the next is
+/// painfully loud. Adapting slowly is the point: fast adaptation would pump
+/// audibly and chase the shape of individual words.
+#[derive(Debug, Clone)]
+pub struct LevelNormalizer {
+    gain_db: f32,
+    target_db: f32,
+    max_gain_db: f32,
+    min_gain_db: f32,
+    step_db: f32,
+    /// Level below which a block is treated as silence and ignored.
+    floor_db: f32,
+}
+
+impl LevelNormalizer {
+    pub fn new(target_db: f32) -> Self {
+        Self {
+            gain_db: 0.0,
+            target_db,
+            max_gain_db: 18.0,
+            min_gain_db: -18.0,
+            step_db: 0.35,
+            floor_db: -55.0,
+        }
+    }
+
+    pub fn gain_db(&self) -> f32 {
+        self.gain_db
+    }
+
+    pub fn reset(&mut self) {
+        self.gain_db = 0.0;
+    }
+
+    /// Adapts towards the target and applies the gain in place.
+    pub fn process(&mut self, buf: &mut [f32]) {
+        let level = to_dbfs(rms(buf));
+
+        // Only adapt on actual speech. Adapting during the gaps would wind the
+        // gain up on silence and then blast the next word.
+        if level > self.floor_db {
+            let error = self.target_db - level;
+            let step = error.clamp(-self.step_db, self.step_db);
+            self.gain_db = (self.gain_db + step).clamp(self.min_gain_db, self.max_gain_db);
+        }
+
+        let g = 10f32.powf(self.gain_db / 20.0);
+        for s in buf.iter_mut() {
+            *s = (*s * g).clamp(-1.0, 1.0);
+        }
+    }
+}
+
 /// Peak limiter that catches wind-gust transients before they clip.
 #[derive(Debug, Clone)]
 pub struct Limiter {
@@ -537,6 +593,54 @@ mod tests {
             agc.process(&mut b, lvl, true);
         }
         assert!(agc.gain_db() <= 12.0 + 1e-3, "AGC exceeded its max gain");
+    }
+
+    #[test]
+    fn normaliser_brings_quiet_and_loud_speakers_together() {
+        // The whole point: two people arriving at very different levels should
+        // end up close to each other after adaptation.
+        let mut quiet = LevelNormalizer::new(-20.0);
+        let mut loud = LevelNormalizer::new(-20.0);
+
+        let mut quiet_out = 0.0;
+        let mut loud_out = 0.0;
+        for _ in 0..400 {
+            let mut a = tone(300.0, 480, 0.01); // very quiet talker
+            let mut b = tone(300.0, 480, 0.6); // very loud talker
+            quiet.process(&mut a);
+            loud.process(&mut b);
+            quiet_out = to_dbfs(rms(&a));
+            loud_out = to_dbfs(rms(&b));
+        }
+
+        assert!(
+            (quiet_out - loud_out).abs() < 6.0,
+            "levels still {:.1} dB apart (quiet {quiet_out:.1}, loud {loud_out:.1})",
+            (quiet_out - loud_out).abs()
+        );
+        assert!(quiet.gain_db() > 0.0, "quiet speaker should be boosted");
+        assert!(loud.gain_db() < 0.0, "loud speaker should be attenuated");
+    }
+
+    #[test]
+    fn normaliser_ignores_silence() {
+        // Adapting during gaps would wind the gain up and blast the next word.
+        let mut n = LevelNormalizer::new(-20.0);
+        for _ in 0..500 {
+            let mut silence = vec![0.0f32; 480];
+            n.process(&mut silence);
+        }
+        assert_eq!(n.gain_db(), 0.0);
+    }
+
+    #[test]
+    fn normaliser_output_never_clips() {
+        let mut n = LevelNormalizer::new(-6.0);
+        for _ in 0..600 {
+            let mut b = tone(300.0, 480, 0.95);
+            n.process(&mut b);
+            assert!(peak(&b) <= 1.0, "normaliser clipped at {}", peak(&b));
+        }
     }
 
     #[test]

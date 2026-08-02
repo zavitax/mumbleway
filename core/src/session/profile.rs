@@ -170,6 +170,84 @@ pub fn parse_json(input: &str, fallback_username: &str) -> Result<Vec<ServerProf
     Ok(profiles)
 }
 
+/// Percent-encodes a single URL component.
+///
+/// Deliberately conservative: everything outside the unreserved set is escaped,
+/// so usernames and channel names containing spaces, accents, `@`, `:` or `/`
+/// survive a round trip through [`parse_url`].
+fn percent_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
+/// Builds a `mumble://` invite link for sharing.
+///
+/// `include_password` is a real decision, not a convenience flag: a link with a
+/// password in it grants access to anyone who ever sees it, including whatever
+/// chat app it passes through. The caller must choose deliberately.
+pub fn build_url(profile: &ServerProfile, channel: Option<&str>, include_password: bool) -> String {
+    let mut url = String::from("mumble://");
+
+    if !profile.username.trim().is_empty() {
+        url.push_str(&percent_encode(&profile.username));
+        if include_password {
+            if let Some(p) = profile.password.as_ref().filter(|p| !p.is_empty()) {
+                url.push(':');
+                url.push_str(&percent_encode(p));
+            }
+        }
+        url.push('@');
+    }
+
+    url.push_str(&profile.host);
+    if profile.port != DEFAULT_PORT {
+        url.push_str(&format!(":{}", profile.port));
+    }
+
+    url.push('/');
+    if let Some(c) = channel.filter(|c| !c.trim().is_empty()) {
+        url.push_str(&percent_encode(c));
+    }
+
+    if !profile.name.trim().is_empty() && profile.name != profile.host {
+        url.push_str(&format!("?title={}", percent_encode(&profile.name)));
+    }
+    url
+}
+
+/// Builds a JSON profile file for sharing, optionally with the password.
+pub fn build_json(
+    profile: &ServerProfile,
+    channel: Option<&str>,
+    include_password: bool,
+) -> Result<String> {
+    let entry = ProfileFileEntry {
+        host: profile.host.clone(),
+        name: Some(profile.name.clone()),
+        port: Some(profile.port),
+        username: Some(profile.username.clone()),
+        password: if include_password {
+            profile.password.clone()
+        } else {
+            None
+        },
+        channel: channel.map(|c| c.to_string()),
+        // Never shared: the pin is this device's own trust decision, and
+        // copying it would launder it onto someone else's device.
+        cert_fingerprint: None,
+    };
+    serde_json::to_string_pretty(&vec![entry])
+        .map_err(|e| CoreError::Other(format!("could not build profile: {e}")))
+}
+
 /// Accepts either a link or a JSON file body and returns whatever it finds.
 pub fn parse_any(input: &str, fallback_username: &str) -> Result<Vec<ServerProfile>> {
     let trimmed = input.trim();
@@ -282,6 +360,94 @@ mod tests {
             2
         );
         assert_eq!(parse_any(r#"{"host":"a"}"#, "u").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn built_links_round_trip_through_the_parser() {
+        let mut p = ServerProfile::new("Sunday Ride", "voice.example.com", 64744, "alice");
+        p.password = Some("s3cret pass".into());
+
+        let url = build_url(&p, Some("Riders Lounge"), true);
+        let back = parse_url(&url, "unused").unwrap();
+
+        assert_eq!(back.host, "voice.example.com");
+        assert_eq!(back.port, 64744);
+        assert_eq!(back.username, "alice");
+        assert_eq!(back.password.as_deref(), Some("s3cret pass"));
+        assert_eq!(back.auto_join_channel.as_deref(), Some("Riders Lounge"));
+        assert_eq!(back.name, "Sunday Ride");
+    }
+
+    #[test]
+    fn awkward_characters_survive_a_round_trip() {
+        // Names with spaces, accents and separators are exactly what naive
+        // string concatenation gets wrong.
+        let mut p = ServerProfile::new("Café / Bar", "host.example", DEFAULT_PORT, "two words");
+        p.password = Some("a:b@c/d".into());
+
+        let url = build_url(&p, Some("Étage 2"), true);
+        let back = parse_url(&url, "x").unwrap();
+
+        assert_eq!(back.username, "two words");
+        assert_eq!(back.password.as_deref(), Some("a:b@c/d"));
+        assert_eq!(back.auto_join_channel.as_deref(), Some("Étage 2"));
+        assert_eq!(back.name, "Café / Bar");
+        assert_eq!(back.host, "host.example");
+    }
+
+    #[test]
+    fn passwords_are_omitted_unless_explicitly_included() {
+        let mut p = ServerProfile::new("S", "h.example", DEFAULT_PORT, "u");
+        p.password = Some("hunter2".into());
+
+        let shared = build_url(&p, None, false);
+        assert!(
+            !shared.contains("hunter2"),
+            "password leaked into a link that opted out: {shared}"
+        );
+        assert_eq!(parse_url(&shared, "x").unwrap().password, None);
+
+        let json = build_json(&p, None, false).unwrap();
+        assert!(
+            !json.contains("hunter2"),
+            "password leaked into a profile file"
+        );
+    }
+
+    #[test]
+    fn the_default_port_is_left_out_of_links() {
+        let p = ServerProfile::new("S", "h.example", DEFAULT_PORT, "u");
+        assert!(!build_url(&p, None, false).contains("64738"));
+
+        let q = ServerProfile::new("S", "h.example", 1234, "u");
+        assert!(build_url(&q, None, false).contains(":1234"));
+    }
+
+    #[test]
+    fn built_profile_files_parse_back() {
+        let mut p = ServerProfile::new("Team", "h.example", 4242, "bob");
+        p.password = Some("pw".into());
+
+        let json = build_json(&p, Some("Ops"), true).unwrap();
+        let back = parse_json(&json, "x").unwrap();
+
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].host, "h.example");
+        assert_eq!(back[0].port, 4242);
+        assert_eq!(back[0].username, "bob");
+        assert_eq!(back[0].password.as_deref(), Some("pw"));
+        assert_eq!(back[0].auto_join_channel.as_deref(), Some("Ops"));
+    }
+
+    #[test]
+    fn shared_profiles_never_carry_our_pinned_certificate() {
+        // Copying a trust decision onto someone else's device would launder it.
+        let mut p = ServerProfile::new("S", "h.example", DEFAULT_PORT, "u");
+        p.cert_fingerprint = Some("aa".repeat(32));
+
+        let json = build_json(&p, None, true).unwrap();
+        assert!(!json.contains(&"aa".repeat(32)));
+        assert_eq!(parse_json(&json, "x").unwrap()[0].cert_fingerprint, None);
     }
 
     #[test]

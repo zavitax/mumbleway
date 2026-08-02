@@ -1600,6 +1600,7 @@ dependencies = [
  "mumbleway-core",
  "parking_lot",
  "rustls-pemfile",
+ "serde_json",
  "tokio",
 ]
 

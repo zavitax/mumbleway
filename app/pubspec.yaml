@@ -45,7 +45,8 @@ dependencies:
   # Resolves the writable directory the client identity certificate lives in.
   path_provider: ^2.1.4
   http: ^1.6.0
-
+  share_plus: ^13.3.0
+  file_selector: ^1.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -60,6 +61,27 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+# App icon generation. Regenerate after changing assets/icon/*.svg with:
+#   rsvg-convert -w 1024 -h 1024 -o assets/icon/mumbleway.png assets/icon/mumbleway.svg
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/mumbleway.png"
+  android: true
+  ios: true
+  windows:
+    generate: true
+    image_path: "assets/icon/mumbleway.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "assets/icon/mumbleway.png"
+  remove_alpha_ios: true
+  # Launchers crop adaptive icons to their own shape, so the foreground is the
+  # padded variant and the background is a flat colour from the app's palette.
+  adaptive_icon_background: "#101822"
+  adaptive_icon_foreground: "assets/icon/mumbleway_foreground.png"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -53,52 +53,52 @@ class SavedServer {
     String? defaultChannel,
     String? localId,
     bool clearDefaultChannel = false,
-  }) =>
-      SavedServer(
-        name: name ?? this.name,
-        host: host,
-        port: port,
-        username: username ?? this.username,
-        password: password,
-        certFingerprint: certFingerprint ?? this.certFingerprint,
-        defaultChannel:
-            clearDefaultChannel ? null : (defaultChannel ?? this.defaultChannel),
-        localId: localId ?? this.localId,
-      );
+  }) => SavedServer(
+    name: name ?? this.name,
+    host: host,
+    port: port,
+    username: username ?? this.username,
+    password: password,
+    certFingerprint: certFingerprint ?? this.certFingerprint,
+    defaultChannel: clearDefaultChannel
+        ? null
+        : (defaultChannel ?? this.defaultChannel),
+    localId: localId ?? this.localId,
+  );
 
   Map<String, dynamic> toJson() => {
-        'localId': localId,
-        'name': name,
-        'host': host,
-        'port': port,
-        'username': username,
-        'password': password,
-        'certFingerprint': certFingerprint,
-        'defaultChannel': defaultChannel,
-      };
+    'localId': localId,
+    'name': name,
+    'host': host,
+    'port': port,
+    'username': username,
+    'password': password,
+    'certFingerprint': certFingerprint,
+    'defaultChannel': defaultChannel,
+  };
 
   static SavedServer fromJson(Map<String, dynamic> j) => SavedServer(
-        // Entries saved before duplicates existed have no localId; falling back
-        // to host:port keeps them working and matches their old key exactly.
-        localId: j['localId'] as String?,
-        name: j['name'] as String? ?? '',
-        host: j['host'] as String? ?? '',
-        port: j['port'] as int? ?? 64738,
-        username: j['username'] as String? ?? '',
-        password: j['password'] as String?,
-        certFingerprint: j['certFingerprint'] as String?,
-        defaultChannel: j['defaultChannel'] as String?,
-      );
+    // Entries saved before duplicates existed have no localId; falling back
+    // to host:port keeps them working and matches their old key exactly.
+    localId: j['localId'] as String?,
+    name: j['name'] as String? ?? '',
+    host: j['host'] as String? ?? '',
+    port: j['port'] as int? ?? 64738,
+    username: j['username'] as String? ?? '',
+    password: j['password'] as String?,
+    certFingerprint: j['certFingerprint'] as String?,
+    defaultChannel: j['defaultChannel'] as String?,
+  );
 
   ServerConfig toConfig() => ServerConfig(
-        id: id,
-        name: name,
-        host: host,
-        port: port,
-        username: username,
-        password: password,
-        certFingerprint: certFingerprint,
-      );
+    id: id,
+    name: name,
+    host: host,
+    port: port,
+    username: username,
+    password: password,
+    certFingerprint: certFingerprint,
+  );
 }
 
 /// An entry from the public server directory.
@@ -133,6 +133,7 @@ class ServerRuntime {
     final left = deadline.difference(DateTime.now()).inMilliseconds;
     return left <= 0 ? 0 : (left / 1000).ceil();
   }
+
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
   double tcpPingMs = 0;
@@ -211,8 +212,10 @@ class ServerRuntime {
 
   /// Records a level, rising at once and falling no faster than the limit.
   void noteSpeakerLevel(int session, double levelDb) {
-    speakerLevels[session] =
-        VoiceMeter.follow(speakerLevels[session] ?? _silentDb, levelDb);
+    speakerLevels[session] = VoiceMeter.follow(
+      speakerLevels[session] ?? _silentDb,
+      levelDb,
+    );
   }
 
   /// Lets everyone absent from a report fall towards silence.
@@ -228,10 +231,8 @@ class ServerRuntime {
     }
   }
 
-  List<String> get speakingNames => users
-      .where((u) => isSpeaking(u.session))
-      .map((u) => u.name)
-      .toList();
+  List<String> get speakingNames =>
+      users.where((u) => isSpeaking(u.session)).map((u) => u.name).toList();
 }
 
 /// Central application state.
@@ -318,8 +319,8 @@ class AppState extends ChangeNotifier {
   /// Cycles to the next available language. Bound to the flag in the title bar,
   /// which is a one-tap toggle rather than a menu because there are only two.
   Future<void> cycleLocale() async {
-    final current = _locale?.languageCode ??
-        supportedLocales.first.languageCode;
+    final current =
+        _locale?.languageCode ?? supportedLocales.first.languageCode;
     final index = supportedLocales.indexWhere((l) => l.languageCode == current);
     _locale = supportedLocales[(index + 1) % supportedLocales.length];
     notifyListeners();
@@ -367,9 +368,9 @@ class AppState extends ChangeNotifier {
 
   /// Every user currently talking across all connected servers.
   List<String> get allSpeakingNames => [
-        for (final rt in runtimes.values)
-          if (rt.isLive) ...rt.speakingNames,
-      ];
+    for (final rt in runtimes.values)
+      if (rt.isLive) ...rt.speakingNames,
+  ];
 
   Future<void> start() async {
     try {
@@ -388,10 +389,13 @@ class AppState extends ChangeNotifier {
       maxServers = maxConcurrentServers();
       gainRange = gainLimits();
 
-      _events = appEvents().listen(_onEvent, onError: (Object e) {
-        _startupError = e.toString();
-        notifyListeners();
-      });
+      _events = appEvents().listen(
+        _onEvent,
+        onError: (Object e) {
+          _startupError = e.toString();
+          notifyListeners();
+        },
+      );
 
       // Resolve the proxy once at startup; createClient() uses the cached
       // result, so no request pays for a subprocess.
@@ -459,8 +463,11 @@ class AppState extends ChangeNotifier {
     final raw = prefs.getStringList(_prefsKey) ?? const [];
     servers
       ..clear()
-      ..addAll(raw.map((s) =>
-          SavedServer.fromJson(jsonDecode(s) as Map<String, dynamic>)));
+      ..addAll(
+        raw.map(
+          (s) => SavedServer.fromJson(jsonDecode(s) as Map<String, dynamic>),
+        ),
+      );
 
     for (final s in servers.take(maxServers)) {
       await _register(s);
@@ -551,7 +558,10 @@ class AppState extends ChangeNotifier {
   }
 
   /// Imports servers from a `mumble://` link or JSON profile text.
-  Future<String?> importFromText(String text, {String? fallbackUsername}) async {
+  Future<String?> importFromText(
+    String text, {
+    String? fallbackUsername,
+  }) async {
     try {
       final configs = await importServers(
         text: text,
@@ -655,7 +665,7 @@ class AppState extends ChangeNotifier {
       final location = await getSaveLocation(
         suggestedName: fileName,
         acceptedTypeGroups: const [
-          XTypeGroup(label: 'JSON', extensions: ['json'])
+          XTypeGroup(label: 'JSON', extensions: ['json']),
         ],
       );
       if (location == null) return null; // cancelled
@@ -671,7 +681,7 @@ class AppState extends ChangeNotifier {
     try {
       final file = await openFile(
         acceptedTypeGroups: const [
-          XTypeGroup(label: 'Server profiles', extensions: ['json', 'mumble'])
+          XTypeGroup(label: 'Server profiles', extensions: ['json', 'mumble']),
         ],
       );
       if (file == null) return null; // cancelled
@@ -778,15 +788,20 @@ class AppState extends ChangeNotifier {
   /// Re-probes every saved server. Offline servers simply report unreachable.
   Future<void> refreshPings() async {
     final snapshot = List<SavedServer>.from(servers);
-    await Future.wait(snapshot.map((s) async {
-      try {
-        final status =
-            await pingServer(serverId: s.id, host: s.host, port: s.port);
-        runtimeFor(s.id).probe = status;
-      } catch (_) {
-        // Probing is best-effort; a failure just leaves the previous reading.
-      }
-    }));
+    await Future.wait(
+      snapshot.map((s) async {
+        try {
+          final status = await pingServer(
+            serverId: s.id,
+            host: s.host,
+            port: s.port,
+          );
+          runtimeFor(s.id).probe = status;
+        } catch (_) {
+          // Probing is best-effort; a failure just leaves the previous reading.
+        }
+      }),
+    );
     notifyListeners();
   }
 
@@ -977,8 +992,7 @@ class AppState extends ChangeNotifier {
   /// Waits for the next button press and binds it to [action].
   void learnButton(ButtonAction action, void Function(ButtonBinding) onBound) {
     buttons.learnNext((keyId, label) async {
-      final binding =
-          ButtonBinding(keyId: keyId, action: action, label: label);
+      final binding = ButtonBinding(keyId: keyId, action: action, label: label);
       buttons.addBinding(binding);
       await _persistBindings();
       notifyListeners();
@@ -1065,22 +1079,25 @@ class AppState extends ChangeNotifier {
     // The level arrives ten times a second and never repeats exactly, so it is
     // rounded to whole decibels before being compared. Without that the
     // signature always differs and the check stops filtering anything.
-    final signature = '${names.join(',')}|$_transmitting|$connected|$_muted'
+    final signature =
+        '${names.join(',')}|$_transmitting|$connected|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
     _lastOverlaySignature = signature;
-    unawaited(overlay.update(
-      names: names,
-      transmitting: _transmitting,
-      connected: connected,
-      muted: _muted,
-      deafened: _deafened,
-      levelDb: _inputLevelDb,
-      thresholdDb: _thresholdDb,
-      noiseFloorDb: _noiseFloorDb,
-      speaking: _speaking,
-    ));
+    unawaited(
+      overlay.update(
+        names: names,
+        transmitting: _transmitting,
+        connected: connected,
+        muted: _muted,
+        deafened: _deafened,
+        levelDb: _inputLevelDb,
+        thresholdDb: _thresholdDb,
+        noiseFloorDb: _noiseFloorDb,
+        speaking: _speaking,
+      ),
+    );
   }
 
   /// Whether the diagnostics panel is showing.
@@ -1172,12 +1189,12 @@ class AppState extends ChangeNotifier {
     // proxy the direct route usually fails outright.
     final client = SystemProxy.instance.createClient();
     try {
-      final uri =
-          Uri.parse('https://publist.mumble.info/v1/list?version=1.5.735');
-      final res = await client.get(uri, headers: {
-        'Accept-Encoding': 'gzip',
-        'Accept': '*/*',
-      }).timeout(const Duration(seconds: 20));
+      final uri = Uri.parse(
+        'https://publist.mumble.info/v1/list?version=1.5.735',
+      );
+      final res = await client
+          .get(uri, headers: {'Accept-Encoding': 'gzip', 'Accept': '*/*'})
+          .timeout(const Duration(seconds: 20));
 
       if (res.statusCode == 200 && res.body.contains('<server')) {
         final parsed = _parsePublicList(res.body);
@@ -1236,19 +1253,24 @@ class AppState extends ChangeNotifier {
       final host = attrs['ip'] ?? '';
       final port = int.tryParse(attrs['port'] ?? '') ?? 64738;
       if (host.isEmpty) continue;
-      out.add(PublicServer(
-        name: attrs['name'] ?? host,
-        host: host,
-        port: port,
-        country: attrs['country'] ?? '',
-      ));
+      out.add(
+        PublicServer(
+          name: attrs['name'] ?? host,
+          host: host,
+          port: port,
+          country: attrs['country'] ?? '',
+        ),
+      );
     }
     return out;
   }
 
   static const List<PublicServer> _knownPublicServers = [
     PublicServer(
-        name: 'Mumble.info (official test)', host: 'mumble.info', port: 64738),
+      name: 'Mumble.info (official test)',
+      host: 'mumble.info',
+      port: 64738,
+    ),
     PublicServer(name: 'GetMumble EU', host: 'eu.getmumble.com', port: 64738),
     PublicServer(name: 'GetMumble US', host: 'us.getmumble.com', port: 64738),
   ];
@@ -1289,11 +1311,11 @@ class AppState extends ChangeNotifier {
           ..udpPingMs = field0.udpPingMs
           ..transport = field0.transport;
       case AppEvent_InputLevel(
-          :final levelDb,
-          :final speaking,
-          :final thresholdDb,
-          :final noiseFloorDb
-        ):
+        :final levelDb,
+        :final speaking,
+        :final thresholdDb,
+        :final noiseFloorDb,
+      ):
         // Paced exactly like every other meter, so the microphone and the
         // participants fade at the same rate rather than one snapping while
         // the others slide.
@@ -1305,10 +1327,9 @@ class AppState extends ChangeNotifier {
       case AppEvent_SpeakerLevels(:final levels):
         final reported = <String, Set<int>>{};
         for (final entry in levels) {
-          runtimeFor(entry.serverId).noteSpeakerLevel(
-            entry.session,
-            entry.levelDb,
-          );
+          runtimeFor(
+            entry.serverId,
+          ).noteSpeakerLevel(entry.session, entry.levelDb);
           (reported[entry.serverId] ??= <int>{}).add(entry.session);
         }
         // A speaker who stops is reaped from the mixer and simply stops being
@@ -1318,21 +1339,17 @@ class AppState extends ChangeNotifier {
           entry.value.decayUnreported(reported[entry.key] ?? const <int>{});
         }
         _pushOverlay();
-      case AppEvent_Moderated(
-          :final muted,
-          :final deafened,
-          :final by,
-        ):
+      case AppEvent_Moderated(:final muted, :final deafened, :final by):
         // The cue already played in the core; this is the visible half.
         final what = deafened != null
             ? (deafened ? 'deafened you' : 'undeafened you')
             : (muted == true ? 'muted you' : 'unmuted you');
         lastModerationMessage = '$by $what';
       case AppEvent_Certificate(
-          :final serverId,
-          :final fingerprint,
-          :final changed
-        ):
+        :final serverId,
+        :final fingerprint,
+        :final changed,
+      ):
         final rt = runtimeFor(serverId);
         rt
           ..pendingFingerprint = fingerprint
@@ -1362,8 +1379,11 @@ class AppState extends ChangeNotifier {
 
 /// Makes [AppState] available to the widget tree.
 class AppStateScope extends InheritedNotifier<AppState> {
-  const AppStateScope({super.key, required AppState state, required super.child})
-      : super(notifier: state);
+  const AppStateScope({
+    super.key,
+    required AppState state,
+    required super.child,
+  }) : super(notifier: state);
 
   static AppState of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppStateScope>();

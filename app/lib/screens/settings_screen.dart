@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/button_controller.dart';
+import '../services/overlay.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../widgets/language_button.dart';
@@ -563,36 +564,76 @@ class _OverlayTile extends StatefulWidget {
 class _OverlayTileState extends State<_OverlayTile> {
   bool _busy = false;
 
+  /// Each platform grants a different set of controls, and on iOS the system
+  /// owns the buttons outright. Saying which is which up front is the only way
+  /// the mapping is ever discoverable — there is nowhere to label them.
+  String _subtitleFor(FloatingKind kind) {
+    switch (kind) {
+      case FloatingKind.androidOverlay:
+        return 'Talk, mute, deafen and hang up over other apps. '
+            'Needs the "display over other apps" permission.';
+      case FloatingKind.iosPictureInPicture:
+        return 'Picture in Picture, appearing when you leave the app. '
+            'The system allows three buttons: play/pause talks, '
+            'skip back mutes, skip forward deafens.';
+      case FloatingKind.macosPanel:
+        return 'A small always-on-top panel with talk, mute, deafen '
+            'and hang up.';
+      case FloatingKind.none:
+        return 'Not available on this platform.';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: _busy
-          ? const SizedBox(
-              width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.picture_in_picture_alt),
-      title: const Text('Show floating talk button'),
-      subtitle: const Text(
-        'Needs the "display over other apps" permission.',
-      ),
-      value: state.overlayEnabled,
-      onChanged: _busy
-          ? null
-          : (want) async {
-              setState(() => _busy = true);
-              final messenger = ScaffoldMessenger.of(context);
-              String? error;
-              if (want) {
-                error = await state.enableOverlay();
-              } else {
-                await state.disableOverlay();
-              }
-              if (!mounted) return;
-              setState(() => _busy = false);
-              if (error != null) {
-                messenger.showSnackBar(SnackBar(content: Text(error)));
-              }
-            },
+    final kind = state.overlayKind;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SwitchListTile(
+          secondary: _busy
+              ? const SizedBox(
+                  width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.picture_in_picture_alt),
+          title: const Text('Show floating call window'),
+          subtitle: Text(_subtitleFor(kind)),
+          isThreeLine: kind == FloatingKind.iosPictureInPicture,
+          value: state.overlayEnabled,
+          onChanged: _busy
+              ? null
+              : (want) async {
+                  setState(() => _busy = true);
+                  final messenger = ScaffoldMessenger.of(context);
+                  String? error;
+                  if (want) {
+                    error = await state.enableOverlay();
+                  } else {
+                    await state.disableOverlay();
+                  }
+                  if (!mounted) return;
+                  setState(() => _busy = false);
+                  if (error != null) {
+                    messenger.showSnackBar(SnackBar(content: Text(error)));
+                  }
+                },
+        ),
+        // Off by default, and only offered where it is the only way to get a
+        // hang-up at all: closing a window is not an action anyone expects to
+        // drop their call.
+        if (kind == FloatingKind.iosPictureInPicture)
+          SwitchListTile(
+            secondary: const Icon(Icons.call_end),
+            title: const Text('Closing the window hangs up'),
+            subtitle: const Text(
+              'Picture in Picture has no spare button for hanging up. '
+              'Returning to the app never disconnects.',
+            ),
+            isThreeLine: true,
+            value: state.closeHangsUp,
+            onChanged: (v) => state.setCloseHangsUp(value: v),
+          ),
+      ],
     );
   }
 }

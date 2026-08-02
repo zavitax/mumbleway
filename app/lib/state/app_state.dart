@@ -185,6 +185,7 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
   static const _prefsInputGain = 'mumbleway.inputGain';
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
+  static const _kCloseHangsUp = 'mumbleway.closeHangsUp';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -364,6 +365,7 @@ class AppState extends ChangeNotifier {
     // Proxy use defaults to on: a machine behind one usually cannot reach
     // anything without it, and detection reports "direct" when there is none.
     SystemProxy.instance.enabled = prefs.getBool(_prefsProxyEnabled) ?? true;
+    _closeHangsUp = prefs.getBool(_kCloseHangsUp) ?? false;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -863,14 +865,27 @@ class AppState extends ChangeNotifier {
 
   final OverlayBridge overlay = OverlayBridge.instance;
   bool overlayEnabled = false;
+  bool _closeHangsUp = false;
   String _lastOverlaySignature = '';
 
   bool get overlaySupported => overlay.isSupported;
+  FloatingKind get overlayKind => overlay.kind;
 
-  /// Shows the floating island. Returns an error message, or null on success.
+  /// Whether dismissing the iOS floating window also leaves the server.
+  bool get closeHangsUp => _closeHangsUp;
+
+  Future<void> setCloseHangsUp({required bool value}) async {
+    _closeHangsUp = value;
+    await overlay.setCloseHangsUp(value: value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kCloseHangsUp, value);
+    notifyListeners();
+  }
+
+  /// Shows the floating window. Returns an error message, or null on success.
   Future<String?> enableOverlay() async {
     if (!overlay.isSupported) {
-      return 'Floating overlays are not available on this platform.';
+      return 'Floating windows are not available on this platform.';
     }
     if (!await overlay.hasPermission()) {
       // Android only grants this from its own settings screen.
@@ -880,12 +895,23 @@ class AppState extends ChangeNotifier {
       }
     }
 
-    // The island is another view onto the same transmit state, not a second
-    // source of truth: its button routes back through here.
+    // The window is another view onto the same state, not a second source of
+    // truth: every control routes back through here and waits to be told the
+    // result, so the two can never drift apart.
     overlay.onTransmit = setTransmit;
+    overlay.onToggleMute = toggleMute;
+    overlay.onToggleDeafen = toggleDeafen;
+    overlay.onHangup = hangupAll;
+    overlay.onDismissed = () {
+      overlayEnabled = false;
+      notifyListeners();
+    };
 
     final error = await overlay.show();
     overlayEnabled = error == null;
+    if (overlayEnabled) {
+      await overlay.setCloseHangsUp(value: _closeHangsUp);
+    }
     notifyListeners();
     _lastOverlaySignature = '';
     _pushOverlay();
@@ -898,31 +924,46 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Pushes speakers and transmit state onto the island, skipping the call
-  /// when nothing visible has changed — this runs on every roster update.
+  /// Leaves every connected server. The floating window's hang-up is not tied
+  /// to one slot, because from the window there is no way to say which.
+  Future<void> hangupAll() async {
+    for (final server in servers.toList()) {
+      if (runtimeFor(server.id).isLive) {
+        await disconnect(server.id);
+      }
+    }
+  }
+
+  /// Pushes the call state onto the floating window, skipping the call when
+  /// nothing visible has changed — this runs on every roster update.
   void _pushOverlay() {
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
     final connected = runtimes.values.any((r) => r.isLive);
-    final signature = '${names.join(',')}|$_transmitting|$connected';
+    final signature =
+        '${names.join(',')}|$_transmitting|$connected|$_muted|$_deafened';
     if (signature == _lastOverlaySignature) return;
     _lastOverlaySignature = signature;
     unawaited(overlay.update(
       names: names,
       transmitting: _transmitting,
       connected: connected,
+      muted: _muted,
+      deafened: _deafened,
     ));
   }
 
   void toggleMute() {
     _muted = !_muted;
     setMicrophoneMuted(muted: _muted);
+    _pushOverlay();
     notifyListeners();
   }
 
   void toggleDeafen() {
     _deafened = !_deafened;
     setDeafened(deafened: _deafened);
+    _pushOverlay();
     notifyListeners();
   }
 

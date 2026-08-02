@@ -35,6 +35,15 @@ class MainActivity : FlutterActivity() {
         OverlayService.onTransmit = { pressed ->
             runOnUiThread { ch.invokeMethod("setTransmitting", pressed) }
         }
+        OverlayService.onToggleMute = {
+            runOnUiThread { ch.invokeMethod("toggleMute", null) }
+        }
+        OverlayService.onToggleDeafen = {
+            runOnUiThread { ch.invokeMethod("toggleDeafen", null) }
+        }
+        OverlayService.onHangup = {
+            runOnUiThread { ch.invokeMethod("hangup", null) }
+        }
 
         // Bluetooth media buttons captured by the service's media session.
         // Dart owns the key-to-action binding, so this only reports what was
@@ -100,9 +109,21 @@ class MainActivity : FlutterActivity() {
                     val names = call.argument<List<String>>("names") ?: emptyList()
                     val transmitting = call.argument<Boolean>("transmitting") ?: false
                     val connected = call.argument<Boolean>("connected") ?: false
-                    OverlayService.updateState(names, transmitting, connected)
+                    val muted = call.argument<Boolean>("muted") ?: false
+                    val deafened = call.argument<Boolean>("deafened") ?: false
+                    OverlayService.updateState(
+                        names,
+                        transmitting,
+                        connected,
+                        muted,
+                        deafened,
+                    )
                     result.success(null)
                 }
+
+                // iOS only, where the close button has to stand in for a
+                // hang-up control the system does not offer.
+                "setCloseHangsUp" -> result.success(true)
 
                 else -> result.notImplemented()
             }
@@ -119,6 +140,9 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         OverlayService.onTransmit = null
         OverlayService.onMediaButton = null
+        OverlayService.onToggleMute = null
+        OverlayService.onToggleDeafen = null
+        OverlayService.onHangup = null
         channel?.setMethodCallHandler(null)
         buttonChannel?.setMethodCallHandler(null)
         super.onDestroy()

@@ -43,6 +43,8 @@ class OverlayService : Service() {
     private var root: LinearLayout? = null
     private var talkButton: TextView? = null
     private var namesView: TextView? = null
+    private var muteButton: TextView? = null
+    private var deafenButton: TextView? = null
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     companion object {
@@ -57,6 +59,20 @@ class OverlayService : Service() {
         var onTransmit: ((Boolean) -> Unit)? = null
 
         /**
+         * The remaining island controls. These toggle rather than set: the
+         * island is a second view onto the app's state, never a second copy of
+         * it, so it asks for a change and waits to be told the new value.
+         */
+        @Volatile
+        var onToggleMute: (() -> Unit)? = null
+
+        @Volatile
+        var onToggleDeafen: (() -> Unit)? = null
+
+        @Volatile
+        var onHangup: (() -> Unit)? = null
+
+        /**
          * Set by [MainActivity] to receive Bluetooth media-button presses as
          * `(androidKeyCode, pressed)`.
          */
@@ -68,9 +84,15 @@ class OverlayService : Service() {
 
         val isRunning: Boolean get() = instance != null
 
-        /** Pushes new speaker names and transmit state onto the overlay. */
-        fun updateState(names: List<String>, transmitting: Boolean, connected: Boolean) {
-            instance?.applyState(names, transmitting, connected)
+        /** Pushes the current call state onto the overlay. */
+        fun updateState(
+            names: List<String>,
+            transmitting: Boolean,
+            connected: Boolean,
+            muted: Boolean,
+            deafened: Boolean,
+        ) {
+            instance?.applyState(names, transmitting, connected, muted, deafened)
         }
     }
 
@@ -240,8 +262,17 @@ class OverlayService : Service() {
             maxWidth = dp(150)
         }
 
+        // Glyphs rather than words: the row has to stay narrow enough to leave
+        // the navigation app usable, and these are read at a glance at speed.
+        val mute = pill("\u{1F3A4}")
+        val deafen = pill("\u{1F50A}")
+        val hangup = pill("\u{2715}").apply { setTextColor(Color.argb(255, 255, 138, 128)) }
+
         container.addView(talk)
         container.addView(names)
+        container.addView(mute)
+        container.addView(deafen)
+        container.addView(hangup)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -281,6 +312,10 @@ class OverlayService : Service() {
             }
         }
 
+        mute.setOnClickListener { onToggleMute?.invoke() }
+        deafen.setOnClickListener { onToggleDeafen?.invoke() }
+        hangup.setOnClickListener { onHangup?.invoke() }
+
         // Dragging by the label area lets the rider move the island clear of
         // whatever the navigation app is showing.
         names.setOnTouchListener(DragHandler())
@@ -289,6 +324,24 @@ class OverlayService : Service() {
         root = container
         talkButton = talk
         namesView = names
+        muteButton = mute
+        deafenButton = deafen
+    }
+
+    private fun pill(glyph: String) = TextView(this).apply {
+        text = glyph
+        setTextColor(Color.WHITE)
+        textSize = 13f
+        gravity = Gravity.CENTER
+        setPadding(dp(9), dp(9), dp(9), dp(9))
+        background = pillBackground(active = false)
+    }
+
+    private fun pillBackground(active: Boolean) = GradientDrawable().apply {
+        cornerRadius = dp(18).toFloat()
+        setColor(
+            if (active) Color.argb(255, 205, 110, 40) else Color.argb(255, 55, 60, 68),
+        )
     }
 
     private fun idleTalkBackground() = GradientDrawable().apply {
@@ -336,18 +389,28 @@ class OverlayService : Service() {
         }
     }
 
-    private fun applyState(names: List<String>, transmitting: Boolean, connected: Boolean) {
+    private fun applyState(
+        names: List<String>,
+        transmitting: Boolean,
+        connected: Boolean,
+        muted: Boolean,
+        deafened: Boolean,
+    ) {
         val view = namesView ?: return
         val talk = talkButton ?: return
         view.post {
             view.text = when {
                 !connected -> "Not connected"
+                deafened -> "Deafened"
+                muted -> "Muted"
                 names.isEmpty() -> "No one speaking"
                 names.size <= 2 -> names.joinToString(", ")
                 else -> "${names.take(2).joinToString(", ")} +${names.size - 2}"
             }
             talk.background =
                 if (transmitting) activeTalkBackground() else idleTalkBackground()
+            muteButton?.background = pillBackground(active = muted)
+            deafenButton?.background = pillBackground(active = deafened)
         }
     }
 
@@ -361,5 +424,7 @@ class OverlayService : Service() {
         root = null
         talkButton = null
         namesView = null
+        muteButton = null
+        deafenButton = null
     }
 }

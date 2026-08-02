@@ -44,7 +44,7 @@ audio logic is unit-testable without a device or a UI.
 | 11 | Live ping per server | `net/ping.rs` |
 | 12 | Channel tree, roster and per-user mute | `widgets/channel_panel.dart` |
 | 13 | Drop/resume audio cues | `audio/engine.rs` (`AudioCue`) |
-| 14 | Floating push-to-talk island | `android/.../OverlayService.kt` |
+| 14 | Floating call window | `android/.../OverlayService.kt`, `ios/Runner/PipController.swift`, `macos/Runner/FloatingPanel.swift` |
 
 ## Working in the background
 
@@ -59,15 +59,40 @@ that only appears on screen is something they will miss.
 * **The 15 s rule.** Fifteen seconds of total silence from the server counts as
   a drop and triggers reconnection. With a 5 s ping interval that is three
   missed pings.
-* **Floating island (Android).** A small draggable overlay with a talk button
-  and the names of whoever is speaking, drawn over the navigation app. It runs
+## The floating call window
+
+Every platform can keep the call reachable after you leave the app, but no two
+of them do it the same way, and the differences are visible to the user rather
+than hidden behind one abstraction.
+
+| Platform | Mechanism | Controls |
+| --- | --- | --- |
+| Android | Overlay window, `SYSTEM_ALERT_WINDOW` | talk, mute, deafen, hang up |
+| iOS / iPadOS | Picture in Picture | talk, mute, deafen |
+| macOS | Floating `NSPanel` | talk, mute, deafen, hang up |
+| Windows | — | the window is already there |
+
+* **Android** draws a small draggable island over the navigation app. It runs
   from a foreground service, which is also what keeps the audio engine alive
   while another app is in front. Needs the "display over other apps"
   permission, which Android only grants from its own settings screen.
 
-**iOS has no equivalent.** Apple permits no system-wide overlay from a
-third-party app at any privilege level, so the option is hidden there rather
-than offered and then failing.
+* **iOS** has no system-wide overlay at any privilege level, so the only way to
+  stay visible is Picture in Picture. It is built for video, and the way audio
+  apps use it — Google Meet included — is to render their own frames into an
+  `AVSampleBufferDisplayLayer` and hand that to `AVPictureInPictureController`.
+  MumbleWay draws the call state into those frames: talk indicator, mute and
+  deafen badges, and who is speaking.
+
+  The system owns the buttons. There are exactly three programmable ones and no
+  API to add a fourth or relabel them, so they go to **play/pause → talk,
+  skip back → mute, skip forward → deafen**. Hang-up does not fit; it can be
+  bound to the close button, but only behind a setting that is off by default,
+  because tidying a window away should not silently drop a call. Returning to
+  the app never disconnects.
+
+* **macOS** uses a non-activating floating panel, so clicking talk does not pull
+  the app forward and steal focus from whatever is in front.
 
 ## Buttons
 

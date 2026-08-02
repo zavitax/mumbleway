@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/services/button_controller.dart';
+import 'package:mumbleway/services/overlay.dart';
 import 'package:mumbleway/services/proxy.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
@@ -275,5 +276,17 @@ void main() {
       const TransportChip(transport: 'tcp', pingMs: 0),
     ));
     expect(find.textContaining('TCP'), findsOneWidget);
+  });
+
+  test('only Picture in Picture lacks a hang-up control', () {
+    // The system owns the buttons there and offers exactly three, which go to
+    // talk, mute and deafen. Everywhere else the window draws its own.
+    expect(
+      OverlayBridge.hasHangupFor(FloatingKind.iosPictureInPicture),
+      isFalse,
+    );
+    expect(OverlayBridge.hasHangupFor(FloatingKind.androidOverlay), isTrue);
+    expect(OverlayBridge.hasHangupFor(FloatingKind.macosPanel), isTrue);
+    expect(OverlayBridge.hasHangupFor(FloatingKind.none), isFalse);
   });
 }

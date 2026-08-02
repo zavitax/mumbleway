@@ -306,3 +306,177 @@ jobs:
           name: mumbleway-windows-msix
           path: app/build/windows/x64/runner/Release/*.msix
           if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Mac App Store — signed .pkg
+  # ---------------------------------------------------------------------------
+  # Shares nothing with the TestFlight job but the account. macOS wants two
+  # certificates rather than one — the app is signed with a distribution
+  # identity, then wrapped in an installer signed with a *different* one — and
+  # neither of them is the iOS certificate. Getting that wrong produces a
+  # package that uploads happily and is rejected some hours later.
+  mac-app-store:
+    name: Mac App Store
+    runs-on: macos-latest
+    env:
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for signing material
+        id: gate
+        run: |
+          if [ -z "$MACOS_CERTIFICATE_P12" ]; then
+            echo "::notice::MACOS_CERTIFICATE_P12 is not set - skipping the Mac App Store build."
+            echo "ready=false" >> $GITHUB_OUTPUT
+          else
+            echo "ready=true" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.gate.outputs.ready == 'true'
+      - uses: arduino/setup-protoc@v3
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Both certificates go into one temporary keychain, which the runner
+      # discards with itself. The second import must not create a keychain of
+      # its own: it would replace the first, and the packaging step then fails
+      # looking for an identity that was imported and thrown away.
+      - name: Import the application certificate
+        if: steps.gate.outputs.ready == 'true'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          keychain: signing_temp
+
+      - name: Import the installer certificate
+        if: steps.gate.outputs.ready == 'true'
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
+          keychain: signing_temp
+          create-keychain: false
+
+      - name: Install provisioning profile
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.MACOS_PROVISIONING_PROFILE }}" | base64 -d \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.provisionprofile
+
+      - uses: subosito/flutter-action@v2
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Point the release build at the distribution profile
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          profile=~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.provisionprofile
+          security cms -D -i "$profile" > /tmp/pp.plist
+          uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /tmp/pp.plist)
+
+          # Read out of the keychain rather than written down here. The portal
+          # issues "Apple Distribution" to newer accounts and "3rd Party Mac
+          # Developer Application" to older ones; both sign a store build, and
+          # naming either one breaks every account that has the other.
+          # -E because this runs on BSD sed, which has no alternation in a
+          # basic regex and would silently match nothing.
+          app_id=$(security find-identity -v -p codesigning \
+            | sed -nE 's/.*"((Apple Distribution|3rd Party Mac Developer Application)[^"]*)".*/\1/p' \
+            | head -1)
+          test -n "$app_id" || { echo "::error::No application signing identity in the keychain."; exit 1; }
+
+          # A different certificate, and not listed under -p codesigning:
+          # signing an installer is not code signing as far as security(1) is
+          # concerned, so leaving the flag on finds nothing.
+          installer_id=$(security find-identity -v \
+            | sed -nE 's/.*"((3rd Party Mac Developer Installer|Apple Distribution Installer)[^"]*)".*/\1/p' \
+            | head -1)
+          test -n "$installer_id" || { echo "::error::No installer signing identity in the keychain."; exit 1; }
+          echo "INSTALLER_IDENTITY=$installer_id" >> $GITHUB_ENV
+
+          cat >> app/macos/Flutter/Flutter-Release.xcconfig <<EOF
+          DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+          CODE_SIGN_STYLE=Manual
+          PROVISIONING_PROFILE_SPECIFIER=$uuid
+          CODE_SIGN_IDENTITY=$app_id
+          EOF
+
+          # The Runner target carries these itself, and a target setting beats
+          # an xcconfig, so everything above is ignored until they are gone.
+          # Automatic signing on a runner goes looking for a development
+          # profile it can ask Apple to create, which needs a signed-in account
+          # the runner has not got.
+          sed -i '' \
+            -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
+            -e 's/PROVISIONING_PROFILE_SPECIFIER = "";//g' \
+            app/macos/Runner.xcodeproj/project.pbxproj
+
+          echo "signing with profile $uuid"
+
+      - name: Show the installed signing identities
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          security find-identity -v | sed 's/([0-9A-F]\{40\})/(...)/'
+          security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.provisionprofile > /tmp/pp.plist
+          printf 'profile: %s expires=%s\n' \
+            "$(/usr/libexec/PlistBuddy -c 'Print :Name' /tmp/pp.plist)" \
+            "$(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' /tmp/pp.plist)"
+
+      - name: Build the signed app
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build macos --release
+
+      # productbuild, not pkgbuild. The store wants a distribution package;
+      # pkgbuild makes a component package, which uploads and is then rejected
+      # for having no distribution definition in it.
+      - name: Package the installer
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: app
+        run: |
+          set -euo pipefail
+          app=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
+          echo "packaging $app"
+          xcrun productbuild \
+            --component "$app" /Applications \
+            --sign "$INSTALLER_IDENTITY" \
+            build/macos/mumbleway.pkg
+          pkgutil --check-signature build/macos/mumbleway.pkg | head -5
+
+      # altool locates the key by id, in one of a few fixed directories. It
+      # goes to a file rather than an argument or an exported variable: an
+      # argument is visible in the process list, and $GITHUB_ENV would put a
+      # copy of a private key somewhere GitHub's secret masking cannot see it.
+      - name: Upload to App Store Connect
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: app
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s' "$API_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          xcrun altool --upload-app -f build/macos/mumbleway.pkg -t macos \
+            --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+
+      # Kept even when the upload fails, for the same reason as the iOS one: a
+      # package that built and signed is worth having in hand.
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.gate.outputs.ready == 'true'
+        with:
+          name: mumbleway-macos-pkg
+          path: app/build/macos/*.pkg
+          if-no-files-found: warn

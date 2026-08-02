@@ -204,39 +204,54 @@ plus its password is your signing identity; anyone holding both can ship
 software as you. If one leaks, revoke the certificate in the developer portal
 immediately — revocation is instant and free.
 
-### 2g. macOS
+### 2g. macOS — the Mac App Store
 
-There is no macOS job. `publish.yml` builds three things — Play, TestFlight and
-MSIX — and the Mac build is something you run locally.
+A fourth job, `mac-app-store`. It gates on `MACOS_CERTIFICATE_P12` like the
+others, so it skips cleanly until the secrets below exist.
 
-So there is **no secret for a macOS provisioning profile**, and in particular
-`APPLE_PROVISIONING_PROFILE` is not it: that one is read by the TestFlight job
-and holds the `.mobileprovision` for iOS. A macOS profile placed there breaks
-the iOS build without saying anything about macOS.
+**It cannot reuse anything from 2b.** macOS signs twice with two different
+certificate types: the app with *Mac App Distribution*, and the `.pkg` wrapped
+around it with *Mac Installer Distribution*. Neither is the iOS certificate,
+and the mismatch is not caught locally — the package builds, uploads, and is
+rejected some hours later.
 
-For a local Mac build, nothing needs to reach GitHub at all. Enable iCloud on
-the macOS App ID per 2c and let Xcode's automatic signing refresh the profile;
-that is usually the whole job. Without it the build stops before compiling
-anything:
+In **Certificates** → **+**, create both, using the same CSR from 2a:
+
+* **Mac App Distribution** → export as `mac_app.p12`
+* **Mac Installer Distribution** → export as `mac_installer.p12`
+
+Then **Profiles** → **+** → *Mac App Store* distribution, against the macOS App
+ID from 2c — the separate record, with iCloud enabled. It downloads as
+`.provisionprofile`, not `.mobileprovision`.
+
+`APPLE_PROVISIONING_PROFILE` is **not** where that goes. It feeds TestFlight and
+holds the iOS profile; a macOS profile placed there breaks the iOS build while
+saying nothing about macOS. The macOS one has its own secret:
+
+| Secret | Contents |
+|---|---|
+| `MACOS_CERTIFICATE_P12` | base64 of `mac_app.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | its password |
+| `MACOS_INSTALLER_CERTIFICATE_P12` | base64 of `mac_installer.p12` |
+| `MACOS_INSTALLER_CERTIFICATE_PASSWORD` | its password |
+| `MACOS_PROVISIONING_PROFILE` | base64 of the `.provisionprofile` |
+
+The three `APP_STORE_CONNECT_*` secrets and `APPLE_TEAM_ID` carry over unchanged
+— an API key is per-account, not per-platform.
+
+One more record to create, and it is not a second app: in App Store Connect,
+open the existing MumbleWay app and use **Add Platform** → **macOS**. A separate
+app record with the same bundle id is the wrong shape, and the upload fails the
+same way a missing record does.
+
+**For a local Mac build**, none of the above is needed — nothing has to reach
+GitHub at all. But iCloud does have to be enabled on the macOS App ID per 2c,
+or the build stops before it compiles anything:
 
 ```
 error: "Runner" has entitlements that require signing with a development
 certificate. Enable development signing in the Signing & Capabilities editor.
 ```
-
-Shipping to the **Mac App Store** would mean adding a fourth job, and it cannot
-reuse the iOS material: macOS wants *Mac App Distribution* to sign the app and
-*Mac Installer Distribution* to sign the `.pkg` around it, which are different
-certificate types from the iOS one in 2b. That job would need:
-
-| Secret | Contents |
-|---|---|
-| `MACOS_PROVISIONING_PROFILE` | base64 of the `.provisionprofile` |
-| `MACOS_CERTIFICATE_P12` | base64 of the Mac App Distribution certificate |
-| `MACOS_INSTALLER_CERTIFICATE_P12` | base64 of the Mac Installer Distribution certificate |
-
-The three `APP_STORE_CONNECT_*` secrets and `APPLE_TEAM_ID` carry over as they
-are — an API key is per-account, not per-platform.
 
 ---
 
@@ -279,7 +294,7 @@ reset by support — but that is a support ticket you would rather not file.
 | Direct download | signed `.zip` | what CI publishes today |
 | App Store | `.ipa` | uploaded to TestFlight first; review takes days |
 | Google Play | `.aab` | APKs are for direct install only; Play requires a bundle |
-| Mac App Store | `.pkg` | no CI job; built locally, and see 2g for what one would need |
+| Mac App Store | `.pkg` | two certificates, one for the app and one for the installer; see 2g |
 
 ---
 

@@ -26,6 +26,13 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
+	<!-- Required on macOS 10.14 and later, and the sandbox entitlement is not
+	     a substitute: the entitlement decides whether the app may ask, this
+	     decides whether the system lets it. Without it macOS terminates the
+	     process the moment it touches the microphone, which reads as a crash
+	     on connect rather than as a missing plist key. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MumbleWay uses your microphone so you can talk to other riders.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

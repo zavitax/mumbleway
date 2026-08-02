@@ -159,6 +159,14 @@ Uint64List incomingAudioMs() =>
 void resetAudioGlitches() =>
     RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
 
+/// A short room tail under incoming voices, so a gated talker does not stop
+/// like a switch being thrown.
+void setReverb({required bool on_}) =>
+    RustLib.instance.api.crateApiMumblewaySetReverb(on_: on_);
+
+bool isReverbEnabled() =>
+    RustLib.instance.api.crateApiMumblewayIsReverbEnabled();
+
 /// Levels incoming speakers towards a common loudness.
 void setLevelNormalisation({required bool on_}) =>
     RustLib.instance.api.crateApiMumblewaySetLevelNormalisation(on_: on_);

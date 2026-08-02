@@ -440,9 +440,221 @@ pub fn interleaved_to_mono(input: &[f32], channels: usize, out: &mut Vec<f32>) {
     }
 }
 
+/// A short room reverberation for incoming voices.
+///
+/// Voice activation and noise gates cut a talker off the instant they stop,
+/// which is unnatural: a real room keeps ringing for a moment, and without
+/// that tail every utterance ends like a switch being thrown. A little decay
+/// smooths the cut and makes several people on one channel sound like they
+/// share a space rather than arriving from separate boxes.
+///
+/// Schroeder's arrangement: parallel comb filters make the dense repeats, and
+/// series allpass sections smear them so the repeats stop being individually
+/// audible. Cheap enough for the mix thread, which matters because this runs
+/// on every frame of everyone's audio.
+#[derive(Debug, Clone)]
+pub struct Reverb {
+    combs: Vec<Comb>,
+    allpasses: Vec<Allpass>,
+    wet: f32,
+}
+
+#[derive(Debug, Clone)]
+struct Comb {
+    buf: Vec<f32>,
+    idx: usize,
+    feedback: f32,
+    /// One-pole lowpass in the feedback path: a real room absorbs treble
+    /// faster than bass, and without it the tail sounds metallic.
+    damp: f32,
+    last: f32,
+}
+
+impl Comb {
+    fn new(len: usize, feedback: f32, damp: f32) -> Self {
+        Self {
+            buf: vec![0.0; len.max(1)],
+            idx: 0,
+            feedback,
+            damp,
+            last: 0.0,
+        }
+    }
+
+    #[inline]
+    fn process(&mut self, x: f32) -> f32 {
+        let y = self.buf[self.idx];
+        self.last = y * (1.0 - self.damp) + self.last * self.damp;
+        self.buf[self.idx] = x + self.last * self.feedback;
+        self.idx = (self.idx + 1) % self.buf.len();
+        y
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Allpass {
+    buf: Vec<f32>,
+    idx: usize,
+    gain: f32,
+}
+
+impl Allpass {
+    fn new(len: usize, gain: f32) -> Self {
+        Self {
+            buf: vec![0.0; len.max(1)],
+            idx: 0,
+            gain,
+        }
+    }
+
+    #[inline]
+    fn process(&mut self, x: f32) -> f32 {
+        let buffered = self.buf[self.idx];
+        let y = -x + buffered;
+        self.buf[self.idx] = x + buffered * self.gain;
+        self.idx = (self.idx + 1) % self.buf.len();
+        y
+    }
+}
+
+impl Reverb {
+    /// Delays in samples at 48 kHz, from Schroeder's ratios. Mutually prime so
+    /// their repeats do not line up into an audible pitch.
+    const COMB_DELAYS: [usize; 4] = [1687, 1601, 2053, 2251];
+    const ALLPASS_DELAYS: [usize; 2] = [601, 199];
+
+    /// `decay_secs` is the time to fall 60 dB; `wet` is how much of the tail is
+    /// mixed in, `0.0..=1.0`.
+    pub fn new(decay_secs: f32, wet: f32) -> Self {
+        let combs = Self::COMB_DELAYS
+            .iter()
+            .map(|&len| {
+                // Feedback that reaches -60 dB after `decay_secs`, given how
+                // often this delay line recirculates in that time.
+                let laps = decay_secs * SAMPLE_RATE_HZ / len as f32;
+                let feedback = 10f32.powf(-3.0 / laps.max(0.001)).clamp(0.0, 0.98);
+                Comb::new(len, feedback, 0.25)
+            })
+            .collect();
+        let allpasses = Self::ALLPASS_DELAYS
+            .iter()
+            .map(|&len| Allpass::new(len, 0.5))
+            .collect();
+        Self {
+            combs,
+            allpasses,
+            wet: wet.clamp(0.0, 1.0),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for c in self.combs.iter_mut() {
+            c.buf.fill(0.0);
+            c.last = 0.0;
+        }
+        for a in self.allpasses.iter_mut() {
+            a.buf.fill(0.0);
+        }
+    }
+
+    /// Adds the tail to `buf` in place, leaving the dry signal at full level.
+    pub fn process(&mut self, buf: &mut [f32]) {
+        if self.wet <= 0.0 {
+            return;
+        }
+        for sample in buf.iter_mut() {
+            let dry = *sample;
+            let mut tail: f32 = self.combs.iter_mut().map(|c| c.process(dry)).sum();
+            tail /= self.combs.len() as f32;
+            for a in self.allpasses.iter_mut() {
+                tail = a.process(tail);
+            }
+            // Dry stays at unity: this is a room around the voice, not an
+            // effect applied to it, and attenuating speech to make space for
+            // its own echo is the wrong trade on a motorcycle.
+            *sample = (dry + tail * self.wet).clamp(-1.0, 1.0);
+        }
+    }
+}
+
+/// Sample rate the delay lengths above are chosen for.
+const SAMPLE_RATE_HZ: f32 = 48_000.0;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reverb_leaves_the_dry_voice_at_full_level() {
+        // A room around the voice, not an effect applied to it: attenuating
+        // speech to make space for its own echo is the wrong trade here.
+        let mut r = Reverb::new(0.3, 0.2);
+        let mut buf = vec![0.0f32; 64];
+        buf[0] = 1.0;
+        r.process(&mut buf);
+        assert!(
+            buf[0] >= 1.0 - 1e-6,
+            "first sample dropped to {}, the dry signal was attenuated",
+            buf[0]
+        );
+    }
+
+    #[test]
+    fn reverb_tail_decays_to_nothing() {
+        // The whole point is a tail that fades. One that sustains would turn
+        // an open channel into a howl.
+        let mut r = Reverb::new(0.3, 0.3);
+        let mut buf = vec![0.0f32; 512];
+        buf[0] = 1.0;
+        r.process(&mut buf);
+
+        let mut silence = vec![0.0f32; 48_000]; // one second
+        r.process(&mut silence);
+
+        let early = peak(&silence[..4_800]);
+        let late = peak(&silence[43_200..]);
+        assert!(early > 0.0, "no tail at all");
+        assert!(
+            late < early * 0.1,
+            "tail only fell from {early} to {late} in a second"
+        );
+    }
+
+    #[test]
+    fn reverb_stays_finite_and_bounded_under_sustained_input() {
+        // Feedback loops are where instability hides, and an audio path that
+        // produces NaN takes the output stream down with it.
+        let mut r = Reverb::new(0.5, 0.35);
+        for _ in 0..200 {
+            let mut buf: Vec<f32> = (0..480).map(|i| ((i as f32) * 0.3).sin() * 0.9).collect();
+            r.process(&mut buf);
+            assert!(buf.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        }
+    }
+
+    #[test]
+    fn reverb_is_inert_when_fully_dry() {
+        let mut r = Reverb::new(0.3, 0.0);
+        let input: Vec<f32> = (0..256).map(|i| (i as f32 * 0.1).sin()).collect();
+        let mut buf = input.clone();
+        r.process(&mut buf);
+        assert_eq!(buf, input, "a dry reverb should change nothing");
+    }
+
+    #[test]
+    fn reverb_reset_clears_the_tail() {
+        // Switching it off mid-sentence must not leave the room ringing when
+        // it is switched back on.
+        let mut r = Reverb::new(0.3, 0.3);
+        let mut buf = vec![0.0f32; 256];
+        buf[0] = 1.0;
+        r.process(&mut buf);
+        r.reset();
+
+        let mut silence = vec![0.0f32; 4_800];
+        r.process(&mut silence);
+        assert_eq!(peak(&silence), 0.0, "tail survived a reset");
+    }
 
     const SR: f32 = 48_000.0;
 

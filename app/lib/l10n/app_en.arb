@@ -156,6 +156,8 @@
   "floatingWindow": "Show floating call window",
   "identityFingerprint": "Your certificate fingerprint",
 
+  "reverb": "Room tone",
+  "reverbBody": "Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.",
   "echoCancellation": "Echo cancellation",
   "echoCancellationBody": "Removes what the speakers play back out of the microphone. Leave it on when using speakers; on a headset there is no echo to cancel and it can only take away.",
   "noiseCancellation": "Noise cancellation",

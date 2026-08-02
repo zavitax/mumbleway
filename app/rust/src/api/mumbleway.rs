@@ -915,6 +915,19 @@ pub fn reset_audio_glitches() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// A short room tail under incoming voices, so a gated talker does not stop
+/// like a switch being thrown.
+#[frb(sync)]
+pub fn set_reverb(on: bool) -> anyhow::Result<()> {
+    app()?.shared.set_reverb(on);
+    Ok(())
+}
+
+#[frb(sync)]
+pub fn is_reverb_enabled() -> anyhow::Result<bool> {
+    Ok(app()?.shared.reverb_enabled())
+}
+
 /// Levels incoming speakers towards a common loudness.
 #[frb(sync)]
 pub fn set_level_normalisation(on: bool) -> anyhow::Result<()> {

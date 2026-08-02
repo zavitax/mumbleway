@@ -883,6 +883,18 @@ abstract class L {
   /// **'Your certificate fingerprint'**
   String get identityFingerprint;
 
+  /// No description provided for @reverb.
+  ///
+  /// In en, this message translates to:
+  /// **'Room tone'**
+  String get reverb;
+
+  /// No description provided for @reverbBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.'**
+  String get reverbBody;
+
   /// No description provided for @echoCancellation.
   ///
   /// In en, this message translates to:

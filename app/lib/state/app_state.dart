@@ -244,6 +244,7 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
   static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
+  static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -433,6 +434,7 @@ class AppState extends ChangeNotifier {
     // throws.
     echoCancellation = prefs.getBool(_prefsEchoCancellation) ?? true;
     normaliseLevels = prefs.getBool(_prefsNormaliseLevels) ?? true;
+    reverb = prefs.getBool(_prefsReverb) ?? true;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -446,6 +448,7 @@ class AppState extends ChangeNotifier {
     setOutputVolumeDb(db: outputVolumeDbValue);
     setEchoCancellation(on_: echoCancellation);
     setLevelNormalisation(on_: normaliseLevels);
+    setReverb(on_: reverb);
     if (selectedInput != null || selectedOutput != null) {
       await setAudioDevices(input: selectedInput, output: selectedOutput);
     }
@@ -899,6 +902,18 @@ class AppState extends ChangeNotifier {
   /// Acoustic echo cancellation. On by default, because a speaker in the same
   /// room as the microphone is the common case.
   bool echoCancellation = true;
+
+  /// A short room tail under incoming voices. On by default: a gated voice
+  /// cutting off mid-breath is the unnatural option, not this.
+  bool reverb = true;
+
+  Future<void> setReverbEnabled({required bool value}) async {
+    reverb = value;
+    setReverb(on_: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsReverb, value);
+  }
 
   /// Levels incoming speakers towards a common loudness.
   bool normaliseLevels = true;

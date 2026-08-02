@@ -421,6 +421,13 @@ class LRu extends L {
   String get identityFingerprint => 'Отпечаток вашего сертификата';
 
   @override
+  String get reverb => 'Эффект помещения';
+
+  @override
+  String get reverbBody =>
+      'Добавляет короткий хвост к голосам собеседников, чтобы речь, обрезанная активацией по голосу, не обрывалась на полуслове.';
+
+  @override
   String get echoCancellation => 'Подавление эха';
 
   @override

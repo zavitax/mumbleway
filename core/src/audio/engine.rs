@@ -19,7 +19,7 @@ use std::collections::{HashMap, VecDeque};
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
-use super::dsp::interleaved_to_mono;
+use super::dsp::{interleaved_to_mono, Reverb};
 use super::jitter::SpeakerBuffer;
 use super::resample::Resampler;
 use crate::error::{CoreError, Result};
@@ -40,6 +40,16 @@ pub enum TransmitMode {
 /// Caps the queues so a stalled consumer cannot grow memory without bound.
 const MAX_QUEUED_INPUT_SAMPLES: usize = SAMPLE_RATE as usize; // 1 second
 const MAX_QUEUED_OUTPUT_SAMPLES: usize = SAMPLE_RATE as usize / 2;
+
+/// How long the room tail takes to fall 60 dB.
+///
+/// Short on purpose. Enough that a gated voice stops sounding like a switch
+/// being thrown, not so much that speech smears into itself — intelligibility
+/// matters more here than atmosphere.
+const REVERB_DECAY_SECS: f32 = 0.28;
+
+/// How much of the tail is mixed under the voice.
+const REVERB_WET: f32 = 0.16;
 
 /// Shared state between the callbacks, the worker and the API layer.
 pub struct AudioShared {
@@ -107,6 +117,12 @@ pub struct AudioShared {
     decoded_frames: AtomicU64,
     /// Whether incoming speakers are levelled towards a common loudness.
     normalise_levels: AtomicBool,
+    /// Whether a short room tail is added to incoming voices.
+    reverb_enabled: AtomicBool,
+    /// The room itself. Applied to the mixed speakers only, so it never
+    /// touches a notification cue or the loopback monitor — a cue is a signal,
+    /// not something anyone is meant to hear across a room.
+    reverb: Mutex<Reverb>,
     /// Whether the echo canceller is active.
     ///
     /// Worth exposing rather than always-on: on a headset there is no acoustic
@@ -302,6 +318,8 @@ impl AudioShared {
             monitor: AtomicBool::new(false),
             echo_cancellation: AtomicBool::new(true),
             normalise_levels: AtomicBool::new(true),
+            reverb_enabled: AtomicBool::new(true),
+            reverb: Mutex::new(Reverb::new(REVERB_DECAY_SECS, REVERB_WET)),
             concealed_frames: AtomicU64::new(0),
             decoded_frames: AtomicU64::new(0),
             underrun_samples: AtomicU64::new(0),
@@ -379,6 +397,19 @@ impl AudioShared {
             self.concealed_frames.load(Ordering::Relaxed),
             self.decoded_frames.load(Ordering::Relaxed),
         )
+    }
+
+    pub fn set_reverb(&self, on: bool) {
+        let was = self.reverb_enabled.swap(on, Ordering::Relaxed);
+        if was != on {
+            // Otherwise switching it back on replays a tail from whatever was
+            // being said when it was switched off.
+            self.reverb.lock().reset();
+        }
+    }
+
+    pub fn reverb_enabled(&self) -> bool {
+        self.reverb_enabled.load(Ordering::Relaxed)
     }
 
     pub fn set_normalise_levels(&self, on: bool) {
@@ -633,6 +664,12 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
     }
     for s in mixed.iter_mut() {
         *s = s.clamp(-1.0, 1.0);
+    }
+
+    // Applied to the mixed voices and nothing else: cues and the loopback
+    // monitor join further downstream, and neither wants a room around it.
+    if shared.reverb_enabled() {
+        shared.reverb.lock().process(mixed);
     }
 
     let mut q = shared.playback_queue.lock();

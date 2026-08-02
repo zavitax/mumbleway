@@ -421,6 +421,13 @@ class LEn extends L {
   String get identityFingerprint => 'Your certificate fingerprint';
 
   @override
+  String get reverb => 'Room tone';
+
+  @override
+  String get reverbBody =>
+      'Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.';
+
+  @override
   String get echoCancellation => 'Echo cancellation';
 
   @override

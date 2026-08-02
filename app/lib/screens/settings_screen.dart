@@ -156,6 +156,7 @@ class _DeviceSection extends StatelessWidget {
           const _MonitorTile(),
           const _EchoCancellationTile(),
           const _NormaliseTile(),
+          const _ReverbTile(),
           const _TestOutputTile(),
         ],
       );
@@ -186,6 +187,7 @@ class _DeviceSection extends StatelessWidget {
         const _MonitorTile(),
         const _EchoCancellationTile(),
         const _NormaliseTile(),
+        const _ReverbTile(),
         const _TestOutputTile(),
       ],
     );
@@ -265,6 +267,24 @@ class _MonitorTile extends StatelessWidget {
       ),
       value: state.monitoring,
       onChanged: (_) => state.toggleMonitoring(),
+    );
+  }
+}
+
+class _ReverbTile extends StatelessWidget {
+  const _ReverbTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: const Icon(Icons.blur_on),
+      title: Text(l.reverb),
+      subtitle: Text(l.reverbBody),
+      isThreeLine: true,
+      value: state.reverb,
+      onChanged: (v) => state.setReverbEnabled(value: v),
     );
   }
 }

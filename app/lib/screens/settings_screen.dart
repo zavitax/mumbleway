@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -13,7 +15,10 @@ class SettingsScreen extends StatelessWidget {
     final state = AppStateScope.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: Text(L.of(context).settings),
+        actions: const [LanguageButton()],
+      ),
       body: ListView(
         children: [
           const _SectionHeader('Audio devices'),

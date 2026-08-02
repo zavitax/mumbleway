@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
+import '../widgets/language_button.dart';
 
 /// Adds servers from a shared link or a downloadable profile file.
 ///
@@ -42,7 +43,10 @@ class _ImportScreenState extends State<ImportScreen> {
     final state = AppStateScope.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Import servers')),
+      appBar: AppBar(
+        title: const Text('Import servers'),
+        actions: const [LanguageButton()],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

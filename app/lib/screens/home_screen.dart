@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/server_card.dart';
 import '../widgets/server_detail_pane.dart';
@@ -22,18 +24,21 @@ class HomeScreen extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final l = L.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MumbleWay'),
+        title: Text(l.appTitle),
         actions: [
+          const LanguageButton(),
           IconButton(
-            tooltip: state.deafened ? 'Undeafen' : 'Deafen',
+            tooltip: state.deafened ? l.undeafen : l.deafen,
             onPressed: state.toggleDeafen,
             icon: Icon(state.deafened ? Icons.hearing_disabled : Icons.hearing),
             color: state.deafened ? StatusColors.failed : null,
           ),
           IconButton(
-            tooltip: state.muted ? 'Unmute microphone' : 'Mute microphone',
+            tooltip: state.muted ? l.unmuteMicrophone : l.muteMicrophone,
             onPressed: state.toggleMute,
             icon: Icon(state.muted ? Icons.mic_off : Icons.mic),
             color: state.muted ? StatusColors.failed : null,
@@ -62,14 +67,14 @@ class HomeScreen extends StatelessWidget {
                   );
               }
             },
-            itemBuilder: (_) => const [
+            itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'export',
                 child: ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.upload_file),
-                  title: Text('Export servers…'),
+                  leading: const Icon(Icons.upload_file),
+                  title: Text(l.exportServers),
                 ),
               ),
               PopupMenuItem(
@@ -77,18 +82,18 @@ class HomeScreen extends StatelessWidget {
                 child: ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.file_open),
-                  title: Text('Import from file…'),
+                  leading: const Icon(Icons.file_open),
+                  title: Text(l.importFromFile),
                 ),
               ),
-              PopupMenuDivider(),
+              const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'settings',
                 child: ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.settings),
-                  title: Text('Settings'),
+                  leading: const Icon(Icons.settings),
+                  title: Text(l.settings),
                 ),
               ),
             ],
@@ -109,7 +114,7 @@ class HomeScreen extends StatelessWidget {
           ? FloatingActionButton.extended(
               onPressed: () => _addServer(context),
               icon: const Icon(Icons.add),
-              label: const Text('Add server'),
+              label: Text(l.addServer),
             )
           : null,
     );
@@ -198,15 +203,14 @@ class _ServerList extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: () => HomeScreen._addServer(context),
             icon: const Icon(Icons.add),
-            label: const Text('Add another server'),
+            label: Text(L.of(context).addAnotherServer),
           ),
         ),
         if (!state.canAddMore)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             child: Text(
-              'Up to ${state.maxServers} servers can be connected at once; the '
-              'rest stay saved.',
+              L.of(context).maxServersNote(state.maxServers),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
@@ -248,10 +252,10 @@ class _TalkPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             live == 0
-                ? 'Not connected to any server'
+                ? L.of(context).notConnectedAny
                 : live == 1
-                    ? 'Talking on 1 server'
-                    : 'Talking on $live servers simultaneously',
+                    ? L.of(context).talkingOnOne
+                    : L.of(context).talkingOnMany(live),
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -278,14 +282,13 @@ class _EmptyState extends StatelessWidget {
                 size: 72,
                 color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(height: 20),
-            const Text(
-              'No servers yet',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            Text(
+              L.of(context).noServersTitle,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Text(
-              'Add a Mumble server to start talking. You can stay connected to '
-              'two at once.',
+              L.of(context).noServersBody,
               textAlign: TextAlign.center,
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -312,14 +315,13 @@ class _StartupFailure extends StatelessWidget {
             children: [
               const Icon(Icons.mic_off, size: 64, color: StatusColors.failed),
               const SizedBox(height: 20),
-              const Text(
-                'Audio could not start',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              Text(
+                L.of(context).audioFailedTitle,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
               Text(
-                'MumbleWay needs a microphone. Check that one is connected and '
-                'that permission is granted, then restart the app.',
+                L.of(context).audioFailedBody,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant),

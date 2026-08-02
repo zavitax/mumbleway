@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
+import '../widgets/language_button.dart';
 
 /// Browser for publicly listed Mumble servers.
 ///
@@ -65,6 +66,7 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
       appBar: AppBar(
         title: const Text('Public servers'),
         actions: [
+          const LanguageButton(),
           IconButton(
             onPressed: _load,
             icon: const Icon(Icons.refresh),

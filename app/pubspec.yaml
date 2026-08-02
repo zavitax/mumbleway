@@ -47,6 +47,9 @@ dependencies:
   http: ^1.6.0
   share_plus: ^13.3.0
   file_selector: ^1.1.0
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -93,6 +96,12 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Generates lib/l10n/app_localizations.dart from the .arb catalogues.
+  generate: true
+
+  assets:
+    - assets/icon/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

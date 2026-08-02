@@ -186,6 +186,10 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
+  static const _prefsLocale = 'mumbleway.locale';
+
+  /// Languages the interface is available in.
+  static const supportedLocales = [Locale('en'), Locale('ru')];
 
   /// How often saved servers are re-probed for ping and occupancy.
   static const _pingInterval = Duration(seconds: 15);
@@ -242,6 +246,22 @@ class AppState extends ChangeNotifier {
   NoiseSetting noise = NoiseSetting.helmet;
   MicMode micMode = MicMode.pushToTalk;
   int maxServers = 2;
+
+  /// Chosen interface language. Null follows the system.
+  Locale? _locale;
+  Locale? get locale => _locale;
+
+  /// Cycles to the next available language. Bound to the flag in the title bar,
+  /// which is a one-tap toggle rather than a menu because there are only two.
+  Future<void> cycleLocale() async {
+    final current = _locale?.languageCode ??
+        supportedLocales.first.languageCode;
+    final index = supportedLocales.indexWhere((l) => l.languageCode == current);
+    _locale = supportedLocales[(index + 1) % supportedLocales.length];
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsLocale, _locale!.languageCode);
+  }
 
   // --- audio devices ----------------------------------------------------
   List<String> inputDevices = const [];
@@ -341,6 +361,11 @@ class AppState extends ChangeNotifier {
     // anything without it, and detection reports "direct" when there is none.
     SystemProxy.instance.enabled = prefs.getBool(_prefsProxyEnabled) ?? true;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
+
+    final code = prefs.getString(_prefsLocale);
+    if (code != null && supportedLocales.any((l) => l.languageCode == code)) {
+      _locale = Locale(code);
+    }
   }
 
   Future<void> _applyAudioSettings() async {

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/services/proxy.dart';
+import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/theme.dart';
 import 'package:mumbleway/widgets/status_badge.dart';
@@ -46,8 +49,19 @@ void main() {
     });
   });
 
+  // Widgets under test resolve localised strings, so the harness has to supply
+  // the delegates just as the real app does.
   Widget wrap(Widget child) => MaterialApp(
         theme: buildTheme(Brightness.dark),
+        supportedLocales: AppState.supportedLocales,
+        localizationsDelegates: const [
+          L.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          // MaterialApp needs a Cupertino delegate covering every supported
+          // locale, even on Android and desktop.
+          GlobalCupertinoLocalizations.delegate,
+        ],
         home: Scaffold(body: Center(child: child)),
       );
 
@@ -63,9 +77,69 @@ void main() {
     });
 
     test('covers every ConnStatus value', () {
+      // Colour and icon are context-free; the label is localised and covered
+      // by the Localisation group below.
       for (final s in ConnStatus.values) {
-        expect(StatusVisual.of(s).label, isNotEmpty, reason: 'no label for $s');
+        expect(StatusVisual.of(s).icon, isNotNull, reason: 'no icon for $s');
       }
+    });
+  });
+
+  group('Localisation', () {
+    /// Pumps an app in [locale] and hands back a context that resolves strings.
+    Future<BuildContext> contextFor(WidgetTester tester, Locale locale) async {
+      late BuildContext captured;
+      await tester.pumpWidget(MaterialApp(
+        locale: locale,
+        supportedLocales: AppState.supportedLocales,
+        localizationsDelegates: const [
+          L.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          // MaterialApp needs a Cupertino delegate covering every supported
+          // locale, even on Android and desktop.
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: Builder(builder: (c) {
+          captured = c;
+          return const SizedBox();
+        }),
+      ));
+      return captured;
+    }
+
+    testWidgets('every connection status has a label in both languages',
+        (tester) async {
+      for (final locale in AppState.supportedLocales) {
+        final ctx = await contextFor(tester, locale);
+        for (final s in ConnStatus.values) {
+          expect(
+            StatusVisual.labelOf(ctx, s),
+            isNotEmpty,
+            reason: 'no label for $s in ${locale.languageCode}',
+          );
+        }
+      }
+    });
+
+    testWidgets('Russian actually differs from English', (tester) async {
+      // Guards against a catalogue silently falling back to English, which
+      // would look translated while being nothing of the sort.
+      final en = L.of(await contextFor(tester, const Locale('en')));
+      final ru = L.of(await contextFor(tester, const Locale('ru')));
+
+      expect(ru.statusConnected, isNot(en.statusConnected));
+      expect(ru.pttHoldToTalk, isNot(en.pttHoldToTalk));
+      expect(ru.addServer, isNot(en.addServer));
+      expect(ru.kick, isNot(en.kick));
+    });
+
+    testWidgets('placeholders survive translation', (tester) async {
+      final ru = L.of(await contextFor(tester, const Locale('ru')));
+      expect(ru.talkingOnMany(3), contains('3'));
+      expect(ru.maxServersNote(2), contains('2'));
+      expect(ru.reconnectingIn(5, 2), allOf(contains('5'), contains('2')));
+      expect(ru.kickTitle('Alice'), contains('Alice'));
     });
   });
 

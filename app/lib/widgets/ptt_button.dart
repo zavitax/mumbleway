@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -93,7 +94,7 @@ class PttButton extends StatelessWidget {
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
-                      _label(state, ptt, live),
+                      _label(context, state, ptt, live),
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.visible,
@@ -115,11 +116,19 @@ class PttButton extends StatelessWidget {
     );
   }
 
-  static String _label(AppState state, bool ptt, bool live) {
-    if (state.muted) return 'MICROPHONE MUTED';
-    if (live) return 'TRANSMITTING';
-    if (ptt) return 'HOLD TO TALK';
-    return state.micMode == MicMode.continuous ? 'OPEN MIC' : 'VOICE ACTIVATED';
+  static String _label(
+    BuildContext context,
+    AppState state,
+    bool ptt,
+    bool live,
+  ) {
+    final l = L.of(context);
+    if (state.muted) return l.pttMicrophoneMuted;
+    if (live) return l.pttTransmitting;
+    if (ptt) return l.pttHoldToTalk;
+    return state.micMode == MicMode.continuous
+        ? l.pttOpenMic
+        : l.pttVoiceActivated;
   }
 
   void _press(AppState state) {

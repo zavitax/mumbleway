@@ -1,41 +1,52 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../theme.dart';
 
 /// Maps a connection status onto its colour, icon and label.
 ///
-/// Requirement 6 is "show status indication", and this is the single place that
-/// decides what each state looks like so every screen agrees.
+/// The single place that decides what each state looks like, so every screen
+/// agrees. Colour and icon are context-free; the label needs localising, so it
+/// is resolved separately rather than baked in.
 class StatusVisual {
-  const StatusVisual(this.color, this.icon, this.label);
+  const StatusVisual(this.color, this.icon);
   final Color color;
   final IconData icon;
-  final String label;
 
   static StatusVisual of(ConnStatus s) {
     switch (s) {
       case ConnStatus.connected:
-        return const StatusVisual(
-            StatusColors.connected, Icons.check_circle, 'Connected');
+        return const StatusVisual(StatusColors.connected, Icons.check_circle);
       case ConnStatus.connecting:
-        return const StatusVisual(
-            StatusColors.connecting, Icons.sync, 'Connecting');
+        return const StatusVisual(StatusColors.connecting, Icons.sync);
       case ConnStatus.handshaking:
-        return const StatusVisual(
-            StatusColors.connecting, Icons.handshake, 'Authenticating');
+        return const StatusVisual(StatusColors.connecting, Icons.handshake);
       case ConnStatus.reconnecting:
         return const StatusVisual(
-            StatusColors.reconnecting, Icons.sync_problem, 'Reconnecting');
+            StatusColors.reconnecting, Icons.sync_problem);
       case ConnStatus.failed:
-        return const StatusVisual(StatusColors.failed, Icons.error, 'Error');
+        return const StatusVisual(StatusColors.failed, Icons.error);
       case ConnStatus.disconnected:
-        return const StatusVisual(
-            StatusColors.idle, Icons.cloud_off, 'Disconnected');
+        return const StatusVisual(StatusColors.idle, Icons.cloud_off);
       case ConnStatus.idle:
         return const StatusVisual(
-            StatusColors.idle, Icons.radio_button_unchecked, 'Not connected');
+            StatusColors.idle, Icons.radio_button_unchecked);
     }
+  }
+
+  /// Localised name of a status.
+  static String labelOf(BuildContext context, ConnStatus s) {
+    final l = L.of(context);
+    return switch (s) {
+      ConnStatus.connected => l.statusConnected,
+      ConnStatus.connecting => l.statusConnecting,
+      ConnStatus.handshaking => l.statusAuthenticating,
+      ConnStatus.reconnecting => l.statusReconnecting,
+      ConnStatus.failed => l.statusError,
+      ConnStatus.disconnected => l.statusDisconnected,
+      ConnStatus.idle => l.statusNotConnected,
+    };
   }
 }
 
@@ -75,7 +86,7 @@ class StatusBadge extends StatelessWidget {
           _Indicator(color: v.color, busy: _busy, icon: v.icon),
           const SizedBox(width: 8),
           Text(
-            v.label,
+            StatusVisual.labelOf(context, status),
             style: TextStyle(
               color: v.color,
               fontWeight: FontWeight.w700,

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import '../widgets/language_button.dart';
 import 'import_screen.dart';
 import 'public_servers_screen.dart';
 
@@ -41,7 +43,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add server')),
+      appBar: AppBar(
+        title: Text(L.of(context).addServer),
+        actions: const [LanguageButton()],
+      ),
       body: Form(
         key: _form,
         child: ListView(

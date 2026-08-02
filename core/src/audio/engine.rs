@@ -576,7 +576,20 @@ fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
         }
     }
 
-    // Taken at 48 kHz before resampling, so it matches what capture sees.
+    // Cues are mixed over the voice, never queued behind it.
+    //
+    // Appending them instead makes a cue *displace* speech rather than sound
+    // over it: every cue pushes the voice already queued further into the
+    // future, so latency grows by the length of each one and never comes back,
+    // until the queue hits its cap and starts discarding audio. A cue that
+    // repeats — the dialing one does, every few seconds — turns that into a
+    // steady climb, heard as speech breaking up for reasons that have nothing
+    // to do with the network.
+    mix_in(&shared.cue_queue, want, out);
+
+    // Taken after the cues, because they genuinely come out of the speaker and
+    // genuinely echo back into the microphone, and at 48 kHz before resampling
+    // so it matches what the capture chain sees.
     {
         let mut echo = shared.echo_reference.lock();
         if echo.len() + out.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
@@ -588,14 +601,23 @@ fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
         }
     }
 
-    // Monitoring has to be able to drive the output on its own: testing a
-    // microphone is precisely the case where nothing else is playing.
-    let mut monitor = shared.monitor_queue.lock();
+    // Monitoring is mixed in last, after the reference has been taken, so the
+    // canceller never sees the near-end talker as its own far-end signal.
+    mix_in(&shared.monitor_queue, want, out);
+}
+
+/// Mixes up to `want` samples from `queue` over `out`, extending it when the
+/// queue outruns it — a cue or the monitor has to be able to drive the output
+/// on its own when nothing else is playing.
+fn mix_in(queue: &Mutex<VecDeque<f32>>, want: usize, out: &mut Vec<f32>) {
+    let mut queue = queue.lock();
     for i in 0..want {
-        let Some(m) = monitor.pop_front() else { break };
+        let Some(sample) = queue.pop_front() else {
+            break;
+        };
         match out.get_mut(i) {
-            Some(s) => *s = (*s + m).clamp(-1.0, 1.0),
-            None => out.push(m.clamp(-1.0, 1.0)),
+            Some(existing) => *existing = (*existing + sample).clamp(-1.0, 1.0),
+            None => out.push(sample.clamp(-1.0, 1.0)),
         }
     }
 }
@@ -958,25 +980,9 @@ where
             }
         }
 
-        // --- notification cues ---------------------------------------------
-        // Drained a block at a time so a long cue cannot overrun the playback
-        // queue, and so voice keeps flowing underneath it.
-        {
-            let mut cues = shared.cue_queue.lock();
-            if !cues.is_empty() {
-                let mut q = shared.playback_queue.lock();
-                let room = MAX_QUEUED_OUTPUT_SAMPLES.saturating_sub(q.len());
-                let n = room.min(FRAME_SIZE).min(cues.len());
-                for _ in 0..n {
-                    if let Some(s) = cues.pop_front() {
-                        q.push_back(s);
-                    }
-                }
-                if n > 0 {
-                    did_work = true;
-                }
-            }
-        }
+        // Cues are not drained here. The output callback mixes them over the
+        // voice as it plays, which is the only way a cue sounds *over* speech
+        // rather than pushing it later.
 
         // --- playback path ------------------------------------------------
         let need_more = shared.playback_queue.lock().len() < FRAME_SAMPLES * 3;
@@ -1218,6 +1224,85 @@ mod tests {
         s.set_monitor(false);
         assert!(!s.is_monitoring());
         assert!(s.monitor_queue.lock().is_empty());
+    }
+
+    #[test]
+    fn a_cue_sounds_over_speech_instead_of_displacing_it() {
+        // The bug this guards against does not sound like a cue problem: the
+        // cue plays fine, and the *speech* breaks up, seemingly at random and
+        // seemingly because of the network. Queued behind the voice, every cue
+        // adds its whole length to the backlog and never gives it back.
+        let shared = AudioShared::new();
+        shared
+            .playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.2, 960));
+        shared
+            .cue_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.5, 480));
+
+        let mut out = Vec::new();
+        fill_output_block(&shared, 480, &mut out);
+
+        // The cue is heard on top of the speech in this very block...
+        assert_eq!(out.len(), 480);
+        assert!(
+            out.iter().all(|s| (*s - 0.7).abs() < 1e-6),
+            "cue did not mix"
+        );
+
+        // ...and the speech has advanced by exactly one block, not been pushed
+        // 480 samples further into the future.
+        assert_eq!(
+            shared.playback_queue.lock().len(),
+            480,
+            "the cue displaced queued speech instead of mixing with it"
+        );
+        assert!(shared.cue_queue.lock().is_empty());
+    }
+
+    #[test]
+    fn a_repeating_cue_does_not_grow_the_backlog() {
+        // The dialing cue repeats for as long as a connection is being chased.
+        // If each repeat added to the queue, latency would climb until the cap
+        // started discarding audio.
+        let shared = AudioShared::new();
+        let mut out = Vec::new();
+        for _ in 0..40 {
+            shared
+                .playback_queue
+                .lock()
+                .extend(std::iter::repeat_n(0.1, 480));
+            shared
+                .cue_queue
+                .lock()
+                .extend(std::iter::repeat_n(0.3, 480));
+            fill_output_block(&shared, 480, &mut out);
+        }
+        assert!(
+            shared.playback_queue.lock().len() <= 480,
+            "backlog grew to {} samples",
+            shared.playback_queue.lock().len()
+        );
+    }
+
+    #[test]
+    fn cues_are_referenced_because_they_really_are_played() {
+        // Unlike the monitor, a cue leaves the speaker and echoes back, so the
+        // canceller has to know about it.
+        let shared = AudioShared::new();
+        shared
+            .cue_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.4, 480));
+
+        let mut out = Vec::new();
+        fill_output_block(&shared, 480, &mut out);
+
+        let echo = shared.echo_reference.lock();
+        assert_eq!(echo.len(), 480);
+        assert!(echo.iter().all(|s| (*s - 0.4).abs() < 1e-6));
     }
 
     #[test]

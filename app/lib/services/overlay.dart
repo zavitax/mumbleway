@@ -156,6 +156,20 @@ class OverlayBridge {
     _showing = false;
   }
 
+  /// Maps a dBFS reading onto the 0..1 range the meters draw in.
+  ///
+  /// Done here rather than in each of the three renderers so that the meter,
+  /// the threshold marker and the noise marker cannot end up on different
+  /// scales and quietly misreport the margin between them.
+  static double meterFraction(double db) {
+    if (!db.isFinite) return 0;
+    return ((db + kMeterFloorDb) / kMeterFloorDb).clamp(0.0, 1.0);
+  }
+
+  /// Quietest level the meters show. Below this everything is silence, and
+  /// stretching the scale further just makes the useful part unreadable.
+  static const double kMeterFloorDb = 60;
+
   /// Pushes the current call state onto the window.
   ///
   /// Cheap and idempotent; the caller throttles rather than this, because only
@@ -166,6 +180,10 @@ class OverlayBridge {
     required bool connected,
     required bool muted,
     required bool deafened,
+    required double levelDb,
+    required double thresholdDb,
+    required double noiseFloorDb,
+    required bool speaking,
   }) async {
     if (!isSupported || !_showing) return;
     try {
@@ -175,6 +193,10 @@ class OverlayBridge {
         'connected': connected,
         'muted': muted,
         'deafened': deafened,
+        'level': meterFraction(levelDb),
+        'threshold': meterFraction(thresholdDb),
+        'noiseFloor': meterFraction(noiseFloorDb),
+        'speaking': speaking,
       });
     } catch (_) {
       // The service may have been killed; the next show() re-establishes it.

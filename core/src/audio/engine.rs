@@ -63,6 +63,7 @@ pub struct AudioShared {
     /// Level voice activation currently opens at, in dBFS * 100. Tracks the
     /// background noise, so it is worth showing rather than a fixed number.
     activation_threshold: AtomicU32,
+    noise_floor: AtomicU32,
     /// Whether the last processed block counted as speech.
     speech_detected: AtomicBool,
     running: AtomicBool,
@@ -254,6 +255,7 @@ impl AudioShared {
             input_level: AtomicU32::new(0),
             output_level: AtomicU32::new(0),
             activation_threshold: AtomicU32::new(0),
+            noise_floor: AtomicU32::new(0),
             speech_detected: AtomicBool::new(false),
             running: AtomicBool::new(true),
             input_gain_db: AtomicI32::new(0),
@@ -415,6 +417,21 @@ impl AudioShared {
     /// Level voice activation currently opens at, in dBFS.
     pub fn activation_threshold_db(&self) -> f32 {
         self.activation_threshold.load(Ordering::Relaxed) as f32 / 100.0 - 120.0
+    }
+
+    fn store_noise_floor(&self, db: f32) {
+        let v = ((db + 120.0).clamp(0.0, 120.0) * 100.0) as u32;
+        self.noise_floor.store(v, Ordering::Relaxed);
+    }
+
+    /// Tracked background noise level in dBFS.
+    ///
+    /// Reported separately from the activation threshold because the gap
+    /// between the two is the margin the rider is actually tuning: on a
+    /// motorcycle the floor moves with speed, and seeing only the threshold
+    /// makes a rising floor look like a mis-set control.
+    pub fn noise_floor_db(&self) -> f32 {
+        self.noise_floor.load(Ordering::Relaxed) as f32 / 100.0 - 120.0
     }
 
     /// Queues a received voice packet for decoding and playback.
@@ -864,6 +881,7 @@ where
             let analysis = processor.process_with_reference(&mut block, &echo_ref);
             shared.store_level(analysis.level_db);
             shared.store_threshold(analysis.activation_threshold_db);
+            shared.store_noise_floor(analysis.noise_floor_db);
             shared
                 .speech_detected
                 .store(analysis.speaking, Ordering::Relaxed);
@@ -1061,6 +1079,24 @@ mod tests {
                 shared.input_level_db()
             );
         }
+    }
+
+    #[test]
+    fn noise_floor_and_threshold_are_reported_separately() {
+        // The meters draw both, and the gap between them is the margin being
+        // tuned. Sharing one atomic would collapse that gap to zero and make a
+        // rising noise floor invisible.
+        let shared = AudioShared::new();
+        shared.store_noise_floor(-52.0);
+        shared.store_threshold(-43.0);
+
+        assert!((shared.noise_floor_db() - -52.0).abs() < 0.05);
+        assert!((shared.activation_threshold_db() - -43.0).abs() < 0.05);
+
+        // And the floor can move without dragging the threshold with it.
+        shared.store_noise_floor(-31.0);
+        assert!((shared.noise_floor_db() - -31.0).abs() < 0.05);
+        assert!((shared.activation_threshold_db() - -43.0).abs() < 0.05);
     }
 
     #[test]

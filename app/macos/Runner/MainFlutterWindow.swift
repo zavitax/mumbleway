@@ -46,7 +46,11 @@ class MainFlutterWindow: NSWindow {
           transmitting: arguments["transmitting"] as? Bool ?? false,
           connected: arguments["connected"] as? Bool ?? false,
           muted: arguments["muted"] as? Bool ?? false,
-          deafened: arguments["deafened"] as? Bool ?? false)
+          deafened: arguments["deafened"] as? Bool ?? false,
+          level: arguments["level"] as? Double ?? 0,
+          threshold: arguments["threshold"] as? Double ?? 0,
+          noiseFloor: arguments["noiseFloor"] as? Double ?? 0,
+          speaking: arguments["speaking"] as? Bool ?? false)
         result(true)
 
       case "setCloseHangsUp":

@@ -9,6 +9,7 @@ import 'package:mumbleway/services/proxy.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/theme.dart';
+import 'package:mumbleway/widgets/ptt_button.dart';
 import 'package:mumbleway/widgets/status_badge.dart';
 
 void main() {
@@ -276,6 +277,42 @@ void main() {
       const TransportChip(transport: 'tcp', pingMs: 0),
     ));
     expect(find.textContaining('TCP'), findsOneWidget);
+  });
+
+  test('the meter scale is shared and clamped', () {
+    // Every surface that draws a level, a threshold or a noise floor goes
+    // through this, so a drift here would silently misreport the margin
+    // between the markers rather than look wrong.
+    expect(OverlayBridge.meterFraction(0), 1.0);
+    expect(OverlayBridge.meterFraction(-60), 0.0);
+    expect(OverlayBridge.meterFraction(-30), closeTo(0.5, 1e-9));
+    // Silence is reported as -120 dBFS, well below the floor.
+    expect(OverlayBridge.meterFraction(-120), 0.0);
+    expect(OverlayBridge.meterFraction(12), 1.0);
+    expect(OverlayBridge.meterFraction(double.nan), 0.0);
+    expect(OverlayBridge.meterFraction(double.negativeInfinity), 0.0);
+  });
+
+  testWidgets('the on-air light flashes rather than sitting steady',
+      (tester) async {
+    await tester.pumpWidget(wrap(const OnAirIndicator()));
+    // Scoped to the indicator: the surrounding MaterialApp has fades of its
+    // own, so an unscoped finder matches more than one.
+    final fade = find.descendant(
+      of: find.byType(OnAirIndicator),
+      matching: find.byType(FadeTransition),
+    );
+    double opacityNow() => tester.widget<FadeTransition>(fade).opacity.value;
+
+    final first = opacityNow();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(opacityNow(), isNot(closeTo(first, 0.05)));
+
+    // Repeating, not a one-shot fade that leaves it dark for the rest of the
+    // transmission.
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(opacityNow(), greaterThan(0.25));
   });
 
   test('only Picture in Picture lacks a hang-up control', () {

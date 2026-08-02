@@ -272,6 +272,11 @@ sealed class AppEvent with _$AppEvent {
 
     /// Level voice activation opens at, tracking the background noise.
     required double thresholdDb,
+
+    /// The tracked background noise itself. The gap up to `threshold_db`
+    /// is the margin, which is what makes a rising floor readable as
+    /// wind rather than as a mis-set control.
+    required double noiseFloorDb,
   }) = AppEvent_InputLevel;
 
   /// Someone else changed our mute or deafen state.

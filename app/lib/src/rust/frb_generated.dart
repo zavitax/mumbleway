@@ -1469,6 +1469,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           levelDb: dco_decode_f_32(raw[1]),
           speaking: dco_decode_bool(raw[2]),
           thresholdDb: dco_decode_f_32(raw[3]),
+          noiseFloorDb: dco_decode_f_32(raw[4]),
         );
       case 6:
         return AppEvent_Moderated(
@@ -1837,10 +1838,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         var var_levelDb = sse_decode_f_32(deserializer);
         var var_speaking = sse_decode_bool(deserializer);
         var var_thresholdDb = sse_decode_f_32(deserializer);
+        var var_noiseFloorDb = sse_decode_f_32(deserializer);
         return AppEvent_InputLevel(
           levelDb: var_levelDb,
           speaking: var_speaking,
           thresholdDb: var_thresholdDb,
+          noiseFloorDb: var_noiseFloorDb,
         );
       case 6:
         var var_serverId = sse_decode_String(deserializer);
@@ -2294,11 +2297,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         levelDb: final levelDb,
         speaking: final speaking,
         thresholdDb: final thresholdDb,
+        noiseFloorDb: final noiseFloorDb,
       ):
         sse_encode_i_32(5, serializer);
         sse_encode_f_32(levelDb, serializer);
         sse_encode_bool(speaking, serializer);
         sse_encode_f_32(thresholdDb, serializer);
+        sse_encode_f_32(noiseFloorDb, serializer);
       case AppEvent_Moderated(
         serverId: final serverId,
         muted: final muted,

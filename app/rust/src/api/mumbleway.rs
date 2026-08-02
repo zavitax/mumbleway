@@ -142,6 +142,10 @@ pub enum AppEvent {
         speaking: bool,
         /// Level voice activation opens at, tracking the background noise.
         threshold_db: f32,
+        /// The tracked background noise itself. The gap up to `threshold_db`
+        /// is the margin, which is what makes a rising floor readable as
+        /// wind rather than as a mis-set control.
+        noise_floor_db: f32,
     },
     /// Someone else changed our mute or deafen state.
     Moderated {
@@ -216,6 +220,11 @@ pub struct StartupOptions {
 // Global application state
 // ---------------------------------------------------------------------------
 
+/// Encoded frame fan-out: `(sequence, opus payload, is_terminator)` per live
+/// session. Named because the bare type appears in several signatures and is
+/// unreadable spelled out.
+type OutgoingFanout = Arc<Mutex<Vec<mpsc::Sender<(u64, Vec<u8>, bool)>>>>;
+
 struct App {
     rt: tokio::runtime::Runtime,
     manager: tokio::sync::Mutex<SessionManager>,
@@ -224,12 +233,13 @@ struct App {
     _audio: AudioEngine,
     /// One sender per connected session, so a single encoded frame can be fanned
     /// out to every server at once.
-    outgoing: Arc<Mutex<Vec<mpsc::Sender<(u64, Vec<u8>, bool)>>>>,
+    outgoing: OutgoingFanout,
     /// Maps a server id to its audio slot, which namespaces speaker streams.
     slots: Mutex<HashMap<String, u16>>,
     /// Last status seen per server, so connection cues fire on transitions
-    /// rather than on every repeated status event.
-    last_status: Arc<Mutex<HashMap<String, ConnStatus>>>,
+    /// rather than on every repeated status event. Held only to keep the map
+    /// alive alongside the task that reads it.
+    _last_status: Arc<Mutex<HashMap<String, ConnStatus>>>,
     identity: Identity,
 }
 
@@ -349,8 +359,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     let dir = std::path::PathBuf::from(&options.storage_dir);
     let identity = Identity::load_or_create(&dir, "MumbleWay")?;
 
-    let outgoing: Arc<Mutex<Vec<mpsc::Sender<(u64, Vec<u8>, bool)>>>> =
-        Arc::new(Mutex::new(Vec::new()));
+    let outgoing: OutgoingFanout = Arc::new(Mutex::new(Vec::new()));
 
     // The audio engine hands every encoded frame to all connected sessions.
     let fanout = outgoing.clone();
@@ -499,6 +508,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 level_db: level_shared.input_level_db(),
                 speaking: level_shared.speech_detected(),
                 threshold_db: level_shared.activation_threshold_db(),
+                noise_floor_db: level_shared.noise_floor_db(),
             });
         }
     });
@@ -510,7 +520,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         _audio: audio,
         outgoing,
         slots: Mutex::new(HashMap::new()),
-        last_status,
+        _last_status: last_status,
         identity,
     });
     Ok(())

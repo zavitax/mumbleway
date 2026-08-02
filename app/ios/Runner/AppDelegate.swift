@@ -76,6 +76,10 @@ import UIKit
         snapshot.connected = arguments["connected"] as? Bool ?? false
         snapshot.muted = arguments["muted"] as? Bool ?? false
         snapshot.deafened = arguments["deafened"] as? Bool ?? false
+        snapshot.level = arguments["level"] as? Double ?? 0
+        snapshot.threshold = arguments["threshold"] as? Double ?? 0
+        snapshot.noiseFloor = arguments["noiseFloor"] as? Double ?? 0
+        snapshot.speaking = arguments["speaking"] as? Bool ?? false
         (self.pip as? PipController)?.update(snapshot)
         result(true)
 

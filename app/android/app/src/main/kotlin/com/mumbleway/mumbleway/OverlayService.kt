@@ -8,12 +8,17 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.KeyEvent
 import android.util.TypedValue
 import android.view.Gravity
@@ -45,6 +50,10 @@ class OverlayService : Service() {
     private var namesView: TextView? = null
     private var muteButton: TextView? = null
     private var deafenButton: TextView? = null
+    private var meterView: MeterView? = null
+    private var dotView: DotView? = null
+    private val flashHandler = Handler(Looper.getMainLooper())
+    private var flashing = false
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     companion object {
@@ -91,8 +100,15 @@ class OverlayService : Service() {
             connected: Boolean,
             muted: Boolean,
             deafened: Boolean,
+            level: Float,
+            threshold: Float,
+            noiseFloor: Float,
+            speaking: Boolean,
         ) {
-            instance?.applyState(names, transmitting, connected, muted, deafened)
+            instance?.applyState(
+                names, transmitting, connected, muted, deafened,
+                level, threshold, noiseFloor, speaking,
+            )
         }
     }
 
@@ -268,8 +284,37 @@ class OverlayService : Service() {
         val deafen = pill("\u{1F50A}")
         val hangup = pill("\u{2715}").apply { setTextColor(Color.argb(255, 255, 138, 128)) }
 
+        val dot = DotView(this)
+        val meter = MeterView(this)
+
+        // Names and meter stack vertically so the island stays narrow enough
+        // to leave the navigation app usable.
+        val label = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                dot,
+                LinearLayout.LayoutParams(dp(8), dp(8)).apply {
+                    rightMargin = dp(6)
+                },
+            )
+            addView(names)
+        }
+
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, dp(4), 0)
+            addView(label)
+            addView(
+                meter,
+                LinearLayout.LayoutParams(dp(120), dp(10)).apply {
+                    topMargin = dp(4)
+                },
+            )
+        }
+
         container.addView(talk)
-        container.addView(names)
+        container.addView(column)
         container.addView(mute)
         container.addView(deafen)
         container.addView(hangup)
@@ -326,6 +371,85 @@ class OverlayService : Service() {
         namesView = names
         muteButton = mute
         deafenButton = deafen
+        meterView = meter
+        dotView = dot
+    }
+
+    /**
+     * Input level with the noise floor and the activation threshold marked on
+     * the same scale.
+     *
+     * The two markers are separate because the gap between them is the margin
+     * being tuned. On a bike the floor climbs with road speed, and a meter
+     * showing only the threshold makes that look like a control that has
+     * drifted rather than wind.
+     */
+    private inner class MeterView(context: Context) : View(context) {
+        var level = 0f
+        var threshold = 0f
+        var noiseFloor = 0f
+
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val rect = RectF()
+
+        override fun onDraw(canvas: Canvas) {
+            val h = dp(5).toFloat()
+            val top = (height - h) / 2f
+            val r = h / 2f
+
+            rect.set(0f, top, width.toFloat(), top + h)
+            paint.color = Color.argb(60, 255, 255, 255)
+            canvas.drawRoundRect(rect, r, r, paint)
+
+            val filled = level.coerceIn(0f, 1f)
+            if (filled > 0.001f) {
+                // Colour answers the only question the meter is asked: would
+                // this level open the gate?
+                paint.color = if (level >= threshold) {
+                    Color.argb(255, 92, 217, 115)
+                } else {
+                    Color.argb(255, 184, 184, 184)
+                }
+                rect.set(0f, top, (width * filled).coerceAtLeast(h), top + h)
+                canvas.drawRoundRect(rect, r, r, paint)
+            }
+
+            tick(canvas, noiseFloor, Color.argb(255, 140, 170, 210), dp(2).toFloat(), top, h)
+            tick(canvas, threshold, Color.argb(255, 255, 199, 64), dp(4).toFloat(), top, h)
+        }
+
+        private fun tick(
+            canvas: Canvas,
+            value: Float,
+            colour: Int,
+            overhang: Float,
+            top: Float,
+            h: Float,
+        ) {
+            paint.color = colour
+            val x = width * value.coerceIn(0f, 1f)
+            val w = dp(1).toFloat()
+            canvas.drawRect(x - w, top - overhang, x + w, top + h + overhang, paint)
+        }
+    }
+
+    /**
+     * The transmit indicator. Blinks while the microphone is going out, the way
+     * a studio on-air light does: a steady colour is easy to stop noticing, and
+     * a channel left keyed open is the failure worth catching.
+     */
+    private inner class DotView(context: Context) : View(context) {
+        var colour = Color.GRAY
+        var lit = true
+
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        override fun onDraw(canvas: Canvas) {
+            paint.color = colour
+            paint.alpha = if (lit) 255 else 64
+            val r = minOf(width, height) / 2f
+            canvas.drawCircle(width / 2f, height / 2f, r, paint)
+        }
     }
 
     private fun pill(glyph: String) = TextView(this).apply {
@@ -395,6 +519,10 @@ class OverlayService : Service() {
         connected: Boolean,
         muted: Boolean,
         deafened: Boolean,
+        level: Float,
+        threshold: Float,
+        noiseFloor: Float,
+        speaking: Boolean,
     ) {
         val view = namesView ?: return
         val talk = talkButton ?: return
@@ -411,7 +539,52 @@ class OverlayService : Service() {
                 if (transmitting) activeTalkBackground() else idleTalkBackground()
             muteButton?.background = pillBackground(active = muted)
             deafenButton?.background = pillBackground(active = deafened)
+
+            meterView?.let {
+                it.level = level
+                it.threshold = threshold
+                it.noiseFloor = noiseFloor
+                it.invalidate()
+            }
+
+            dotView?.let {
+                it.colour = when {
+                    !connected -> Color.GRAY
+                    transmitting -> Color.argb(255, 240, 62, 62)
+                    speaking -> Color.argb(255, 64, 199, 115)
+                    else -> Color.GRAY
+                }
+                it.invalidate()
+            }
+            setFlashing(transmitting)
         }
+    }
+
+    /**
+     * Drives the on-air blink from its own runnable rather than from state
+     * pushes, so the rate stays even no matter how often there is something
+     * new to report.
+     */
+    private fun setFlashing(on: Boolean) {
+        if (on == flashing) return
+        flashing = on
+        flashHandler.removeCallbacksAndMessages(null)
+        if (!on) {
+            dotView?.let {
+                it.lit = true
+                it.invalidate()
+            }
+            return
+        }
+        val blink = object : Runnable {
+            override fun run() {
+                val dot = dotView ?: return
+                dot.lit = !dot.lit
+                dot.invalidate()
+                flashHandler.postDelayed(this, 350)
+            }
+        }
+        flashHandler.postDelayed(blink, 350)
     }
 
     private fun removeOverlay() {
@@ -426,5 +599,9 @@ class OverlayService : Service() {
         namesView = null
         muteButton = null
         deafenButton = null
+        meterView = null
+        dotView = null
+        flashHandler.removeCallbacksAndMessages(null)
+        flashing = false
     }
 }

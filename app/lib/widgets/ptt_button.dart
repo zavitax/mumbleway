@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/overlay.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -39,7 +40,27 @@ class PttButton extends StatelessWidget {
     return Semantics(
       button: ptt,
       label: ptt ? 'Push to talk' : 'Transmission indicator',
-      child: GestureDetector(
+      child: Stack(
+        children: [
+          _body(context, state, ptt, live, enabled, color),
+          // Sits over the button rather than inside it so the label keeps the
+          // full width it needs to scale into.
+          if (live)
+            const Positioned(top: 12, right: 12, child: OnAirIndicator()),
+        ],
+      ),
+    );
+  }
+
+  Widget _body(
+    BuildContext context,
+    AppState state,
+    bool ptt,
+    bool live,
+    bool enabled,
+    Color color,
+  ) {
+    return GestureDetector(
         onTapDown: ptt && enabled ? (_) => _press(state) : null,
         onTapUp: ptt && enabled ? (_) => _release(state) : null,
         onTapCancel: ptt && enabled ? () => _release(state) : null,
@@ -112,7 +133,6 @@ class PttButton extends StatelessWidget {
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -142,6 +162,90 @@ class PttButton extends StatelessWidget {
   }
 }
 
+/// A tick on the level meter.
+class _Marker extends StatelessWidget {
+  const _Marker({
+    required this.at,
+    required this.width,
+    required this.colour,
+    required this.height,
+  });
+
+  final double at;
+  final double width;
+  final Color colour;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: (width * at - 1).clamp(0.0, width - 2),
+      child: Container(
+        width: 2,
+        height: height,
+        decoration: BoxDecoration(
+          color: colour,
+          borderRadius: BorderRadius.circular(1),
+        ),
+      ),
+    );
+  }
+}
+
+/// Flashing round "on air" light, shown while audio is going out.
+///
+/// Blinks rather than sitting steady on purpose: a static colour is easy to
+/// stop noticing, and a channel left keyed open — talking to a group that can
+/// hear everything — is the failure worth catching. The rate is slow enough
+/// not to strobe in peripheral vision on a moving bike.
+class OnAirIndicator extends StatefulWidget {
+  const OnAirIndicator({super.key, this.size = 14});
+
+  final double size;
+
+  @override
+  State<OnAirIndicator> createState() => _OnAirIndicatorState();
+}
+
+class _OnAirIndicatorState extends State<OnAirIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1, end: 0.25).animate(_controller),
+      child: Semantics(
+        label: 'On air',
+        child: Container(
+          width: widget.size,
+          height: widget.size,
+          decoration: BoxDecoration(
+            color: StatusColors.talking,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: StatusColors.talking.withValues(alpha: 0.6),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Horizontal microphone level meter with a speech indicator.
 ///
 /// Shown permanently rather than only in settings: knowing the microphone is
@@ -155,13 +259,15 @@ class LevelMeter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
-    // Map -60..0 dBFS onto 0..1; below -60 there is nothing worth showing.
-    final t = ((state.inputLevelDb + 60) / 60).clamp(0.0, 1.0);
+    // Shared with the floating windows so the meter, the threshold and the
+    // noise marker cannot end up on different scales.
+    final t = OverlayBridge.meterFraction(state.inputLevelDb);
 
     // The activation threshold only means anything in voice-activated mode,
     // where it tells the rider how far above the engine they have to speak.
     final showThreshold = state.micMode == MicMode.voiceActivity;
-    final threshold = ((state.activationThresholdDb + 60) / 60).clamp(0.0, 1.0);
+    final threshold = OverlayBridge.meterFraction(state.activationThresholdDb);
+    final noiseFloor = OverlayBridge.meterFraction(state.noiseFloorDb);
 
     return Row(
       children: [
@@ -204,22 +310,25 @@ class LevelMeter extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Where voice activation opens. It moves with the background
-                // noise, so at speed it sits much further right — which is the
-                // useful thing to see: how far above the engine you must speak.
-                if (showThreshold)
-                  Positioned(
-                    left: (constraints.maxWidth * threshold - 1)
-                        .clamp(0.0, constraints.maxWidth - 2),
-                    child: Container(
-                      width: 2,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        color: StatusColors.connecting,
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                    ),
+                // The tracked background noise, and above it the level voice
+                // activation opens at. Both are shown because the gap between
+                // them is the margin: at speed the floor climbs, and seeing
+                // only the threshold makes that look like a control that has
+                // drifted rather than wind.
+                if (showThreshold) ...[
+                  _Marker(
+                    at: noiseFloor,
+                    width: constraints.maxWidth,
+                    colour: StatusColors.idle,
+                    height: 12,
                   ),
+                  _Marker(
+                    at: threshold,
+                    width: constraints.maxWidth,
+                    colour: StatusColors.connecting,
+                    height: 16,
+                  ),
+                ],
               ],
             ),
           ),

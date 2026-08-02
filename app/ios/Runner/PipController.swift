@@ -12,6 +12,13 @@ struct CallSnapshot {
   var connected = false
   var muted = false
   var deafened = false
+  /// Meter values, already normalised to 0...1 by the Dart side so that the
+  /// level, the threshold and the noise floor cannot end up on three
+  /// different scales.
+  var level: Double = 0
+  var threshold: Double = 0
+  var noiseFloor: Double = 0
+  var speaking = false
 }
 
 /// Picture in Picture floating window for iOS and iPadOS.
@@ -135,14 +142,29 @@ final class PipController: NSObject {
   /// A still image can leave the window looking stalled, and the render is a
   /// few hundred pixels of flat colour, so it is cheaper to keep feeding it
   /// than to reason about when the system needs a fresh frame.
+  ///
+  /// The rate is driven by the meter and the on-air flash rather than by the
+  /// call state, which changes rarely. Ten a second is enough for a level bar
+  /// to look continuous and for the flash to have clean edges; the frame is a
+  /// few hundred pixels of flat colour, so the cost is negligible.
   private func startRenderTimer() {
     renderTimer?.invalidate()
-    let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
-      self?.render()
+    let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+      guard let self else { return }
+      self.frame &+= 1
+      self.render()
     }
     RunLoop.main.add(timer, forMode: .common)
     renderTimer = timer
   }
+
+  /// Frames since the timer started, used for the on-air flash. A counter
+  /// rather than a clock so the blink cannot drift with render timing.
+  private var frame: UInt64 = 0
+
+  /// Roughly 1.5 Hz at ten frames a second: fast enough to read as "live",
+  /// slow enough not to strobe in peripheral vision on a moving bike.
+  private var onAirVisible: Bool { (frame % 7) < 4 }
 
   private func render() {
     guard let displayLayer else { return }
@@ -260,34 +282,56 @@ final class PipController: NSObject {
     UIColor(red: 0.063, green: 0.094, blue: 0.133, alpha: 1).setFill()
     context.fill(bounds)
 
-    drawStatusDot(in: bounds)
+    drawOnAir(in: bounds)
     drawTitle(in: bounds)
     drawBadges(in: bounds)
+    drawMeter(in: bounds)
     drawSpeakers(in: bounds)
   }
 
-  private func drawStatusDot(in bounds: CGRect) {
+  /// The transmit indicator: a filled ring that blinks while the microphone is
+  /// actually going out, the way a studio on-air light does. Blinking rather
+  /// than merely turning red because a steady colour is easy to lose track of,
+  /// and leaving a channel keyed open by accident is the failure that matters.
+  private func drawOnAir(in bounds: CGRect) {
+    let centre = CGPoint(x: bounds.midX, y: 92)
+    let radius: CGFloat = 30
+
     let colour: UIColor
     if !snapshot.connected {
       colour = UIColor(white: 0.45, alpha: 1)
     } else if snapshot.transmitting {
-      colour = UIColor(red: 0.94, green: 0.27, blue: 0.27, alpha: 1)
-    } else {
+      colour = UIColor(red: 0.94, green: 0.24, blue: 0.24, alpha: 1)
+    } else if snapshot.speaking {
       colour = UIColor(red: 0.25, green: 0.78, blue: 0.45, alpha: 1)
+    } else {
+      colour = UIColor(white: 0.55, alpha: 1)
     }
 
-    let centre = CGPoint(x: bounds.midX, y: 96)
-    let radius: CGFloat = snapshot.transmitting ? 34 : 28
+    let lit = !snapshot.transmitting || onAirVisible
 
-    colour.withAlphaComponent(0.22).setFill()
-    UIBezierPath(arcCenter: centre, radius: radius + 14, startAngle: 0, endAngle: .pi * 2, clockwise: true).fill()
-    colour.setFill()
-    UIBezierPath(arcCenter: centre, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true).fill()
+    if snapshot.transmitting {
+      colour.withAlphaComponent(lit ? 0.30 : 0.10).setFill()
+      UIBezierPath(
+        arcCenter: centre, radius: radius + 16, startAngle: 0, endAngle: .pi * 2,
+        clockwise: true
+      ).fill()
+    }
 
-    let glyph = snapshot.transmitting ? "\u{25CF}" : "\u{1F3A4}"
-    drawText(
-      glyph, in: CGRect(x: 0, y: centre.y - 16, width: bounds.width, height: 32),
-      size: 22, weight: .bold, colour: .white, alignment: .center)
+    colour.withAlphaComponent(lit ? 1.0 : 0.35).setFill()
+    UIBezierPath(
+      arcCenter: centre, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true
+    ).fill()
+
+    if snapshot.transmitting {
+      drawText(
+        "ON AIR", in: CGRect(x: 0, y: centre.y - 9, width: bounds.width, height: 20),
+        size: 14, weight: .heavy, colour: .white, alignment: .center)
+    } else {
+      drawText(
+        "\u{1F3A4}", in: CGRect(x: 0, y: centre.y - 14, width: bounds.width, height: 28),
+        size: 20, weight: .bold, colour: .white, alignment: .center)
+    }
   }
 
   private func drawTitle(in bounds: CGRect) {
@@ -304,8 +348,8 @@ final class PipController: NSObject {
       text = "Listening"
     }
     drawText(
-      text, in: CGRect(x: 12, y: 148, width: bounds.width - 24, height: 26),
-      size: 20, weight: .semibold, colour: .white, alignment: .center)
+      text, in: CGRect(x: 12, y: 136, width: bounds.width - 24, height: 26),
+      size: 19, weight: .semibold, colour: .white, alignment: .center)
   }
 
   private func drawBadges(in bounds: CGRect) {
@@ -315,10 +359,69 @@ final class PipController: NSObject {
     guard !labels.isEmpty else { return }
     drawText(
       labels.joined(separator: "  \u{00B7}  "),
-      in: CGRect(x: 12, y: 178, width: bounds.width - 24, height: 20),
-      size: 13, weight: .bold,
+      in: CGRect(x: 12, y: 162, width: bounds.width - 24, height: 18),
+      size: 12, weight: .bold,
       colour: UIColor(red: 0.98, green: 0.72, blue: 0.35, alpha: 1),
       alignment: .center)
+  }
+
+  /// Input level with the two thresholds marked on the same scale.
+  ///
+  /// The noise floor and the activation threshold are drawn as separate ticks
+  /// because the distance between them is the margin being tuned: on a bike
+  /// the floor climbs with speed, and a meter showing only the threshold makes
+  /// that look like a control that has drifted rather than wind.
+  private func drawMeter(in bounds: CGRect) {
+    let track = CGRect(x: 44, y: 194, width: bounds.width - 88, height: 14)
+    let radius = track.height / 2
+
+    UIColor(white: 1, alpha: 0.12).setFill()
+    UIBezierPath(roundedRect: track, cornerRadius: radius).fill()
+
+    let level = CGFloat(max(0, min(1, snapshot.level)))
+    if level > 0.001 {
+      // Green below the threshold, red above it: the colour says whether this
+      // level would open the gate, which is the only question the meter is
+      // being asked.
+      let open = snapshot.level >= snapshot.threshold
+      let fill = open
+        ? UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
+        : UIColor(white: 0.72, alpha: 1)
+      fill.setFill()
+      let filled = CGRect(
+        x: track.minX, y: track.minY, width: max(track.height, track.width * level),
+        height: track.height)
+      UIBezierPath(roundedRect: filled, cornerRadius: radius).fill()
+    }
+
+    drawTick(
+      at: snapshot.noiseFloor, in: track,
+      colour: UIColor(red: 0.55, green: 0.65, blue: 0.80, alpha: 1), height: 4)
+    drawTick(
+      at: snapshot.threshold, in: track,
+      colour: UIColor(red: 1.0, green: 0.78, blue: 0.25, alpha: 1), height: 7)
+
+    drawText(
+      "noise", in: CGRect(x: 4, y: 193, width: 38, height: 16),
+      size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
+      alignment: .right)
+    drawText(
+      "open", in: CGRect(x: bounds.width - 42, y: 193, width: 38, height: 16),
+      size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
+      alignment: .left)
+  }
+
+  private func drawTick(
+    at value: Double, in track: CGRect, colour: UIColor, height: CGFloat
+  ) {
+    let clamped = CGFloat(max(0, min(1, value)))
+    let x = track.minX + track.width * clamped
+    colour.setFill()
+    UIBezierPath(
+      rect: CGRect(
+        x: x - 1.5, y: track.minY - height, width: 3,
+        height: track.height + height * 2)
+    ).fill()
   }
 
   private func drawSpeakers(in bounds: CGRect) {
@@ -334,8 +437,8 @@ final class PipController: NSObject {
     }
 
     drawText(
-      text, in: CGRect(x: 12, y: 214, width: bounds.width - 24, height: 44),
-      size: 17, weight: .medium,
+      text, in: CGRect(x: 12, y: 224, width: bounds.width - 24, height: 40),
+      size: 16, weight: .medium,
       colour: UIColor(red: 0.55, green: 0.83, blue: 1.0, alpha: 1),
       alignment: .center)
   }

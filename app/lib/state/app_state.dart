@@ -210,6 +210,7 @@ class AppState extends ChangeNotifier {
   bool _transmitting = false;
   double _inputLevelDb = -120;
   double _thresholdDb = -120;
+  double _noiseFloorDb = -120;
   bool _speaking = false;
 
   /// Most recent moderation applied to us by someone else, for a banner.
@@ -288,6 +289,10 @@ class AppState extends ChangeNotifier {
   /// Level voice activation opens at. Tracks the background noise, so it rises
   /// with engine and wind — which is what makes it worth showing.
   double get activationThresholdDb => _thresholdDb;
+
+  /// Tracked background noise. The gap up to [activationThresholdDb] is the
+  /// margin voice activation needs to clear.
+  double get noiseFloorDb => _noiseFloorDb;
   bool get speaking => _speaking;
 
   /// Whether the talk button is relevant. In the automatic modes it is not,
@@ -940,8 +945,12 @@ class AppState extends ChangeNotifier {
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
     final connected = runtimes.values.any((r) => r.isLive);
-    final signature =
-        '${names.join(',')}|$_transmitting|$connected|$_muted|$_deafened';
+    // The level arrives ten times a second and never repeats exactly, so it is
+    // rounded to whole decibels before being compared. Without that the
+    // signature always differs and the check stops filtering anything.
+    final signature = '${names.join(',')}|$_transmitting|$connected|$_muted'
+        '|$_deafened|$_speaking|${_inputLevelDb.round()}'
+        '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
     _lastOverlaySignature = signature;
     unawaited(overlay.update(
@@ -950,6 +959,10 @@ class AppState extends ChangeNotifier {
       connected: connected,
       muted: _muted,
       deafened: _deafened,
+      levelDb: _inputLevelDb,
+      thresholdDb: _thresholdDb,
+      noiseFloorDb: _noiseFloorDb,
+      speaking: _speaking,
     ));
   }
 
@@ -1111,11 +1124,14 @@ class AppState extends ChangeNotifier {
       case AppEvent_InputLevel(
           :final levelDb,
           :final speaking,
-          :final thresholdDb
+          :final thresholdDb,
+          :final noiseFloorDb
         ):
         _inputLevelDb = levelDb;
         _speaking = speaking;
         _thresholdDb = thresholdDb;
+        _noiseFloorDb = noiseFloorDb;
+        _pushOverlay();
       case AppEvent_Moderated(
           :final muted,
           :final deafened,

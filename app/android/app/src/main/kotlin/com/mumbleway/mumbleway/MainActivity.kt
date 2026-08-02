@@ -111,12 +111,20 @@ class MainActivity : FlutterActivity() {
                     val connected = call.argument<Boolean>("connected") ?: false
                     val muted = call.argument<Boolean>("muted") ?: false
                     val deafened = call.argument<Boolean>("deafened") ?: false
+                    val level = call.argument<Double>("level") ?: 0.0
+                    val threshold = call.argument<Double>("threshold") ?: 0.0
+                    val noiseFloor = call.argument<Double>("noiseFloor") ?: 0.0
+                    val speaking = call.argument<Boolean>("speaking") ?: false
                     OverlayService.updateState(
                         names,
                         transmitting,
                         connected,
                         muted,
                         deafened,
+                        level.toFloat(),
+                        threshold.toFloat(),
+                        noiseFloor.toFloat(),
+                        speaking,
                     )
                     result.success(null)
                 }

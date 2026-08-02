@@ -72,6 +72,22 @@ than hidden behind one abstraction.
 | macOS | Floating `NSPanel` | talk, mute, deafen, hang up |
 | Windows | — | the window is already there |
 
+All of them show the same two things as the main screen:
+
+* **The input meter**, with the tracked noise floor and the level voice
+  activation opens at marked separately. The gap between those two marks is the
+  margin being tuned — on a bike the floor climbs with road speed, and a meter
+  showing only the threshold makes that look like a control that has drifted
+  rather than wind. The bar turns green once the level would open the gate.
+  All four surfaces share one scale (`OverlayBridge.meterFraction`) so the
+  marks cannot drift apart between them.
+
+* **A flashing on-air light** while audio is going out. It blinks rather than
+  sitting steady because a static colour is easy to stop noticing, and a
+  channel left keyed open — talking to a group that can hear everything — is
+  the failure worth catching. The blink runs off its own timer on each
+  platform, so the rate stays even regardless of how often state is pushed.
+
 * **Android** draws a small draggable island over the navigation app. It runs
   from a foreground service, which is also what keeps the audio engine alive
   while another app is in front. Needs the "display over other apps"

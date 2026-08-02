@@ -1578,10 +1578,12 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                 let mut var_levelDb = <f32>::sse_decode(deserializer);
                 let mut var_speaking = <bool>::sse_decode(deserializer);
                 let mut var_thresholdDb = <f32>::sse_decode(deserializer);
+                let mut var_noiseFloorDb = <f32>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::InputLevel {
                     level_db: var_levelDb,
                     speaking: var_speaking,
                     threshold_db: var_thresholdDb,
+                    noise_floor_db: var_noiseFloorDb,
                 };
             }
             6 => {
@@ -2130,11 +2132,13 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 level_db,
                 speaking,
                 threshold_db,
+                noise_floor_db,
             } => [
                 5.into_dart(),
                 level_db.into_into_dart().into_dart(),
                 speaking.into_into_dart().into_dart(),
                 threshold_db.into_into_dart().into_dart(),
+                noise_floor_db.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Moderated {
@@ -2493,11 +2497,13 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 level_db,
                 speaking,
                 threshold_db,
+                noise_floor_db,
             } => {
                 <i32>::sse_encode(5, serializer);
                 <f32>::sse_encode(level_db, serializer);
                 <bool>::sse_encode(speaking, serializer);
                 <f32>::sse_encode(threshold_db, serializer);
+                <f32>::sse_encode(noise_floor_db, serializer);
             }
             crate::api::mumbleway::AppEvent::Moderated {
                 server_id,

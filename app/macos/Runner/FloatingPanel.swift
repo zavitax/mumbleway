@@ -1,6 +1,68 @@
 import Cocoa
 import FlutterMacOS
 
+/// Input level with the noise floor and the activation threshold marked on the
+/// same scale.
+///
+/// The two are drawn separately because the gap between them is the margin
+/// being tuned: the floor climbs with road speed, and a meter showing only the
+/// threshold makes that look like a control that has drifted rather than wind.
+final class MeterView: NSView {
+  var level: Double = 0 { didSet { needsDisplay = true } }
+  var threshold: Double = 0 { didSet { needsDisplay = true } }
+  var noiseFloor: Double = 0 { didSet { needsDisplay = true } }
+
+  override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 12) }
+
+  override func draw(_ dirtyRect: NSRect) {
+    let track = NSRect(x: 0, y: 3, width: bounds.width, height: 6)
+    let radius = track.height / 2
+
+    NSColor.labelColor.withAlphaComponent(0.15).setFill()
+    NSBezierPath(roundedRect: track, xRadius: radius, yRadius: radius).fill()
+
+    let clamped = CGFloat(max(0, min(1, level)))
+    if clamped > 0.001 {
+      // Colour answers the only question the meter is asked: would this level
+      // open the gate?
+      let open = level >= threshold
+      (open ? NSColor.systemGreen : NSColor.secondaryLabelColor).setFill()
+      let filled = NSRect(
+        x: track.minX, y: track.minY,
+        width: max(track.height, track.width * clamped), height: track.height)
+      NSBezierPath(roundedRect: filled, xRadius: radius, yRadius: radius).fill()
+    }
+
+    tick(at: noiseFloor, in: track, colour: NSColor.systemBlue, overhang: 2)
+    tick(at: threshold, in: track, colour: NSColor.systemOrange, overhang: 4)
+  }
+
+  private func tick(at value: Double, in track: NSRect, colour: NSColor, overhang: CGFloat) {
+    let clamped = CGFloat(max(0, min(1, value)))
+    colour.setFill()
+    NSBezierPath(
+      rect: NSRect(
+        x: track.minX + track.width * clamped - 1, y: track.minY - overhang,
+        width: 2, height: track.height + overhang * 2)
+    ).fill()
+  }
+}
+
+/// The transmit indicator. Blinks while the microphone is going out, the way a
+/// studio on-air light does: a steady colour is easy to stop noticing, and a
+/// channel left keyed open is the failure worth catching.
+final class OnAirDot: NSView {
+  var colour: NSColor = .secondaryLabelColor { didSet { needsDisplay = true } }
+  var lit = true { didSet { needsDisplay = true } }
+
+  override var intrinsicContentSize: NSSize { NSSize(width: 10, height: 10) }
+
+  override func draw(_ dirtyRect: NSRect) {
+    colour.withAlphaComponent(lit ? 1.0 : 0.25).setFill()
+    NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
+  }
+}
+
 /// Always-on-top call controls for macOS.
 ///
 /// macOS has no Picture in Picture for a third-party audio app and needs none:
@@ -21,11 +83,15 @@ final class FloatingPanel: NSObject {
   private var hangupButton: NSButton!
   private var statusLabel: NSTextField!
   private var speakersLabel: NSTextField!
+  private var meter: MeterView!
+  private var onAir: OnAirDot!
+  private var flashTimer: Timer?
 
   private var transmitting = false
   private var connected = false
   private var muted = false
   private var deafened = false
+  private var speaking = false
   private var names: [String] = []
 
   init(channel: FlutterMethodChannel) {
@@ -46,21 +112,30 @@ final class FloatingPanel: NSObject {
   }
 
   func update(
-    names: [String], transmitting: Bool, connected: Bool, muted: Bool, deafened: Bool
+    names: [String], transmitting: Bool, connected: Bool, muted: Bool, deafened: Bool,
+    level: Double, threshold: Double, noiseFloor: Double, speaking: Bool
   ) {
     self.names = names
     self.transmitting = transmitting
     self.connected = connected
     self.muted = muted
     self.deafened = deafened
+    self.speaking = speaking
+    meter?.level = level
+    meter?.threshold = threshold
+    meter?.noiseFloor = noiseFloor
     refresh()
+  }
+
+  deinit {
+    flashTimer?.invalidate()
   }
 
   // MARK: - Construction
 
   private func build() {
     let panel = NSPanel(
-      contentRect: NSRect(x: 0, y: 0, width: 232, height: 118),
+      contentRect: NSRect(x: 0, y: 0, width: 232, height: 152),
       // `.nonactivatingPanel` is what keeps the app in the background when a
       // button is clicked; `.utilityWindow` keeps it out of the window list.
       styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel],
@@ -93,12 +168,21 @@ final class FloatingPanel: NSObject {
     hangupButton = makeButton(title: "Hang up", action: #selector(hangupTapped))
     hangupButton.contentTintColor = .systemRed
 
+    onAir = OnAirDot()
+    meter = MeterView()
+
+    let header = NSStackView(views: [onAir, statusLabel])
+    header.orientation = .horizontal
+    header.spacing = 6
+
     let secondary = NSStackView(views: [muteButton, deafenButton, hangupButton])
     secondary.orientation = .horizontal
     secondary.distribution = .fillEqually
     secondary.spacing = 6
 
-    let stack = NSStackView(views: [statusLabel, speakersLabel, talkButton, secondary])
+    let stack = NSStackView(views: [
+      header, meter, speakersLabel, talkButton, secondary,
+    ])
     stack.orientation = .vertical
     stack.alignment = .centerX
     stack.spacing = 6
@@ -111,6 +195,10 @@ final class FloatingPanel: NSObject {
       stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 4),
       talkButton.heightAnchor.constraint(equalToConstant: 30),
       secondary.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      meter.widthAnchor.constraint(equalTo: stack.widthAnchor),
+      meter.heightAnchor.constraint(equalToConstant: 12),
+      onAir.widthAnchor.constraint(equalToConstant: 10),
+      onAir.heightAnchor.constraint(equalToConstant: 10),
     ])
 
     panel.contentView = content
@@ -166,6 +254,17 @@ final class FloatingPanel: NSObject {
       speakersLabel.stringValue = visible.joined(separator: ", ")
     }
 
+    if !connected {
+      onAir.colour = .secondaryLabelColor
+    } else if transmitting {
+      onAir.colour = .systemRed
+    } else if speaking {
+      onAir.colour = .systemGreen
+    } else {
+      onAir.colour = .secondaryLabelColor
+    }
+    updateFlash()
+
     talkButton.state = transmitting ? .on : .off
     talkButton.isEnabled = connected
     muteButton.title = muted ? "Unmute" : "Mute"
@@ -173,6 +272,24 @@ final class FloatingPanel: NSObject {
     muteButton.isEnabled = connected
     deafenButton.isEnabled = connected
     hangupButton.isEnabled = connected
+  }
+
+  /// The blink runs off its own timer rather than off state pushes, so the
+  /// rate stays even no matter how often the app has something new to report.
+  private func updateFlash() {
+    guard transmitting else {
+      flashTimer?.invalidate()
+      flashTimer = nil
+      onAir.lit = true
+      return
+    }
+    guard flashTimer == nil else { return }
+    let timer = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
+      guard let self else { return }
+      self.onAir.lit.toggle()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    flashTimer = timer
   }
 
   // MARK: - Actions

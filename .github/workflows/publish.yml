@@ -178,6 +178,14 @@ jobs:
           security cms -D -i "$profile" > /tmp/pp.plist
           uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /tmp/pp.plist)
 
+          # The export step needs the same profile named explicitly. Left on
+          # automatic it asks Xcode to look one up through a signed-in account,
+          # which a runner does not have, and fails with "No Accounts" after
+          # the archive has already signed correctly.
+          /usr/libexec/PlistBuddy -c \
+            "Set :provisioningProfiles:com.mumbleway.mumbleway $uuid" \
+            app/ios/ExportOptions.plist
+
           # Manual signing, pinned to the profile that was actually installed.
           # Automatic signing goes looking for a *development* profile it can
           # ask Apple to create, which a runner cannot do and which is not what

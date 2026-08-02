@@ -15,10 +15,25 @@
 	<key>teamID</key>
 	<string>$(APPLE_TEAM_ID)</string>
 
-	<!-- Let Xcode pick the matching distribution profile rather than pinning a
-	     name that changes whenever the profile is regenerated. -->
+	<!--
+	  Manual, and pinned to the profile that was installed.
+
+	  Automatic export asks Xcode to find a profile through a signed-in
+	  account. A runner has none, so it fails with "No Accounts" even though
+	  the archive itself signed correctly a moment earlier. The workflow
+	  substitutes the installed profile's UUID below.
+	-->
 	<key>signingStyle</key>
-	<string>automatic</string>
+	<string>manual</string>
+
+	<key>signingCertificate</key>
+	<string>Apple Distribution</string>
+
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>com.mumbleway.mumbleway</key>
+		<string>$(PROVISIONING_PROFILE_UUID)</string>
+	</dict>
 
 	<key>uploadSymbols</key>
 	<true/>

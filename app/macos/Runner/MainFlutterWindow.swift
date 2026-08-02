@@ -2,7 +2,7 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
-  private var floatingPanel: FloatingPanel?
+  private var callPanel: FloatingPanel?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -20,7 +20,7 @@ class MainFlutterWindow: NSWindow {
     let channel = FlutterMethodChannel(
       name: "mumbleway/overlay", binaryMessenger: messenger)
     let panel = FloatingPanel(channel: channel)
-    floatingPanel = panel
+    callPanel = panel
 
     channel.setMethodCallHandler { call, result in
       switch call.method {

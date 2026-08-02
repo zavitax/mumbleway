@@ -280,9 +280,14 @@ class OverlayService : Service() {
 
         // Glyphs rather than words: the row has to stay narrow enough to leave
         // the navigation app usable, and these are read at a glance at speed.
-        val mute = pill("\u{1F3A4}")
-        val deafen = pill("\u{1F50A}")
-        val hangup = pill("\u{2715}").apply { setTextColor(Color.argb(255, 255, 138, 128)) }
+        // Kotlin string escapes are UTF-16 and take exactly four hex digits, so
+        // anything outside the basic plane is written as a surrogate pair
+        // rather than with Swift's \u{...} form.
+        val mute = pill("\uD83C\uDFA4")
+        val deafen = pill("\uD83D\uDD0A")
+        val hangup = pill("\u2715").apply {
+            setTextColor(Color.argb(255, 255, 138, 128))
+        }
 
         val dot = DotView(this)
         val meter = MeterView(this)

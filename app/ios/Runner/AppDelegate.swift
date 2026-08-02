@@ -16,7 +16,13 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    registerOverlayChannel(with: engineBridge.applicationBinaryMessenger)
+
+    // The bridge exposes no messenger directly; a registrar is the supported
+    // way to reach one, and taking one out under our own name is exactly what
+    // a plugin would do.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayOverlay") {
+      registerOverlayChannel(with: registrar.messenger())
+    }
   }
 
   private func registerOverlayChannel(with messenger: FlutterBinaryMessenger) {
@@ -96,9 +102,22 @@ import UIKit
   @available(iOS 15.0, *)
   private func controller(for channel: FlutterMethodChannel) -> PipController? {
     if let existing = pip as? PipController { return existing }
-    guard let hostView = window?.rootViewController?.view else { return nil }
+    guard let hostView = rootView() else { return nil }
     let created = PipController(channel: channel, hostView: hostView)
     pip = created
     return created
+  }
+
+  /// The app's root view.
+  ///
+  /// `window` on the app delegate is nil once scenes are in play, and this
+  /// project has a `SceneDelegate`, so the scene has to be asked as well.
+  private func rootView() -> UIView? {
+    if let view = window?.rootViewController?.view { return view }
+    return UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first(where: \.isKeyWindow)?
+      .rootViewController?.view
   }
 }

@@ -4,12 +4,12 @@ import 'dart:io' show File, Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/widgets.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/overlay.dart';
+import '../services/proxy.dart';
 import '../src/rust/api/mumbleway.dart';
 
 /// A server the user saved, persisted between launches.
@@ -184,6 +184,8 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
   static const _prefsInputGain = 'mumbleway.inputGain';
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
+  static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
+  static const _prefsProxyManual = 'mumbleway.proxyManual';
 
   /// How often saved servers are re-probed for ping and occupancy.
   static const _pingInterval = Duration(seconds: 15);
@@ -303,6 +305,10 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       });
 
+      // Resolve the proxy once at startup; createClient() uses the cached
+      // result, so no request pays for a subprocess.
+      await SystemProxy.instance.refresh();
+
       await _applyAudioSettings();
       await refreshDevices();
       await _loadServers(prefs);
@@ -330,6 +336,11 @@ class AppState extends ChangeNotifier {
     selectedOutput = prefs.getString(_prefsOutputDevice);
     inputGainDbValue = prefs.getDouble(_prefsInputGain) ?? 0;
     outputVolumeDbValue = prefs.getDouble(_prefsOutputVolume) ?? 0;
+
+    // Proxy use defaults to on: a machine behind one usually cannot reach
+    // anything without it, and detection reports "direct" when there is none.
+    SystemProxy.instance.enabled = prefs.getBool(_prefsProxyEnabled) ?? true;
+    SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
   }
 
   Future<void> _applyAudioSettings() async {
@@ -440,15 +451,18 @@ class AppState extends ChangeNotifier {
 
   /// Downloads a profile file and imports whatever it contains.
   Future<String?> importFromUrl(String url) async {
+    final client = SystemProxy.instance.createClient();
     try {
       final uri = Uri.parse(url.trim());
-      final res = await http.get(uri).timeout(const Duration(seconds: 20));
+      final res = await client.get(uri).timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) {
         return 'Download failed (HTTP ${res.statusCode}).';
       }
       return importFromText(res.body);
     } catch (e) {
       return 'Could not download that file: $e';
+    } finally {
+      client.close();
     }
   }
 
@@ -859,10 +873,13 @@ class AppState extends ChangeNotifier {
   /// [usedFallback] reports whether the network request failed and a small
   /// built-in list was substituted.
   Future<(List<PublicServer>, bool usedFallback)> fetchPublicServers() async {
+    // Through the system proxy where one is configured: on a machine behind a
+    // proxy the direct route usually fails outright.
+    final client = SystemProxy.instance.createClient();
     try {
       final uri =
           Uri.parse('https://publist.mumble.info/v1/list?version=1.5.735');
-      final res = await http.get(uri, headers: {
+      final res = await client.get(uri, headers: {
         'Accept-Encoding': 'gzip',
         'Accept': '*/*',
       }).timeout(const Duration(seconds: 20));
@@ -873,9 +890,41 @@ class AppState extends ChangeNotifier {
       }
     } catch (_) {
       // Network trouble; fall through to the built-in list.
+    } finally {
+      client.close();
     }
     return (_knownPublicServers, true);
   }
+
+  // --- proxy --------------------------------------------------------------
+
+  /// Whether outbound HTTP goes through the OS proxy. On by default.
+  bool get proxyEnabled => SystemProxy.instance.enabled;
+
+  /// Human-readable description of what is currently in effect.
+  String get proxyDescription => SystemProxy.instance.config.description;
+
+  Future<void> setProxyEnabled(bool on) async {
+    SystemProxy.instance.enabled = on;
+    await SystemProxy.instance.refresh();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsProxyEnabled, on);
+    notifyListeners();
+  }
+
+  Future<void> setManualProxy(String? hostPort) async {
+    SystemProxy.instance.manualProxy = hostPort;
+    await SystemProxy.instance.refresh();
+    final prefs = await SharedPreferences.getInstance();
+    if (hostPort == null || hostPort.trim().isEmpty) {
+      await prefs.remove(_prefsProxyManual);
+    } else {
+      await prefs.setString(_prefsProxyManual, hostPort.trim());
+    }
+    notifyListeners();
+  }
+
+  String? get manualProxy => SystemProxy.instance.manualProxy;
 
   /// Parses the directory's XML without pulling in an XML package: the schema
   /// is a flat list of self-closing `<server .../>` elements.

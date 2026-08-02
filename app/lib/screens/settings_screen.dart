@@ -82,6 +82,15 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           const Divider(height: 32),
+          const _SectionHeader('Network'),
+          const _Explainer(
+            'Downloads — the public server directory and profile files — go '
+            'through the proxy your system is configured with. On a machine '
+            'behind one, going direct usually fails outright.',
+          ),
+          const _ProxyTile(),
+
+          const Divider(height: 32),
           const _SectionHeader('Identity'),
           const _Explainer(
             'Mumble servers recognise you by a certificate this app generated. '
@@ -368,6 +377,65 @@ class _LabelledSlider extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _ProxyTile extends StatelessWidget {
+  const _ProxyTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppStateScope.of(context);
+    return Column(
+      children: [
+        SwitchListTile(
+          secondary: const Icon(Icons.vpn_lock),
+          title: const Text('Use the system proxy'),
+          subtitle: Text(state.proxyEnabled
+              ? state.proxyDescription
+              : 'Off — connecting directly'),
+          value: state.proxyEnabled,
+          onChanged: state.setProxyEnabled,
+        ),
+        if (state.proxyEnabled)
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Override proxy'),
+            subtitle: Text(state.manualProxy ?? 'Detected automatically'),
+            onTap: () => _editOverride(context, state),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _editOverride(BuildContext context, AppState state) async {
+    final controller = TextEditingController(text: state.manualProxy ?? '');
+    final value = await showDialog<String?>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Proxy override'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            labelText: 'host:port',
+            hintText: '127.0.0.1:8080',
+            helperText: 'Leave empty to detect automatically',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value != null) await state.setManualProxy(value);
   }
 }
 

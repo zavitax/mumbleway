@@ -90,6 +90,47 @@ abstract class CargoKitBuildTask extends DefaultTask {
             environment "CARGOKIT_MIN_SDK_VERSION", minSdkVersion
             environment "CARGOKIT_TARGET_PLATFORMS", targetPlatforms.join(",")
             environment "CARGOKIT_JAVA_HOME", System.properties['java.home']
+
+            // MumbleWay: point CMake at the NDK.
+            //
+            // cargokit configures the Rust toolchain itself, but audiopus_sys
+            // builds libopus through CMake, and CMake's Android support looks
+            // the NDK up from the environment. Without this it stops with
+            //   "Android: Neither the NDK or a standalone toolchain was found."
+            def ndkDir = new File(new File(sdkDirectory, "ndk"), ndkVersion)
+            if (ndkDir.isDirectory()) {
+                environment "ANDROID_NDK_ROOT", ndkDir.absolutePath
+                environment "ANDROID_NDK_HOME", ndkDir.absolutePath
+                environment "ANDROID_NDK", ndkDir.absolutePath
+            }
+
+            // MumbleWay: cross-compiling to Android *from a Windows host*.
+            //
+            // libopus is built from source by audiopus_sys through CMake, and on
+            // Windows CMake defaults to the Visual Studio generator. It then
+            // tries to build the Android target with MSBuild and dies with
+            //   "The BaseOutputPath/OutputPath property is not set"
+            // which says nothing about the real problem. Linux and macOS hosts
+            // default to Unix Makefiles and are unaffected, which is why CI
+            // never sees this.
+            if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+                environment "CMAKE_GENERATOR", "Ninja"
+
+                // Ninja has to be findable for that generator to work. The
+                // Android SDK's own CMake package ships one, so prefer it over
+                // whatever may or may not be on the developer's PATH.
+                def cmakeRoot = new File(sdkDirectory, "cmake")
+                def newest = cmakeRoot.isDirectory()
+                        ? cmakeRoot.listFiles()?.findAll { it.isDirectory() }?.sort { it.name }?.reverse()?.find {
+                            new File(new File(it, "bin"), "ninja.exe").exists()
+                        }
+                        : null
+                if (newest != null) {
+                    environment "PATH",
+                            new File(newest, "bin").absolutePath +
+                                    File.pathSeparator + System.getenv("PATH")
+                }
+            }
         }
     }
 }

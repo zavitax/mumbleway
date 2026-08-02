@@ -163,12 +163,32 @@ jobs:
           cache: true
 
       # The checked-in plist carries a placeholder rather than a real team id,
-      # so the repository holds no account identifiers.
+      # so the repository holds no account identifiers. The same goes for the
+      # Xcode project: the team is injected into the release config here rather
+      # than committed, and without it the archive fails outright with
+      # "Signing for Runner requires a development team".
       - name: Fill in the team id
         if: steps.gate.outputs.ready == 'true'
         run: |
           /usr/libexec/PlistBuddy -c \
             "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" app/ios/ExportOptions.plist
+          echo "DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}" \
+            >> app/ios/Flutter/Release.xcconfig
+
+      - name: Show the installed signing identities
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          echo "--- identities ---"
+          security find-identity -v -p codesigning | sed 's/([0-9A-F]\{40\})/(...)/'
+          echo "--- profiles ---"
+          for p in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            [ -e "$p" ] || continue
+            security cms -D -i "$p" > /tmp/pp.plist 2>/dev/null || continue
+            printf '%s: app-id=%s expires=%s\n' \
+              "$(/usr/libexec/PlistBuddy -c 'Print :Name' /tmp/pp.plist)" \
+              "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /tmp/pp.plist)" \
+              "$(/usr/libexec/PlistBuddy -c 'Print :ExpirationDate' /tmp/pp.plist)"
+          done
 
       - name: Build signed IPA
         if: steps.gate.outputs.ready == 'true'

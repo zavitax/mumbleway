@@ -182,10 +182,19 @@ moment coverage returns. A fixed interval is also something the countdown can
 state honestly. When the OS reports connectivity is back the pending retry is
 cancelled outright, so the common case does not wait at all.
 
+Each attempt lands within **±1 s** of the interval, so a group that all dropped
+together — which is what a server restart looks like — returns spread over a
+two-second window instead of in lockstep. The jitter is an absolute amount
+rather than a fraction of the delay: the spread needed to break up a stampede
+is the same whatever the interval, and it keeps the ceiling from silently
+scaling it. The ceiling bounds the curve, not the jitter; clamping the jittered
+value would chop off the upper half and leave every client landing at or below
+the interval, which is the lockstep it exists to prevent.
+
 The UI counts the interval down rather than printing it once, and the dialing
 cue repeats every 4 s throughout, so "still trying" is audible without looking
-at the screen. The mechanism still supports growth and jitter for a caller with
-a different server population; only the default is flat.
+at the screen. The mechanism still supports growth for a caller with a
+different server population; only the default is flat.
 
 Ping timeout is detected as 16 s of total silence from the server (Mumble itself
 drops clients after 30 s without a ping, and we ping every 5 s).

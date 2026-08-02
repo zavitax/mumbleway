@@ -11,6 +11,10 @@
 //! honestly, and the reconnect is cancelled outright when the OS reports
 //! connectivity is back, so the common case does not wait at all.
 //!
+//! A second of jitter is added either side, so a room full of clients that all
+//! dropped together — which is what happens when a server restarts — spread
+//! their return over a two-second window instead of arriving in lockstep.
+//!
 //! The mechanism still takes a multiplier and a ceiling, because a caller with
 //! a different server population may want them; it is only the default that is
 //! flat.
@@ -22,13 +26,21 @@ use crate::error::DisconnectReason;
 /// Wait between reconnection attempts.
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
+/// How far either side of the interval an attempt may land.
+pub const RETRY_JITTER: Duration = Duration::from_secs(1);
+
 #[derive(Debug, Clone)]
 pub struct BackoffPolicy {
     pub initial: Duration,
     pub max: Duration,
     pub multiplier: f64,
-    /// Fraction of the delay that is randomised, 0.0..=1.0.
-    pub jitter: f64,
+    /// How far either side of the delay an attempt may land.
+    ///
+    /// An absolute amount rather than a fraction of the delay: the point is to
+    /// break up a simultaneous stampede, which needs the same spread whatever
+    /// the interval, and "give or take a second" is something the countdown
+    /// beside it can be honest about.
+    pub jitter: Duration,
 }
 
 impl Default for BackoffPolicy {
@@ -36,10 +48,8 @@ impl Default for BackoffPolicy {
         Self {
             initial: RETRY_INTERVAL,
             max: RETRY_INTERVAL,
-            // Flat, and with no jitter, so the countdown the user is watching
-            // matches the wait exactly.
             multiplier: 1.0,
-            jitter: 0.0,
+            jitter: RETRY_JITTER,
         }
     }
 }
@@ -57,14 +67,13 @@ impl BackoffPolicy {
     /// this deterministic under test.
     pub fn delay_with_sample(&self, attempt: u32, sample: f64) -> Duration {
         let base = self.base_delay(attempt).as_millis() as f64;
-        let spread = base * self.jitter.clamp(0.0, 1.0);
-        // Centre the jitter on the base delay: base +/- spread/2.
-        let offset = spread * (sample.clamp(0.0, 1.0) - 0.5);
-        let millis = (base + offset).max(0.0);
-        // Clamped after jitter, not before: `max` is a ceiling on the wait a
-        // rider actually sees, and upward jitter at the top of the curve would
-        // otherwise push past it.
-        Duration::from_millis(millis as u64).min(self.max)
+        let jitter = self.jitter.as_millis() as f64;
+        // Map 0..=1 onto -jitter..=+jitter, centred on the base delay.
+        let offset = jitter * (sample.clamp(0.0, 1.0) * 2.0 - 1.0);
+        // The ceiling bounds the curve, which `base_delay` has already applied.
+        // Clamping again here would chop off the upper half of the jitter and
+        // leave it one-sided, which is the opposite of spreading a stampede.
+        Duration::from_millis((base + offset).max(0.0) as u64)
     }
 
     /// Applies jitter from the thread RNG.
@@ -148,9 +157,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_wait_is_a_flat_ten_seconds_at_every_attempt() {
-        // The countdown the user watches has to match the wait, which rules
-        // out both growth and jitter.
+    fn the_interval_is_flat_at_every_attempt() {
+        // No growth: the wait must not lengthen the longer someone has been out
+        // of signal, since that is when they most want to be back.
         let p = BackoffPolicy::default();
         for attempt in [0, 1, 2, 5, 20, 100] {
             assert_eq!(
@@ -158,49 +167,70 @@ mod tests {
                 RETRY_INTERVAL,
                 "attempt {attempt} did not wait the flat interval"
             );
-            for sample in [0.0, 0.5, 1.0] {
-                assert_eq!(
-                    p.delay_with_sample(attempt, sample),
-                    RETRY_INTERVAL,
-                    "attempt {attempt} at sample {sample} drifted off the interval"
+        }
+    }
+
+    #[test]
+    fn jitter_spreads_a_second_either_side_and_stays_centred() {
+        let p = BackoffPolicy::default();
+        for attempt in [0, 3, 40] {
+            // The extremes land exactly one second out, and the midpoint lands
+            // on the interval itself.
+            assert_eq!(
+                p.delay_with_sample(attempt, 0.0),
+                RETRY_INTERVAL - RETRY_JITTER
+            );
+            assert_eq!(p.delay_with_sample(attempt, 0.5), RETRY_INTERVAL);
+            assert_eq!(
+                p.delay_with_sample(attempt, 1.0),
+                RETRY_INTERVAL + RETRY_JITTER
+            );
+
+            // And nothing in between escapes the band.
+            for i in 0..=20 {
+                let d = p.delay_with_sample(attempt, i as f64 / 20.0);
+                assert!(
+                    d >= RETRY_INTERVAL - RETRY_JITTER && d <= RETRY_INTERVAL + RETRY_JITTER,
+                    "sample {i} produced {d:?}, outside the band"
                 );
             }
         }
     }
 
     #[test]
-    fn a_growing_policy_still_honours_its_ceiling() {
+    fn jitter_is_not_chopped_off_at_the_ceiling() {
+        // The ceiling bounds the curve, not the jitter. Clamping the jittered
+        // value would leave the spread one-sided — every client landing at or
+        // below the interval — which is the stampede it exists to break up.
+        let p = BackoffPolicy::default();
+        assert_eq!(
+            p.base_delay(0),
+            p.max,
+            "the flat default sits at its ceiling"
+        );
+        assert!(
+            p.delay_with_sample(0, 1.0) > p.max,
+            "upward jitter was clipped away"
+        );
+    }
+
+    #[test]
+    fn a_growing_policy_still_bounds_its_curve() {
         // The default is flat, but the mechanism is not, and a caller that
-        // configures growth must still never exceed its own ceiling.
+        // configures growth must still plateau rather than grow without bound.
         let p = BackoffPolicy {
             initial: Duration::from_millis(500),
             max: Duration::from_secs(8),
             multiplier: 1.8,
-            jitter: 0.25,
+            jitter: Duration::from_millis(250),
         };
         assert!(p.base_delay(1) > p.base_delay(0), "delay must grow");
         assert_eq!(p.base_delay(50), p.max);
         for attempt in 0..40 {
             for sample in [0.0, 0.5, 1.0] {
                 assert!(
-                    p.delay_with_sample(attempt, sample) <= p.max,
+                    p.delay_with_sample(attempt, sample) <= p.max + p.jitter,
                     "attempt {attempt} at sample {sample} exceeded the ceiling"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn jitter_stays_within_the_configured_band() {
-        let p = BackoffPolicy::default();
-        for attempt in 0..8 {
-            let base = p.base_delay(attempt).as_millis() as f64;
-            let spread = base * p.jitter;
-            for sample in [0.0, 0.25, 0.5, 0.75, 1.0] {
-                let d = p.delay_with_sample(attempt, sample).as_millis() as f64;
-                assert!(
-                    d >= base - spread / 2.0 - 1.0 && d <= base + spread / 2.0 + 1.0,
-                    "attempt {attempt} sample {sample}: {d} outside band around {base}"
                 );
             }
         }

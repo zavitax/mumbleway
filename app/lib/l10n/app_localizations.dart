@@ -883,6 +883,18 @@ abstract class L {
   /// **'Your certificate fingerprint'**
   String get identityFingerprint;
 
+  /// No description provided for @echoCancellation.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo cancellation'**
+  String get echoCancellation;
+
+  /// No description provided for @echoCancellationBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes what the speakers play back out of the microphone. Leave it on when using speakers; on a headset there is no echo to cancel and it can only take away.'**
+  String get echoCancellationBody;
+
   /// No description provided for @noiseCancellation.
   ///
   /// In en, this message translates to:

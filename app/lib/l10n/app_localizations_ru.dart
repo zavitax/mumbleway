@@ -421,6 +421,13 @@ class LRu extends L {
   String get identityFingerprint => 'Отпечаток вашего сертификата';
 
   @override
+  String get echoCancellation => 'Подавление эха';
+
+  @override
+  String get echoCancellationBody =>
+      'Убирает из микрофона то, что играет в динамиках. Оставьте включённым при использовании динамиков; в наушниках эха нет, и подавление может только навредить.';
+
+  @override
   String get noiseCancellation => 'Шумоподавление';
 
   @override

@@ -421,6 +421,13 @@ class LEn extends L {
   String get identityFingerprint => 'Your certificate fingerprint';
 
   @override
+  String get echoCancellation => 'Echo cancellation';
+
+  @override
+  String get echoCancellationBody =>
+      'Removes what the speakers play back out of the microphone. Leave it on when using speakers; on a headset there is no echo to cancel and it can only take away.';
+
+  @override
   String get noiseCancellation => 'Noise cancellation';
 
   @override

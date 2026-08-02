@@ -196,6 +196,7 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
   static const _prefsInputGain = 'mumbleway.inputGain';
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
+  static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -380,6 +381,8 @@ class AppState extends ChangeNotifier {
     // Proxy use defaults to on: a machine behind one usually cannot reach
     // anything without it, and detection reports "direct" when there is none.
     SystemProxy.instance.enabled = prefs.getBool(_prefsProxyEnabled) ?? true;
+    echoCancellation = prefs.getBool(_prefsEchoCancellation) ?? true;
+    setEchoCancellation(on_: echoCancellation);
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -839,6 +842,18 @@ class AppState extends ChangeNotifier {
     monitoring = !monitoring;
     setMonitoring(on_: monitoring);
     notifyListeners();
+  }
+
+  /// Acoustic echo cancellation. On by default, because a speaker in the same
+  /// room as the microphone is the common case.
+  bool echoCancellation = true;
+
+  Future<void> setEchoCancellationEnabled({required bool value}) async {
+    echoCancellation = value;
+    setEchoCancellation(on_: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsEchoCancellation, value);
   }
 
   void testOutput() => playTestTone(millis: 700);

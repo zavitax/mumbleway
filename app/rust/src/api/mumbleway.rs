@@ -845,6 +845,18 @@ pub fn is_monitoring() -> anyhow::Result<bool> {
     Ok(app()?.shared.is_monitoring())
 }
 
+/// Acoustic echo cancellation, applied to the microphone before anything else.
+#[frb(sync)]
+pub fn set_echo_cancellation(on: bool) -> anyhow::Result<()> {
+    app()?.shared.set_echo_cancellation(on);
+    Ok(())
+}
+
+#[frb(sync)]
+pub fn is_echo_cancellation_enabled() -> anyhow::Result<bool> {
+    Ok(app()?.shared.echo_cancellation_enabled())
+}
+
 /// Plays a tone on the output device, to check the speaker choice.
 #[frb(sync)]
 pub fn play_test_tone(millis: u32) -> anyhow::Result<()> {

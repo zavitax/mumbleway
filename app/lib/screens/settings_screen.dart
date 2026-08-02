@@ -150,6 +150,7 @@ class _DeviceSection extends StatelessWidget {
             onTap: state.refreshDevices,
           ),
           const _MonitorTile(),
+          const _EchoCancellationTile(),
           const _TestOutputTile(),
         ],
       );
@@ -178,6 +179,7 @@ class _DeviceSection extends StatelessWidget {
           onTap: state.refreshDevices,
         ),
         const _MonitorTile(),
+        const _EchoCancellationTile(),
         const _TestOutputTile(),
       ],
     );
@@ -255,6 +257,24 @@ class _MonitorTile extends StatelessWidget {
       ),
       value: state.monitoring,
       onChanged: (_) => state.toggleMonitoring(),
+    );
+  }
+}
+
+class _EchoCancellationTile extends StatelessWidget {
+  const _EchoCancellationTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: const Icon(Icons.surround_sound),
+      title: Text(l.echoCancellation),
+      subtitle: Text(l.echoCancellationBody),
+      isThreeLine: true,
+      value: state.echoCancellation,
+      onChanged: (v) => state.setEchoCancellationEnabled(value: v),
     );
   }
 }

@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
@@ -139,6 +139,13 @@ void setMonitoring({required bool on_}) =>
     RustLib.instance.api.crateApiMumblewaySetMonitoring(on_: on_);
 
 bool isMonitoring() => RustLib.instance.api.crateApiMumblewayIsMonitoring();
+
+/// Acoustic echo cancellation, applied to the microphone before anything else.
+void setEchoCancellation({required bool on_}) =>
+    RustLib.instance.api.crateApiMumblewaySetEchoCancellation(on_: on_);
+
+bool isEchoCancellationEnabled() =>
+    RustLib.instance.api.crateApiMumblewayIsEchoCancellationEnabled();
 
 /// Plays a tone on the output device, to check the speaker choice.
 void playTestTone({required int millis}) =>

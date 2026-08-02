@@ -85,6 +85,13 @@ pub struct AudioShared {
     /// Loopback: route the processed microphone straight to playback so the
     /// user can hear exactly what the far end would hear.
     monitor: AtomicBool,
+    /// Whether the echo canceller is active.
+    ///
+    /// Worth exposing rather than always-on: on a headset there is no acoustic
+    /// path to cancel, so the filter can only subtract things it should not,
+    /// and being able to take it out of the chain is the quickest way to find
+    /// out whether it is the thing damaging the audio.
+    echo_cancellation: AtomicBool,
     /// Pre-rendered notification tones waiting to reach the output device.
     ///
     /// Rendering up front rather than synthesising in the worker keeps the cue
@@ -271,6 +278,7 @@ impl AudioShared {
             input_gain_db: AtomicI32::new(0),
             output_volume_db: AtomicI32::new(0),
             monitor: AtomicBool::new(false),
+            echo_cancellation: AtomicBool::new(true),
             cue_queue: Mutex::new(VecDeque::new()),
             echo_reference: Mutex::new(VecDeque::new()),
             device_request: Mutex::new((None, None)),
@@ -310,6 +318,14 @@ impl AudioShared {
 
     pub fn is_monitoring(&self) -> bool {
         self.monitor.load(Ordering::Relaxed)
+    }
+
+    pub fn set_echo_cancellation(&self, on: bool) {
+        self.echo_cancellation.store(on, Ordering::Relaxed);
+    }
+
+    pub fn echo_cancellation_enabled(&self) -> bool {
+        self.echo_cancellation.load(Ordering::Relaxed)
     }
 
     /// Queues a notification tone.
@@ -934,6 +950,13 @@ where
                 }
             }
             echo_ref.resize(FRAME_SIZE, 0.0);
+
+            // Picked up here rather than at construction so the switch takes
+            // effect on the next block instead of the next restart.
+            let want_aec = shared.echo_cancellation_enabled();
+            if want_aec != processor.echo_cancellation_enabled() {
+                processor.set_echo_cancellation(want_aec);
+            }
 
             let analysis = processor.process_with_reference(&mut block, &echo_ref);
             shared.store_level(analysis.level_db);

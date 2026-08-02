@@ -156,6 +156,8 @@
   "floatingWindow": "Show floating call window",
   "identityFingerprint": "Your certificate fingerprint",
 
+  "echoCancellation": "Echo cancellation",
+  "echoCancellationBody": "Removes what the speakers play back out of the microphone. Leave it on when using speakers; on a headset there is no echo to cancel and it can only take away.",
   "noiseCancellation": "Noise cancellation",
   "noiseCancellationBody": "Filters wind, engine and road noise out of your microphone. Changes take effect next time the app starts.",
   "micModeBody": "Push-to-talk is the safest choice at speed: nothing you hit on the road opens the channel by accident.",

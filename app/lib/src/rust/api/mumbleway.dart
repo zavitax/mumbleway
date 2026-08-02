@@ -8,9 +8,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -140,21 +140,8 @@ void setMonitoring({required bool on_}) =>
 
 bool isMonitoring() => RustLib.instance.api.crateApiMumblewayIsMonitoring();
 
-/// Dropout counters, in milliseconds of audio, since the last reset.
-///
-/// `(playback gaps, microphone discarded)`. Choppy audio sounds the same
-/// whatever causes it; these separate "nothing was ready to play" from "the
-/// microphone outran the processing" from "the gaps arrived that way".
-Uint64List audioGlitchMs() =>
-    RustLib.instance.api.crateApiMumblewayAudioGlitchMs();
-
-/// `(invented ms, decoded ms)` of incoming audio.
-///
-/// Concealment and real speech are hard to tell apart by ear once a link is
-/// misbehaving; this says outright whether a hiss was synthesised here or sent
-/// by the far end.
-Uint64List incomingAudioMs() =>
-    RustLib.instance.api.crateApiMumblewayIncomingAudioMs();
+UiDiagnostics audioDiagnostics() =>
+    RustLib.instance.api.crateApiMumblewayAudioDiagnostics();
 
 void resetAudioGlitches() =>
     RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
@@ -529,6 +516,96 @@ class UiChannel {
           description == other.description &&
           userCount == other.userCount &&
           maxUsers == other.maxUsers;
+}
+
+/// Everything the diagnostics panel shows, gathered in one call.
+///
+/// One struct rather than a handful of getters because these numbers are only
+/// meaningful against each other: playback gaps mean something different when
+/// the microphone is also dropping, and invented audio means something
+/// different when losses are climbing.
+class UiDiagnostics {
+  /// Audio the output had to invent because nothing was ready to play.
+  final BigInt playbackGapMs;
+
+  /// Microphone audio discarded because the processing fell behind.
+  final BigInt captureDroppedMs;
+
+  /// Incoming audio decoded from real packets.
+  final BigInt incomingRealMs;
+
+  /// Incoming audio synthesised to cover gaps.
+  final BigInt incomingInventedMs;
+
+  /// Gaps in incoming streams that had to be concealed.
+  final BigInt lostPackets;
+
+  /// Deepest jitter buffer currently held, in milliseconds.
+  final BigInt jitterBufferMs;
+
+  /// Speakers the mixer is currently tracking.
+  final int speakers;
+  final BigInt bytesIn;
+  final BigInt bytesOut;
+  final BigInt voicePacketsIn;
+  final BigInt voicePacketsOut;
+
+  /// Share of one core this process is using, as a percentage.
+  final double cpuPercent;
+
+  /// Resident memory, in mebibytes.
+  final double memoryMb;
+
+  const UiDiagnostics({
+    required this.playbackGapMs,
+    required this.captureDroppedMs,
+    required this.incomingRealMs,
+    required this.incomingInventedMs,
+    required this.lostPackets,
+    required this.jitterBufferMs,
+    required this.speakers,
+    required this.bytesIn,
+    required this.bytesOut,
+    required this.voicePacketsIn,
+    required this.voicePacketsOut,
+    required this.cpuPercent,
+    required this.memoryMb,
+  });
+
+  @override
+  int get hashCode =>
+      playbackGapMs.hashCode ^
+      captureDroppedMs.hashCode ^
+      incomingRealMs.hashCode ^
+      incomingInventedMs.hashCode ^
+      lostPackets.hashCode ^
+      jitterBufferMs.hashCode ^
+      speakers.hashCode ^
+      bytesIn.hashCode ^
+      bytesOut.hashCode ^
+      voicePacketsIn.hashCode ^
+      voicePacketsOut.hashCode ^
+      cpuPercent.hashCode ^
+      memoryMb.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiDiagnostics &&
+          runtimeType == other.runtimeType &&
+          playbackGapMs == other.playbackGapMs &&
+          captureDroppedMs == other.captureDroppedMs &&
+          incomingRealMs == other.incomingRealMs &&
+          incomingInventedMs == other.incomingInventedMs &&
+          lostPackets == other.lostPackets &&
+          jitterBufferMs == other.jitterBufferMs &&
+          speakers == other.speakers &&
+          bytesIn == other.bytesIn &&
+          bytesOut == other.bytesOut &&
+          voicePacketsIn == other.voicePacketsIn &&
+          voicePacketsOut == other.voicePacketsOut &&
+          cpuPercent == other.cpuPercent &&
+          memoryMb == other.memoryMb;
 }
 
 /// What an unauthenticated status probe reported about a server.

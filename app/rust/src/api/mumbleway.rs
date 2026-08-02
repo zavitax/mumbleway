@@ -885,28 +885,90 @@ pub fn is_monitoring() -> anyhow::Result<bool> {
     Ok(app()?.shared.is_monitoring())
 }
 
-/// Dropout counters, in milliseconds of audio, since the last reset.
+/// Everything the diagnostics panel shows, gathered in one call.
 ///
-/// `(playback gaps, microphone discarded)`. Choppy audio sounds the same
-/// whatever causes it; these separate "nothing was ready to play" from "the
-/// microphone outran the processing" from "the gaps arrived that way".
-#[frb(sync)]
-pub fn audio_glitch_ms() -> anyhow::Result<Vec<u64>> {
-    let (underrun, dropped) = app()?.shared.glitch_counts();
-    let ms = |samples: u64| samples * 1000 / mumbleway_core::audio::denoise::SAMPLE_RATE as u64;
-    Ok(vec![ms(underrun), ms(dropped)])
+/// One struct rather than a handful of getters because these numbers are only
+/// meaningful against each other: playback gaps mean something different when
+/// the microphone is also dropping, and invented audio means something
+/// different when losses are climbing.
+#[derive(Debug, Clone)]
+pub struct UiDiagnostics {
+    /// Audio the output had to invent because nothing was ready to play.
+    pub playback_gap_ms: u64,
+    /// Microphone audio discarded because the processing fell behind.
+    pub capture_dropped_ms: u64,
+    /// Incoming audio decoded from real packets.
+    pub incoming_real_ms: u64,
+    /// Incoming audio synthesised to cover gaps.
+    pub incoming_invented_ms: u64,
+    /// Gaps in incoming streams that had to be concealed.
+    pub lost_packets: u64,
+    /// Deepest jitter buffer currently held, in milliseconds.
+    pub jitter_buffer_ms: u64,
+    /// Speakers the mixer is currently tracking.
+    pub speakers: u32,
+
+    // Cumulative traffic counters. Rates are left to the caller, because a
+    // rate depends on the interval it was measured over and only the caller
+    // knows how long it waited.
+    pub bytes_in: u64,
+    pub bytes_out: u64,
+    pub voice_packets_in: u64,
+    pub voice_packets_out: u64,
+
+    /// Share of one core this process is using, as a percentage.
+    pub cpu_percent: f32,
+    /// Resident memory, in mebibytes.
+    pub memory_mb: f32,
 }
 
-/// `(invented ms, decoded ms)` of incoming audio.
-///
-/// Concealment and real speech are hard to tell apart by ear once a link is
-/// misbehaving; this says outright whether a hiss was synthesised here or sent
-/// by the far end.
+/// Kept between calls because CPU usage is a rate: it is measured by comparing
+/// two readings, and a freshly built one has nothing to compare against and
+/// reports zero.
+static SYSTEM: OnceLock<Mutex<(sysinfo::System, sysinfo::Pid)>> = OnceLock::new();
+
+fn process_usage() -> (f32, f32) {
+    let cell = SYSTEM.get_or_init(|| {
+        let mut system = sysinfo::System::new();
+        let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
+        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        Mutex::new((system, pid))
+    });
+    let (system, pid) = &mut *cell.lock();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[*pid]), true);
+    match system.process(*pid) {
+        Some(p) => (p.cpu_usage(), p.memory() as f32 / (1024.0 * 1024.0)),
+        None => (0.0, 0.0),
+    }
+}
+
 #[frb(sync)]
-pub fn incoming_audio_ms() -> anyhow::Result<Vec<u64>> {
-    let (invented, decoded) = app()?.shared.frame_counts();
-    // Every frame the buffer hands out is 20 ms of audio.
-    Ok(vec![invented * 20, decoded * 20])
+pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
+    let shared = &app()?.shared;
+    let (underrun, dropped) = shared.glitch_counts();
+    let (invented, decoded) = shared.frame_counts();
+    let (lost, depth_frames) = shared.loss_summary();
+    let (bytes_in, bytes_out, voice_packets_in, voice_packets_out) =
+        mumbleway_core::net::stats::snapshot();
+    let (cpu_percent, memory_mb) = process_usage();
+    let ms = |samples: u64| samples * 1000 / mumbleway_core::audio::denoise::SAMPLE_RATE as u64;
+
+    Ok(UiDiagnostics {
+        playback_gap_ms: ms(underrun),
+        capture_dropped_ms: ms(dropped),
+        // Every frame the buffer hands out is 20 ms of audio.
+        incoming_real_ms: decoded * 20,
+        incoming_invented_ms: invented * 20,
+        lost_packets: lost,
+        jitter_buffer_ms: depth_frames as u64 * 20,
+        speakers: shared.speaker_levels().len() as u32,
+        bytes_in,
+        bytes_out,
+        voice_packets_in,
+        voice_packets_out,
+        cpu_percent,
+        memory_mb,
+    })
 }
 
 #[frb(sync)]

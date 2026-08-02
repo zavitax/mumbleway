@@ -8,7 +8,6 @@ import '../services/button_controller.dart';
 import '../services/overlay.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
-import '../theme.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 
@@ -33,7 +32,6 @@ class SettingsScreen extends StatelessWidget {
           const Divider(height: 32),
           _SectionHeader(l.levels),
           const _LevelsSection(),
-          const _GlitchCounters(),
 
           const Divider(height: 32),
           _SectionHeader(l.noiseCancellation),
@@ -348,75 +346,6 @@ class _TestOutputTile extends StatelessWidget {
 
 /// Input gain and output volume, with the live meter alongside so the effect
 /// of a change is immediately visible.
-/// Live dropout counters.
-///
-/// Choppy audio sounds identical whatever causes it, and the three candidates
-/// need different fixes: the playback queue running dry, the microphone
-/// outrunning the processing, or gaps that were already in the stream when it
-/// arrived. Two numbers tell them apart in seconds, where listening cannot.
-class _GlitchCounters extends StatefulWidget {
-  const _GlitchCounters();
-
-  @override
-  State<_GlitchCounters> createState() => _GlitchCountersState();
-}
-
-class _GlitchCountersState extends State<_GlitchCounters> {
-  Timer? _tick;
-  List<int> _ms = const [0, 0];
-  List<int> _incoming = const [0, 0];
-
-  @override
-  void initState() {
-    super.initState();
-    _tick = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!mounted) return;
-      try {
-        // u64 crosses the bridge as BigInt; these are millisecond counts.
-        setState(() {
-          _ms = audioGlitchMs().map((v) => v.toInt()).toList();
-          _incoming = incomingAudioMs().map((v) => v.toInt()).toList();
-        });
-      } catch (_) {
-        // The engine is not up; nothing to report.
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final quiet = Theme.of(context).colorScheme.onSurfaceVariant;
-    final bad = _ms[0] > 0 || _ms[1] > 0;
-    return ListTile(
-      dense: true,
-      leading: Icon(
-        bad ? Icons.warning_amber : Icons.check_circle_outline,
-        size: 20,
-        color: bad ? StatusColors.connecting : quiet,
-      ),
-      title: Text(
-        'Playback gaps ${_ms[0]} ms · microphone dropped ${_ms[1]} ms\n'
-        'Incoming: ${_incoming[1]} ms real · ${_incoming[0]} ms invented',
-        style: const TextStyle(fontSize: 12),
-      ),
-      isThreeLine: true,
-      trailing: TextButton(
-        onPressed: () {
-          resetAudioGlitches();
-          setState(() => _ms = const [0, 0]);
-        },
-        child: const Text('Reset'),
-      ),
-    );
-  }
-}
-
 class _LevelsSection extends StatelessWidget {
   const _LevelsSection();
 

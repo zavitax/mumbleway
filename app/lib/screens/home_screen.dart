@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/app_bar_title.dart';
+import '../widgets/diagnostics_panel.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/server_card.dart';
@@ -32,6 +33,14 @@ class HomeScreen extends StatelessWidget {
         title: AppBarTitle(l.appTitle),
         actions: [
           const LanguageButton(),
+          IconButton(
+            tooltip: 'Diagnostics',
+            onPressed: state.toggleDiagnostics,
+            icon: const Icon(Icons.monitor_heart_outlined),
+            color: state.diagnosticsOpen
+                ? Theme.of(context).colorScheme.primary
+                : null,
+          ),
           IconButton(
             tooltip: state.deafened ? l.undeafen : l.deafen,
             onPressed: state.toggleDeafen,
@@ -102,13 +111,49 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Above the breakpoint the extra width goes to a detail pane rather
-            // than to stretching cards that gain nothing from being wider.
-            final wide = constraints.maxWidth >= kWideLayoutBreakpoint;
-            return wide ? _WideBody(state: state) : _NarrowBody(state: state);
-          },
+        child: Stack(
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) {
+                // Above the breakpoint the extra width goes to a detail pane
+                // rather than to stretching cards that gain nothing from being
+                // wider.
+                final wide = constraints.maxWidth >= kWideLayoutBreakpoint;
+                return wide
+                    ? _WideBody(state: state)
+                    : _NarrowBody(state: state);
+              },
+            ),
+            // Slides up over the content rather than displacing it: the panel
+            // is consulted while something is going wrong, and shifting the
+            // whole screen to read it would move the very thing being watched.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: AnimatedSlide(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                // A whole panel-height down, whatever that height happens to
+                // be. A fixed offset would leave a tall panel peeking above
+                // the edge and a short one travelling further than it needs.
+                offset: state.diagnosticsOpen
+                    ? Offset.zero
+                    : const Offset(0, 1),
+                child: IgnorePointer(
+                  // Otherwise the hidden panel keeps swallowing taps meant for
+                  // the talk button underneath it.
+                  ignoring: !state.diagnosticsOpen,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.7,
+                    ),
+                    child: DiagnosticsPanel(onClose: state.toggleDiagnostics),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
       floatingActionButton: state.servers.isEmpty
@@ -255,8 +300,8 @@ class _TalkPanel extends StatelessWidget {
             live == 0
                 ? L.of(context).notConnectedAny
                 : live == 1
-                    ? L.of(context).talkingOnOne
-                    : L.of(context).talkingOnMany(live),
+                ? L.of(context).talkingOnOne
+                : L.of(context).talkingOnMany(live),
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -279,9 +324,11 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.headset_mic_outlined,
-                size: 72,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.headset_mic_outlined,
+              size: 72,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 20),
             Text(
               L.of(context).noServersTitle,
@@ -292,7 +339,8 @@ class _EmptyState extends StatelessWidget {
               L.of(context).noServersBody,
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -318,14 +366,18 @@ class _StartupFailure extends StatelessWidget {
               const SizedBox(height: 20),
               Text(
                 L.of(context).audioFailedTitle,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 10),
               Text(
                 L.of(context).audioFailedBody,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
               // Selectable, because this is the only text on the screen that

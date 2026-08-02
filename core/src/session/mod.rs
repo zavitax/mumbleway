@@ -584,6 +584,7 @@ impl Session {
                 .await;
             }
         }
+        crate::net::stats::note_voice_in();
         let _ = self.audio.incoming.try_send(packet);
     }
 

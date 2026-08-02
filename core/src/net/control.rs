@@ -47,6 +47,7 @@ impl ControlReader {
         if length > 0 {
             self.inner.read_exact(&mut payload).await?;
         }
+        super::stats::note_bytes_in(HEADER_LEN + length);
         Ok((msg_type, payload))
     }
 }
@@ -54,6 +55,7 @@ impl ControlReader {
 impl ControlWriter {
     pub async fn send_raw(&mut self, msg_type: u16, payload: &[u8]) -> Result<()> {
         let framed = frame::encode(msg_type, payload);
+        super::stats::note_bytes_out(framed.len());
         self.inner.write_all(&framed).await?;
         self.inner.flush().await?;
         Ok(())
@@ -65,6 +67,7 @@ impl ControlWriter {
         msg: &M,
     ) -> Result<()> {
         let framed = frame::encode_proto(msg_type, msg);
+        super::stats::note_bytes_out(framed.len());
         self.inner.write_all(&framed).await?;
         self.inner.flush().await?;
         Ok(())
@@ -73,6 +76,10 @@ impl ControlWriter {
     /// Sends a voice packet through the TLS tunnel (used when UDP is blocked).
     pub async fn send_tunnel(&mut self, udp_packet: &[u8]) -> Result<()> {
         let framed = frame::encode_tunnel(udp_packet);
+        super::stats::note_bytes_out(framed.len());
+        // A tunnelled voice packet is still a voice packet; counting it only
+        // on the UDP path would show nothing at all on a link that fell back.
+        super::stats::note_voice_out();
         self.inner.write_all(&framed).await?;
         self.inner.flush().await?;
         Ok(())

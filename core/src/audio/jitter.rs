@@ -105,6 +105,12 @@ pub struct SpeakerBuffer {
     concealed_total: u64,
     /// Frames handed out that came from a real packet, cumulative.
     decoded_total: u64,
+    /// Times a gap opened that had to be concealed, cumulative.
+    ///
+    /// Counted per run rather than per frame: one packet lost in transit is
+    /// one loss however many frames it takes to cover, and counting frames
+    /// would make a single stumble look like a collapsing link.
+    loss_events: u64,
     /// Mixer rounds spent holding audio that is not yet judged ready.
     stalled_rounds: u32,
     /// Smoothed output level in dBFS, for this speaker's meter.
@@ -132,6 +138,7 @@ impl SpeakerBuffer {
             normalise: true,
             concealed_total: 0,
             decoded_total: 0,
+            loss_events: 0,
             stalled_rounds: 0,
             level_db: SILENT_DB,
         })
@@ -150,6 +157,11 @@ impl SpeakerBuffer {
     /// `(invented, decoded)` frames handed out so far.
     pub fn frame_counts(&self) -> (u64, u64) {
         (self.concealed_total, self.decoded_total)
+    }
+
+    /// Gaps this speaker's stream has had to conceal.
+    pub fn loss_events(&self) -> u64 {
+        self.loss_events
     }
 
     /// Current loudness correction for this speaker, in dB.
@@ -312,6 +324,7 @@ impl SpeakerBuffer {
             // behaving perfectly.
             if self.concealed_run == 0 {
                 self.recent_losses += 1;
+                self.loss_events += 1;
             }
             self.concealed_run += 1;
             if self.recent_losses > 3 && self.target < MAX_TARGET_FRAMES {

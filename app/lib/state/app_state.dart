@@ -1072,6 +1072,18 @@ class AppState extends ChangeNotifier {
     ));
   }
 
+  /// Whether the diagnostics panel is showing.
+  ///
+  /// Deliberately not persisted: it is a thing you open while chasing a
+  /// problem, not a preference, and finding it still up next launch would be
+  /// a small puzzle every time.
+  bool diagnosticsOpen = false;
+
+  void toggleDiagnostics() {
+    diagnosticsOpen = !diagnosticsOpen;
+    notifyListeners();
+  }
+
   void toggleMute() {
     _muted = !_muted;
     setMicrophoneMuted(muted: _muted);

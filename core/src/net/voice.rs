@@ -86,6 +86,8 @@ impl VoiceSocket {
     pub async fn send_voice(&mut self, packet: &VoicePacket) -> Result<()> {
         let plain = packet.encode_outgoing();
         let sealed = self.crypt.encrypt(&plain)?;
+        super::stats::note_bytes_out(sealed.len());
+        super::stats::note_voice_out();
         self.socket.send(&sealed).await?;
         Ok(())
     }
@@ -94,6 +96,7 @@ impl VoiceSocket {
     pub async fn send_ping(&mut self, timestamp: u64) -> Result<()> {
         let plain = audio_packet::encode_ping(timestamp);
         let sealed = self.crypt.encrypt(&plain)?;
+        super::stats::note_bytes_out(sealed.len());
         self.socket.send(&sealed).await?;
         self.last_ping_sent = Some(Instant::now());
         Ok(())
@@ -106,6 +109,7 @@ impl VoiceSocket {
     pub async fn recv(&mut self) -> Result<UdpEvent> {
         let mut buf = [0u8; MAX_DATAGRAM];
         let n = self.socket.recv(&mut buf).await?;
+        super::stats::note_bytes_in(n);
 
         let plain = match self.crypt.decrypt(&buf[..n]) {
             Ok(p) => p,

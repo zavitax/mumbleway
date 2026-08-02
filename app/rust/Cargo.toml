@@ -19,6 +19,10 @@ anyhow = "1"
 rustls-pemfile = "2"
 serde_json = "1.0.151"
 
+# Process CPU and memory for the diagnostics panel. Default features pull in
+# every subsystem the crate can read; only this process is ever inspected.
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 

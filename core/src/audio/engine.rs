@@ -391,6 +391,22 @@ impl AudioShared {
             .collect()
     }
 
+    /// `(gaps concealed, deepest jitter buffer in frames)` across speakers.
+    ///
+    /// The buffer depth is worth surfacing: it grows itself when the link is
+    /// jittery, so a number well above the default says the network is
+    /// struggling even while the audio still sounds fine.
+    pub fn loss_summary(&self) -> (u64, usize) {
+        let speakers = self.speakers.lock();
+        let losses = speakers.values().map(|b| b.loss_events()).sum();
+        let depth = speakers
+            .values()
+            .map(|b| b.target_frames())
+            .max()
+            .unwrap_or(0);
+        (losses, depth)
+    }
+
     /// `(invented, decoded)` frames of incoming audio.
     pub fn frame_counts(&self) -> (u64, u64) {
         (

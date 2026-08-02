@@ -206,6 +206,37 @@ class AppState extends ChangeNotifier {
   /// Most recent moderation applied to us by someone else, for a banner.
   String? lastModerationMessage;
 
+  /// Server shown in the detail pane on wide layouts. Narrow layouts ignore it
+  /// and expand cards inline instead.
+  String? _selectedServerId;
+
+  String? get selectedServerId {
+    // Fall back to something sensible rather than an empty pane: whatever is
+    // connected, else the first saved server.
+    if (_selectedServerId != null &&
+        servers.any((s) => s.id == _selectedServerId)) {
+      return _selectedServerId;
+    }
+    for (final s in servers) {
+      if (runtimeFor(s.id).isLive) return s.id;
+    }
+    return servers.isEmpty ? null : servers.first.id;
+  }
+
+  SavedServer? get selectedServer {
+    final id = selectedServerId;
+    if (id == null) return null;
+    for (final s in servers) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
+
+  void selectServer(String id) {
+    _selectedServerId = id;
+    notifyListeners();
+  }
+
   NoiseSetting noise = NoiseSetting.helmet;
   MicMode micMode = MicMode.pushToTalk;
   int maxServers = 2;

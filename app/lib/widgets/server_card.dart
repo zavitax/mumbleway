@@ -8,9 +8,23 @@ import 'status_badge.dart';
 
 /// One server: status, live ping, connection controls, channels and who is here.
 class ServerCard extends StatelessWidget {
-  const ServerCard({super.key, required this.server});
+  const ServerCard({
+    super.key,
+    required this.server,
+    this.showDetails = true,
+    this.selected = false,
+    this.onTap,
+  });
 
   final SavedServer server;
+
+  /// Whether to expand channels and the roster inline. Wide layouts turn this
+  /// off because a detail pane shows them with far more room.
+  final bool showDetails;
+
+  /// Highlighted as the server the detail pane is showing.
+  final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +33,15 @@ class ServerCard extends StatelessWidget {
     final visual = StatusVisual.of(rt.status);
 
     return Card(
-      child: Column(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: selected
+            ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
+            : BorderSide.none,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // A colour strip along the top edge makes the state readable from a
@@ -106,24 +128,26 @@ class ServerCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  _CollapsibleSection(
-                    title: 'In this channel (${rt.channelPeers.length})',
-                    initiallyExpanded: true,
-                    child: ChannelUserList(
-                      serverId: server.id,
-                      users: rt.channelPeers,
+                  if (showDetails) ...[
+                    const SizedBox(height: 6),
+                    _CollapsibleSection(
+                      title: 'In this channel (${rt.channelPeers.length})',
+                      initiallyExpanded: true,
+                      child: ChannelUserList(
+                        serverId: server.id,
+                        users: rt.channelPeers,
+                      ),
                     ),
-                  ),
-                  _CollapsibleSection(
-                    title: 'Channels (${rt.channels.length})',
-                    child: ChannelTree(
-                      serverId: server.id,
-                      channels: rt.channels,
-                      currentChannelId: rt.currentChannelId,
-                      defaultChannelName: server.defaultChannel,
+                    _CollapsibleSection(
+                      title: 'Channels (${rt.channels.length})',
+                      child: ChannelTree(
+                        serverId: server.id,
+                        channels: rt.channels,
+                        currentChannelId: rt.currentChannelId,
+                        defaultChannelName: server.defaultChannel,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
 
                 const SizedBox(height: 14),
@@ -210,6 +234,7 @@ class ServerCard extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

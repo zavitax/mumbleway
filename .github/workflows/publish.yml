@@ -167,13 +167,35 @@ jobs:
       # Xcode project: the team is injected into the release config here rather
       # than committed, and without it the archive fails outright with
       # "Signing for Runner requires a development team".
-      - name: Fill in the team id
+      - name: Point the release build at the distribution profile
         if: steps.gate.outputs.ready == 'true'
         run: |
+          set -euo pipefail
           /usr/libexec/PlistBuddy -c \
             "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" app/ios/ExportOptions.plist
-          echo "DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}" \
-            >> app/ios/Flutter/Release.xcconfig
+
+          profile=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
+          security cms -D -i "$profile" > /tmp/pp.plist
+          uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' /tmp/pp.plist)
+
+          # Manual signing, pinned to the profile that was actually installed.
+          # Automatic signing goes looking for a *development* profile it can
+          # ask Apple to create, which a runner cannot do and which is not what
+          # a store build wants anyway.
+          cat >> app/ios/Flutter/Release.xcconfig <<EOF
+          DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+          CODE_SIGN_STYLE=Manual
+          PROVISIONING_PROFILE_SPECIFIER=$uuid
+          EOF
+
+          # The Runner target pins a developer identity for the device SDK, and
+          # a target build setting beats an xcconfig, so this one has to be
+          # rewritten in place rather than overridden.
+          sed -i '' \
+            's/"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]" = "iPhone Developer";/"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";/g' \
+            app/ios/Runner.xcodeproj/project.pbxproj
+
+          echo "signing with profile $uuid"
 
       - name: Show the installed signing identities
         if: steps.gate.outputs.ready == 'true'

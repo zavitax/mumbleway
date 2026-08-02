@@ -571,6 +571,9 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
         }
         buf.set_normalisation(normalise);
         if !buf.ready() {
+            // Held but not played: a burst shorter than the target backlog
+            // would otherwise wait for a transmission that already finished.
+            buf.note_waiting();
             return true;
         }
         // Mix exactly what was decoded. Mixing the whole scratch buffer

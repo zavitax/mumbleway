@@ -41,6 +41,14 @@ const RESTART_GAP_FRAMES: u64 = 3_000;
 /// bound the buffer fills every pause with noise until the next word arrives.
 const MAX_CONSECUTIVE_CONCEALS: u32 = 5;
 
+/// Mixer rounds a short burst may wait for company before playing anyway.
+///
+/// The target backlog assumes more is coming. A burst shorter than it never
+/// arrives at that threshold, so without this it waits for a transmission that
+/// already ended and is simply never heard — which is what a voice hovering at
+/// the sender's activation threshold produces, over and over.
+const STALL_ROUNDS_BEFORE_START: u32 = 40;
+
 /// Buffers and decodes one speaker's stream.
 pub struct SpeakerBuffer {
     decoder: VoiceDecoder,
@@ -88,6 +96,8 @@ pub struct SpeakerBuffer {
     concealed_total: u64,
     /// Frames handed out that came from a real packet, cumulative.
     decoded_total: u64,
+    /// Mixer rounds spent holding audio that is not yet judged ready.
+    stalled_rounds: u32,
 }
 
 impl SpeakerBuffer {
@@ -107,6 +117,7 @@ impl SpeakerBuffer {
             normalise: true,
             concealed_total: 0,
             decoded_total: 0,
+            stalled_rounds: 0,
         })
     }
 
@@ -176,6 +187,7 @@ impl SpeakerBuffer {
                 }
             }
         }
+        self.stalled_rounds = 0;
         self.pending.insert(sequence, opus);
 
         if self.pending.len() > HARD_CAP_FRAMES {
@@ -213,7 +225,19 @@ impl SpeakerBuffer {
         if self.pending.is_empty() {
             return false;
         }
-        self.playing || self.finished || self.pending.len() >= self.target
+        self.playing
+            || self.finished
+            || self.pending.len() >= self.target
+            || self.stalled_rounds >= STALL_ROUNDS_BEFORE_START
+    }
+
+    /// Records a round in which this speaker held audio but was not played.
+    ///
+    /// Waiting for the backlog to reach the target is right while a burst is
+    /// still arriving and wrong once it has ended, and the difference is only
+    /// visible as time passing with nothing new turning up.
+    pub fn note_waiting(&mut self) {
+        self.stalled_rounds = self.stalled_rounds.saturating_add(1);
     }
 
     /// Produces the next frame of PCM, concealing genuine losses.
@@ -240,6 +264,7 @@ impl SpeakerBuffer {
             }
         };
         self.playing = true;
+        self.stalled_rounds = 0;
         let next = self.next_seq.unwrap_or(available);
 
         // Conceal only for a packet or two that plausibly went missing in
@@ -399,6 +424,46 @@ mod tests {
             DEFAULT_TARGET_FRAMES,
             "phantom gaps were counted as loss and grew the buffer"
         );
+    }
+
+    #[test]
+    fn a_burst_shorter_than_the_target_is_still_played() {
+        // The target backlog assumes more is coming. A voice hovering at the
+        // sender's activation threshold — a growl, typically — chatters into
+        // bursts of one or two frames, and without a way out those wait for a
+        // transmission that already ended and are never heard at all. It comes
+        // through perfectly once the sender transmits continuously, which is
+        // what points at the burst length rather than the audio.
+        let packets = frames(2);
+        let mut b = SpeakerBuffer::new().unwrap();
+        b.push(0, packets[0].clone(), false);
+        b.push(seq(1), packets[1].clone(), false);
+
+        assert!(
+            !b.ready(),
+            "should wait a little for the rest of the burst first"
+        );
+        for _ in 0..STALL_ROUNDS_BEFORE_START {
+            b.note_waiting();
+        }
+        assert!(b.ready(), "a short burst was never played");
+
+        let mut out = Vec::new();
+        assert!(b.pop(&mut out).is_some());
+    }
+
+    #[test]
+    fn waiting_resets_when_more_of_the_burst_turns_up() {
+        // The wait is for a burst that has ended. While one is still arriving,
+        // the backlog should be allowed to build as intended.
+        let packets = frames(3);
+        let mut b = SpeakerBuffer::new().unwrap();
+        b.push(0, packets[0].clone(), false);
+        for _ in 0..STALL_ROUNDS_BEFORE_START - 1 {
+            b.note_waiting();
+        }
+        b.push(seq(1), packets[1].clone(), false);
+        assert!(!b.ready(), "the wait should have restarted");
     }
 
     #[test]

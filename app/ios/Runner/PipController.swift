@@ -230,7 +230,11 @@ final class PipController: NSObject {
   func update(_ next: CallSnapshot) {
     let wasTransmitting = snapshot.transmitting
     snapshot = next
-    // The system caches the answer above and only asks again when told to.
+    // The system caches whether playback is paused and only asks again when
+    // told to. Every way of starting or stopping transmission ends up here —
+    // the window's own button, the talk button in the app, a bound Bluetooth
+    // key, voice activation opening the gate — so this one call is what keeps
+    // the button honest whatever caused the change.
     if next.transmitting != wasTransmitting {
       pipController?.invalidatePlaybackState()
     }
@@ -732,6 +736,13 @@ extension PipController: AVPictureInPictureControllerDelegate {
   ) {
     // Clears whatever the last attempt had to say about itself.
     report(nil)
+
+    // The window had to claim to be playing to get itself opened — iOS will
+    // not open one for content it believes is paused. That answer is cached,
+    // so without this the window arrives showing a stop button while nobody
+    // is transmitting, which is the one thing the button must never get
+    // wrong. Asking again now gets the truth.
+    pictureInPictureController.invalidatePlaybackState()
   }
 
   func pictureInPictureControllerDidStopPictureInPicture(

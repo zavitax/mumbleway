@@ -82,6 +82,7 @@ class OverlayService : Service() {
     private var talkButton: TextView? = null
     private var muteButton: TextView? = null
     private var deafenButton: TextView? = null
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
     private val flashHandler = Handler(Looper.getMainLooper())
     private var flashing = false
     private lateinit var layoutParams: WindowManager.LayoutParams
@@ -92,6 +93,12 @@ class OverlayService : Service() {
 
         const val ACTION_START = "com.mumbleway.overlay.START"
         const val ACTION_STOP = "com.mumbleway.overlay.STOP"
+        const val ACTION_SHOW_WINDOW = "com.mumbleway.overlay.SHOW_WINDOW"
+        const val ACTION_HIDE_WINDOW = "com.mumbleway.overlay.HIDE_WINDOW"
+
+        /** Asked to bring the app back to the front. */
+        @Volatile
+        var onOpenApp: (() -> Unit)? = null
 
         /** Set by [MainActivity] so the button can reach the Flutter engine. */
         @Volatile
@@ -108,8 +115,6 @@ class OverlayService : Service() {
         @Volatile
         var onToggleDeafen: (() -> Unit)? = null
 
-        @Volatile
-        var onHangup: (() -> Unit)? = null
 
         /**
          * Set by [MainActivity] to receive Bluetooth media-button presses as
@@ -155,7 +160,34 @@ class OverlayService : Service() {
         instance = this
         startAsForeground()
         setUpMediaSession()
-        addOverlay()
+        acquireWakeLock()
+        // Deliberately no window yet. The service and the window are separate
+        // things: the service is what keeps this process — and with it the
+        // audio engine and every connection — alive while another app is in
+        // front, and it has to run whether or not the rider wants a window.
+    }
+
+    /**
+     * Keeps the CPU running with the screen off.
+     *
+     * A foreground service stops Android killing the process, but it does not
+     * stop the device suspending: with the screen off in a pocket the audio
+     * threads are frozen, which drops the connection and loses whatever was
+     * being said. A partial lock leaves the screen off and the CPU awake, which
+     * is exactly the state a phone in a tank bag should be in.
+     */
+    private fun acquireWakeLock() {
+        if (wakeLock != null) return
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        wakeLock = pm.newWakeLock(
+            android.os.PowerManager.PARTIAL_WAKE_LOCK,
+            "mumbleway:call",
+        ).apply {
+            setReferenceCounted(false)
+            // No timeout: the call lasts as long as the rider says it does, and
+            // a lock that expires mid-ride is the bug this prevents.
+            acquire()
+        }
     }
 
     /**
@@ -213,9 +245,15 @@ class OverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            // Showing and hiding the window leaves the service running, so
+            // going back into the app does not tear down the audio engine.
+            ACTION_SHOW_WINDOW -> addOverlay()
+            ACTION_HIDE_WINDOW -> removeOverlay()
         }
         // Restart if the system kills us: losing the talk button mid-ride is
         // exactly the failure this feature exists to prevent.
@@ -229,6 +267,8 @@ class OverlayService : Service() {
             release()
         }
         mediaSession = null
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
         instance = null
         super.onDestroy()
     }
@@ -262,15 +302,29 @@ class OverlayService : Service() {
             .setOngoing(true)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            // Android 14 insists a foreground service declares why it exists.
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        // Never fatal.
+        //
+        // From Android 14 a service typed "microphone" may only start while the
+        // app holds RECORD_AUDIO, and the refusal is a SecurityException rather
+        // than a return value — so the caller is expected to have checked. It
+        // is checked, in MainActivity; this is the belt to that pair of braces,
+        // because the states in which the system says no keep growing with each
+        // release and none of them is worth taking the app down for. Losing the
+        // background service costs a call; crashing costs the ride.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Android 14 insists a foreground service declares why it exists.
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MumbleWay", "could not go foreground: $e")
+            stopSelf()
         }
     }
 
@@ -320,11 +374,13 @@ class OverlayService : Service() {
         // Kotlin string escapes are UTF-16 and take exactly four hex digits, so
         // anything outside the basic plane is written as a surrogate pair
         // rather than with Swift's \u{...} form.
+        // No hang-up here, deliberately. A control that ends every call sitting
+        // a thumb's width from the one that starts talking is the wrong risk to
+        // carry at speed: hitting it by mistake in gloves takes the rider off
+        // the air with no obvious way back while moving. Disconnecting is a
+        // decision to make stopped, in the app.
         val mute = pill("\uD83C\uDFA4")
         val deafen = pill("\uD83D\uDD0A")
-        val hangup = pill("\u2715").apply {
-            setTextColor(Color.argb(255, 255, 138, 128))
-        }
 
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -343,13 +399,6 @@ class OverlayService : Service() {
             )
             addView(
                 deafen,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { leftMargin = dp(6) },
-            )
-            addView(
-                hangup,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -400,7 +449,12 @@ class OverlayService : Service() {
 
         mute.setOnClickListener { onToggleMute?.invoke() }
         deafen.setOnClickListener { onToggleDeafen?.invoke() }
-        hangup.setOnClickListener { onHangup?.invoke() }
+        // Tapping the card anywhere that is not a control brings the app back.
+        // Without this the window is a dead end: it is the only thing on screen
+        // and there is no way through it to the rest of the app. `DragHandler`
+        // only calls this when the touch did not move, so dragging still moves
+        // the window rather than opening the app.
+        card.setOnClickListener { onOpenApp?.invoke() }
 
         // Dragging by the card lets the rider move the island clear of whatever
         // the navigation app is showing. The card carries no controls of its

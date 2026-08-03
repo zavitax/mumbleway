@@ -444,11 +444,14 @@ void main() {
       expect(AudioSessionState.notNeeded.inputChannels, isNot(0));
     });
 
-    test('it is only iOS that needs one', () {
+    test('the phones need preparing and the desktops do not', () {
+      // iOS has a session to configure; Android has a microphone permission
+      // that the manifest alone never grants, and recording without it returns
+      // silence rather than an error. macOS and Windows have neither.
       expect(
         AudioSessionBridge.instance.isNeeded,
-        Platform.isIOS,
-        reason: 'macOS, Android and Windows have no session to configure',
+        Platform.isIOS || Platform.isAndroid,
+        reason: 'macOS and Windows have nothing to arrange',
       );
     });
   });

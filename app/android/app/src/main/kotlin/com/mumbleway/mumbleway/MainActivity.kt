@@ -36,6 +36,40 @@ class MainActivity : FlutterActivity() {
         // Android discards.
         nativeSetAndroidContext(applicationContext)
 
+        // Attempted here for the case where the permission is already granted
+        // from a previous run; otherwise it starts as soon as it is granted.
+        startKeepAliveService()
+
+        // Brings the app forward when the floating window is tapped.
+        OverlayService.onOpenApp = {
+            runOnUiThread {
+                startActivity(
+                    Intent(this, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                        )
+                    },
+                )
+            }
+        }
+
+        // The microphone, which nothing had ever asked for.
+        //
+        // Android grants no dangerous permission from the manifest alone, so
+        // recording returned silence on every device: streams opened, the
+        // meter sat at zero, and nothing anywhere said why. Answered on the
+        // same channel iOS uses, so the Dart side keeps one code path.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/audioSession",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "prepare" -> requestMicrophone(result)
+                else -> result.notImplemented()
+            }
+        }
+
         // The engine's own log, repeated into logcat so a device on a cable can
         // be watched live rather than only questioned through the app's panel
         // afterwards. Same lines either way; this copy is the one reachable
@@ -87,9 +121,6 @@ class MainActivity : FlutterActivity() {
         OverlayService.onToggleDeafen = {
             runOnUiThread { ch.invokeMethod("toggleDeafen", null) }
         }
-        OverlayService.onHangup = {
-            runOnUiThread { ch.invokeMethod("hangup", null) }
-        }
 
         // Bluetooth media buttons captured by the service's media session.
         // Dart owns the key-to-action binding, so this only reports what was
@@ -139,14 +170,16 @@ class MainActivity : FlutterActivity() {
                         overlayWanted = true
                         // Only actually put it on screen once the app is behind
                         // something else; see onResume and onPause.
-                        if (!inForeground) showOverlay()
+                        if (!inForeground) showOverlayWindow()
                         result.success(true)
                     }
                 }
 
                 "hide" -> {
                     overlayWanted = false
-                    stopService(Intent(this, OverlayService::class.java))
+                    // The window goes, the service stays: it is what keeps the
+                    // call alive in the background, which the rider still wants.
+                    hideOverlayWindow()
                     result.success(true)
                 }
 
@@ -212,7 +245,7 @@ class MainActivity : FlutterActivity() {
         OverlayService.onMediaButton = null
         OverlayService.onToggleMute = null
         OverlayService.onToggleDeafen = null
-        OverlayService.onHangup = null
+        OverlayService.onOpenApp = null
         channel?.setMethodCallHandler(null)
         buttonChannel?.setMethodCallHandler(null)
         logChannel?.setMethodCallHandler(null)
@@ -222,16 +255,90 @@ class MainActivity : FlutterActivity() {
     /** Hands the app Context to the Rust audio backend. See the call site. */
     private external fun nativeSetAndroidContext(context: android.content.Context)
 
+    /** Held while the system dialog is up, so the reply reaches the caller. */
+    private var micPermissionResult: MethodChannel.Result? = null
+
+    /**
+     * Asks for the microphone, answering in the shape the iOS side uses.
+     *
+     * `inputChannels` is -1 for "not asked", which is what tells the Dart side
+     * that a granted permission is enough and it should not go looking for a
+     * channel count this platform does not report here.
+     */
+    private fun requestMicrophone(result: MethodChannel.Result) {
+        if (hasMicrophone()) {
+            startKeepAliveService()
+            result.success(mapOf("granted" to true, "inputChannels" to -1, "sampleRate" to 0.0))
+            return
+        }
+        micPermissionResult = result
+        requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), MIC_REQUEST)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != MIC_REQUEST) return
+        val ok = grantResults.isNotEmpty() &&
+            grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+        // Now that it is allowed, the service that keeps the call alive in the
+        // background may legally start.
+        if (ok) startKeepAliveService()
+        micPermissionResult?.success(
+            mapOf("granted" to ok, "inputChannels" to if (ok) -1 else 0, "sampleRate" to 0.0),
+        )
+        micPermissionResult = null
+    }
+
     /** Whether the user has the floating window switched on. */
     private var overlayWanted = false
-    private var inForeground = false
 
-    private fun showOverlay() {
-        if (!canDrawOverlays()) return
-        startForegroundService(
-            Intent(this, OverlayService::class.java)
-                .setAction(OverlayService.ACTION_START)
-        )
+    /**
+     * Starts true, because the activity is on its way to the front by the time
+     * anything can ask.
+     *
+     * It started false, and Dart switches the window on during startup — before
+     * onResume has run — so the first thing on screen was the floating window,
+     * with the app behind it and no way through.
+     */
+    private var inForeground = true
+
+    private fun serviceIntent(action: String) =
+        Intent(this, OverlayService::class.java).setAction(action)
+
+    /**
+     * Keeps the process alive whether or not a window is wanted.
+     *
+     * The service and the window are separate concerns. Android suspends a
+     * process with nothing in the foreground, which stops the audio threads and
+     * drops the call; the service is what prevents that, and it has to run even
+     * for a rider who never turns the window on.
+     */
+    private fun startKeepAliveService() {
+        // Not before the microphone is granted. The service declares itself as
+        // type "microphone", and from Android 14 starting one of those without
+        // RECORD_AUDIO is a SecurityException, not a refusal — so on a fresh
+        // install, where the permission has never been asked for, this took the
+        // whole app down with "MumbleWay keeps stopping".
+        if (!hasMicrophone()) return
+        startForegroundService(serviceIntent(OverlayService.ACTION_START))
+    }
+
+    private fun hasMicrophone() =
+        checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    private fun showOverlayWindow() {
+        if (!canDrawOverlays() || !hasMicrophone()) return
+        startForegroundService(serviceIntent(OverlayService.ACTION_SHOW_WINDOW))
+    }
+
+    private fun hideOverlayWindow() {
+        if (!OverlayService.isRunning) return
+        startForegroundService(serviceIntent(OverlayService.ACTION_HIDE_WINDOW))
     }
 
     /**
@@ -246,19 +353,20 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         inForeground = true
-        stopService(Intent(this, OverlayService::class.java))
+        hideOverlayWindow()
     }
 
     override fun onPause() {
         super.onPause()
         inForeground = false
-        if (overlayWanted) showOverlay()
+        if (overlayWanted) showOverlayWindow()
     }
 
     private companion object {
         /// Short, because logcat truncates a tag past 23 characters on older
         /// releases and a truncated tag cannot be filtered on.
         const val LOG_TAG = "MumbleWay"
+        const val MIC_REQUEST = 4712
 
         init {
             // Loading it here rather than leaving it to the first Dart call

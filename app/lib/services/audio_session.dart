@@ -63,10 +63,17 @@ class AudioSessionBridge {
 
   bool _handlerInstalled = false;
 
+  /// Whether this platform has something to arrange before the microphone
+  /// will work.
+  ///
+  /// iOS has a session to configure. Android has a permission to ask for, which
+  /// the manifest alone never grants — recording without it returns silence
+  /// rather than an error, so the meter sat at zero on every device and nothing
+  /// said why. Desktop has neither.
   bool get isNeeded {
     if (kIsWeb) return false;
     try {
-      return Platform.isIOS;
+      return Platform.isIOS || Platform.isAndroid;
     } catch (_) {
       // Platform is unavailable under some test harnesses.
       return false;

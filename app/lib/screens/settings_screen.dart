@@ -259,9 +259,7 @@ class _MonitorTile extends StatelessWidget {
     return SwitchListTile(
       secondary: const Icon(Icons.hearing),
       title: Text(l.testMicrophone),
-      subtitle: const Text(
-        'Plays your processed voice back, exactly as the far end hears it.',
-      ),
+      subtitle: Text(l.testMicrophoneBody),
       value: state.monitoring,
       onChanged: (_) => state.toggleMonitoring(),
     );
@@ -373,11 +371,8 @@ class _NormaliseTile extends StatelessWidget {
     final state = AppStateScope.of(context);
     return SwitchListTile(
       secondary: const Icon(Icons.equalizer),
-      title: const Text('Even out speaker loudness'),
-      subtitle: const Text(
-        'Brings everyone to a similar level. Adapts on what it hears, so if '
-        'a hiss rises between sentences, turn this off to check.',
-      ),
+      title: Text(L.of(context).evenOutLoudness),
+      subtitle: Text(L.of(context).evenOutLoudnessBody),
       isThreeLine: true,
       value: state.normaliseLevels,
       onChanged: (v) => state.setNormaliseLevels(value: v),
@@ -707,7 +702,7 @@ class _OverlayTileState extends State<_OverlayTile> {
         return 'A small always-on-top panel with talk, mute, deafen '
             'and hang up.';
       case FloatingKind.none:
-        return 'Not available on this platform.';
+        return L.of(context).notAvailableHere;
     }
   }
 
@@ -796,7 +791,7 @@ class _FingerprintTileState extends State<_FingerprintTile> {
                 await Clipboard.setData(ClipboardData(text: fp));
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Fingerprint copied')),
+                  SnackBar(content: Text(L.of(context).fingerprintCopied)),
                 );
               },
             ),

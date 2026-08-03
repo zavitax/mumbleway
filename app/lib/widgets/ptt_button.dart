@@ -39,7 +39,9 @@ class PttButton extends StatelessWidget {
 
     return Semantics(
       button: ptt,
-      label: ptt ? 'Push to talk' : 'Transmission indicator',
+      label: ptt
+          ? L.of(context).micPushToTalk
+          : L.of(context).transmissionIndicator,
       child: Stack(
         children: [
           _body(context, state, ptt, live, enabled, color),

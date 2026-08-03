@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../src/rust/api/mumbleway.dart';
+import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -75,6 +76,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
     final audio = _audio;
 
@@ -110,10 +112,10 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                   children: [
                     const Icon(Icons.monitor_heart_outlined, size: 18),
                     const SizedBox(width: 8),
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Diagnostics',
-                        style: TextStyle(
+                        l.diagnostics,
+                        style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
@@ -124,10 +126,10 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                         resetAudioGlitches();
                         _refresh();
                       },
-                      child: const Text('Reset'),
+                      child: Text(l.diagReset),
                     ),
                     IconButton(
-                      tooltip: 'Close',
+                      tooltip: l.diagClose,
                       icon: const Icon(Icons.close, size: 20),
                       onPressed: widget.onClose,
                     ),
@@ -147,51 +149,51 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                       children: [
                         if (audio != null) ...[
                           _Group(
-                            title: 'Incoming audio',
+                            title: l.diagIncomingAudio,
                             rows: [
                               // Real against invented is the one comparison
                               // that separates a bad link from a bug in the
                               // buffer: a little invented audio is normal, a
                               // lot of it while real audio stalls is not.
-                              _Row('Decoded', '${audio.incomingRealMs} ms'),
+                              _Row(l.diagDecoded, '${audio.incomingRealMs} ms'),
                               _Row(
-                                'Invented to cover gaps',
+                                l.diagInvented,
                                 '${audio.incomingInventedMs} ms',
                                 bad:
                                     audio.incomingInventedMs >
                                     audio.incomingRealMs ~/ 4,
                               ),
-                              _Row('Gaps concealed', '${audio.lostPackets}'),
+                              _Row(l.diagGapsConcealed, '${audio.lostPackets}'),
                               _Row(
-                                'Jitter buffer',
+                                l.diagJitterBuffer,
                                 '${audio.jitterBufferMs} ms',
                               ),
-                              _Row('Speakers tracked', '${audio.speakers}'),
+                              _Row(l.diagSpeakersTracked, '${audio.speakers}'),
                             ],
                           ),
                           _Group(
-                            title: 'This device',
+                            title: l.diagThisDevice,
                             rows: [
                               _Row(
-                                'Playback gaps',
+                                l.diagPlaybackGaps,
                                 '${audio.playbackGapMs} ms',
                                 bad: audio.playbackGapMs > 0,
                               ),
                               _Row(
-                                'Microphone dropped',
+                                l.diagMicrophoneDropped,
                                 '${audio.captureDroppedMs} ms',
                                 bad: audio.captureDroppedMs > 0,
                               ),
                               _Row(
-                                'Microphone level',
+                                l.diagMicrophoneLevel,
                                 '${state.inputLevelDb.toStringAsFixed(0)} dBFS',
                               ),
                               _Row(
-                                'Noise floor',
+                                l.diagNoiseFloor,
                                 '${state.noiseFloorDb.toStringAsFixed(0)} dBFS',
                               ),
                               _Row(
-                                'Opens at',
+                                l.diagOpensAt,
                                 '${state.activationThresholdDb.toStringAsFixed(0)} dBFS',
                               ),
                             ],
@@ -203,7 +205,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               title: server.name.isEmpty
                                   ? server.host
                                   : server.name,
-                              rows: _serverRows(state.runtimeFor(server.id)),
+                              rows: _serverRows(l, state.runtimeFor(server.id)),
                             ),
                       ],
                     ),
@@ -224,14 +226,14 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                       minWidth: 250,
                       children: [
                         _Graph(
-                          title: 'Network',
+                          title: l.diagNetwork,
                           series: [
                             _Series('in', _bytesIn, StatusColors.connected),
                             _Series('out', _bytesOut, StatusColors.connecting),
                           ],
                         ),
                         _Graph(
-                          title: 'Voice packets',
+                          title: l.diagVoicePackets,
                           series: [
                             _Series('in', _packetsIn, StatusColors.connected),
                             _Series(
@@ -246,7 +248,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                           series: [_Series('cpu', _cpu, scheme.primary)],
                         ),
                         _Graph(
-                          title: 'Memory',
+                          title: l.diagMemory,
                           series: [_Series('rss', _memory, scheme.primary)],
                         ),
                       ],
@@ -262,22 +264,23 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     );
   }
 
-  static List<_Row> _serverRows(ServerRuntime rt) => [
+  static List<_Row> _serverRows(L l, ServerRuntime rt) => [
     // Which path voice is taking is the first thing to know about a call that
     // sounds wrong: a tunnelled connection behaves quite differently from a
     // direct one, and the fallback is silent.
     _Row(
-      'Voice path',
-      rt.transport == 'udp' ? 'UDP direct' : 'TCP tunnelled',
+      l.diagVoicePath,
+      rt.transport == 'udp' ? l.diagUdpDirect : l.diagTcpTunnelled,
       bad: rt.transport != 'udp',
     ),
     _Row(
-      'Ping',
+      l.diagPing,
       '${(rt.transport == 'udp' ? rt.udpPingMs : rt.tcpPingMs).round()} ms',
     ),
-    _Row('In channel', rt.currentChannel?.name ?? '—'),
-    _Row('Participants', '${rt.channelPeers.length}'),
-    if (rt.attempt > 0) _Row('Reconnect attempts', '${rt.attempt}', bad: true),
+    _Row(l.diagInChannel, rt.currentChannel?.name ?? '—'),
+    _Row(l.diagParticipants, '${rt.channelPeers.length}'),
+    if (rt.attempt > 0)
+      _Row(l.diagReconnectAttempts, '${rt.attempt}', bad: true),
   ];
 }
 

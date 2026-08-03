@@ -94,30 +94,32 @@ final class PipController: NSObject {
       let layer = AVSampleBufferDisplayLayer()
       layer.videoGravity = .resizeAspect
 
-      // The layer has to be in the hierarchy, in a window, sized and not
-      // hidden, or the system refuses to start Picture in Picture at all.
-      // Meeting that without the user ever seeing it is the whole difficulty.
+      // The layer has to be in the hierarchy, sized and not hidden, or the
+      // system refuses to start Picture in Picture at all. Meeting that
+      // without the user ever seeing it is the whole difficulty, and it has
+      // been got wrong twice in both directions.
       //
-      // It goes into the window, behind the Flutter view — not into the
-      // Flutter view. `hostView` here is the FlutterView, and Flutter draws
-      // into that view's own layer rather than into a child, so *any* subview
-      // of it lands on top of the entire app. At the frame size and origin
-      // this had, that was an opaque rectangle across the top of the screen
-      // covering the controls, immovable, with the call meter painted on it.
+      // `hostView` is the FlutterView, and Flutter draws into that view's own
+      // layer rather than into a child — so any subview of it lands on top of
+      // the entire app. At the frame size this started with, that was an
+      // opaque rectangle across the top of the screen, covering the controls
+      // and immovable.
       //
-      // As a sibling underneath, it is completely covered by an opaque
-      // full-screen view and never seen. The system does not mind: it reads
-      // the sample buffers we enqueue, not the pixels on screen, and being
-      // occluded is not being hidden.
-      guard let window = hostView.window else {
-        throw PipError.unsupported("The app window is not ready yet.")
-      }
-      let carrier = UIView(
-        frame: CGRect(origin: .zero, size: Self.frameSize))
+      // Moving it behind the Flutter view fixed that and broke the feature: a
+      // source the system never composites is not one it will hand to the
+      // window, so the window stopped appearing. Occluded turns out to be as
+      // good as hidden.
+      //
+      // So it stays where it is composited, and is clipped to a single point
+      // instead. The layer keeps its full geometry, which is what the system
+      // samples and what sizes the window; the view carrying it is one pixel
+      // in the corner and has nothing to cover.
+      let carrier = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
       carrier.isUserInteractionEnabled = false
-      layer.frame = carrier.bounds
+      carrier.clipsToBounds = true
+      layer.frame = CGRect(origin: .zero, size: Self.frameSize)
       carrier.layer.addSublayer(layer)
-      window.insertSubview(carrier, at: 0)
+      hostView.insertSubview(carrier, at: 0)
       carrierView = carrier
 
       let source = AVPictureInPictureController.ContentSource(

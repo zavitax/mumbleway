@@ -1308,6 +1308,282 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Last sync failed: {error}'**
   String syncFailed(String error);
+
+  /// No description provided for @transmissionIndicator.
+  ///
+  /// In en, this message translates to:
+  /// **'Transmission indicator'**
+  String get transmissionIndicator;
+
+  /// No description provided for @diagnostics.
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostics'**
+  String get diagnostics;
+
+  /// No description provided for @fingerprintCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Fingerprint copied'**
+  String get fingerprintCopied;
+
+  /// No description provided for @evenOutLoudness.
+  ///
+  /// In en, this message translates to:
+  /// **'Even out speaker loudness'**
+  String get evenOutLoudness;
+
+  /// No description provided for @evenOutLoudnessBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.'**
+  String get evenOutLoudnessBody;
+
+  /// No description provided for @notAvailableHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Not available on this platform.'**
+  String get notAvailableHere;
+
+  /// No description provided for @pasteLinkOrProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste a link or profile'**
+  String get pasteLinkOrProfile;
+
+  /// No description provided for @downloadProfileFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Download a profile file'**
+  String get downloadProfileFile;
+
+  /// No description provided for @downloadAndAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Download and add'**
+  String get downloadAndAdd;
+
+  /// No description provided for @chooseUsername.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a username'**
+  String get chooseUsername;
+
+  /// No description provided for @chooseUsernameHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'How others on the server will see you'**
+  String get chooseUsernameHelp;
+
+  /// No description provided for @directConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct connection'**
+  String get directConnection;
+
+  /// No description provided for @tunnelledOverTcp.
+  ///
+  /// In en, this message translates to:
+  /// **'Tunnelled over TCP because UDP is blocked'**
+  String get tunnelledOverTcp;
+
+  /// No description provided for @floatingNotAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Floating windows are not available here.'**
+  String get floatingNotAvailable;
+
+  /// No description provided for @floatingCouldNotShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not show the floating window.'**
+  String get floatingCouldNotShow;
+
+  /// No description provided for @allowOverlayFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow \"display over other apps\" first.'**
+  String get allowOverlayFirst;
+
+  /// No description provided for @microphonePermissionNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'MumbleWay needs permission to use the microphone. Allow it in Settings, then reopen the app.'**
+  String get microphonePermissionNeeded;
+
+  /// No description provided for @noAudioInput.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is not offering any audio input right now. If a headset is connected, try reconnecting it.'**
+  String get noAudioInput;
+
+  /// No description provided for @serverNoLongerInList.
+  ///
+  /// In en, this message translates to:
+  /// **'That server is no longer in your list.'**
+  String get serverNoLongerInList;
+
+  /// No description provided for @serversAlreadyAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Those servers are already in your list.'**
+  String get serversAlreadyAdded;
+
+  /// No description provided for @noServersToExport.
+  ///
+  /// In en, this message translates to:
+  /// **'There are no servers to export.'**
+  String get noServersToExport;
+
+  /// No description provided for @serverProfilesFileType.
+  ///
+  /// In en, this message translates to:
+  /// **'Server profiles'**
+  String get serverProfilesFileType;
+
+  /// No description provided for @diagIncomingAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming audio'**
+  String get diagIncomingAudio;
+
+  /// No description provided for @diagInvented.
+  ///
+  /// In en, this message translates to:
+  /// **'Invented to cover gaps'**
+  String get diagInvented;
+
+  /// No description provided for @diagGapsConcealed.
+  ///
+  /// In en, this message translates to:
+  /// **'Gaps concealed'**
+  String get diagGapsConcealed;
+
+  /// No description provided for @diagSpeakersTracked.
+  ///
+  /// In en, this message translates to:
+  /// **'Speakers tracked'**
+  String get diagSpeakersTracked;
+
+  /// No description provided for @diagMicrophoneDropped.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone dropped'**
+  String get diagMicrophoneDropped;
+
+  /// No description provided for @diagMicrophoneLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone level'**
+  String get diagMicrophoneLevel;
+
+  /// No description provided for @diagReconnectAttempts.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnect attempts'**
+  String get diagReconnectAttempts;
+
+  /// No description provided for @diagReset.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset'**
+  String get diagReset;
+
+  /// No description provided for @diagClose.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get diagClose;
+
+  /// No description provided for @diagDecoded.
+  ///
+  /// In en, this message translates to:
+  /// **'Decoded'**
+  String get diagDecoded;
+
+  /// No description provided for @diagJitterBuffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Jitter buffer'**
+  String get diagJitterBuffer;
+
+  /// No description provided for @diagThisDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get diagThisDevice;
+
+  /// No description provided for @diagPlaybackGaps.
+  ///
+  /// In en, this message translates to:
+  /// **'Playback gaps'**
+  String get diagPlaybackGaps;
+
+  /// No description provided for @diagNoiseFloor.
+  ///
+  /// In en, this message translates to:
+  /// **'Noise floor'**
+  String get diagNoiseFloor;
+
+  /// No description provided for @diagOpensAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Opens at'**
+  String get diagOpensAt;
+
+  /// No description provided for @diagNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Network'**
+  String get diagNetwork;
+
+  /// No description provided for @diagVoicePackets.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice packets'**
+  String get diagVoicePackets;
+
+  /// No description provided for @diagMemory.
+  ///
+  /// In en, this message translates to:
+  /// **'Memory'**
+  String get diagMemory;
+
+  /// No description provided for @diagVoicePath.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice path'**
+  String get diagVoicePath;
+
+  /// No description provided for @diagUdpDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'UDP direct'**
+  String get diagUdpDirect;
+
+  /// No description provided for @diagTcpTunnelled.
+  ///
+  /// In en, this message translates to:
+  /// **'TCP tunnelled'**
+  String get diagTcpTunnelled;
+
+  /// No description provided for @diagPing.
+  ///
+  /// In en, this message translates to:
+  /// **'Ping'**
+  String get diagPing;
+
+  /// No description provided for @diagInChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'In channel'**
+  String get diagInChannel;
+
+  /// No description provided for @diagParticipants.
+  ///
+  /// In en, this message translates to:
+  /// **'Participants'**
+  String get diagParticipants;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

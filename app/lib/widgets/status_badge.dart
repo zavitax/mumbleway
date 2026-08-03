@@ -186,7 +186,7 @@ class TransportChip extends StatelessWidget {
     return Tooltip(
       message: udp
           ? 'Direct UDP voice (lowest latency)'
-          : 'Tunnelled over TCP because UDP is blocked',
+          : L.of(context).tunnelledOverTcp,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

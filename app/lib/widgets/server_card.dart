@@ -387,12 +387,12 @@ class _ProbeLine extends StatelessWidget {
 
     if (!p.reachable) {
       return Row(
-        children: const [
-          Icon(Icons.cloud_off, size: 14, color: StatusColors.idle),
-          SizedBox(width: 6),
+        children: [
+          const Icon(Icons.cloud_off, size: 14, color: StatusColors.idle),
+          const SizedBox(width: 6),
           Text(
-            'Not responding',
-            style: TextStyle(fontSize: 12, color: StatusColors.idle),
+            L.of(context).probeNotResponding,
+            style: const TextStyle(fontSize: 12, color: StatusColors.idle),
           ),
         ],
       );
@@ -540,6 +540,7 @@ class _CertificateWarning extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
+    final l = L.of(context);
     final fp = rt.pendingFingerprint ?? '';
     final short = fp.length > 16 ? '${fp.substring(0, 16)}…' : fp;
 
@@ -553,28 +554,27 @@ class _CertificateWarning extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.gpp_maybe, color: StatusColors.failed, size: 18),
-              SizedBox(width: 8),
+              const Icon(Icons.gpp_maybe, color: StatusColors.failed, size: 18),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Server certificate changed',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  l.certChangedTitle,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            'This can mean the server was reinstalled — or that someone is '
-            'impersonating it. Only continue if you expected this.\n\nNow: $short',
+            '${l.certChangedBody}\n\n${l.certificateFingerprint}: $short',
             style: const TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 10),
           FilledButton.tonal(
             onPressed: () => state.trustChangedCertificate(server.id),
-            child: const Text('Trust the new certificate'),
+            child: Text(l.trustNewCertificate),
           ),
         ],
       ),

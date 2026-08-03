@@ -23,7 +23,7 @@ class ServerDetailPane extends StatelessWidget {
       return _Placeholder(
         icon: Icons.dns_outlined,
         title: L.of(context).noServerSelected,
-        body: 'Add a server to see its channels and who is on it.',
+        body: L.of(context).noServerSelectedBody,
       );
     }
 
@@ -35,8 +35,8 @@ class ServerDetailPane extends StatelessWidget {
         icon: Icons.link_off,
         title: s.name.isEmpty ? s.host : s.name,
         body: rt.isBusy
-            ? 'Connecting…'
-            : 'Connect to see the channel list and who is here.',
+            ? L.of(context).statusConnecting
+            : L.of(context).connectToSeeChannels,
         trailing: StatusBadge(status: rt.status, detail: rt.detail),
       );
     }

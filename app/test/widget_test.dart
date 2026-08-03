@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/services/audio_session.dart';
+import 'package:mumbleway/widgets/app_bar_title.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/services/button_controller.dart';
 import 'package:mumbleway/services/overlay.dart';
@@ -448,6 +449,47 @@ void main() {
         Platform.isIOS,
         reason: 'macOS, Android and Windows have no session to configure',
       );
+    });
+  });
+
+  group('app bar title', () {
+    /// Renders the bar itself at [width], which is what the title measures
+    /// against. Squeezing it with actions inside a full-width bar does not
+    /// work: the test surface is 800 wide and the title keeps plenty of room.
+    Future<void> pumpAt(WidgetTester tester, double width) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: width,
+              child: AppBar(title: const AppBarTitle('MumbleWay')),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('shows the name when there is room for all of it', (
+      tester,
+    ) async {
+      await pumpAt(tester, 380);
+      expect(find.text('MumbleWay'), findsOneWidget);
+    });
+
+    testWidgets('drops the name rather than truncating it', (tester) async {
+      // A cut-off product name reads as a rendering fault. The icon alone
+      // reads as a decision.
+      await pumpAt(tester, 40);
+      expect(find.text('MumbleWay'), findsNothing);
+    });
+
+    testWidgets('but a screen reader is still told what the app is', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await pumpAt(tester, 40);
+      expect(find.bySemanticsLabel('MumbleWay'), findsOneWidget);
+      handle.dispose();
     });
   });
 }

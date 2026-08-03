@@ -34,7 +34,7 @@ class HomeScreen extends StatelessWidget {
         actions: [
           const LanguageButton(),
           IconButton(
-            tooltip: 'Diagnostics',
+            tooltip: l.diagnostics,
             onPressed: state.toggleDiagnostics,
             icon: const Icon(Icons.monitor_heart_outlined),
             color: state.diagnosticsOpen

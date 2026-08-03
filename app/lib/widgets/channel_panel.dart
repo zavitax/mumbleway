@@ -29,9 +29,12 @@ class ChannelTree extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (channels.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
-        child: Text('No channels yet.', style: TextStyle(fontSize: 12)),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          L.of(context).noChannelsYet,
+          style: const TextStyle(fontSize: 12),
+        ),
       );
     }
 
@@ -121,8 +124,8 @@ class ChannelTree extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
                 constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                 tooltip: isDefault
-                    ? 'Stop joining this channel automatically'
-                    : 'Join this channel automatically',
+                    ? L.of(context).stopJoiningAutomatically
+                    : L.of(context).joinAutomatically,
                 icon: Icon(
                   isDefault ? Icons.star : Icons.star_border,
                   color: isDefault ? StatusColors.connecting : null,
@@ -163,7 +166,7 @@ class ChannelUserList extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Text(
-          'Nobody else is in this channel.',
+          L.of(context).nobodyElseHere,
           style: TextStyle(
             fontSize: 12,
             color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -249,16 +252,12 @@ class _UserRow extends StatelessWidget {
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'mute',
-                child: Text(
-                  user.muted
-                      ? 'Unmute on server'
-                      : 'Mute on server (for everyone)',
-                ),
+                child: Text(user.muted ? l.unmuteOnServer : l.muteOnServer),
               ),
               PopupMenuItem(
                 value: 'deafen',
                 child: Text(
-                  user.deafened ? 'Undeafen on server' : 'Deafen on server',
+                  user.deafened ? l.undeafenOnServer : l.deafenOnServer,
                 ),
               ),
               const PopupMenuDivider(),
@@ -291,18 +290,14 @@ class _UserRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'They will be disconnected from the server. This is not a ban — '
-              'they can reconnect straight away.',
-              style: TextStyle(fontSize: 13),
-            ),
+            Text(l.kickBody, style: const TextStyle(fontSize: 13)),
             const SizedBox(height: 14),
             TextField(
               controller: reason,
               autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Reason (optional)',
-                hintText: 'Shown to them as they are removed',
+              decoration: InputDecoration(
+                labelText: l.kickReasonLabel,
+                hintText: l.kickReasonHint,
               ),
             ),
           ],
@@ -310,7 +305,7 @@ class _UserRow extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancel'),
+            child: Text(l.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: StatusColors.failed),
@@ -329,14 +324,7 @@ class _UserRow extends StatelessWidget {
     reason.dispose();
 
     final error = await state.kickUserFrom(serverId, user, text);
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          error ??
-              'Kick sent. If nothing happens, you lack the Kick permission.',
-        ),
-      ),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(error ?? l.kickSent)));
   }
 
   /// `speaking` comes from the audio, not the roster: the server never says

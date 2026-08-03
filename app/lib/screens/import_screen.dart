@@ -51,7 +51,7 @@ class _ImportScreenState extends State<ImportScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const _Header('Paste a link or profile'),
+          _Header(L.of(context).pasteLinkOrProfile),
           const _Hint(
             'A mumble:// invitation link, or the contents of a JSON profile '
             'file. A profile file may hold several servers at once.',
@@ -75,7 +75,7 @@ class _ImportScreenState extends State<ImportScreen> {
           ),
 
           const SizedBox(height: 28),
-          const _Header('Download a profile file'),
+          _Header(L.of(context).downloadProfileFile),
           const _Hint(
             'Fetches a JSON profile file from a web address and adds every '
             'server it contains.',
@@ -101,7 +101,7 @@ class _ImportScreenState extends State<ImportScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.download),
-            label: const Text('Download and add'),
+            label: Text(L.of(context).downloadAndAdd),
           ),
 
           const SizedBox(height: 28),

@@ -207,13 +207,13 @@ class _UsernameDialogState extends State<_UsernameDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Choose a username'),
+      title: Text(L.of(context).chooseUsername),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: const InputDecoration(
-          labelText: 'Username',
-          helperText: 'How others on the server will see you',
+        decoration: InputDecoration(
+          labelText: L.of(context).username,
+          helperText: L.of(context).chooseUsernameHelp,
         ),
         onSubmitted: (v) => Navigator.pop(context, v),
       ),

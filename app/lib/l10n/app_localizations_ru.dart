@@ -669,4 +669,147 @@ class LRu extends L {
   String syncFailed(String error) {
     return 'Последняя синхронизация не удалась: $error';
   }
+
+  @override
+  String get transmissionIndicator => 'Индикатор передачи';
+
+  @override
+  String get diagnostics => 'Диагностика';
+
+  @override
+  String get fingerprintCopied => 'Отпечаток скопирован';
+
+  @override
+  String get evenOutLoudness => 'Выровнять громкость собеседников';
+
+  @override
+  String get evenOutLoudnessBody =>
+      'Приводит всех к сопоставимой громкости. Подстраивается под то, что слышит, поэтому если между фразами нарастает шипение, выключите и проверьте.';
+
+  @override
+  String get notAvailableHere => 'Недоступно на этой платформе.';
+
+  @override
+  String get pasteLinkOrProfile => 'Вставьте ссылку или профиль';
+
+  @override
+  String get downloadProfileFile => 'Загрузить файл профиля';
+
+  @override
+  String get downloadAndAdd => 'Загрузить и добавить';
+
+  @override
+  String get chooseUsername => 'Выберите имя пользователя';
+
+  @override
+  String get chooseUsernameHelp => 'Так вас увидят остальные на сервере';
+
+  @override
+  String get directConnection => 'Прямое подключение';
+
+  @override
+  String get tunnelledOverTcp =>
+      'Туннелируется через TCP, так как UDP заблокирован';
+
+  @override
+  String get floatingNotAvailable => 'Плавающие окна здесь недоступны.';
+
+  @override
+  String get floatingCouldNotShow => 'Не удалось показать плавающее окно.';
+
+  @override
+  String get allowOverlayFirst =>
+      'Сначала разрешите «поверх других приложений».';
+
+  @override
+  String get microphonePermissionNeeded =>
+      'MumbleWay нужен доступ к микрофону. Разрешите его в настройках и откройте приложение снова.';
+
+  @override
+  String get noAudioInput =>
+      'Устройство сейчас не предоставляет аудиовход. Если подключена гарнитура, попробуйте подключить её заново.';
+
+  @override
+  String get serverNoLongerInList => 'Этого сервера больше нет в вашем списке.';
+
+  @override
+  String get serversAlreadyAdded => 'Эти серверы уже есть в вашем списке.';
+
+  @override
+  String get noServersToExport => 'Нет серверов для экспорта.';
+
+  @override
+  String get serverProfilesFileType => 'Профили серверов';
+
+  @override
+  String get diagIncomingAudio => 'Входящий звук';
+
+  @override
+  String get diagInvented => 'Достроено для заполнения пропусков';
+
+  @override
+  String get diagGapsConcealed => 'Скрыто пропусков';
+
+  @override
+  String get diagSpeakersTracked => 'Отслеживается говорящих';
+
+  @override
+  String get diagMicrophoneDropped => 'Потеряно с микрофона';
+
+  @override
+  String get diagMicrophoneLevel => 'Уровень микрофона';
+
+  @override
+  String get diagReconnectAttempts => 'Попыток переподключения';
+
+  @override
+  String get diagReset => 'Сбросить';
+
+  @override
+  String get diagClose => 'Закрыть';
+
+  @override
+  String get diagDecoded => 'Декодировано';
+
+  @override
+  String get diagJitterBuffer => 'Буфер джиттера';
+
+  @override
+  String get diagThisDevice => 'Это устройство';
+
+  @override
+  String get diagPlaybackGaps => 'Пропуски воспроизведения';
+
+  @override
+  String get diagNoiseFloor => 'Уровень шума';
+
+  @override
+  String get diagOpensAt => 'Порог открытия';
+
+  @override
+  String get diagNetwork => 'Сеть';
+
+  @override
+  String get diagVoicePackets => 'Голосовые пакеты';
+
+  @override
+  String get diagMemory => 'Память';
+
+  @override
+  String get diagVoicePath => 'Путь голоса';
+
+  @override
+  String get diagUdpDirect => 'UDP напрямую';
+
+  @override
+  String get diagTcpTunnelled => 'Туннель TCP';
+
+  @override
+  String get diagPing => 'Задержка';
+
+  @override
+  String get diagInChannel => 'В канале';
+
+  @override
+  String get diagParticipants => 'Участников';
 }

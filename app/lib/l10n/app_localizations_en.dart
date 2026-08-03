@@ -664,4 +664,145 @@ class LEn extends L {
   String syncFailed(String error) {
     return 'Last sync failed: $error';
   }
+
+  @override
+  String get transmissionIndicator => 'Transmission indicator';
+
+  @override
+  String get diagnostics => 'Diagnostics';
+
+  @override
+  String get fingerprintCopied => 'Fingerprint copied';
+
+  @override
+  String get evenOutLoudness => 'Even out speaker loudness';
+
+  @override
+  String get evenOutLoudnessBody =>
+      'Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.';
+
+  @override
+  String get notAvailableHere => 'Not available on this platform.';
+
+  @override
+  String get pasteLinkOrProfile => 'Paste a link or profile';
+
+  @override
+  String get downloadProfileFile => 'Download a profile file';
+
+  @override
+  String get downloadAndAdd => 'Download and add';
+
+  @override
+  String get chooseUsername => 'Choose a username';
+
+  @override
+  String get chooseUsernameHelp => 'How others on the server will see you';
+
+  @override
+  String get directConnection => 'Direct connection';
+
+  @override
+  String get tunnelledOverTcp => 'Tunnelled over TCP because UDP is blocked';
+
+  @override
+  String get floatingNotAvailable => 'Floating windows are not available here.';
+
+  @override
+  String get floatingCouldNotShow => 'Could not show the floating window.';
+
+  @override
+  String get allowOverlayFirst => 'Allow \"display over other apps\" first.';
+
+  @override
+  String get microphonePermissionNeeded =>
+      'MumbleWay needs permission to use the microphone. Allow it in Settings, then reopen the app.';
+
+  @override
+  String get noAudioInput =>
+      'This device is not offering any audio input right now. If a headset is connected, try reconnecting it.';
+
+  @override
+  String get serverNoLongerInList => 'That server is no longer in your list.';
+
+  @override
+  String get serversAlreadyAdded => 'Those servers are already in your list.';
+
+  @override
+  String get noServersToExport => 'There are no servers to export.';
+
+  @override
+  String get serverProfilesFileType => 'Server profiles';
+
+  @override
+  String get diagIncomingAudio => 'Incoming audio';
+
+  @override
+  String get diagInvented => 'Invented to cover gaps';
+
+  @override
+  String get diagGapsConcealed => 'Gaps concealed';
+
+  @override
+  String get diagSpeakersTracked => 'Speakers tracked';
+
+  @override
+  String get diagMicrophoneDropped => 'Microphone dropped';
+
+  @override
+  String get diagMicrophoneLevel => 'Microphone level';
+
+  @override
+  String get diagReconnectAttempts => 'Reconnect attempts';
+
+  @override
+  String get diagReset => 'Reset';
+
+  @override
+  String get diagClose => 'Close';
+
+  @override
+  String get diagDecoded => 'Decoded';
+
+  @override
+  String get diagJitterBuffer => 'Jitter buffer';
+
+  @override
+  String get diagThisDevice => 'This device';
+
+  @override
+  String get diagPlaybackGaps => 'Playback gaps';
+
+  @override
+  String get diagNoiseFloor => 'Noise floor';
+
+  @override
+  String get diagOpensAt => 'Opens at';
+
+  @override
+  String get diagNetwork => 'Network';
+
+  @override
+  String get diagVoicePackets => 'Voice packets';
+
+  @override
+  String get diagMemory => 'Memory';
+
+  @override
+  String get diagVoicePath => 'Voice path';
+
+  @override
+  String get diagUdpDirect => 'UDP direct';
+
+  @override
+  String get diagTcpTunnelled => 'TCP tunnelled';
+
+  @override
+  String get diagPing => 'Ping';
+
+  @override
+  String get diagInChannel => 'In channel';
+
+  @override
+  String get diagParticipants => 'Participants';
 }

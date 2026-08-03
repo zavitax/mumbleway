@@ -253,8 +253,15 @@ jobs:
       # run: the build is already uploaded by this point, and a red job would
       # say otherwise. The step still goes red on its own, which is where the
       # reason will be.
+      #
+      # `success()` is spelled out rather than left implicit. GitHub applies it
+      # to any `if` that does not mention status, so this reads the same either
+      # way today — but the property it protects is not decorative: expiring
+      # every older build after an upload that did not happen leaves testers
+      # with nothing installable at all. Written down so that adding
+      # `always()` here later has to be a decision rather than an accident.
       - name: Expire superseded TestFlight builds
-        if: steps.gate.outputs.ready == 'true'
+        if: success() && steps.gate.outputs.ready == 'true'
         continue-on-error: true
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}

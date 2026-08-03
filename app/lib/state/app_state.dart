@@ -522,11 +522,6 @@ class AppState extends ChangeNotifier {
         },
       );
 
-      // Collect what the engine said while starting. Those lines predate the
-      // stream, and when starting is what went wrong they are the only ones
-      // that matter.
-      EngineLog.instance.backfill();
-
       // Resolve the proxy once at startup; createClient() uses the cached
       // result, so no request pays for a subprocess.
       await SystemProxy.instance.refresh();
@@ -557,6 +552,16 @@ class AppState extends ChangeNotifier {
       _ready = true;
     } catch (e) {
       _startupError = e.toString();
+    } finally {
+      // Collect what the engine said while starting, on every path out of here.
+      //
+      // In a `finally` rather than after a successful start, because startup is
+      // the case this log exists for and the one where it was unreachable: an
+      // engine that fails to start emits the lines explaining why and then
+      // throws, and fetching them only on the happy path threw away the
+      // evidence at precisely the moment it mattered. The fetch does not need
+      // a running engine, which is what makes this work.
+      EngineLog.instance.backfill();
     }
     notifyListeners();
   }

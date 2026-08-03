@@ -94,9 +94,15 @@ class OverlayBridge {
         case 'pipStatus':
           onStatus?.call(call.arguments as String?);
         case 'dismissed':
-          // The user closed it from the platform side rather than from
-          // settings, so the toggle has to follow.
-          _showing = false;
+          // Deliberately leaves [_showing] alone. It means "the floating
+          // window is switched on", not "a window is on screen this instant" —
+          // and those parted company once the window started closing whenever
+          // the app came to the front and opening again when it left.
+          //
+          // Clearing it here stopped every update: the window came back
+          // showing the last frame drawn before it closed, with a stale
+          // connection state and a talk button that answered to nothing,
+          // because nothing was being sent to it any more.
           onDismissed?.call();
       }
       return null;

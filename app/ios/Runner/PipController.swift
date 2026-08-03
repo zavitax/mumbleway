@@ -426,7 +426,7 @@ final class PipController: NSObject {
     UIBezierPath(rect: CGRect(x: divider, y: 22, width: 1, height: bounds.height - 44))
       .fill()
 
-    drawConnection(in: bounds)
+    drawConnection(in: left)
     drawOnAir(in: left)
     drawTitle(in: left)
     drawBadges(in: left)
@@ -464,12 +464,34 @@ final class PipController: NSObject {
       text = "Not connected"
     }
 
-    let dot = CGRect(x: 16, y: 16, width: 10, height: 10)
+    // Measured and then centred as one piece, rather than each part placed
+    // against an edge: the phrase changes length as servers come and go, and
+    // anchoring the dot would leave the line shuffling sideways every time.
+    let size: CGFloat = 12
+    let font = UIFont.systemFont(ofSize: size, weight: .bold)
+    let width = (text as NSString).size(withAttributes: [.font: font]).width
+    let diameter: CGFloat = 10
+    let gap: CGFloat = 8
+    let startX = (bounds.midX - (diameter + gap + width) / 2).rounded()
+    let middle: CGFloat = 24
+
     colour.setFill()
-    UIBezierPath(ovalIn: dot).fill()
+    UIBezierPath(
+      ovalIn: CGRect(
+        x: startX, y: middle - diameter / 2, width: diameter, height: diameter)
+    ).fill()
+
+    // Centred on the dot rather than sharing its top edge, so the two read as
+    // one line. Half the line height, not half the point size: text draws from
+    // the top of its rectangle, and the difference between the two is a few
+    // pixels of the text sitting high — which is exactly the misalignment this
+    // is here to remove.
     drawText(
-      text, in: CGRect(x: dot.maxX + 8, y: 12, width: bounds.width - 60, height: 18),
-      size: 12, weight: .bold, colour: colour, alignment: .left)
+      text,
+      in: CGRect(
+        x: startX + diameter + gap, y: middle - font.lineHeight / 2,
+        width: width + 4, height: font.lineHeight),
+      size: size, weight: .bold, colour: colour, alignment: .left)
   }
 
   /// The transmit indicator: a filled ring that blinks while the microphone is

@@ -350,14 +350,25 @@ class MainActivity : FlutterActivity() {
      * gets this from Picture in Picture, which the system closes on return;
      * Android has to be told, and the activity lifecycle is what knows.
      */
-    override fun onResume() {
-        super.onResume()
+    /**
+     * Tied to onStart/onStop rather than onResume/onPause, because "the app is
+     * not on screen" is what this is about and only onStop means that.
+     *
+     * onPause fires whenever the activity merely stops being the top one: a
+     * permission dialog, the voice assistant, a notification shade pulled down,
+     * the volume panel. All of those leave the app plainly visible underneath,
+     * and a floating copy of its own controls would appear over it every time —
+     * which is the same "covering our own UI" problem in a form that flickers.
+     * onStop is the callback that means the activity is genuinely hidden.
+     */
+    override fun onStart() {
+        super.onStart()
         inForeground = true
         hideOverlayWindow()
     }
 
-    override fun onPause() {
-        super.onPause()
+    override fun onStop() {
+        super.onStop()
         inForeground = false
         if (overlayWanted) showOverlayWindow()
     }

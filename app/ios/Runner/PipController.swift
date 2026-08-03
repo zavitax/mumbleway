@@ -19,6 +19,13 @@ struct CallSnapshot {
   /// How many saved servers are in each state. The rider wants one glance to
   /// answer "is anything wrong", and a single connected flag cannot say that
   /// when two servers are up and a third is trying to come back.
+  /// 0 push to talk, 1 voice activated, 2 always on. Anything but the first
+  /// means the talk button has nothing to do.
+  var micMode = 0
+  /// Whether audio is actually going out right now, by whatever route. Not the
+  /// same as the talk button being held: in the hands-free modes nobody holds
+  /// anything and the microphone still opens.
+  var live = false
   var connectedCount = 0
   var reconnectingCount = 0
   var failedCount = 0
@@ -97,6 +104,19 @@ final class PipController: NSObject {
   /// only way to get it back was to turn the setting off and on. Asking
   /// explicitly on the way out costs nothing when the window is already open,
   /// because starting an active controller is a no-op.
+  /// Closes the window when the app comes back to the front.
+  ///
+  /// The system does this itself when the rider uses the window's own restore
+  /// control, and not at all when they come back through the task switcher —
+  /// so the window stayed on top of the app it is meant to be a stand-in for.
+  /// It reopens on the way out, which is the pair to this.
+  @objc private func didBecomeActive() {
+    guard let pipController, pipController.isPictureInPictureActive else {
+      return
+    }
+    pipController.stopPictureInPicture()
+  }
+
   @objc private func willResignActive() {
     guard let pipController else { return }
     guard !pipController.isPictureInPictureActive else { return }
@@ -173,6 +193,9 @@ final class PipController: NSObject {
       NotificationCenter.default.addObserver(
         self, selector: #selector(willResignActive),
         name: UIApplication.willResignActiveNotification, object: nil)
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(didBecomeActive),
+        name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     render()
@@ -513,7 +536,7 @@ final class PipController: NSObject {
     let colour: UIColor
     if !snapshot.connected {
       colour = UIColor(white: 0.45, alpha: 1)
-    } else if snapshot.transmitting {
+    } else if snapshot.live {
       colour = UIColor(red: 0.94, green: 0.24, blue: 0.24, alpha: 1)
     } else if snapshot.speaking {
       colour = UIColor(red: 0.25, green: 0.78, blue: 0.45, alpha: 1)
@@ -521,9 +544,9 @@ final class PipController: NSObject {
       colour = UIColor(white: 0.55, alpha: 1)
     }
 
-    let lit = !snapshot.transmitting || onAirVisible
+    let lit = !snapshot.live || onAirVisible
 
-    if snapshot.transmitting {
+    if snapshot.live {
       colour.withAlphaComponent(lit ? 0.30 : 0.10).setFill()
       UIBezierPath(
         arcCenter: centre, radius: radius + 16, startAngle: 0, endAngle: .pi * 2,
@@ -536,7 +559,7 @@ final class PipController: NSObject {
       arcCenter: centre, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true
     ).fill()
 
-    if snapshot.transmitting {
+    if snapshot.live {
       drawText(
         "ON AIR",
         in: CGRect(x: bounds.minX, y: centre.y - 9, width: bounds.width, height: 20),
@@ -555,7 +578,7 @@ final class PipController: NSObject {
     let text: String
     if !snapshot.connected {
       text = "Not connected"
-    } else if snapshot.transmitting {
+    } else if snapshot.live {
       text = "Talking"
     } else if snapshot.deafened {
       text = "Deafened"
@@ -637,8 +660,16 @@ final class PipController: NSObject {
   /// The window has no labels of its own and cannot be given any, so the only
   /// place to say it is in the picture.
   private func drawLegend(in bounds: CGRect) {
+    // Says what the one control does, and in the hands-free modes says that
+    // there is nothing to press rather than labelling a button that is inert.
+    let text: String
+    switch snapshot.micMode {
+    case 1: text = "hands-free \u{00B7} voice activated"
+    case 2: text = "hands-free \u{00B7} always on"
+    default: text = "\u{25B6}\u{2016} talk"
+    }
     drawText(
-      "\u{25B6}\u{2016} talk",
+      text,
       in: CGRect(x: 8, y: 246, width: bounds.width - 16, height: 16),
       size: 10, weight: .semibold, colour: UIColor(white: 1, alpha: 0.45),
       alignment: .center)
@@ -772,6 +803,12 @@ extension PipController: AVPictureInPictureSampleBufferPlaybackDelegate {
   func pictureInPictureController(
     _ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool
   ) {
+    // Ignored unless the rider is actually holding a talk button for a living.
+    // The system always draws this control and gives no way to remove it, so
+    // the honest thing is for it to do nothing in the modes where it means
+    // nothing — rather than forcing push-to-talk on somebody who chose
+    // hands-free and then leaving them to work out why the microphone shut.
+    guard snapshot.micMode == 0 else { return }
     channel.invokeMethod("setTransmitting", arguments: playing)
   }
 
@@ -805,6 +842,9 @@ extension PipController: AVPictureInPictureSampleBufferPlaybackDelegate {
     guard pictureInPictureController.isPictureInPictureActive else {
       return false
     }
+    // Hands-free: the button alters nothing, so it is left showing one thing
+    // steadily rather than flickering along with a voice gate it cannot touch.
+    guard snapshot.micMode == 0 else { return false }
     return !snapshot.transmitting
   }
 

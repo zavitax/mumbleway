@@ -1489,12 +1489,31 @@ class AppState extends ChangeNotifier {
         .where((r) => r.status == ConnStatus.failed)
         .length;
     final connected = connectedCount > 0;
+
+    // Spelled out rather than taken from the enum's index: the Rust order is
+    // voice-activity, push-to-talk, continuous, so an index would tell the
+    // window that push-to-talk was hands-free and hand it the opposite
+    // behaviour of the one chosen.
+    final micModeCode = switch (micMode) {
+      MicMode.pushToTalk => 0,
+      MicMode.voiceActivity => 1,
+      MicMode.continuous => 2,
+    };
+
+    // Whether the microphone is actually open, by whatever route. In the
+    // hands-free modes nobody is holding anything and it opens anyway, so the
+    // on-air light cannot be driven from the talk button.
+    final live = switch (micMode) {
+      MicMode.pushToTalk => _transmitting,
+      MicMode.voiceActivity => connected && !_muted && _speaking,
+      MicMode.continuous => connected && !_muted,
+    };
     // The level arrives ten times a second and never repeats exactly, so it is
     // rounded to whole decibels before being compared. Without that the
     // signature always differs and the check stops filtering anything.
     final signature =
         '${speakers.map((s) => '${s.name}:${s.levelDb.round()}').join(',')}'
-        '|$_transmitting|$connectedCount|$reconnectingCount|$failedCount|$_muted'
+        '|$_transmitting|$live|$micModeCode|$connectedCount|$reconnectingCount|$failedCount|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
@@ -1504,6 +1523,8 @@ class AppState extends ChangeNotifier {
         names: names,
         speakers: speakers,
         transmitting: _transmitting,
+        micMode: micModeCode,
+        live: live,
         connected: connected,
         connectedCount: connectedCount,
         reconnectingCount: reconnectingCount,

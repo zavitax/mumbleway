@@ -96,6 +96,8 @@ import UIKit
         }
         snapshot.transmitting = arguments["transmitting"] as? Bool ?? false
         snapshot.connected = arguments["connected"] as? Bool ?? false
+        snapshot.micMode = arguments["micMode"] as? Int ?? 0
+        snapshot.live = arguments["live"] as? Bool ?? false
         snapshot.connectedCount = arguments["connectedCount"] as? Int ?? 0
         snapshot.reconnectingCount = arguments["reconnectingCount"] as? Int ?? 0
         snapshot.failedCount = arguments["failedCount"] as? Int ?? 0

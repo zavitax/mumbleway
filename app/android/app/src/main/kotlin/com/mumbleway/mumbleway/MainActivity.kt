@@ -24,6 +24,18 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Before anything can start the audio engine.
+        //
+        // cpal reaches Android's audio APIs through ndk_context, which is a
+        // JVM pointer and an application Context that something is expected to
+        // have registered. In an ndk-glue app the generated main does it; a
+        // Flutter app has no such main, so nothing did, and playing a stream
+        // panicked with "android context was not initialized" — which reached
+        // the user as "audio device did not start" ten seconds later, from a
+        // different thread, with the real message written to a stderr that
+        // Android discards.
+        nativeSetAndroidContext(applicationContext)
+
         // The engine's own log, repeated into logcat so a device on a cable can
         // be watched live rather than only questioned through the app's panel
         // afterwards. Same lines either way; this copy is the one reachable
@@ -124,15 +136,16 @@ class MainActivity : FlutterActivity() {
                             null,
                         )
                     } else {
-                        startForegroundService(
-                            Intent(this, OverlayService::class.java)
-                                .setAction(OverlayService.ACTION_START)
-                        )
+                        overlayWanted = true
+                        // Only actually put it on screen once the app is behind
+                        // something else; see onResume and onPause.
+                        if (!inForeground) showOverlay()
                         result.success(true)
                     }
                 }
 
                 "hide" -> {
+                    overlayWanted = false
                     stopService(Intent(this, OverlayService::class.java))
                     result.success(true)
                 }
@@ -206,9 +219,52 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
+    /** Hands the app Context to the Rust audio backend. See the call site. */
+    private external fun nativeSetAndroidContext(context: android.content.Context)
+
+    /** Whether the user has the floating window switched on. */
+    private var overlayWanted = false
+    private var inForeground = false
+
+    private fun showOverlay() {
+        if (!canDrawOverlays()) return
+        startForegroundService(
+            Intent(this, OverlayService::class.java)
+                .setAction(OverlayService.ACTION_START)
+        )
+    }
+
+    /**
+     * The window exists to keep the call reachable while another app is in
+     * front, so it has no business being on screen while this one is.
+     *
+     * Drawing over our own UI is worse than useless: it hides the controls it
+     * duplicates, and it cannot be dismissed from the app it is covering. iOS
+     * gets this from Picture in Picture, which the system closes on return;
+     * Android has to be told, and the activity lifecycle is what knows.
+     */
+    override fun onResume() {
+        super.onResume()
+        inForeground = true
+        stopService(Intent(this, OverlayService::class.java))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        inForeground = false
+        if (overlayWanted) showOverlay()
+    }
+
     private companion object {
         /// Short, because logcat truncates a tag past 23 characters on older
         /// releases and a truncated tag cannot be filtered on.
         const val LOG_TAG = "MumbleWay"
+
+        init {
+            // Loading it here rather than leaving it to the first Dart call
+            // guarantees JNI_OnLoad has run — and so that the JVM pointer
+            // exists — before the Context is handed over.
+            System.loadLibrary("rust_lib_mumbleway")
+        }
     }
 }

@@ -963,6 +963,12 @@ impl AudioEngine {
                     }
                 };
 
+                // Logged because the streams closing again is indistinguishable
+                // from them never opening, from anywhere outside this thread.
+                if !dev_shared.is_running() {
+                    tracing::warn!("audio thread asked to stop before it began");
+                }
+
                 while dev_shared.is_running() {
                     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -989,15 +995,27 @@ impl AudioEngine {
                         }
                     }
                 }
+                tracing::info!("audio thread stopping, closing its streams");
                 drop(streams);
             })
             .map_err(|e| CoreError::Audio(format!("spawning audio thread: {e}")))?;
 
         // Surface device errors to the caller rather than failing silently.
         match ready_rx.recv_timeout(std::time::Duration::from_secs(10)) {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => return Err(e),
-            Err(_) => return Err(CoreError::Audio("audio device did not start".into())),
+            Ok(Ok(())) => {
+                tracing::info!("audio streams open");
+            }
+            Ok(Err(e)) => {
+                tracing::error!("audio device refused to open: {e}");
+                return Err(e);
+            }
+            Err(_) => {
+                // Says which of the two it was, because "did not start" reads
+                // as a device fault and this branch is a deadline expiring —
+                // the device may yet open, seconds after nobody is waiting.
+                tracing::error!("audio device took longer than 10 s to open");
+                return Err(CoreError::Audio("audio device did not start".into()));
+            }
         }
 
         // Worker: capture DSP + encode, and playback mixing.

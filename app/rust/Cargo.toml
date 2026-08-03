@@ -23,6 +23,15 @@ serde_json = "1.0.151"
 # every subsystem the crate can read; only this process is ever inspected.
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
+# Android only. cpal's backend asks `ndk_context` for the JVM and the app
+# Context so it can reach the Java audio APIs, and panics outright if nobody
+# has registered them. Nothing does that in a Flutter app — there is no
+# `ndk-glue` main here, only a library loaded into someone else's process — so
+# the app has to hand them over itself. See `android_context` in api/mumbleway.
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1"
+jni = "0.21"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 

@@ -429,6 +429,27 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     // Before anything that might have something to say, so a failure during
     // startup is in the log rather than being the reason there is no log.
     diag::install();
+
+    // Panics into the log.
+    //
+    // A panic on a worker thread kills that thread and nothing else: the
+    // channel it was going to answer on simply closes, and the caller reports a
+    // timeout for something that never had a chance. The message goes to
+    // stderr, which on Android goes nowhere at all — so the one line saying
+    // what actually happened was the one line nobody could read.
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        diag::record(
+            LogLevel::Error,
+            "panic",
+            match info.location() {
+                Some(at) => format!("{} at {}:{}", info, at.file(), at.line()),
+                None => info.to_string(),
+            },
+        );
+        previous(info);
+    }));
+
     // Recorded directly rather than through `tracing`, which this crate does
     // not depend on: the one line it has to say does not justify the dependency.
     diag::record(LogLevel::Info, "engine", "starting");

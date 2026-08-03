@@ -661,8 +661,9 @@ final class PipController: NSObject {
   ///
   /// A name on its own says someone is connected; a name with a moving bar
   /// says they are being heard, which is the thing actually in doubt when a
-  /// helmet has gone quiet. Three at once is the practical limit at this size,
-  /// and a group larger than that is counted rather than listed.
+  /// helmet has gone quiet. Four at once fits now that a name and its meter
+  /// share a line, which covers most groups; a larger one is counted rather
+  /// than listed.
   private func drawSpeakers(in bounds: CGRect) {
     let inset = bounds.insetBy(dx: 14, dy: 0)
 
@@ -681,19 +682,35 @@ final class PipController: NSObject {
       size: 10, weight: .heavy, colour: UIColor(white: 1, alpha: 0.4),
       alignment: .left)
 
-    let visible = snapshot.speakers.prefix(3)
-    var y: CGFloat = 56
+    // Name against the left edge, meter against the right, on one line and
+    // centred on each other. A meter under its name reads as a second row and
+    // costs the height of one, which is what limited this to three people; on
+    // the same line the pairing is obvious and the list can breathe.
+    //
+    // A quarter of the width is enough for a level to be seen moving without
+    // taking room from the names, which are what identifies who is talking.
+    let visible = snapshot.speakers.prefix(4)
+    let meterWidth = (inset.width * 0.25).rounded()
+    let gap: CGFloat = 10
+    let nameWidth = inset.width - meterWidth - gap
+    let size: CGFloat = 15
+    let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+
+    var y: CGFloat = 60
     for speaker in visible {
       drawText(
         speaker.name,
-        in: CGRect(x: inset.minX, y: y, width: inset.width, height: 20),
-        size: 15, weight: .semibold,
+        in: CGRect(x: inset.minX, y: y, width: nameWidth, height: font.lineHeight),
+        size: size, weight: .semibold,
         colour: UIColor(red: 0.55, green: 0.83, blue: 1.0, alpha: 1),
         alignment: .left)
 
-      let track = CGRect(x: inset.minX, y: y + 22, width: inset.width, height: 8)
+      let height: CGFloat = 8
+      let track = CGRect(
+        x: inset.maxX - meterWidth, y: y + (font.lineHeight - height) / 2,
+        width: meterWidth, height: height)
       UIColor(white: 1, alpha: 0.12).setFill()
-      UIBezierPath(roundedRect: track, cornerRadius: 4).fill()
+      UIBezierPath(roundedRect: track, cornerRadius: height / 2).fill()
 
       let level = CGFloat(max(0, min(1, speaker.level)))
       if level > 0.001 {
@@ -711,17 +728,17 @@ final class PipController: NSObject {
         UIBezierPath(
           roundedRect: CGRect(
             x: track.minX, y: track.minY,
-            width: max(track.height, track.width * level), height: track.height),
-          cornerRadius: 4
+            width: max(height, track.width * level), height: height),
+          cornerRadius: height / 2
         ).fill()
       }
-      y += 44
+      y += 34
     }
 
     if snapshot.speakers.count > visible.count {
       drawText(
         "+\(snapshot.speakers.count - visible.count) more",
-        in: CGRect(x: inset.minX, y: y - 6, width: inset.width, height: 16),
+        in: CGRect(x: inset.minX, y: y + 2, width: inset.width, height: 16),
         size: 11, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
         alignment: .left)
     }

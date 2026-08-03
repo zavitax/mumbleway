@@ -100,7 +100,15 @@ final class PipController: NSObject {
   @objc private func willResignActive() {
     guard let pipController else { return }
     guard !pipController.isPictureInPictureActive else { return }
-    guard pipController.isPictureInPicturePossible else { return }
+
+    // Belt and braces with the same clear on the way out: whatever the system
+    // last recorded about playback, there is no window and so nothing paused.
+    pipController.invalidatePlaybackState()
+
+    guard pipController.isPictureInPicturePossible else {
+      report("The system would not open the window this time.")
+      return
+    }
     pipController.startPictureInPicture()
   }
 
@@ -849,6 +857,21 @@ extension PipController: AVPictureInPictureControllerDelegate {
     // window closed by hand stayed closed however many times the app was left
     // afterwards.
     pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = true
+
+    // And the cached playback state is cleared, which is the other half of why
+    // the window would not come back.
+    //
+    // While it was open and nobody was talking, this correctly reported
+    // paused, and the system remembers that. iOS will not open Picture in
+    // Picture for content it believes is paused — the same refusal that took
+    // five builds to find the first time — so the next attempt was declined in
+    // silence. Nothing is paused now: there is no window to pause. Asking the
+    // system to look again is what lets the next one open.
+    //
+    // It is also why turning the setting off and on worked: that builds a new
+    // controller, which has nothing cached.
+    pictureInPictureController.invalidatePlaybackState()
+
     channel.invokeMethod("dismissed", arguments: nil)
   }
 }

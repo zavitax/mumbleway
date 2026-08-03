@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -149,7 +149,7 @@ void resetAudioGlitches() =>
 /// Sounds an arrival or a departure from the channel.
 ///
 /// Driven from the roster rather than the audio path, because someone joining
-/// makes no sound of their own — which is exactly why it needs a cue.
+/// makes no sound of their own вЂ” which is exactly why it needs a cue.
 void playParticipantCue({required bool joined}) =>
     RustLib.instance.api.crateApiMumblewayPlayParticipantCue(joined: joined);
 
@@ -174,6 +174,10 @@ void setEchoCancellation({required bool on_}) =>
 
 bool isEchoCancellationEnabled() =>
     RustLib.instance.api.crateApiMumblewayIsEchoCancellationEnabled();
+
+/// Applied after the echo canceller, to whatever it could not model.
+void setFeedbackGuard({required FeedbackGuardMode mode}) =>
+    RustLib.instance.api.crateApiMumblewaySetFeedbackGuard(mode: mode);
 
 /// Plays a tone on the output device, to check the speaker choice.
 void playTestTone({required int millis}) =>
@@ -228,7 +232,7 @@ Future<void> setDefaultChannel({required String serverId, String? channel}) =>
 /// Removes a user from the server. Requires the Kick permission; without it the
 /// server answers with a permission-denied message that arrives as text.
 ///
-/// This is a kick, not a ban — they may reconnect immediately.
+/// This is a kick, not a ban вЂ” they may reconnect immediately.
 Future<void> kickUser({
   required String serverId,
   required int session,
@@ -359,6 +363,11 @@ enum ConnStatus {
   disconnected,
   failed,
 }
+
+/// What to do about the speaker being heard by the microphone.
+///
+/// Distinct approaches rather than strengths of one: see `audio::feedback`.
+enum FeedbackGuardMode { off, duck, howlGuard, residual }
 
 enum MicMode { voiceActivity, pushToTalk, continuous }
 
@@ -721,7 +730,7 @@ class UiUser {
   final int channelId;
   final bool talking;
 
-  /// Muted server-side or by themselves — nobody hears them.
+  /// Muted server-side or by themselves вЂ” nobody hears them.
   final bool muted;
   final bool deafened;
 

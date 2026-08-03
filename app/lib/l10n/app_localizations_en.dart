@@ -917,4 +917,39 @@ class LEn extends L {
   String pipMoreSpeakers(int count) {
     return '+$count more';
   }
+
+  @override
+  String get feedbackGuard => 'Feedback suppression';
+
+  @override
+  String get feedbackGuardBody =>
+      'For when the speaker is heard by the microphone. Echo cancellation removes what it can predict; these handle what is left, and they work in quite different ways.';
+
+  @override
+  String get feedbackOff => 'No feedback suppression';
+
+  @override
+  String get feedbackOffBody =>
+      'Echo cancellation alone. Start here, and change it only if you hear yourself coming back or a howl builds up.';
+
+  @override
+  String get feedbackDuck => 'Turn the microphone down while others talk';
+
+  @override
+  String get feedbackDuckBody =>
+      'What intercoms have always done, and the most effective with a speaker close to the microphone in a helmet. The cost is that talking over somebody becomes harder.';
+
+  @override
+  String get feedbackHowl => 'Cut only when a howl builds';
+
+  @override
+  String get feedbackHowlBody =>
+      'Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed.';
+
+  @override
+  String get feedbackResidual => 'Suppress whatever echo cancellation missed';
+
+  @override
+  String get feedbackResidualBody =>
+      'Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.';
 }

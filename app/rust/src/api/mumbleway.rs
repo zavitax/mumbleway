@@ -1,4 +1,4 @@
-//! Flutter-facing API.
+﻿//! Flutter-facing API.
 //!
 //! Everything here is deliberately plain data: `flutter_rust_bridge` mirrors
 //! these types into Dart, so they avoid lifetimes, generics and borrowed data.
@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 use mumbleway_core::audio::engine::{
     AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode,
 };
+use mumbleway_core::audio::feedback::FeedbackMode;
 use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
@@ -78,7 +79,7 @@ pub struct UiUser {
     pub name: String,
     pub channel_id: u32,
     pub talking: bool,
-    /// Muted server-side or by themselves — nobody hears them.
+    /// Muted server-side or by themselves вЂ” nobody hears them.
     pub muted: bool,
     pub deafened: bool,
     /// Silenced by us alone. Needs no permission and is invisible to others.
@@ -267,7 +268,7 @@ struct App {
 /// How often the dialing cue repeats while a connection is being chased.
 ///
 /// Long enough not to nag over an engine, short enough that the gap never
-/// reads as "it stopped trying" — the retry interval is ten seconds, so this
+/// reads as "it stopped trying" вЂ” the retry interval is ten seconds, so this
 /// lands two or three times across one wait.
 const WAITING_CUE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(4);
 
@@ -300,7 +301,7 @@ fn cue_for_transition(previous: Option<ConnStatus>, next: ConnStatus) -> Option<
         }
         // Dialing, but only for a connect the user asked for. Automatic retries
         // pass through Connecting too, and beeping on every one of them during
-        // a bad stretch of road would be maddening — the drop cue already said
+        // a bad stretch of road would be maddening вЂ” the drop cue already said
         // what happened.
         ConnStatus::Connecting
             if matches!(
@@ -575,7 +576,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     // Keep the dialing cue going for as long as a connection is being chased.
     //
     // The transition cue alone marks the moment the attempt starts and then
-    // leaves silence, which is indistinguishable from having given up — and a
+    // leaves silence, which is indistinguishable from having given up вЂ” and a
     // rider cannot look at the screen to tell the difference. Repeating it says
     // "still trying" without needing a glance, and stops on its own the moment
     // the status leaves the waiting states.
@@ -629,7 +630,7 @@ pub fn add_server(config: ServerConfig) -> anyhow::Result<String> {
     profile.cert_fingerprint = config.cert_fingerprint;
 
     // Honour a caller-supplied id rather than always deriving host:port. That
-    // derivation is a good default, but it makes duplicates impossible — and
+    // derivation is a good default, but it makes duplicates impossible вЂ” and
     // keeping the same server twice under different usernames or channels is a
     // reasonable thing to want.
     if !config.id.trim().is_empty() {
@@ -980,7 +981,7 @@ pub fn reset_audio_glitches() -> anyhow::Result<()> {
 /// Sounds an arrival or a departure from the channel.
 ///
 /// Driven from the roster rather than the audio path, because someone joining
-/// makes no sound of their own — which is exactly why it needs a cue.
+/// makes no sound of their own вЂ” which is exactly why it needs a cue.
 #[frb(sync)]
 pub fn play_participant_cue(joined: bool) -> anyhow::Result<()> {
     app()?.shared.play_cue(if joined {
@@ -1026,6 +1027,29 @@ pub fn set_echo_cancellation(on: bool) -> anyhow::Result<()> {
 #[frb(sync)]
 pub fn is_echo_cancellation_enabled() -> anyhow::Result<bool> {
     Ok(app()?.shared.echo_cancellation_enabled())
+}
+
+/// What to do about the speaker being heard by the microphone.
+///
+/// Distinct approaches rather than strengths of one: see `audio::feedback`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedbackGuardMode {
+    Off,
+    Duck,
+    HowlGuard,
+    Residual,
+}
+
+/// Applied after the echo canceller, to whatever it could not model.
+#[frb(sync)]
+pub fn set_feedback_guard(mode: FeedbackGuardMode) -> anyhow::Result<()> {
+    app()?.shared.set_feedback_mode(match mode {
+        FeedbackGuardMode::Off => FeedbackMode::Off,
+        FeedbackGuardMode::Duck => FeedbackMode::Duck,
+        FeedbackGuardMode::HowlGuard => FeedbackMode::HowlGuard,
+        FeedbackGuardMode::Residual => FeedbackMode::Residual,
+    });
+    Ok(())
 }
 
 /// Plays a tone on the output device, to check the speaker choice.
@@ -1090,7 +1114,7 @@ pub fn set_default_channel(server_id: String, channel: Option<String>) -> anyhow
 /// Removes a user from the server. Requires the Kick permission; without it the
 /// server answers with a permission-denied message that arrives as text.
 ///
-/// This is a kick, not a ban — they may reconnect immediately.
+/// This is a kick, not a ban вЂ” they may reconnect immediately.
 pub fn kick_user(server_id: String, session: u32, reason: String) -> anyhow::Result<()> {
     send_command(server_id, SessionCommand::KickUser { session, reason })
 }

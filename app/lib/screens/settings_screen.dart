@@ -57,6 +57,27 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const Divider(height: 32),
+          _SectionHeader(l.feedbackGuard),
+          _Explainer(l.feedbackGuardBody),
+          RadioGroup<FeedbackGuardMode>(
+            groupValue: state.feedbackGuard,
+            onChanged: (v) {
+              if (v != null) state.updateFeedbackGuard(v);
+            },
+            child: Column(
+              children: [
+                for (final m in FeedbackGuardMode.values)
+                  RadioListTile<FeedbackGuardMode>(
+                    value: m,
+                    title: Text(_feedbackTitle(l, m)),
+                    subtitle: Text(_feedbackSubtitle(l, m)),
+                    isThreeLine: true,
+                  ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 32),
           _SectionHeader(l.micMode),
           _Explainer(l.micModeBody),
           RadioGroup<MicMode>(
@@ -123,6 +144,20 @@ class SettingsScreen extends StatelessWidget {
     NoiseSetting.light => l.noiseLightBody,
     NoiseSetting.standard => l.noiseStandardBody,
     NoiseSetting.helmet => l.noiseHelmetBody,
+  };
+
+  static String _feedbackTitle(L l, FeedbackGuardMode m) => switch (m) {
+    FeedbackGuardMode.off => l.feedbackOff,
+    FeedbackGuardMode.duck => l.feedbackDuck,
+    FeedbackGuardMode.howlGuard => l.feedbackHowl,
+    FeedbackGuardMode.residual => l.feedbackResidual,
+  };
+
+  static String _feedbackSubtitle(L l, FeedbackGuardMode m) => switch (m) {
+    FeedbackGuardMode.off => l.feedbackOffBody,
+    FeedbackGuardMode.duck => l.feedbackDuckBody,
+    FeedbackGuardMode.howlGuard => l.feedbackHowlBody,
+    FeedbackGuardMode.residual => l.feedbackResidualBody,
   };
 
   static String _micTitle(L l, MicMode m) => switch (m) {

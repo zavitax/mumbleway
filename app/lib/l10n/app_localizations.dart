@@ -1782,6 +1782,66 @@ abstract class L {
   /// In en, this message translates to:
   /// **'+{count} more'**
   String pipMoreSpeakers(int count);
+
+  /// No description provided for @feedbackGuard.
+  ///
+  /// In en, this message translates to:
+  /// **'Feedback suppression'**
+  String get feedbackGuard;
+
+  /// No description provided for @feedbackGuardBody.
+  ///
+  /// In en, this message translates to:
+  /// **'For when the speaker is heard by the microphone. Echo cancellation removes what it can predict; these handle what is left, and they work in quite different ways.'**
+  String get feedbackGuardBody;
+
+  /// No description provided for @feedbackOff.
+  ///
+  /// In en, this message translates to:
+  /// **'No feedback suppression'**
+  String get feedbackOff;
+
+  /// No description provided for @feedbackOffBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo cancellation alone. Start here, and change it only if you hear yourself coming back or a howl builds up.'**
+  String get feedbackOffBody;
+
+  /// No description provided for @feedbackDuck.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn the microphone down while others talk'**
+  String get feedbackDuck;
+
+  /// No description provided for @feedbackDuckBody.
+  ///
+  /// In en, this message translates to:
+  /// **'What intercoms have always done, and the most effective with a speaker close to the microphone in a helmet. The cost is that talking over somebody becomes harder.'**
+  String get feedbackDuckBody;
+
+  /// No description provided for @feedbackHowl.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut only when a howl builds'**
+  String get feedbackHowl;
+
+  /// No description provided for @feedbackHowlBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed.'**
+  String get feedbackHowlBody;
+
+  /// No description provided for @feedbackResidual.
+  ///
+  /// In en, this message translates to:
+  /// **'Suppress whatever echo cancellation missed'**
+  String get feedbackResidual;
+
+  /// No description provided for @feedbackResidualBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.'**
+  String get feedbackResidualBody;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

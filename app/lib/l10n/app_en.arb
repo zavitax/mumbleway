@@ -325,5 +325,16 @@
   "pipMoreSpeakers": "+{count} more",
   "@pipConnectedCount": {"placeholders": {"count": {"type": "int"}}},
   "@pipUpAndReconnecting": {"placeholders": {"up": {"type": "int"}, "count": {"type": "int"}}},
-  "@pipMoreSpeakers": {"placeholders": {"count": {"type": "int"}}}
+  "@pipMoreSpeakers": {"placeholders": {"count": {"type": "int"}}},
+
+  "feedbackGuard": "Feedback suppression",
+  "feedbackGuardBody": "For when the speaker is heard by the microphone. Echo cancellation removes what it can predict; these handle what is left, and they work in quite different ways.",
+  "feedbackOff": "No feedback suppression",
+  "feedbackOffBody": "Echo cancellation alone. Start here, and change it only if you hear yourself coming back or a howl builds up.",
+  "feedbackDuck": "Turn the microphone down while others talk",
+  "feedbackDuckBody": "What intercoms have always done, and the most effective with a speaker close to the microphone in a helmet. The cost is that talking over somebody becomes harder.",
+  "feedbackHowl": "Cut only when a howl builds",
+  "feedbackHowlBody": "Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed.",
+  "feedbackResidual": "Suppress whatever echo cancellation missed",
+  "feedbackResidualBody": "Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl."
 }

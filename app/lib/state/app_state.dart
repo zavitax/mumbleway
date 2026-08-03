@@ -286,6 +286,7 @@ class AppState extends ChangeNotifier {
   static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
   static const _prefsReverb = 'mumbleway.reverb';
+  static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -565,6 +566,12 @@ class AppState extends ChangeNotifier {
     echoCancellation = prefs.getBool(_prefsEchoCancellation) ?? true;
     normaliseLevels = prefs.getBool(_prefsNormaliseLevels) ?? true;
     reverb = prefs.getBool(_prefsReverb) ?? true;
+    final guard = prefs.getInt(_prefsFeedbackGuard);
+    if (guard != null &&
+        guard >= 0 &&
+        guard < FeedbackGuardMode.values.length) {
+      feedbackGuard = FeedbackGuardMode.values[guard];
+    }
     // On by default: a user with two devices almost always wants the same
     // servers on both, and there is nothing to configure for it to work.
     cloudSync = prefs.getBool(_prefsCloudSync) ?? true;
@@ -583,6 +590,7 @@ class AppState extends ChangeNotifier {
     setEchoCancellation(on_: echoCancellation);
     setLevelNormalisation(on_: normaliseLevels);
     setReverb(on_: reverb);
+    setFeedbackGuard(mode: feedbackGuard);
     if (selectedInput != null || selectedOutput != null) {
       await setAudioDevices(input: selectedInput, output: selectedOutput);
     }
@@ -1349,6 +1357,21 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsEchoCancellation, value);
+  }
+
+  /// Which guard is applied to what the echo canceller could not remove.
+  ///
+  /// Off by default: cancellation alone is enough on most headsets, and every
+  /// one of these costs something — half duplex, a hard cut, or a quieter
+  /// talker — which is not worth paying until there is a fault to fix.
+  FeedbackGuardMode feedbackGuard = FeedbackGuardMode.off;
+
+  Future<void> updateFeedbackGuard(FeedbackGuardMode mode) async {
+    feedbackGuard = mode;
+    setFeedbackGuard(mode: mode);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsFeedbackGuard, mode.index);
   }
 
   void testOutput() => playTestTone(millis: 700);

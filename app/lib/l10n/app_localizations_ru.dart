@@ -924,4 +924,39 @@ class LRu extends L {
   String pipMoreSpeakers(int count) {
     return '+$count ещё';
   }
+
+  @override
+  String get feedbackGuard => 'Подавление обратной связи';
+
+  @override
+  String get feedbackGuardBody =>
+      'На случай, когда микрофон слышит динамик. Эхоподавление убирает то, что может предсказать; эти режимы работают с остатком, и работают они по-разному.';
+
+  @override
+  String get feedbackOff => 'Без подавления обратной связи';
+
+  @override
+  String get feedbackOffBody =>
+      'Только эхоподавление. Начните с этого и меняйте, только если слышите себя в ответ или нарастает вой.';
+
+  @override
+  String get feedbackDuck => 'Приглушать микрофон, пока говорят другие';
+
+  @override
+  String get feedbackDuckBody =>
+      'Классический приём переговорных устройств и самый действенный, когда динамик в шлеме близко к микрофону. Плата за это — перебить собеседника становится труднее.';
+
+  @override
+  String get feedbackHowl => 'Обрывать только при нарастании воя';
+
+  @override
+  String get feedbackHowlBody =>
+      'Совсем не трогает обычный разговор и резко обрывает звук, как только тон начинает нарастать. С лёгкими наводками не борется.';
+
+  @override
+  String get feedbackResidual => 'Подавлять остаток после эхоподавления';
+
+  @override
+  String get feedbackResidualBody =>
+      'Ослабляет тем сильнее, чем больше звук похож на дальнюю сторону, а не на вас. Самый мягкий для живого разговора и самый слабый против настоящего воя.';
 }

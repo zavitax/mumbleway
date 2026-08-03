@@ -29,12 +29,22 @@ class VoiceMeter extends StatelessWidget {
     super.key,
     required this.levelDb,
     this.muted = false,
+    this.monochrome = false,
     this.width,
     this.height = 7,
     this.marks = const [],
   });
 
   final double levelDb;
+
+  /// Drains the colour while still showing the level.
+  ///
+  /// For the input meter, where the question is not only how loud you are but
+  /// whether any of it is leaving the device. The meter still moves — a rider
+  /// needs to see the microphone is alive — but grey says nobody is hearing it,
+  /// and colour arriving is the confirmation that they are. Distinct from
+  /// [muted], which empties the meter because there is genuinely no level.
+  final bool monochrome;
 
   /// Greys the meter out and empties it: a muted participant has no level
   /// worth showing, whatever is arriving.
@@ -128,15 +138,25 @@ class VoiceMeter extends StatelessWidget {
                   child: SizedBox(
                     width: track,
                     height: height,
-                    child: const DecoratedBox(
+                    child: DecoratedBox(
                       decoration: BoxDecoration(
+                        // The same three stops either way, so the shape of the
+                        // scale does not change when the colour does: a level
+                        // that was two thirds along stays two thirds along, and
+                        // only its meaning about being heard changes.
                         gradient: LinearGradient(
-                          colors: [
-                            StatusColors.connected,
-                            StatusColors.connecting,
-                            StatusColors.failed,
-                          ],
-                          stops: [0.0, 0.6, 1.0],
+                          colors: monochrome
+                              ? [
+                                  grey.withValues(alpha: 0.45),
+                                  grey.withValues(alpha: 0.62),
+                                  grey.withValues(alpha: 0.85),
+                                ]
+                              : const [
+                                  StatusColors.connected,
+                                  StatusColors.connecting,
+                                  StatusColors.failed,
+                                ],
+                          stops: const [0.0, 0.6, 1.0],
                         ),
                       ),
                     ),

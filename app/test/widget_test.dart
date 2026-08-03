@@ -359,6 +359,47 @@ void main() {
     expect(rt.speakerLevels[1], lessThan(-20.0));
   });
 
+  testWidgets('only the input meter loses its colour off air', (tester) async {
+    // The colour on the input meter answers "is anyone hearing this", which is
+    // a question only that meter can be asked: every other meter shows someone
+    // else, who is being heard by definition or would not be on the roster.
+    Future<Set<Color>> colours({required bool monochrome}) async {
+      await tester.pumpWidget(
+        wrap(VoiceMeter(levelDb: -6, monochrome: monochrome)),
+      );
+      await tester.pumpAndSettle();
+      return tester
+          .widgetList<DecoratedBox>(find.byType(DecoratedBox))
+          .map((d) => d.decoration)
+          .whereType<BoxDecoration>()
+          .map((b) => b.gradient)
+          .whereType<LinearGradient>()
+          .expand((g) => g.colors)
+          .toSet();
+    }
+
+    final lit = await colours(monochrome: false);
+    expect(
+      lit,
+      contains(StatusColors.connected),
+      reason: 'on air, the meter carries the usual scale',
+    );
+
+    final grey = await colours(monochrome: true);
+    expect(
+      grey.intersection({
+        StatusColors.connected,
+        StatusColors.connecting,
+        StatusColors.failed,
+      }),
+      isEmpty,
+      reason: 'off air, none of the status colours may survive',
+    );
+    // Still drawn, and still varying, so the meter is visibly alive.
+    expect(grey, isNotEmpty);
+    expect(grey.map((c) => c.a).toSet().length, greaterThan(1));
+  });
+
   test('the meter scale is shared and clamped', () {
     // Every surface that draws a level, a threshold or a noise floor goes
     // through this, so a drift here would silently misreport the margin

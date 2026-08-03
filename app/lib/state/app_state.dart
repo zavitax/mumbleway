@@ -1604,6 +1604,23 @@ class AppState extends ChangeNotifier {
   /// talker вЂ” which is not worth paying until there is a fault to fix.
   FeedbackGuardMode feedbackGuard = FeedbackGuardMode.off;
 
+  /// Whether the microphone is actually reaching a server right now.
+  ///
+  /// Not the same as the talk button being held. In the hands-free modes
+  /// nobody holds anything and the microphone opens by itself, and in every
+  /// mode a muted microphone or no connection means nothing leaves this device
+  /// however hard the button is pressed. One definition, because the floating
+  /// window's on-air light and the meter on the main screen disagreeing about
+  /// whether a rider is being heard would be worse than either being wrong.
+  bool get isOnAir {
+    final connected = runtimes.values.any((r) => r.isLive);
+    return switch (micMode) {
+      MicMode.pushToTalk => _transmitting,
+      MicMode.voiceActivity => connected && !_muted && _speaking,
+      MicMode.continuous => connected && !_muted,
+    };
+  }
+
   /// How to deal with the steady hiss a microphone adds under speech.
   ///
   /// Off by default. Both of the others discard something real, and a link that
@@ -1844,11 +1861,7 @@ class AppState extends ChangeNotifier {
     // Whether the microphone is actually open, by whatever route. In the
     // hands-free modes nobody is holding anything and it opens anyway, so the
     // on-air light cannot be driven from the talk button.
-    final live = switch (micMode) {
-      MicMode.pushToTalk => _transmitting,
-      MicMode.voiceActivity => connected && !_muted && _speaking,
-      MicMode.continuous => connected && !_muted,
-    };
+    final live = isOnAir;
     // How many other people are within earshot, across every server at once.
     //
     // Silence on the right half is ambiguous: nobody is talking, but the rider

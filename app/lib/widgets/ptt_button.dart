@@ -258,6 +258,12 @@ class LevelMeter extends StatelessWidget {
           child: VoiceMeter(
             levelDb: state.inputLevelDb,
             muted: state.muted,
+            // Colour only while the microphone is actually reaching a server.
+            // The meter moves either way, so a rider can still see the
+            // microphone is alive; the colour is what says somebody is hearing
+            // it. Only this meter — the roster's meters show other people, who
+            // are being heard by definition or they would not be listed.
+            monochrome: !state.isOnAir,
             // The tracked background noise, and above it the level voice
             // activation opens at. Both are shown because the gap between them
             // is the margin: at speed the floor climbs, and seeing only the

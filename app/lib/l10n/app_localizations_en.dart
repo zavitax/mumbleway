@@ -848,4 +848,73 @@ class LEn extends L {
   String remoteLastButton(String name) {
     return 'last button: $name';
   }
+
+  @override
+  String get pipOnAir => 'ON AIR';
+
+  @override
+  String get pipTalking => 'Talking';
+
+  @override
+  String get pipDeafened => 'Deafened';
+
+  @override
+  String get pipMuted => 'Muted';
+
+  @override
+  String get pipListening => 'Listening, but\nnot transmitting';
+
+  @override
+  String get pipBadgeMuted => 'MUTED';
+
+  @override
+  String get pipBadgeDeafened => 'DEAFENED';
+
+  @override
+  String get pipNoise => 'noise';
+
+  @override
+  String get pipOpen => 'open';
+
+  @override
+  String get pipTalk => 'talk';
+
+  @override
+  String get pipHandsFreeVoice => 'hands-free · voice activated';
+
+  @override
+  String get pipHandsFreeAlways => 'hands-free · always on';
+
+  @override
+  String get pipSpeaking => 'SPEAKING';
+
+  @override
+  String get pipNobodySpeaks => 'Nobody speaks';
+
+  @override
+  String get pipNotConnected => 'Not connected';
+
+  @override
+  String get pipNoConnection => 'No connection';
+
+  @override
+  String get pipConnected => 'Connected';
+
+  @override
+  String pipConnectedCount(int count) {
+    return '$count connected';
+  }
+
+  @override
+  String get pipReconnecting => 'Reconnecting…';
+
+  @override
+  String pipUpAndReconnecting(int up, int count) {
+    return '$up up · $count reconnecting';
+  }
+
+  @override
+  String pipMoreSpeakers(int count) {
+    return '+$count more';
+  }
 }

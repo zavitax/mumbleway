@@ -164,6 +164,19 @@ class OverlayBridge {
     }
   }
 
+  /// Hands the window its wording.
+  ///
+  /// Separate from [update] because it changes when the language does, which
+  /// is roughly never, while update runs ten times a second.
+  Future<void> setPhrases(Map<String, String> phrases) async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod<void>('phrases', phrases);
+    } catch (_) {
+      // An older platform side, or one that draws no text of its own.
+    }
+  }
+
   Future<void> hide() async {
     if (!isSupported) return;
     try {
@@ -193,6 +206,9 @@ class OverlayBridge {
     required int micMode,
     required bool live,
     required bool connected,
+    required String connectionText,
+    required int connectionLevel,
+    required String moreSpeakers,
     required int connectedCount,
     required int reconnectingCount,
     required int failedCount,
@@ -219,6 +235,9 @@ class OverlayBridge {
         'micMode': micMode,
         'live': live,
         'connected': connected,
+        'connectionText': connectionText,
+        'connectionLevel': connectionLevel,
+        'moreSpeakers': moreSpeakers,
         'connectedCount': connectedCount,
         'reconnectingCount': reconnectingCount,
         'failedCount': failedCount,

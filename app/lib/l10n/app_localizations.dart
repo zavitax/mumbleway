@@ -1656,6 +1656,132 @@ abstract class L {
   /// In en, this message translates to:
   /// **'last button: {name}'**
   String remoteLastButton(String name);
+
+  /// No description provided for @pipOnAir.
+  ///
+  /// In en, this message translates to:
+  /// **'ON AIR'**
+  String get pipOnAir;
+
+  /// No description provided for @pipTalking.
+  ///
+  /// In en, this message translates to:
+  /// **'Talking'**
+  String get pipTalking;
+
+  /// No description provided for @pipDeafened.
+  ///
+  /// In en, this message translates to:
+  /// **'Deafened'**
+  String get pipDeafened;
+
+  /// No description provided for @pipMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted'**
+  String get pipMuted;
+
+  /// No description provided for @pipListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening, but\nnot transmitting'**
+  String get pipListening;
+
+  /// No description provided for @pipBadgeMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'MUTED'**
+  String get pipBadgeMuted;
+
+  /// No description provided for @pipBadgeDeafened.
+  ///
+  /// In en, this message translates to:
+  /// **'DEAFENED'**
+  String get pipBadgeDeafened;
+
+  /// No description provided for @pipNoise.
+  ///
+  /// In en, this message translates to:
+  /// **'noise'**
+  String get pipNoise;
+
+  /// No description provided for @pipOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'open'**
+  String get pipOpen;
+
+  /// No description provided for @pipTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'talk'**
+  String get pipTalk;
+
+  /// No description provided for @pipHandsFreeVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'hands-free · voice activated'**
+  String get pipHandsFreeVoice;
+
+  /// No description provided for @pipHandsFreeAlways.
+  ///
+  /// In en, this message translates to:
+  /// **'hands-free · always on'**
+  String get pipHandsFreeAlways;
+
+  /// No description provided for @pipSpeaking.
+  ///
+  /// In en, this message translates to:
+  /// **'SPEAKING'**
+  String get pipSpeaking;
+
+  /// No description provided for @pipNobodySpeaks.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody speaks'**
+  String get pipNobodySpeaks;
+
+  /// No description provided for @pipNotConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get pipNotConnected;
+
+  /// No description provided for @pipNoConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'No connection'**
+  String get pipNoConnection;
+
+  /// No description provided for @pipConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get pipConnected;
+
+  /// No description provided for @pipConnectedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} connected'**
+  String pipConnectedCount(int count);
+
+  /// No description provided for @pipReconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting…'**
+  String get pipReconnecting;
+
+  /// No description provided for @pipUpAndReconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'{up} up · {count} reconnecting'**
+  String pipUpAndReconnecting(int up, int count);
+
+  /// No description provided for @pipMoreSpeakers.
+  ///
+  /// In en, this message translates to:
+  /// **'+{count} more'**
+  String pipMoreSpeakers(int count);
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

@@ -83,6 +83,13 @@ import UIKit
         (self.pip as? PipController)?.stop()
         result(true)
 
+      case "phrases":
+        // Sent when the window opens and whenever the language changes, rather
+        // than riding along with every frame ten times a second.
+        (self.controller(for: channel))?.setPhrases(
+          call.arguments as? [String: String] ?? [:])
+        result(true)
+
       case "update":
         guard let arguments = call.arguments as? [String: Any] else {
           result(false)
@@ -96,6 +103,9 @@ import UIKit
         }
         snapshot.transmitting = arguments["transmitting"] as? Bool ?? false
         snapshot.connected = arguments["connected"] as? Bool ?? false
+        snapshot.connectionText = arguments["connectionText"] as? String ?? ""
+        snapshot.connectionLevel = arguments["connectionLevel"] as? Int ?? 0
+        snapshot.moreSpeakersText = arguments["moreSpeakers"] as? String ?? ""
         snapshot.micMode = arguments["micMode"] as? Int ?? 0
         snapshot.live = arguments["live"] as? Bool ?? false
         snapshot.connectedCount = arguments["connectedCount"] as? Int ?? 0

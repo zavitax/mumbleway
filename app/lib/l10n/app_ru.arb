@@ -298,5 +298,27 @@
 
   "remoteListening": "Ожидание пульта",
   "remoteNothingYet": "кнопок пока не получено",
-  "remoteLastButton": "последняя кнопка: {name}"
+  "remoteLastButton": "последняя кнопка: {name}",
+
+  "pipOnAir": "В ЭФИРЕ",
+  "pipTalking": "Говорите",
+  "pipDeafened": "Звук выключен",
+  "pipMuted": "Микрофон выключен",
+  "pipListening": "Слушаем, но\nне передаём",
+  "pipBadgeMuted": "МИКРОФОН ВЫКЛ",
+  "pipBadgeDeafened": "ЗВУК ВЫКЛ",
+  "pipNoise": "шум",
+  "pipOpen": "порог",
+  "pipTalk": "говорить",
+  "pipHandsFreeVoice": "без рук · по голосу",
+  "pipHandsFreeAlways": "без рук · всегда включён",
+  "pipSpeaking": "ГОВОРЯТ",
+  "pipNobodySpeaks": "Никто не говорит",
+  "pipNotConnected": "Нет подключения",
+  "pipNoConnection": "Связь потеряна",
+  "pipConnected": "Подключено",
+  "pipConnectedCount": "подключено: {count}",
+  "pipReconnecting": "Переподключение…",
+  "pipUpAndReconnecting": "{up} на связи · {count} в переподключении",
+  "pipMoreSpeakers": "+{count} ещё"
 }

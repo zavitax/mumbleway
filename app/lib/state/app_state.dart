@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/audio_session.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
@@ -357,6 +358,41 @@ class AppState extends ChangeNotifier {
   Locale? _locale;
   Locale? get locale => _locale;
 
+  /// The app's strings, without a widget to ask.
+  ///
+  /// The floating window draws its own text and lives outside the widget tree
+  /// entirely, so the phrases have to be looked up from the locale rather than
+  /// from a context. Falls back to the first supported language when the
+  /// system is set to one this app does not speak.
+  L get _strings {
+    final code = (_locale ?? WidgetsBinding.instance.platformDispatcher.locale)
+        .languageCode;
+    final known = supportedLocales.any((l) => l.languageCode == code);
+    return lookupL(Locale(known ? code : supportedLocales.first.languageCode));
+  }
+
+  /// Every phrase the floating window paints for itself.
+  Map<String, String> _overlayPhrases() {
+    final l = _strings;
+    return {
+      'pipOnAir': l.pipOnAir,
+      'pipTalking': l.pipTalking,
+      'pipDeafened': l.pipDeafened,
+      'pipMuted': l.pipMuted,
+      'pipListening': l.pipListening,
+      'pipBadgeMuted': l.pipBadgeMuted,
+      'pipBadgeDeafened': l.pipBadgeDeafened,
+      'pipNoise': l.pipNoise,
+      'pipOpen': l.pipOpen,
+      'pipTalk': l.pipTalk,
+      'pipHandsFreeVoice': l.pipHandsFreeVoice,
+      'pipHandsFreeAlways': l.pipHandsFreeAlways,
+      'pipSpeaking': l.pipSpeaking,
+      'pipNobodySpeaks': l.pipNobodySpeaks,
+      'pipNotConnected': l.pipNotConnected,
+    };
+  }
+
   /// Cycles to the next available language. Bound to the flag in the title bar,
   /// which is a one-tap toggle rather than a menu because there are only two.
   Future<void> cycleLocale() async {
@@ -365,6 +401,10 @@ class AppState extends ChangeNotifier {
     final index = supportedLocales.indexWhere((l) => l.languageCode == current);
     _locale = supportedLocales[(index + 1) % supportedLocales.length];
     notifyListeners();
+    // The window keeps its own copy of the wording, so it has to be told.
+    unawaited(overlay.setPhrases(_overlayPhrases()));
+    _lastOverlaySignature = '';
+    _pushOverlay();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsLocale, _locale!.languageCode);
   }
@@ -1423,6 +1463,7 @@ class AppState extends ChangeNotifier {
     };
 
     overlayStatus = null;
+    await overlay.setPhrases(_overlayPhrases());
     final error = await overlay.show();
     overlayEnabled = error == null;
     if (error == null) unawaited(_rememberOverlayChoice(true));
@@ -1490,6 +1531,30 @@ class AppState extends ChangeNotifier {
         .length;
     final connected = connectedCount > 0;
 
+    final l = _strings;
+    // Assembled here rather than in the drawing code, because a sentence with
+    // a number in it has to agree with itself, and the rules for that belong
+    // with the language.
+    final String connectionText;
+    final int connectionLevel;
+    if (reconnectingCount > 0) {
+      connectionLevel = 2;
+      connectionText = connectedCount > 0
+          ? l.pipUpAndReconnecting(connectedCount, reconnectingCount)
+          : l.pipReconnecting;
+    } else if (connectedCount > 0) {
+      connectionLevel = 1;
+      connectionText = connectedCount == 1
+          ? l.pipConnected
+          : l.pipConnectedCount(connectedCount);
+    } else if (failedCount > 0) {
+      connectionLevel = 3;
+      connectionText = l.pipNoConnection;
+    } else {
+      connectionLevel = 0;
+      connectionText = l.pipNotConnected;
+    }
+
     // Spelled out rather than taken from the enum's index: the Rust order is
     // voice-activity, push-to-talk, continuous, so an index would tell the
     // window that push-to-talk was hands-free and hand it the opposite
@@ -1513,7 +1578,7 @@ class AppState extends ChangeNotifier {
     // signature always differs and the check stops filtering anything.
     final signature =
         '${speakers.map((s) => '${s.name}:${s.levelDb.round()}').join(',')}'
-        '|$_transmitting|$live|$micModeCode|$connectedCount|$reconnectingCount|$failedCount|$_muted'
+        '|$connectionText|$_transmitting|$live|$micModeCode|$connectedCount|$reconnectingCount|$failedCount|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
@@ -1526,6 +1591,11 @@ class AppState extends ChangeNotifier {
         micMode: micModeCode,
         live: live,
         connected: connected,
+        connectionText: connectionText,
+        connectionLevel: connectionLevel,
+        moreSpeakers: speakers.length > 4
+            ? l.pipMoreSpeakers(speakers.length - 4)
+            : '',
         connectedCount: connectedCount,
         reconnectingCount: reconnectingCount,
         failedCount: failedCount,

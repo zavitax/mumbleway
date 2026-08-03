@@ -855,4 +855,73 @@ class LRu extends L {
   String remoteLastButton(String name) {
     return 'последняя кнопка: $name';
   }
+
+  @override
+  String get pipOnAir => 'В ЭФИРЕ';
+
+  @override
+  String get pipTalking => 'Говорите';
+
+  @override
+  String get pipDeafened => 'Звук выключен';
+
+  @override
+  String get pipMuted => 'Микрофон выключен';
+
+  @override
+  String get pipListening => 'Слушаем, но\nне передаём';
+
+  @override
+  String get pipBadgeMuted => 'МИКРОФОН ВЫКЛ';
+
+  @override
+  String get pipBadgeDeafened => 'ЗВУК ВЫКЛ';
+
+  @override
+  String get pipNoise => 'шум';
+
+  @override
+  String get pipOpen => 'порог';
+
+  @override
+  String get pipTalk => 'говорить';
+
+  @override
+  String get pipHandsFreeVoice => 'без рук · по голосу';
+
+  @override
+  String get pipHandsFreeAlways => 'без рук · всегда включён';
+
+  @override
+  String get pipSpeaking => 'ГОВОРЯТ';
+
+  @override
+  String get pipNobodySpeaks => 'Никто не говорит';
+
+  @override
+  String get pipNotConnected => 'Нет подключения';
+
+  @override
+  String get pipNoConnection => 'Связь потеряна';
+
+  @override
+  String get pipConnected => 'Подключено';
+
+  @override
+  String pipConnectedCount(int count) {
+    return 'подключено: $count';
+  }
+
+  @override
+  String get pipReconnecting => 'Переподключение…';
+
+  @override
+  String pipUpAndReconnecting(int up, int count) {
+    return '$up на связи · $count в переподключении';
+  }
+
+  @override
+  String pipMoreSpeakers(int count) {
+    return '+$count ещё';
+  }
 }

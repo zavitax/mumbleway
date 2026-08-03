@@ -532,4 +532,34 @@ void main() {
       expect(untranslated, isEmpty, reason: 'English left in the Russian file');
     });
   });
+
+  group('the floating window', () {
+    // It draws its own text, in Swift, which is the one place a string can
+    // quietly stay English while everything around it changes language. The
+    // two sides agree by convention and nothing else, so the convention is
+    // checked here rather than discovered on a phone.
+    test('every phrase it draws is one the app sends', () async {
+      final swift = await File('ios/Runner/PipController.swift').readAsString();
+      final dart = await File('lib/state/app_state.dart').readAsString();
+
+      final drawn = RegExp(
+        r'phrase\("(\w+)"',
+      ).allMatches(swift).map((m) => m.group(1)!).toSet();
+      final sent = RegExp(
+        r"'(pip\w+)':",
+      ).allMatches(dart).map((m) => m.group(1)!).toSet();
+
+      expect(drawn, isNotEmpty, reason: 'the frame draws no text at all?');
+      expect(
+        drawn.difference(sent),
+        isEmpty,
+        reason: 'drawn by the window but never sent, so stuck in English',
+      );
+      expect(
+        sent.difference(drawn),
+        isEmpty,
+        reason: 'sent to the window but never drawn',
+      );
+    });
+  });
 }

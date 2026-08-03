@@ -26,6 +26,11 @@ struct CallSnapshot {
   /// same as the talk button being held: in the hands-free modes nobody holds
   /// anything and the microphone still opens.
   var live = false
+  /// Built in Dart, where counts and grammar live together.
+  var connectionText = ""
+  /// 0 idle, 1 well, 2 struggling, 3 lost. Colour only; no words.
+  var connectionLevel = 0
+  var moreSpeakersText = ""
   var connectedCount = 0
   var reconnectingCount = 0
   var failedCount = 0
@@ -80,6 +85,24 @@ final class PipController: NSObject {
   private var renderTimer: Timer?
 
   private var snapshot = CallSnapshot()
+
+  /// The frame's own wording, in the app's language.
+  ///
+  /// Handed over rather than written here: this is the one part of the app
+  /// that draws its own text, so it is also the one part that would quietly
+  /// stay English while everything around it changed language. Keys missing
+  /// from the book fall back to the English below, which is what a build with
+  /// a new string and an old app does.
+  private var phrases: [String: String] = [:]
+
+  private func phrase(_ key: String, _ fallback: String) -> String {
+    phrases[key] ?? fallback
+  }
+
+  func setPhrases(_ next: [String: String]) {
+    phrases = next
+    render()
+  }
 
   /// 16:9 at a size that stays legible when the system shrinks the window.
   private static let frameSize = CGSize(width: 480, height: 270)
@@ -474,25 +497,16 @@ final class PipController: NSObject {
   /// outranks green: two servers up and one struggling is a problem, and
   /// showing "2 connected" would hide it.
   private func drawConnection(in bounds: CGRect) {
+    // The phrase is built in Dart, where the counts can be put into a
+    // sentence that agrees with itself in either language. Only the severity
+    // crosses over, because a colour is not a matter of grammar.
+    let text = snapshot.connectionText
     let colour: UIColor
-    let text: String
-
-    if snapshot.reconnectingCount > 0 {
-      colour = UIColor(red: 0.98, green: 0.75, blue: 0.25, alpha: 1)
-      text = snapshot.connectedCount > 0
-        ? "\(snapshot.connectedCount) up · \(snapshot.reconnectingCount) reconnecting"
-        : "Reconnecting…"
-    } else if snapshot.connectedCount > 0 {
-      colour = UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
-      text = snapshot.connectedCount == 1
-        ? "Connected"
-        : "\(snapshot.connectedCount) connected"
-    } else if snapshot.failedCount > 0 {
-      colour = UIColor(red: 0.94, green: 0.32, blue: 0.28, alpha: 1)
-      text = "No connection"
-    } else {
-      colour = UIColor(white: 0.5, alpha: 1)
-      text = "Not connected"
+    switch snapshot.connectionLevel {
+    case 1: colour = UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
+    case 2: colour = UIColor(red: 0.98, green: 0.75, blue: 0.25, alpha: 1)
+    case 3: colour = UIColor(red: 0.94, green: 0.32, blue: 0.28, alpha: 1)
+    default: colour = UIColor(white: 0.5, alpha: 1)
     }
 
     // Measured and then centred as one piece, rather than each part placed
@@ -561,7 +575,7 @@ final class PipController: NSObject {
 
     if snapshot.live {
       drawText(
-        "ON AIR",
+        phrase("pipOnAir", "ON AIR"),
         in: CGRect(x: bounds.minX, y: centre.y - 9, width: bounds.width, height: 20),
         size: 13, weight: .heavy, colour: .white, alignment: .center)
     } else {
@@ -577,17 +591,17 @@ final class PipController: NSObject {
     // deadline, and the frame is the only place it can be said.
     let text: String
     if !snapshot.connected {
-      text = "Not connected"
+      text = phrase("pipNotConnected", "Not connected")
     } else if snapshot.live {
-      text = "Talking"
+      text = phrase("pipTalking", "Talking")
     } else if snapshot.deafened {
-      text = "Deafened"
+      text = phrase("pipDeafened", "Deafened")
     } else if snapshot.muted {
-      text = "Muted"
+      text = phrase("pipMuted", "Muted")
     } else {
       // Not just "Listening": that reads as though the microphone is open, and
       // the whole point of this line is to say that it is not.
-      text = "Listening, but\nnot transmitting"
+      text = phrase("pipListening", "Listening, but\nnot transmitting")
     }
     drawText(
       text,
@@ -597,8 +611,10 @@ final class PipController: NSObject {
 
   private func drawBadges(in bounds: CGRect) {
     var labels: [String] = []
-    if snapshot.muted { labels.append("MUTED") }
-    if snapshot.deafened { labels.append("DEAFENED") }
+    if snapshot.muted { labels.append(phrase("pipBadgeMuted", "MUTED")) }
+    if snapshot.deafened {
+      labels.append(phrase("pipBadgeDeafened", "DEAFENED"))
+    }
     guard !labels.isEmpty else { return }
     drawText(
       labels.joined(separator: "  \u{00B7}  "),
@@ -646,11 +662,11 @@ final class PipController: NSObject {
       colour: UIColor(red: 1.0, green: 0.78, blue: 0.25, alpha: 1), height: 7)
 
     drawText(
-      "noise", in: CGRect(x: bounds.minX + 2, y: 198, width: 36, height: 16),
+      phrase("pipNoise", "noise"), in: CGRect(x: bounds.minX + 2, y: 198, width: 36, height: 16),
       size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
       alignment: .right)
     drawText(
-      "open", in: CGRect(x: track.maxX + 2, y: 198, width: 36, height: 16),
+      phrase("pipOpen", "open"), in: CGRect(x: track.maxX + 2, y: 198, width: 36, height: 16),
       size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
       alignment: .left)
   }
@@ -664,9 +680,12 @@ final class PipController: NSObject {
     // there is nothing to press rather than labelling a button that is inert.
     let text: String
     switch snapshot.micMode {
-    case 1: text = "hands-free \u{00B7} voice activated"
-    case 2: text = "hands-free \u{00B7} always on"
-    default: text = "\u{25B6}\u{2016} talk"
+    case 1:
+      text = phrase("pipHandsFreeVoice", "hands-free \u{00B7} voice activated")
+    case 2:
+      text = phrase("pipHandsFreeAlways", "hands-free \u{00B7} always on")
+    default:
+      text = "\u{25B6}\u{2016} " + phrase("pipTalk", "talk")
     }
     drawText(
       text,
@@ -700,7 +719,8 @@ final class PipController: NSObject {
 
     guard !snapshot.speakers.isEmpty else {
       drawText(
-        snapshot.connected ? "Nobody speaks" : "\u{2014}",
+        snapshot.connected
+          ? phrase("pipNobodySpeaks", "Nobody speaks") : "\u{2014}",
         in: CGRect(x: inset.minX, y: 122, width: inset.width, height: 22),
         size: 14, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
         alignment: .center)
@@ -708,7 +728,7 @@ final class PipController: NSObject {
     }
 
     drawText(
-      "SPEAKING",
+      phrase("pipSpeaking", "SPEAKING"),
       in: CGRect(x: inset.minX, y: 30, width: inset.width, height: 14),
       size: 10, weight: .heavy, colour: UIColor(white: 1, alpha: 0.4),
       alignment: .left)
@@ -768,7 +788,7 @@ final class PipController: NSObject {
 
     if snapshot.speakers.count > visible.count {
       drawText(
-        "+\(snapshot.speakers.count - visible.count) more",
+        snapshot.moreSpeakersText,
         in: CGRect(x: inset.minX, y: y + 2, width: inset.width, height: 16),
         size: 11, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
         alignment: .left)

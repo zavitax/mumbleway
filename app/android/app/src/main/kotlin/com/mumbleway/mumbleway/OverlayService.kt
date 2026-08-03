@@ -263,6 +263,25 @@ class OverlayService : Service() {
         return START_STICKY
     }
 
+    /**
+     * The user swiped the app out of the recents list.
+     *
+     * That is the one unambiguous "I am done" gesture Android offers, and it
+     * has to take the window with it. Without this the service outlived the app
+     * that owned it — the activity's onStop had already put the window on
+     * screen on the way out — leaving a floating control panel for a call that
+     * no longer exists and no app behind it to close it from.
+     *
+     * Stopping here also defeats START_STICKY, which is what would otherwise
+     * bring the service back a moment later. That flag is for surviving the
+     * system reclaiming memory mid-ride, not for overruling the rider.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        removeOverlay()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         removeOverlay()
         mediaSession?.apply {

@@ -242,6 +242,12 @@ class MainActivity : FlutterActivity() {
         }
 
     override fun onDestroy() {
+        // The other way out: back-pressed to the end, or finish() called. The
+        // recents swipe arrives at the service as onTaskRemoved instead, so
+        // both routes need saying.
+        if (isFinishing) {
+            stopService(Intent(this, OverlayService::class.java))
+        }
         OverlayService.onTransmit = null
         OverlayService.onMediaButton = null
         OverlayService.onToggleMute = null
@@ -371,6 +377,10 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         super.onStop()
         inForeground = false
+        // Not on the way out. onStop runs for a close as well as for a
+        // backgrounding, and putting the window up as the app is being
+        // dismissed is what left it on screen with nothing behind it.
+        if (isFinishing) return
         if (overlayWanted) showOverlayWindow()
     }
 

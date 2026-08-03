@@ -59,6 +59,8 @@ final class PipController: NSObject {
   private var renderTimer: Timer?
 
   private var snapshot = CallSnapshot()
+  /// The last state published, so the channel is spoken to only on a change.
+  private var lastState = ""
   /// Frame at which an armed hang-up stops counting, or nil when not armed.
   private var hangupArmedUntil: UInt64?
 
@@ -192,6 +194,38 @@ final class PipController: NSObject {
   /// Everything that can go wrong here goes wrong asynchronously, well after
   /// `show()` has returned success, so there is nothing for the caller to
   /// return and nowhere for a message to land unless it is pushed.
+  /// Publishes what the system currently thinks, whenever that changes.
+  ///
+  /// Reached for after the request to open the window produced no callback at
+  /// all — not `willStart`, not `didStart`, not `failedToStart`, all three of
+  /// which the documentation says accompany a real attempt. So the attempt
+  /// never began, and the only way to find out why is to watch the state the
+  /// decision is made from rather than to keep guessing at it.
+  private func reportState() {
+    guard let controller = pipController else { return }
+
+    var layerState = "none"
+    if let layer = displayLayer {
+      switch layer.status {
+      case .failed:
+        // A failed layer accepts frames and shows nothing, and nothing else
+        // reports it. Flushing is the documented way back.
+        layerState = "failed: " + (layer.error?.localizedDescription ?? "unknown")
+        layer.flush()
+      case .rendering: layerState = "rendering"
+      case .unknown: layerState = "waiting for frames"
+      @unknown default: layerState = "unrecognised"
+      }
+    }
+
+    let state = "possible=\(controller.isPictureInPicturePossible)"
+      + " active=\(controller.isPictureInPictureActive)"
+      + " layer=\(layerState)"
+    guard state != lastState else { return }
+    lastState = state
+    report(state)
+  }
+
   private func report(_ message: String?) {
     DispatchQueue.main.async { [weak self] in
       self?.channel.invokeMethod("pipStatus", arguments: message)
@@ -263,6 +297,8 @@ final class PipController: NSObject {
   private var onAirVisible: Bool { (frame % 7) < 4 }
 
   private func render() {
+    // Cheap: it only speaks up when something changed.
+    reportState()
     guard let displayLayer else { return }
     guard let pixelBuffer = makePixelBuffer() else { return }
 
@@ -649,6 +685,12 @@ extension PipController: AVPictureInPictureControllerDelegate {
       completionHandler: @escaping (Bool) -> Void
   ) {
     completionHandler(true)
+  }
+
+  func pictureInPictureControllerWillStartPictureInPicture(
+    _ pictureInPictureController: AVPictureInPictureController
+  ) {
+    report("The system is opening the window…")
   }
 
   func pictureInPictureControllerDidStartPictureInPicture(

@@ -94,7 +94,8 @@ class SettingsScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Text(
-                'Remote buttons: $s',
+                'Remote buttons: $s'
+                '${state.buttons.lastMediaKey == null ? '' : ' · last received: ${state.buttons.lastMediaKey}'}',
                 style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,

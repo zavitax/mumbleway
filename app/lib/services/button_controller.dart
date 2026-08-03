@@ -228,8 +228,18 @@ class ButtonController {
   /// Android key codes, not Flutter key ids, so they are mapped onto the same
   /// binding space by offset вЂ” see [mediaKeyId].
   void handleMediaButton(int androidKeyCode, bool pressed) {
+    // Recorded whether or not anything is bound to it. A remote that sends
+    // nothing and a platform that hears nothing look identical otherwise, and
+    // that ambiguity has already cost a round of builds.
+    if (pressed) {
+      lastMediaKey = describeMediaKey(mediaKeyId(androidKeyCode));
+      onCaptureChanged?.call();
+    }
     _dispatch(mediaKeyId(androidKeyCode), pressed);
   }
+
+  /// The most recent remote button the platform passed up, for diagnosis.
+  String? lastMediaKey;
 
   /// Maps an Android media key code into a key id that cannot collide with a
   /// real `LogicalKeyboardKey`.

@@ -19,7 +19,11 @@ const Duration tombstoneLife = Duration(days: 90);
 
 /// One device's view of the list, as it travels between devices.
 class SyncSnapshot {
-  const SyncSnapshot({this.servers = const [], this.deleted = const {}});
+  const SyncSnapshot({
+    this.servers = const [],
+    this.deleted = const {},
+    this.settings = const {},
+  });
 
   /// Server entries, in the order they should be shown.
   final List<Map<String, dynamic>> servers;
@@ -27,7 +31,15 @@ class SyncSnapshot {
   /// `localId` to the moment it was deleted, in milliseconds since the epoch.
   final Map<String, int> deleted;
 
-  bool get isEmpty => servers.isEmpty && deleted.isEmpty;
+  /// Settings, each as `{'v': value, 'at': when it was last changed}`.
+  ///
+  /// Stamped one by one rather than as a block. Turning off reverb on the
+  /// phone and changing the noise profile on the Mac are two different
+  /// decisions, and a single timestamp for the lot would silently throw one of
+  /// them away.
+  final Map<String, dynamic> settings;
+
+  bool get isEmpty => servers.isEmpty && deleted.isEmpty && settings.isEmpty;
 
   Map<String, dynamic> toJson() => {
     'v': 1,
@@ -41,6 +53,7 @@ class SyncSnapshot {
     'v': 1,
     'servers': [for (final s in servers) jsonDecode(canonicalEntry(s))],
     'deleted': deleted,
+    'settings': settings,
   });
 
   static SyncSnapshot fromJson(Map<String, dynamic> j) => SyncSnapshot(
@@ -51,6 +64,11 @@ class SyncSnapshot {
     deleted: {
       for (final e in (j['deleted'] as Map? ?? const {}).entries)
         if (e.value is num) '${e.key}': (e.value as num).toInt(),
+    },
+    settings: {
+      for (final e in (j['settings'] as Map? ?? const {}).entries)
+        if (e.value is Map && (e.value as Map)['at'] is num)
+          '${e.key}': Map<String, dynamic>.from(e.value as Map),
     },
   );
 
@@ -90,6 +108,11 @@ class SyncSnapshot {
 String canonicalEntry(Map<String, dynamic> e) {
   final keys = e.keys.toList()..sort();
   return jsonEncode({for (final k in keys) k: e[k]});
+}
+
+Map<String, dynamic> _sorted(Map<String, dynamic> m) {
+  final keys = m.keys.toList()..sort();
+  return {for (final k in keys) k: m[k]};
 }
 
 /// The identity of an entry across devices.
@@ -181,7 +204,39 @@ SyncSnapshot mergeSnapshots(
     consider(id);
   }
 
-  return SyncSnapshot(servers: servers, deleted: tombstones);
+  return SyncSnapshot(
+    servers: servers,
+    deleted: tombstones,
+    settings: mergeSettings(mine.settings, theirs.settings),
+  );
+}
+
+/// Takes the more recently changed value of each setting.
+///
+/// Per key, so two devices changing different things both keep their change.
+/// A setting only one side has ever heard of survives untouched, which is what
+/// makes an older build meeting a newer one harmless rather than destructive.
+Map<String, dynamic> mergeSettings(
+  Map<String, dynamic> mine,
+  Map<String, dynamic> theirs,
+) {
+  final out = <String, dynamic>{};
+  for (final key in {...mine.keys, ...theirs.keys}) {
+    final a = mine[key];
+    final b = theirs[key];
+    if (a == null) {
+      out[key] = b;
+    } else if (b == null) {
+      out[key] = a;
+    } else {
+      final at = (a['at'] as num?)?.toInt() ?? 0;
+      final bt = (b['at'] as num?)?.toInt() ?? 0;
+      // A tie keeps ours, so a device does not flap between two values that
+      // were saved in the same millisecond.
+      out[key] = bt > at ? b : a;
+    }
+  }
+  return out;
 }
 
 /// The more recently edited of two versions of one entry.
@@ -206,6 +261,9 @@ Map<String, dynamic>? _pick(Map<String, dynamic>? a, Map<String, dynamic>? b) {
 bool sameSnapshot(SyncSnapshot a, SyncSnapshot b) {
   if (a.servers.length != b.servers.length) return false;
   if (a.deleted.length != b.deleted.length) return false;
+  if (jsonEncode(_sorted(a.settings)) != jsonEncode(_sorted(b.settings))) {
+    return false;
+  }
   for (final e in a.deleted.entries) {
     if (b.deleted[e.key] != e.value) return false;
   }

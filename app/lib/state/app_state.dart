@@ -287,6 +287,7 @@ class AppState extends ChangeNotifier {
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
+  static const _prefsSettingStamps = 'mumbleway.settingStamps';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
   static const _prefsLocale = 'mumbleway.locale';
@@ -600,6 +601,10 @@ class AppState extends ChangeNotifier {
     _deleted
       ..clear()
       ..addAll(_decodeTombstones(prefs.getString(_prefsDeleted)));
+    _settingStamps
+      ..clear()
+      ..addAll(_decodeTombstones(prefs.getString(_prefsSettingStamps)));
+    _publishedSettings = _syncedSettings();
 
     final raw = prefs.getStringList(_prefsKey) ?? const [];
     servers
@@ -621,8 +626,10 @@ class AppState extends ChangeNotifier {
   /// storing what the merge produced and immediately offering it back as news
   /// would have two devices talking past each other indefinitely.
   Future<void> _persist({bool publish = true}) async {
+    _stampChangedSettings();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsDeleted, jsonEncode(_deleted));
+    await prefs.setString(_prefsSettingStamps, jsonEncode(_settingStamps));
     await prefs.setStringList(
       _prefsKey,
       servers.map((s) => jsonEncode(s.toJson())).toList(),
@@ -907,6 +914,8 @@ class AppState extends ChangeNotifier {
       );
 
       if (!sameSnapshot(merged, mine)) await _applyMerged(merged);
+      await _applySyncedSettings(merged.settings);
+      await _applySyncedSettings(merged.settings);
       if (!sameSnapshot(merged, theirs)) {
         final (payload, secrets) = _withoutPasswords(merged);
         cloudError = await CloudSync.instance.write(
@@ -930,7 +939,164 @@ class AppState extends ChangeNotifier {
   SyncSnapshot _localSnapshot() => SyncSnapshot(
     servers: [for (final s in servers) s.toJson()],
     deleted: Map.of(_deleted),
+    settings: {
+      for (final e in _syncedSettings().entries)
+        e.key: {'v': e.value, 'at': _settingStamps[e.key] ?? 0},
+    },
   );
+
+  /// When each setting was last changed here.
+  final Map<String, int> _settingStamps = {};
+
+  /// The values as they were at the last save, so a change can be spotted
+  /// without every setter having to remember to say so.
+  Map<String, Object?> _publishedSettings = const {};
+
+  /// The settings worth carrying between a rider's devices.
+  ///
+  /// Deliberately not everything. The chosen input and output devices are
+  /// named after hardware that exists on one machine and not another, so
+  /// syncing them would have a laptop pointing at a microphone it does not
+  /// have. Nor the sync switch itself: turning it off on one device would
+  /// otherwise turn it off everywhere, which is the one thing that cannot be
+  /// undone remotely.
+  Map<String, Object?> _syncedSettings() => {
+    'noise': noise.index,
+    'micMode': micMode.index,
+    'inputGain': inputGainDbValue,
+    'outputVolume': outputVolumeDbValue,
+    'echoCancellation': echoCancellation,
+    'normaliseLevels': normaliseLevels,
+    'reverb': reverb,
+    'feedbackGuard': feedbackGuard.index,
+    'floatingWindow': _wantOverlay,
+    'locale': _locale?.languageCode,
+    'proxyEnabled': SystemProxy.instance.enabled,
+    'proxyManual': SystemProxy.instance.manualProxy,
+    'buttons': jsonEncode([for (final b in buttons.bindings) b.toJson()]),
+  };
+
+  /// Stamps whatever has changed since the last save.
+  ///
+  /// Done by comparing values rather than by every setter announcing itself:
+  /// there are a dozen of them, and the one that forgets is the one that
+  /// silently stops syncing.
+  void _stampChangedSettings() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final current = _syncedSettings();
+    for (final e in current.entries) {
+      if (_publishedSettings[e.key] != e.value) {
+        _settingStamps[e.key] = now;
+      }
+    }
+    _publishedSettings = current;
+  }
+
+  /// Adopts settings that arrived from another device.
+  ///
+  /// Only what actually differs, and without stamping: applying a change is
+  /// not making one, and treating it as one would have two devices handing the
+  /// same value back and forth with a fresh timestamp every round.
+  Future<void> _applySyncedSettings(Map<String, dynamic> merged) async {
+    final prefs = await SharedPreferences.getInstance();
+    var audioChanged = false;
+    var changed = false;
+
+    T? read<T>(String key) {
+      final entry = merged[key];
+      if (entry is! Map) return null;
+      final value = entry['v'];
+      return value is T ? value : null;
+    }
+
+    if (read<int>('noise') case final v?
+        when v >= 0 &&
+            v < NoiseSetting.values.length &&
+            NoiseSetting.values[v] != noise) {
+      noise = NoiseSetting.values[v];
+      await prefs.setInt(_prefsNoise, v);
+      changed = true;
+    }
+    if (read<int>('micMode') case final v?
+        when v >= 0 &&
+            v < MicMode.values.length &&
+            MicMode.values[v] != micMode) {
+      micMode = MicMode.values[v];
+      await prefs.setInt(_prefsMic, v);
+      changed = true;
+    }
+    if (read<double>('inputGain') case final v? when v != inputGainDbValue) {
+      inputGainDbValue = v;
+      await prefs.setDouble(_prefsInputGain, v);
+      audioChanged = true;
+    }
+    if (read<double>('outputVolume') case final v?
+        when v != outputVolumeDbValue) {
+      outputVolumeDbValue = v;
+      await prefs.setDouble(_prefsOutputVolume, v);
+      audioChanged = true;
+    }
+    if (read<bool>('echoCancellation') case final v?
+        when v != echoCancellation) {
+      echoCancellation = v;
+      await prefs.setBool(_prefsEchoCancellation, v);
+      audioChanged = true;
+    }
+    if (read<bool>('normaliseLevels') case final v? when v != normaliseLevels) {
+      normaliseLevels = v;
+      await prefs.setBool(_prefsNormaliseLevels, v);
+      audioChanged = true;
+    }
+    if (read<bool>('reverb') case final v? when v != reverb) {
+      reverb = v;
+      await prefs.setBool(_prefsReverb, v);
+      audioChanged = true;
+    }
+    if (read<int>('feedbackGuard') case final v?
+        when v >= 0 &&
+            v < FeedbackGuardMode.values.length &&
+            FeedbackGuardMode.values[v] != feedbackGuard) {
+      feedbackGuard = FeedbackGuardMode.values[v];
+      await prefs.setInt(_prefsFeedbackGuard, v);
+      audioChanged = true;
+    }
+    if (read<String>('locale') case final v?
+        when v != _locale?.languageCode &&
+            supportedLocales.any((l) => l.languageCode == v)) {
+      _locale = Locale(v);
+      await prefs.setString(_prefsLocale, v);
+      changed = true;
+    }
+    if (read<bool>('proxyEnabled') case final v?
+        when v != SystemProxy.instance.enabled) {
+      SystemProxy.instance.enabled = v;
+      await prefs.setBool(_prefsProxyEnabled, v);
+      changed = true;
+    }
+    if (read<String>('buttons') case final v?
+        when v != jsonEncode([for (final b in buttons.bindings) b.toJson()])) {
+      try {
+        buttons.setBindings([
+          for (final j in jsonDecode(v) as List)
+            ?ButtonBinding.fromJson(j as Map<String, dynamic>),
+        ]);
+        await prefs.setString(_prefsButtons, v);
+        changed = true;
+      } catch (_) {
+        // Bindings from a build that wrote them differently. Keeping ours is
+        // better than losing them to a parse error.
+      }
+    }
+
+    if (audioChanged) {
+      await _applyAudioSettings();
+      changed = true;
+    }
+    // Recorded as published so the next save does not read these back as local
+    // edits and stamp them all over again.
+    _publishedSettings = _syncedSettings();
+    if (changed) notifyListeners();
+  }
 
   /// Lifts passwords out of the list, to be stored somewhere better protected.
   ///

@@ -319,4 +319,62 @@ void main() {
       expect(snap([mine]).encode(), snap([roundTripped(mine)]).encode());
     });
   });
+
+  group('settings', () {
+    Map<String, dynamic> at(Object? v, int ago) => {'v': v, 'at': since(ago)};
+
+    test('the more recent change to each setting wins', () {
+      final merged = mergeSettings(
+        {'reverb': at(true, 100), 'noise': at(1, 900)},
+        {'reverb': at(false, 900), 'noise': at(3, 100)},
+      );
+      expect(merged['reverb']['v'], isTrue, reason: 'ours was newer');
+      expect(merged['noise']['v'], 3, reason: 'theirs was newer');
+    });
+
+    test('two devices changing different settings both keep theirs', () {
+      // The case a single timestamp for the whole block would throw away.
+      final merged = mergeSettings(
+        {'reverb': at(false, 100), 'micMode': at(0, 5000)},
+        {'reverb': at(true, 5000), 'micMode': at(2, 100)},
+      );
+      expect(merged['reverb']['v'], isFalse);
+      expect(merged['micMode']['v'], 2);
+    });
+
+    test('a setting only one side has heard of survives', () {
+      // Which is what makes an older build meeting a newer one harmless.
+      final merged = mergeSettings(
+        {'brandNew': at(7, 100)},
+        {'old': at(1, 100)},
+      );
+      expect(merged['brandNew']['v'], 7);
+      expect(merged['old']['v'], 1);
+    });
+
+    test('a dead heat keeps ours, so a device does not flap', () {
+      final merged = mergeSettings(
+        {'reverb': at(true, 500)},
+        {'reverb': at(false, 500)},
+      );
+      expect(merged['reverb']['v'], isTrue);
+    });
+
+    test('settings travel in the payload and survive the trip', () {
+      final s = SyncSnapshot(settings: {'reverb': at(true, 100)});
+      final back = SyncSnapshot.decode(s.encode())!;
+      expect(back.settings['reverb']['v'], isTrue);
+      expect(sameSnapshot(back, s), isTrue);
+    });
+
+    test('a differing setting counts as a difference worth publishing', () {
+      expect(
+        sameSnapshot(
+          SyncSnapshot(settings: {'reverb': at(true, 100)}),
+          SyncSnapshot(settings: {'reverb': at(false, 100)}),
+        ),
+        isFalse,
+      );
+    });
+  });
 }

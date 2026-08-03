@@ -90,6 +90,17 @@ class SettingsScreen extends StatelessWidget {
           // a release like any other key, so the limitation is Apple's alone.
           if (state.remoteButtonsAreTapsOnly) _Explainer(l.buttonsIosNote),
           const _ButtonBindings(),
+          if (state.buttons.captureState case final s?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                'Remote buttons: $s',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
 
           const Divider(height: 32),
           _SectionHeader(l.network),
@@ -742,15 +753,19 @@ class _OverlayTileState extends State<_OverlayTile> {
                   }
                 },
         ),
-        // A snackbar is gone in four seconds and this arrives after one. The
-        // reason a window did not appear has to stay on screen next to the
-        // switch that says it should have.
+        // A snackbar is gone in four seconds and this arrives after one. What
+        // the system said has to stay on screen beside the switch that asked
+        // it — and that includes success, because a window that opened and
+        // cannot be seen looks exactly like one that never opened.
         if (state.overlayStatus case final status?)
           Padding(
             padding: const EdgeInsets.fromLTRB(72, 0, 20, 10),
             child: Text(
               status,
-              style: const TextStyle(fontSize: 11, color: StatusColors.failed),
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
       ],

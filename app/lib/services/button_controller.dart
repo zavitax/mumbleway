@@ -174,13 +174,30 @@ class ButtonController {
   void _syncCapture() {
     final want =
         _learner != null || _bindings.any((b) => b.keyId >= _mediaKeyBase);
-    _channel.invokeMethod<bool>('captureMediaButtons', want).catchError((
-      Object _,
-    ) {
-      // No handler on this platform, which is every platform but iOS.
-      return false;
-    });
+    _channel
+        .invokeMethod<String>('captureMediaButtons', want)
+        .then((reply) {
+          captureState = reply;
+          onCaptureChanged?.call();
+        })
+        .catchError((Object _) {
+          // No handler here, which is every platform but iOS. Android reports
+          // the same buttons through its media session without being asked.
+          captureState = null;
+          onCaptureChanged?.call();
+          return null;
+        });
   }
+
+  /// What the platform said when last asked to listen for remote buttons.
+  ///
+  /// Null where the question does not apply. Shown in settings because a
+  /// platform that is not listening and a remote that is not sending look
+  /// identical from the outside — which is exactly how the last round went.
+  String? captureState;
+
+  /// Called when [captureState] changes, so the screen showing it can rebuild.
+  VoidCallback? onCaptureChanged;
 
   static const _mediaKeyBase = 0x7000_0000;
 

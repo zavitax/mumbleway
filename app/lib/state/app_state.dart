@@ -1318,6 +1318,7 @@ class AppState extends ChangeNotifier {
   List<ButtonBinding> get buttonBindings => buttons.bindings;
 
   void _setUpButtons(SharedPreferences prefs) {
+    buttons.onCaptureChanged = notifyListeners;
     buttons.onTransmit = setTransmit;
     buttons.onToggleMute = toggleMute;
     buttons.onToggleDeafen = toggleDeafen;

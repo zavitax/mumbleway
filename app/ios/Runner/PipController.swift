@@ -152,15 +152,16 @@ final class PipController: NSObject {
     guard !pipController.isPictureInPictureActive else { return }
 
     if pipController.isPictureInPicturePossible {
+      report("Asked the system to open the window…")
       pipController.startPictureInPicture()
-      report(nil)
       return
     }
     guard attemptsLeft > 0 else {
       // Reported rather than logged. This has been the failure three times
       // running, and a device build's log is not somewhere the person seeing
       // it can look.
-      report("The system never made Picture in Picture possible. The window may still appear when you leave the app.")
+      report(
+        "The system never allowed the window to open. It may still appear when you leave the app.")
       return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -648,6 +649,15 @@ extension PipController: AVPictureInPictureControllerDelegate {
       completionHandler: @escaping (Bool) -> Void
   ) {
     completionHandler(true)
+  }
+
+  func pictureInPictureControllerDidStartPictureInPicture(
+    _ pictureInPictureController: AVPictureInPictureController
+  ) {
+    // Deliberately said out loud on success as well as on failure. Up to now
+    // both outcomes looked the same from the outside — nothing on screen and
+    // nothing to read — and they need quite different fixes.
+    report("The system says the window is open.")
   }
 
   func pictureInPictureControllerDidStopPictureInPicture(

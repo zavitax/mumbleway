@@ -41,8 +41,12 @@ final class RemoteCommands {
       }
       switch call.method {
       case "captureMediaButtons":
-        self.setCapturing(call.arguments as? Bool ?? false)
-        result(true)
+        let want = call.arguments as? Bool ?? false
+        self.setCapturing(want)
+        // Echoed back so the settings screen can say whether the remote is
+        // being listened for at all. A silent failure here is indistinguishable
+        // from a remote that is not sending anything.
+        result(want ? "listening" : "idle")
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -110,9 +114,16 @@ final class RemoteCommands {
   /// mid-ride. The pair is still sent, because every binding downstream is
   /// written in terms of press and release.
   private func send(_ code: Int) {
-    for pressed in [true, false] {
-      channel.invokeMethod(
-        "mediaButton", arguments: ["keyCode": code, "pressed": pressed])
+    // A remote command handler is not guaranteed to run on the main thread,
+    // and a channel may only be spoken to from there. Called off it, the call
+    // does not fail loudly — it simply never arrives, which is exactly what a
+    // button that refuses to be learned looks like.
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      for pressed in [true, false] {
+        self.channel.invokeMethod(
+          "mediaButton", arguments: ["keyCode": code, "pressed": pressed])
+      }
     }
   }
 }

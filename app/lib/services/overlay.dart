@@ -91,6 +91,8 @@ class OverlayBridge {
           onToggleDeafen?.call();
         case 'hangup':
           onHangup?.call();
+        case 'pipStatus':
+          onStatus?.call(call.arguments as String?);
         case 'dismissed':
           // The user closed it from the platform side rather than from
           // settings, so the toggle has to follow.
@@ -103,6 +105,13 @@ class OverlayBridge {
 
   /// Called when the platform tore the window down on its own.
   VoidCallback? onDismissed;
+
+  /// Called with why the window did not appear, or null once it has.
+  ///
+  /// Everything that can go wrong does so well after [show] has returned, so
+  /// there is nothing for it to return and nowhere for the reason to land
+  /// unless the platform pushes it.
+  void Function(String? message)? onStatus;
 
   /// Whether the permission the window needs has been granted. Only Android
   /// gates this; elsewhere there is nothing to ask for.

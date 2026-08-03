@@ -1381,7 +1381,12 @@ class AppState extends ChangeNotifier {
       overlayEnabled = false;
       notifyListeners();
     };
+    overlay.onStatus = (message) {
+      overlayStatus = message;
+      notifyListeners();
+    };
 
+    overlayStatus = null;
     final error = await overlay.show();
     overlayEnabled = error == null;
     notifyListeners();
@@ -1390,7 +1395,15 @@ class AppState extends ChangeNotifier {
     return error;
   }
 
+  /// Why the floating window did not appear, or null.
+  ///
+  /// Separate from the error [enableOverlay] returns, because the interesting
+  /// failures happen after it has already reported success — the window is
+  /// requested, the system declines, and nothing was ever going to be thrown.
+  String? overlayStatus;
+
   Future<void> disableOverlay() async {
+    overlayStatus = null;
     await overlay.hide();
     overlayEnabled = false;
     notifyListeners();

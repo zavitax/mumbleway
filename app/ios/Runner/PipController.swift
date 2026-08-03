@@ -94,30 +94,31 @@ final class PipController: NSObject {
       let layer = AVSampleBufferDisplayLayer()
       layer.videoGravity = .resizeAspect
 
-      // The layer has to be in the hierarchy, sized and not hidden, or the
-      // system refuses to start Picture in Picture at all. Meeting that
-      // without the user ever seeing it is the whole difficulty, and it has
-      // been got wrong twice in both directions.
+      // The layer has to be in the hierarchy, in a window, sized, composited
+      // and not hidden, or the system will not start Picture in Picture. Doing
+      // all that without the user seeing it is the whole difficulty, and it
+      // has now been got wrong three ways.
       //
       // `hostView` is the FlutterView, and Flutter draws into that view's own
-      // layer rather than into a child — so any subview of it lands on top of
-      // the entire app. At the frame size this started with, that was an
-      // opaque rectangle across the top of the screen, covering the controls
-      // and immovable.
+      // layer rather than into a child — so any subview of it composites on
+      // top of the entire app, whatever index it is given. At full size and
+      // opaque, which is where this started, that was a rectangle across the
+      // top of the screen covering the controls.
       //
-      // Moving it behind the Flutter view fixed that and broke the feature: a
-      // source the system never composites is not one it will hand to the
-      // window, so the window stopped appearing. Occluded turns out to be as
-      // good as hidden.
+      // Behind the Flutter view instead: the overlay went, and so did the
+      // window. Clipped to a single point: same. Both suggest the system wants
+      // a source that is actually being composited at something like its real
+      // size, and neither an occluded one nor a one-pixel one qualifies.
       //
-      // So it stays where it is composited, and is clipped to a single point
-      // instead. The layer keeps its full geometry, which is what the system
-      // samples and what sizes the window; the view carrying it is one pixel
-      // in the corner and has nothing to cover.
-      let carrier = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+      // So: full size, in the place that works, and made invisible by opacity
+      // rather than by geometry or z-order. Two per cent is enough for the
+      // compositor to have work to do and far too little to see — the frame is
+      // dark and the app behind it is dark.
+      let carrier = UIView(
+        frame: CGRect(origin: .zero, size: Self.frameSize))
       carrier.isUserInteractionEnabled = false
-      carrier.clipsToBounds = true
-      layer.frame = CGRect(origin: .zero, size: Self.frameSize)
+      carrier.alpha = 0.02
+      layer.frame = carrier.bounds
       carrier.layer.addSublayer(layer)
       hostView.insertSubview(carrier, at: 0)
       carrierView = carrier
@@ -152,12 +153,14 @@ final class PipController: NSObject {
 
     if pipController.isPictureInPicturePossible {
       pipController.startPictureInPicture()
+      report(nil)
       return
     }
     guard attemptsLeft > 0 else {
-      // Not an error: automatic start still covers leaving the app, which is
-      // how the window normally appears.
-      NSLog("MumbleWay: Picture in Picture not ready; leaving it to auto-start.")
+      // Reported rather than logged. This has been the failure three times
+      // running, and a device build's log is not somewhere the person seeing
+      // it can look.
+      report("The system never made Picture in Picture possible. The window may still appear when you leave the app.")
       return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -183,6 +186,17 @@ final class PipController: NSObject {
   /// the source into view while restoring, which is where the stale meter came
   /// from. Flushing it and taking the view out of the hierarchy leaves nothing
   /// to show.
+  /// Sends a diagnosis to the app, to be shown beside the setting.
+  ///
+  /// Everything that can go wrong here goes wrong asynchronously, well after
+  /// `show()` has returned success, so there is nothing for the caller to
+  /// return and nowhere for a message to land unless it is pushed.
+  private func report(_ message: String?) {
+    DispatchQueue.main.async { [weak self] in
+      self?.channel.invokeMethod("pipStatus", arguments: message)
+    }
+  }
+
   func stop() {
     renderTimer?.invalidate()
     renderTimer = nil
@@ -625,7 +639,7 @@ extension PipController: AVPictureInPictureControllerDelegate {
     _ pictureInPictureController: AVPictureInPictureController,
     failedToStartPictureInPictureWithError error: Error
   ) {
-    NSLog("MumbleWay: Picture in Picture failed to start: \(error.localizedDescription)")
+    report("Picture in Picture failed to start: \(error.localizedDescription)")
   }
 
   func pictureInPictureController(

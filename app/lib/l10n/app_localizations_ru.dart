@@ -959,4 +959,11 @@ class LRu extends L {
   @override
   String get feedbackResidualBody =>
       'Ослабляет тем сильнее, чем больше звук похож на дальнюю сторону, а не на вас. Самый мягкий для живого разговора и самый слабый против настоящего воя.';
+
+  @override
+  String get serverBusyChange =>
+      'Отключитесь от этого сервера, прежде чем изменять или удалять его.';
+
+  @override
+  String get disconnectFirst => 'Сначала отключитесь';
 }

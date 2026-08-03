@@ -254,9 +254,8 @@ struct App {
     /// Maps a server id to its audio slot, which namespaces speaker streams.
     slots: Arc<Mutex<HashMap<String, u16>>>,
     /// Last status seen per server, so connection cues fire on transitions
-    /// rather than on every repeated status event. Held only to keep the map
-    /// alive alongside the task that reads it.
-    _last_status: Arc<Mutex<HashMap<String, ConnStatus>>>,
+    /// rather than on every repeated status event.
+    last_status: Arc<Mutex<HashMap<String, ConnStatus>>>,
     identity: Identity,
 }
 
@@ -603,7 +602,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         _audio: audio,
         outgoing,
         slots,
-        _last_status: last_status,
+        last_status,
         identity,
     });
     Ok(())
@@ -731,6 +730,11 @@ pub fn remove_server(server_id: String) -> anyhow::Result<()> {
         })
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     app.slots.lock().remove(&server_id);
+    // Forget the status too. The dialing cue repeats for as long as *any*
+    // entry here is in a waiting state, and a server removed mid-connect
+    // leaves one that nothing will ever move on — so the cue would carry on
+    // every few seconds with nothing connected and no way to stop it.
+    app.last_status.lock().remove(&server_id);
     Ok(())
 }
 

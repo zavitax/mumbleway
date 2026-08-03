@@ -1842,6 +1842,18 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.'**
   String get feedbackResidualBody;
+
+  /// No description provided for @serverBusyChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect from this server before changing or removing it.'**
+  String get serverBusyChange;
+
+  /// No description provided for @disconnectFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect first'**
+  String get disconnectFirst;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

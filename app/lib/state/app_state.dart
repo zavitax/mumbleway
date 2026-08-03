@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File, Platform;
 
@@ -46,7 +46,7 @@ class SavedServer {
   /// Unique key for this entry.
   ///
   /// Defaults to `host:port`, which is what the Rust core derives, but is
-  /// stored explicitly so the same server can be kept more than once — under a
+  /// stored explicitly so the same server can be kept more than once вЂ” under a
   /// different username or channel, say. Duplicates get a suffix.
   final String localId;
 
@@ -64,7 +64,7 @@ class SavedServer {
   ///
   /// Called at the few points where the user actually alters the list, rather
   /// than inside [copyWith], which is also used for edits that are nobody
-  /// else's business — and stamping those would have this device win conflicts
+  /// else's business вЂ” and stamping those would have this device win conflicts
   /// it took no part in.
   SavedServer stamped() =>
       copyWith(updatedAt: DateTime.now().millisecondsSinceEpoch);
@@ -194,6 +194,13 @@ class ServerRuntime {
       status == ConnStatus.connecting ||
       status == ConnStatus.handshaking ||
       status == ConnStatus.reconnecting;
+
+  /// Whether the saved entry behind this session may be edited or removed.
+  ///
+  /// Only when genuinely disconnected: never started, stopped, or given up.
+  /// Anything else has a session either running or trying to, and both editing
+  /// and removing pull that session out from under itself.
+  bool get isModifiable => !isLive && !isBusy;
 
   /// The channel we are currently in, if known.
   int? get currentChannelId {
@@ -435,7 +442,7 @@ class AppState extends ChangeNotifier {
   double get inputLevelDb => _inputLevelDb;
 
   /// Level voice activation opens at. Tracks the background noise, so it rises
-  /// with engine and wind — which is what makes it worth showing.
+  /// with engine and wind вЂ” which is what makes it worth showing.
   double get activationThresholdDb => _thresholdDb;
 
   /// Tracked background noise. The gap up to [activationThresholdDb] is the
@@ -692,13 +699,27 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  /// Whether a saved server may be edited or removed.
+  ///
+  /// Only while it is genuinely disconnected вЂ” idle, stopped, or given up.
+  /// Connection details are baked into a session when it is registered, so
+  /// changing them means tearing the session down and building another, which
+  /// from the rider's side is an unannounced drop in the middle of a
+  /// conversation. Removing one is worse: the session keeps running with
+  /// nothing in the list pointing at it. Both are avoided by declining until
+  /// the user has hung up, which is one deliberate tap away.
+  bool canModifyServer(String id) => runtimeFor(id).isModifiable;
+
   /// Replaces a saved server in place, keeping its key so the live session and
   /// anything pointing at it stay attached to the same entry.
   Future<String?> updateServer(SavedServer updated) async {
     final index = servers.indexWhere((e) => e.id == updated.id);
     if (index < 0) return 'That server is no longer in your list.';
+    // Checked here as well as in the UI: the editor can be left open across a
+    // reconnect, so the state that allowed it to open may be gone by the time
+    // it is saved.
+    if (!canModifyServer(updated.id)) return _strings.serverBusyChange;
 
-    final wasLive = runtimeFor(updated.id).isLive;
     servers[index] = updated.stamped();
     await _persist();
 
@@ -707,11 +728,10 @@ class AppState extends ChangeNotifier {
     try {
       await removeServer(serverId: updated.id);
     } catch (_) {
-      // Never registered, which is fine — _register puts it back either way.
+      // Never registered, which is fine вЂ” _register puts it back either way.
     }
     runtimes.remove(updated.id);
     await _register(updated);
-    if (wasLive) unawaited(connect(updated.id));
 
     notifyListeners();
     unawaited(refreshPings());
@@ -803,7 +823,7 @@ class AppState extends ChangeNotifier {
   /// Whether to use the platform's sync facility, where there is one.
   bool cloudSync = true;
 
-  /// Whether that facility is actually usable — signed in, and switched on for
+  /// Whether that facility is actually usable вЂ” signed in, and switched on for
   /// this app. Distinct from [cloudSync]: the user can want this and still not
   /// have it, and being told which is which is the difference between a
   /// setting that looks broken and one that explains itself.
@@ -891,8 +911,8 @@ class AppState extends ChangeNotifier {
   /// Reconciles this device's list with the cloud's, both ways.
   ///
   /// Deliberately one path for both directions. Reading and writing are the
-  /// same operation seen from either end — merge, keep what came of it, and
-  /// publish it if it differs from what was there — and splitting them into a
+  /// same operation seen from either end вЂ” merge, keep what came of it, and
+  /// publish it if it differs from what was there вЂ” and splitting them into a
   /// download and an upload invites the two to disagree about what a merge
   /// means.
   Future<bool> syncNow() async {
@@ -1107,7 +1127,7 @@ class AppState extends ChangeNotifier {
   /// Lifts passwords out of the list, to be stored somewhere better protected.
   ///
   /// Which store that is, and why it is a different one, is the platform's
-  /// business — see `shared/CloudStore.swift`. All that matters here is that a
+  /// business вЂ” see `shared/CloudStore.swift`. All that matters here is that a
   /// password never goes into the payload.
   static (SyncSnapshot, Map<String, String>) _withoutPasswords(SyncSnapshot s) {
     final secrets = <String, String>{};
@@ -1161,7 +1181,7 @@ class AppState extends ChangeNotifier {
       try {
         await removeServer(serverId: id);
       } catch (_) {
-        // Never registered — only the first few entries ever are.
+        // Never registered вЂ” only the first few entries ever are.
       }
     }
 
@@ -1176,7 +1196,7 @@ class AppState extends ChangeNotifier {
       if (old.sameConnection(s)) continue;
 
       // But never mid-call. A conversation is not worth interrupting for a
-      // detail somebody altered on a laptop, and the change is not urgent —
+      // detail somebody altered on a laptop, and the change is not urgent вЂ”
       // it applies at the next connect, which is when it first matters.
       //
       // This is also the backstop against a merge that keeps changing its
@@ -1302,7 +1322,10 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> forgetServer(String id) async {
+  /// Removes a server from the list. Returns why not, when it declines.
+  Future<String?> forgetServer(String id) async {
+    if (!canModifyServer(id)) return _strings.serverBusyChange;
+
     // Recorded before the entry goes, so the other devices are told it was
     // deleted rather than left to notice it missing and put it back.
     _deleted[id] = DateTime.now().millisecondsSinceEpoch;
@@ -1313,6 +1336,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     await _persist();
     notifyListeners();
+    return null;
   }
 
   Future<void> connect(String id) async {
@@ -1353,7 +1377,7 @@ class AppState extends ChangeNotifier {
       // Stamped, because this is a change to the entry like any other. Without
       // it the edit carries the old timestamp, ties with the copy in the cloud
       // that predates it, and loses to whatever the tie-break happens to
-      // prefer — so the trust the user just granted gets rolled back.
+      // prefer вЂ” so the trust the user just granted gets rolled back.
       servers[i] = servers[i].copyWith(certFingerprint: fp).stamped();
       await _persist();
     }
@@ -1534,8 +1558,8 @@ class AppState extends ChangeNotifier {
   /// Which guard is applied to what the echo canceller could not remove.
   ///
   /// Off by default: cancellation alone is enough on most headsets, and every
-  /// one of these costs something — half duplex, a hard cut, or a quieter
-  /// talker — which is not worth paying until there is a fault to fix.
+  /// one of these costs something вЂ” half duplex, a hard cut, or a quieter
+  /// talker вЂ” which is not worth paying until there is a fault to fix.
   FeedbackGuardMode feedbackGuard = FeedbackGuardMode.off;
 
   Future<void> updateFeedbackGuard(FeedbackGuardMode mode) async {
@@ -1617,7 +1641,7 @@ class AppState extends ChangeNotifier {
   ///
   /// On by default and remembered between launches. It is the control a rider
   /// on a bike depends on and the one they are least able to go and switch on
-  /// again, so it defaults to present rather than to absent — and having to
+  /// again, so it defaults to present rather than to absent вЂ” and having to
   /// turn it on after every launch made it look as though it kept failing.
   bool overlayEnabled = false;
   String _lastOverlaySignature = '';
@@ -1648,7 +1672,7 @@ class AppState extends ChangeNotifier {
     overlay.onDismissed = () {
       // Deliberately does not turn the setting off. The window closes whenever
       // the app comes back to the front, which is not the user saying they no
-      // longer want it — and having the switch flip itself off every time they
+      // longer want it вЂ” and having the switch flip itself off every time they
       // looked at the app made it read as broken.
       notifyListeners();
     };
@@ -1671,7 +1695,7 @@ class AppState extends ChangeNotifier {
   /// Why the floating window did not appear, or null.
   ///
   /// Separate from the error [enableOverlay] returns, because the interesting
-  /// failures happen after it has already reported success — the window is
+  /// failures happen after it has already reported success вЂ” the window is
   /// requested, the system declines, and nothing was ever going to be thrown.
   String? overlayStatus;
 
@@ -1706,7 +1730,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// Pushes the call state onto the floating window, skipping the call when
-  /// nothing visible has changed — this runs on every roster update.
+  /// nothing visible has changed вЂ” this runs on every roster update.
   void _pushOverlay() {
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
@@ -1832,7 +1856,7 @@ class AppState extends ChangeNotifier {
 
     // Only compare against a roster that includes us. The server sends state
     // for individual users as well as whole rosters, and both arrive as the
-    // same event — so a partial one replaced the list with a single person,
+    // same event вЂ” so a partial one replaced the list with a single person,
     // making everybody else appear to leave and then arrive again a moment
     // later. With three devices on one server that produced a cue every few
     // seconds, which is the opposite of the point.
@@ -1901,10 +1925,10 @@ class AppState extends ChangeNotifier {
   ///
   /// * **`Accept-Encoding: gzip` is mandatory.** The endpoint answers
   ///   `501 Not Implemented` with an empty body to any client that does not
-  ///   advertise gzip — which looks exactly like the service being down. Dart's
+  ///   advertise gzip вЂ” which looks exactly like the service being down. Dart's
   ///   `HttpClient` sends it by default, and it is requested explicitly here so
   ///   that stays true if the client is ever swapped out.
-  /// * **`version` is required** — without it the endpoint also returns 501.
+  /// * **`version` is required** вЂ” without it the endpoint also returns 501.
   ///
   /// [usedFallback] reports whether the network request failed and a small
   /// built-in list was substituted.
@@ -2058,7 +2082,7 @@ class AppState extends ChangeNotifier {
         }
         // A speaker who stops is reaped from the mixer and simply stops being
         // reported, so without this their meter freezes at whatever it last
-        // showed — a full bar for someone who went quiet a minute ago.
+        // showed вЂ” a full bar for someone who went quiet a minute ago.
         for (final entry in runtimes.entries) {
           entry.value.decayUnreported(reported[entry.key] ?? const <int>{});
         }

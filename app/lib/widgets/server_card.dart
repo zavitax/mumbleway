@@ -205,13 +205,24 @@ class ServerCard extends StatelessWidget {
                             }
                           },
                           itemBuilder: (_) => [
+                            // Editing and removing are disabled unless the
+                            // server is genuinely disconnected: both rebuild or
+                            // discard the session underneath, which mid-ride
+                            // reads as the call simply dropping. Shown greyed
+                            // with the reason rather than hidden, so the menu
+                            // does not change shape depending on state.
                             PopupMenuItem(
                               value: 'edit',
+                              enabled: state.canModifyServer(server.id),
                               child: ListTile(
                                 dense: true,
+                                enabled: state.canModifyServer(server.id),
                                 contentPadding: EdgeInsets.zero,
                                 leading: const Icon(Icons.edit_outlined),
                                 title: Text(l.edit),
+                                subtitle: state.canModifyServer(server.id)
+                                    ? null
+                                    : Text(l.disconnectFirst),
                               ),
                             ),
                             PopupMenuItem(
@@ -244,19 +255,32 @@ class ServerCard extends StatelessWidget {
                             const PopupMenuDivider(),
                             PopupMenuItem(
                               value: 'remove',
+                              enabled: state.canModifyServer(server.id),
                               child: ListTile(
                                 dense: true,
+                                enabled: state.canModifyServer(server.id),
                                 contentPadding: EdgeInsets.zero,
-                                leading: const Icon(
+                                leading: Icon(
                                   Icons.delete_outline,
-                                  color: StatusColors.failed,
+                                  // Only red while it can actually be used;
+                                  // a disabled control in a warning colour
+                                  // still reads as "danger here", which is the
+                                  // wrong thing to say about an inert item.
+                                  color: state.canModifyServer(server.id)
+                                      ? StatusColors.failed
+                                      : null,
                                 ),
                                 title: Text(
                                   l.remove,
-                                  style: const TextStyle(
-                                    color: StatusColors.failed,
-                                  ),
+                                  style: state.canModifyServer(server.id)
+                                      ? const TextStyle(
+                                          color: StatusColors.failed,
+                                        )
+                                      : null,
                                 ),
+                                subtitle: state.canModifyServer(server.id)
+                                    ? null
+                                    : Text(l.disconnectFirst),
                               ),
                             ),
                           ],
@@ -337,6 +361,9 @@ class ServerCard extends StatelessWidget {
 
   Future<void> _confirmForget(BuildContext context, AppState state) async {
     final l = L.of(context);
+    // Captured before the dialog, so the refusal can still be reported after
+    // the await without reaching back through a context that may be gone.
+    final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
@@ -354,7 +381,9 @@ class ServerCard extends StatelessWidget {
         ],
       ),
     );
-    if (ok == true) await state.forgetServer(server.id);
+    if (ok != true) return;
+    final error = await state.forgetServer(server.id);
+    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
   }
 }
 

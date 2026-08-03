@@ -336,5 +336,8 @@
   "feedbackHowl": "Cut only when a howl builds",
   "feedbackHowlBody": "Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed.",
   "feedbackResidual": "Suppress whatever echo cancellation missed",
-  "feedbackResidualBody": "Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl."
+  "feedbackResidualBody": "Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.",
+
+  "serverBusyChange": "Disconnect from this server before changing or removing it.",
+  "disconnectFirst": "Disconnect first"
 }

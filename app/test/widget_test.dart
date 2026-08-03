@@ -562,4 +562,36 @@ void main() {
       );
     });
   });
+
+  test('a server may only be edited or removed while truly disconnected', () {
+    // Editing rebuilds the session from new details and removing discards it,
+    // so either one performed on a server that is up — or on its way up — is
+    // an unexplained drop mid-conversation. The states in between matter as
+    // much as the obvious one: a reconnecting session is still trying, and
+    // pulling its entry means it retries against something that is gone.
+    final rt = ServerRuntime();
+
+    const allowed = {
+      ConnStatus.idle,
+      ConnStatus.disconnected,
+      ConnStatus.failed,
+    };
+    for (final status in ConnStatus.values) {
+      rt.status = status;
+      expect(
+        rt.isModifiable,
+        allowed.contains(status),
+        reason: 'wrong answer for $status',
+      );
+    }
+
+    // Guards against the set being widened by accident later: every status
+    // that is not settled has to stay barred, whatever it gets called.
+    for (final status in ConnStatus.values) {
+      rt.status = status;
+      if (rt.isLive || rt.isBusy) {
+        expect(rt.isModifiable, isFalse, reason: '$status is not settled');
+      }
+    }
+  });
 }

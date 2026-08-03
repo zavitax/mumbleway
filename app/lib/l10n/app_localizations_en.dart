@@ -952,4 +952,11 @@ class LEn extends L {
   @override
   String get feedbackResidualBody =>
       'Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.';
+
+  @override
+  String get serverBusyChange =>
+      'Disconnect from this server before changing or removing it.';
+
+  @override
+  String get disconnectFirst => 'Disconnect first';
 }

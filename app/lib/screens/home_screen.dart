@@ -156,13 +156,6 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      floatingActionButton: state.servers.isEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () => _addServer(context),
-              icon: const Icon(Icons.add),
-              label: Text(l.addServer),
-            )
-          : null,
     );
   }
 
@@ -341,6 +334,18 @@ class _EmptyState extends StatelessWidget {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+            ),
+            const SizedBox(height: 24),
+            // In the flow rather than floating over it. A floating button is
+            // positioned against the window, not against the content, so it sat
+            // on top of the talk panel — covering the one control that has to
+            // be reachable without looking. Inline, it is in the same place the
+            // "add another" button appears once there is a list, so the two
+            // states do not move it around.
+            FilledButton.icon(
+              onPressed: () => HomeScreen._addServer(context),
+              icon: const Icon(Icons.add),
+              label: Text(L.of(context).addServer),
             ),
           ],
         ),

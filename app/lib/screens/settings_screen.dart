@@ -90,18 +90,7 @@ class SettingsScreen extends StatelessWidget {
           // a release like any other key, so the limitation is Apple's alone.
           if (state.remoteButtonsAreTapsOnly) _Explainer(l.buttonsIosNote),
           const _ButtonBindings(),
-          if (state.buttons.captureState case final s?)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                'Remote buttons: $s'
-                '${state.buttons.lastMediaKey == null ? '' : ' · last received: ${state.buttons.lastMediaKey}'}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
+          const _ButtonDiagnostics(),
 
           const Divider(height: 32),
           _SectionHeader(l.network),
@@ -534,6 +523,38 @@ class _LabelledSlider extends StatelessWidget {
 /// keys: Bluetooth remotes report all sorts of codes, including ones Flutter
 /// has no name for, and the only reliable way to know what a given remote
 /// sends is to press it.
+/// What the app is actually hearing from a remote.
+///
+/// Two separate questions that look identical when a button does nothing: is
+/// the platform listening for media buttons, and does anything — a media
+/// button or an ordinary key — ever arrive. Answering both on screen is
+/// quicker than another build.
+class _ButtonDiagnostics extends StatelessWidget {
+  const _ButtonDiagnostics();
+
+  @override
+  Widget build(BuildContext context) {
+    final buttons = AppStateScope.of(context).buttons;
+    final parts = <String>[
+      if (buttons.captureState case final s?) 'remote buttons: $s',
+      if (buttons.lastMediaKey case final k?) 'last remote button: $k',
+      if (buttons.lastKey case final k?) 'last key: $k',
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Text(
+        parts.join('  ·  '),
+        style: TextStyle(
+          fontSize: 11,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
 class _ButtonBindings extends StatefulWidget {
   const _ButtonBindings();
 

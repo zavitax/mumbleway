@@ -258,7 +258,12 @@ final class PipController: NSObject {
   }
 
   func update(_ next: CallSnapshot) {
+    let wasTransmitting = snapshot.transmitting
     snapshot = next
+    // The system caches the answer above and only asks again when told to.
+    if next.transmitting != wasTransmitting {
+      pipController?.invalidatePlaybackState()
+    }
     render()
   }
 
@@ -639,7 +644,19 @@ extension PipController: AVPictureInPictureSampleBufferPlaybackDelegate {
   func pictureInPictureControllerIsPlaybackPaused(
     _ pictureInPictureController: AVPictureInPictureController
   ) -> Bool {
-    !snapshot.transmitting
+    // Never paused until the window exists. iOS does not open Picture in
+    // Picture for content it believes is paused, and it declines in complete
+    // silence — no willStart, no failedToStart, nothing at all. Which is what
+    // was happening: the switch is turned on while nobody is talking, so this
+    // answered "paused", and the request was dropped on the floor.
+    //
+    // The state was never the system's business anyway. Whether a rider is
+    // transmitting is drawn into the frame, in a flashing indicator that says
+    // so far more plainly than the shape of a button.
+    guard pictureInPictureController.isPictureInPictureActive else {
+      return false
+    }
+    return !snapshot.transmitting
   }
 
   func pictureInPictureController(

@@ -204,6 +204,15 @@ class ButtonController {
   bool _handleKeyEvent(KeyEvent event) {
     final id = event.logicalKey.keyId;
 
+    // Recorded whether or not it is bound, and whether or not anything is
+    // being learned. A remote whose buttons are ordinary keys and a remote
+    // that reaches the app not at all look the same from the outside, and
+    // telling them apart decides where to look next.
+    if (event is KeyDownEvent) {
+      lastKey = _describe(event.logicalKey);
+      onCaptureChanged?.call();
+    }
+
     if (_learner != null) {
       if (event is KeyDownEvent) {
         final learner = _learner!;
@@ -240,6 +249,9 @@ class ButtonController {
 
   /// The most recent remote button the platform passed up, for diagnosis.
   String? lastMediaKey;
+
+  /// The most recent ordinary key press seen, for the same reason.
+  String? lastKey;
 
   /// Maps an Android media key code into a key id that cannot collide with a
   /// real `LogicalKeyboardKey`.
@@ -298,6 +310,8 @@ class ButtonController {
       86: 'Stop',
       87: 'Next track',
       88: 'Previous track',
+      89: 'Rewind',
+      90: 'Fast forward',
       126: 'Play',
       127: 'Pause',
       24: 'Volume up',

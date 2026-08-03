@@ -30,6 +30,8 @@ final class RemoteCommands {
     static let previous = 88
     static let play = 126
     static let pause = 127
+    static let rewind = 89
+    static let fastForward = 90
   }
 
   init(messenger: FlutterBinaryMessenger) {
@@ -75,6 +77,14 @@ final class RemoteCommands {
       (centre.stopCommand, Code.stop),
       (centre.nextTrackCommand, Code.next),
       (centre.previousTrackCommand, Code.previous),
+      // A handlebar remote does not necessarily send "next track". Several
+      // send scan or skip instead, which arrive as entirely different
+      // commands, and one that is not registered is one that silently does
+      // nothing. Cheap to take them all.
+      (centre.seekForwardCommand, Code.fastForward),
+      (centre.seekBackwardCommand, Code.rewind),
+      (centre.skipForwardCommand, Code.fastForward),
+      (centre.skipBackwardCommand, Code.rewind),
     ]
 
     guard want else {
@@ -85,6 +95,10 @@ final class RemoteCommands {
       MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
       return
     }
+
+    // Both skip commands refuse to fire without an interval to skip by.
+    centre.skipForwardCommand.preferredIntervals = [15]
+    centre.skipBackwardCommand.preferredIntervals = [15]
 
     for (command, code) in commands {
       command.isEnabled = true

@@ -640,22 +640,18 @@ class LEn extends L {
   String get syncTitle => 'Sync';
 
   @override
-  String get syncServers => 'Sync servers across devices';
+  String get syncServers => 'Sync servers and settings across devices';
 
   @override
   String get syncBodyICloud =>
-      'Your server list travels through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.';
+      'Your server list and your settings travel through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.';
 
   @override
   String get syncSignedOut => 'Sign in to iCloud on this device to use this.';
 
   @override
   String get syncBodyAndroid =>
-      'Your server list rides along with Android\'s backup, so it returns when you set up a new phone. It does not keep two phones in step while you are using them.';
-
-  @override
-  String get syncBodyNone =>
-      'Windows retired the place apps used to sync settings, and nothing replaced it. Export and Import still move your servers between machines — save the file into OneDrive and it does much the same job.';
+      'Your servers and settings ride along with Android\'s backup, so they return when you set up a new phone. It does not keep two phones in step while you are using them.';
 
   @override
   String get syncNow => 'Sync now';

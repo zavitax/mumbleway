@@ -139,9 +139,16 @@ class SettingsScreen extends StatelessWidget {
           _Explainer(l.networkBody),
           const _ProxyTile(),
 
-          const Divider(height: 32),
-          _SectionHeader(l.syncTitle),
-          const _SyncTile(),
+          // Only where something can actually carry the data to another
+          // device. On Windows there is nothing behind this at all, and a
+          // permanently greyed row explaining an absence is worse than no row:
+          // it reads as a feature that is broken rather than one that was never
+          // offered, and it is the sort of thing a user taps at repeatedly.
+          if (state.cloudKind != CloudKind.none) ...[
+            const Divider(height: 32),
+            _SectionHeader(l.syncTitle),
+            const _SyncTile(),
+          ],
 
           const Divider(height: 32),
           _SectionHeader(l.identity),
@@ -353,13 +360,11 @@ class _SyncTile extends StatelessWidget {
 
     switch (state.cloudKind) {
       case CloudKind.none:
-        return ListTile(
-          leading: const Icon(Icons.cloud_off),
-          title: Text(l.syncServers),
-          subtitle: Text(l.syncBodyNone),
-          isThreeLine: true,
-          enabled: false,
-        );
+        // Unreachable: the caller leaves the whole section out rather than
+        // showing a row about something this platform cannot do. Kept because
+        // the switch must be exhaustive, and drawing nothing is the right
+        // answer if it is ever reached by another route.
+        return const SizedBox.shrink();
 
       case CloudKind.androidBackup:
         // No switch: this is Android's setting, not ours, and offering a

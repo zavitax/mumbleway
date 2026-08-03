@@ -1270,13 +1270,13 @@ abstract class L {
   /// No description provided for @syncServers.
   ///
   /// In en, this message translates to:
-  /// **'Sync servers across devices'**
+  /// **'Sync servers and settings across devices'**
   String get syncServers;
 
   /// No description provided for @syncBodyICloud.
   ///
   /// In en, this message translates to:
-  /// **'Your server list travels through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.'**
+  /// **'Your server list and your settings travel through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.'**
   String get syncBodyICloud;
 
   /// No description provided for @syncSignedOut.
@@ -1288,14 +1288,8 @@ abstract class L {
   /// No description provided for @syncBodyAndroid.
   ///
   /// In en, this message translates to:
-  /// **'Your server list rides along with Android\'s backup, so it returns when you set up a new phone. It does not keep two phones in step while you are using them.'**
+  /// **'Your servers and settings ride along with Android\'s backup, so they return when you set up a new phone. It does not keep two phones in step while you are using them.'**
   String get syncBodyAndroid;
-
-  /// No description provided for @syncBodyNone.
-  ///
-  /// In en, this message translates to:
-  /// **'Windows retired the place apps used to sync settings, and nothing replaced it. Export and Import still move your servers between machines — save the file into OneDrive and it does much the same job.'**
-  String get syncBodyNone;
 
   /// No description provided for @syncNow.
   ///

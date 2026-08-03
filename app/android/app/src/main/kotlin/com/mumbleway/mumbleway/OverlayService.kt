@@ -51,6 +51,9 @@ data class OverlayState(
     /** 0 idle, 1 well, 2 struggling, 3 lost. Colour only; no words. */
     val connectionLevel: Int = 0,
     val moreSpeakers: String = "",
+    /// How many others are within earshot across every server, or that nobody
+    /// is. Shown only while the channel is silent.
+    val othersOnline: String = "",
     val transmitting: Boolean = false,
     val connected: Boolean = false,
     val muted: Boolean = false,
@@ -719,9 +722,18 @@ class OverlayService : Service() {
                 label(
                     canvas,
                     if (state.connected) phrase("pipNobodySpeaks", "Nobody speaks") else "—",
-                    (left + right) / 2f, dp(78).toFloat(), 12,
+                    (left + right) / 2f, dp(72).toFloat(), 12,
                     Color.argb(115, 255, 255, 255), align = Paint.Align.CENTER,
                 )
+                // Underneath, because silence on its own is ambiguous: it says
+                // nobody is talking, not whether anybody is there to talk.
+                if (state.othersOnline.isNotEmpty()) {
+                    label(
+                        canvas, ellipsise(state.othersOnline, right - left),
+                        (left + right) / 2f, dp(90).toFloat(), 10,
+                        Color.argb(82, 255, 255, 255), align = Paint.Align.CENTER,
+                    )
+                }
                 return
             }
 

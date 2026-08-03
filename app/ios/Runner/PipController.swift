@@ -31,6 +31,10 @@ struct CallSnapshot {
   /// 0 idle, 1 well, 2 struggling, 3 lost. Colour only; no words.
   var connectionLevel = 0
   var moreSpeakersText = ""
+  /// How many others are within earshot across every server, or that nobody
+  /// is. Only shown when the channel is silent, where it answers the question
+  /// silence raises: quiet company, or nobody at all.
+  var othersOnlineText = ""
   var connectedCount = 0
   var reconnectingCount = 0
   var failedCount = 0
@@ -724,6 +728,18 @@ final class PipController: NSObject {
         in: CGRect(x: inset.minX, y: 122, width: inset.width, height: 22),
         size: 14, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
         alignment: .center)
+
+      // Underneath, because silence on its own is ambiguous: it says nobody is
+      // talking, not whether anybody is there to talk. Quieter and smaller than
+      // the line above it, being the answer to a question rather than the
+      // thing being reported.
+      if !snapshot.othersOnlineText.isEmpty {
+        drawText(
+          snapshot.othersOnlineText,
+          in: CGRect(x: inset.minX, y: 148, width: inset.width, height: 18),
+          size: 12, weight: .medium, colour: UIColor(white: 1, alpha: 0.32),
+          alignment: .center)
+      }
       return
     }
 

@@ -212,6 +212,10 @@ class OverlayBridge {
     required String connectionText,
     required int connectionLevel,
     required String moreSpeakers,
+
+    /// "3 other people online", or that nobody else is. Built in Dart, where
+    /// a number and the words agreeing with it live together.
+    required String othersOnline,
     required int connectedCount,
     required int reconnectingCount,
     required int failedCount,
@@ -241,6 +245,7 @@ class OverlayBridge {
         'connectionText': connectionText,
         'connectionLevel': connectionLevel,
         'moreSpeakers': moreSpeakers,
+        'othersOnline': othersOnline,
         'connectedCount': connectedCount,
         'reconnectingCount': reconnectingCount,
         'failedCount': failedCount,

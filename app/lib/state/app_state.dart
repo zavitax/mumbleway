@@ -1803,12 +1803,30 @@ class AppState extends ChangeNotifier {
       MicMode.voiceActivity => connected && !_muted && _speaking,
       MicMode.continuous => connected && !_muted,
     };
+    // How many other people are within earshot, across every server at once.
+    //
+    // Silence on the right half is ambiguous: nobody is talking, but the rider
+    // cannot tell whether that means the channel is quiet or that they are on
+    // their own — and those call for quite different reactions at 100 km/h.
+    // Summed across servers because from the rider's side it is one
+    // conversation, however many connections carry it.
+    final otherCount = connected
+        ? runtimes.values
+              .where((r) => r.isLive)
+              .fold(0, (sum, r) => sum + r.channelPeers.length)
+        : 0;
+    final othersOnline = !connected
+        ? ''
+        : otherCount > 0
+        ? l.pipOthersOnline(otherCount)
+        : l.pipNobodyElse;
+
     // The level arrives ten times a second and never repeats exactly, so it is
     // rounded to whole decibels before being compared. Without that the
     // signature always differs and the check stops filtering anything.
     final signature =
         '${speakers.map((s) => '${s.name}:${s.levelDb.round()}').join(',')}'
-        '|$connectionText|$_transmitting|$live|$micModeCode|$connectedCount|$reconnectingCount|$failedCount|$_muted'
+        '|$connectionText|$othersOnline|$_transmitting|$live|$micModeCode|$connectedCount|$reconnectingCount|$failedCount|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
@@ -1826,6 +1844,7 @@ class AppState extends ChangeNotifier {
         moreSpeakers: speakers.length > 4
             ? l.pipMoreSpeakers(speakers.length - 4)
             : '',
+        othersOnline: othersOnline,
         connectedCount: connectedCount,
         reconnectingCount: reconnectingCount,
         failedCount: failedCount,

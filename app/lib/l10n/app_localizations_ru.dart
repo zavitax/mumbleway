@@ -922,6 +922,22 @@ class LRu extends L {
   }
 
   @override
+  String pipOthersOnline(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'ещё $count человека в сети',
+      many: 'ещё $count человек в сети',
+      few: 'ещё $count человека в сети',
+      one: 'ещё $count человек в сети',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get pipNobodyElse => 'Больше здесь никого нет';
+
+  @override
   String get feedbackGuard => 'Подавление обратной связи';
 
   @override

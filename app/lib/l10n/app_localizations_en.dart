@@ -915,6 +915,20 @@ class LEn extends L {
   }
 
   @override
+  String pipOthersOnline(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count other people online',
+      one: '1 other person online',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get pipNobodyElse => 'Nobody else is here now';
+
+  @override
   String get feedbackGuard => 'Feedback suppression';
 
   @override

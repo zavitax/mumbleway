@@ -1777,6 +1777,18 @@ abstract class L {
   /// **'+{count} more'**
   String pipMoreSpeakers(int count);
 
+  /// No description provided for @pipOthersOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 other person online} other{{count} other people online}}'**
+  String pipOthersOnline(int count);
+
+  /// No description provided for @pipNobodyElse.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody else is here now'**
+  String get pipNobodyElse;
+
   /// No description provided for @feedbackGuard.
   ///
   /// In en, this message translates to:

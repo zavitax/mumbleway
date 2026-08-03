@@ -110,6 +110,7 @@ import UIKit
         snapshot.connectionText = arguments["connectionText"] as? String ?? ""
         snapshot.connectionLevel = arguments["connectionLevel"] as? Int ?? 0
         snapshot.moreSpeakersText = arguments["moreSpeakers"] as? String ?? ""
+        snapshot.othersOnlineText = arguments["othersOnline"] as? String ?? ""
         snapshot.micMode = arguments["micMode"] as? Int ?? 0
         snapshot.live = arguments["live"] as? Bool ?? false
         snapshot.connectedCount = arguments["connectedCount"] as? Int ?? 0

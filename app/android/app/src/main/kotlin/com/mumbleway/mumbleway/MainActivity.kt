@@ -215,6 +215,7 @@ class MainActivity : FlutterActivity() {
                             connectionText = call.argument<String>("connectionText") ?: "",
                             connectionLevel = call.argument<Int>("connectionLevel") ?: 0,
                             moreSpeakers = call.argument<String>("moreSpeakers") ?: "",
+                            othersOnline = call.argument<String>("othersOnline") ?: "",
                             transmitting = call.argument<Boolean>("transmitting") ?: false,
                             connected = call.argument<Boolean>("connected") ?: false,
                             muted = call.argument<Boolean>("muted") ?: false,

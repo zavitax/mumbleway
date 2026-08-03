@@ -89,7 +89,11 @@ import UIKit
           return
         }
         var snapshot = CallSnapshot()
-        snapshot.names = arguments["names"] as? [String] ?? []
+        snapshot.speakers = (arguments["speakers"] as? [[String: Any]] ?? []).map {
+          Speaker(
+            name: $0["name"] as? String ?? "",
+            level: $0["level"] as? Double ?? 0)
+        }
         snapshot.transmitting = arguments["transmitting"] as? Bool ?? false
         snapshot.connected = arguments["connected"] as? Bool ?? false
         snapshot.muted = arguments["muted"] as? Bool ?? false

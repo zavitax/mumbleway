@@ -6,8 +6,16 @@ import UIKit
 
 /// The call state the floating window draws. Mirrored from Dart; this side
 /// never decides any of it, so that the window and the app can never disagree.
+/// One voice coming in, and how loud it is.
+struct Speaker {
+  var name: String
+  /// Already normalised to 0...1 by the Dart side, on the same scale as every
+  /// other meter in the app.
+  var level: Double
+}
+
 struct CallSnapshot {
-  var names: [String] = []
+  var speakers: [Speaker] = []
   var transmitting = false
   var connected = false
   var muted = false
@@ -59,8 +67,6 @@ final class PipController: NSObject {
   private var renderTimer: Timer?
 
   private var snapshot = CallSnapshot()
-  /// Frame at which an armed hang-up stops counting, or nil when not armed.
-  private var hangupArmedUntil: UInt64?
 
   /// 16:9 at a size that stays legible when the system shrinks the window.
   private static let frameSize = CGSize(width: 480, height: 270)
@@ -200,7 +206,6 @@ final class PipController: NSObject {
   func stop() {
     renderTimer?.invalidate()
     renderTimer = nil
-    hangupArmedUntil = nil
 
     if let pipController {
       pipController.canStartPictureInPictureAutomaticallyFromInline = false
@@ -230,11 +235,6 @@ final class PipController: NSObject {
       pipController?.invalidatePlaybackState()
     }
     render()
-  }
-
-  private var hangupArmed: Bool {
-    guard let hangupArmedUntil else { return false }
-    return frame < hangupArmedUntil
   }
 
   // MARK: - Frame production
@@ -382,11 +382,26 @@ final class PipController: NSObject {
     UIColor(red: 0.063, green: 0.094, blue: 0.133, alpha: 1).setFill()
     context.fill(bounds)
 
-    drawOnAir(in: bounds)
-    drawTitle(in: bounds)
-    drawBadges(in: bounds)
-    drawMeter(in: bounds)
-    drawSpeakers(in: bounds)
+    // Two halves, because the window answers two questions that have nothing
+    // to do with each other: what this phone is doing with the microphone, and
+    // who else is talking. Stacked, they read as one list and the eye has to
+    // work out which line belongs to which. Side by side, each half is glanced
+    // at rather than read — which is all a rider has time for.
+    let divider = (bounds.width * 0.52).rounded()
+    let left = CGRect(x: 0, y: 0, width: divider, height: bounds.height)
+    let right = CGRect(
+      x: divider, y: 0, width: bounds.width - divider, height: bounds.height)
+
+    UIColor(white: 1, alpha: 0.10).setFill()
+    UIBezierPath(rect: CGRect(x: divider, y: 22, width: 1, height: bounds.height - 44))
+      .fill()
+
+    drawOnAir(in: left)
+    drawTitle(in: left)
+    drawBadges(in: left)
+    drawMeter(in: left)
+    drawSpeakers(in: right)
+    drawLegend(in: bounds)
   }
 
   /// The transmit indicator: a filled ring that blinks while the microphone is
@@ -394,8 +409,8 @@ final class PipController: NSObject {
   /// than merely turning red because a steady colour is easy to lose track of,
   /// and leaving a channel keyed open by accident is the failure that matters.
   private func drawOnAir(in bounds: CGRect) {
-    let centre = CGPoint(x: bounds.midX, y: 92)
-    let radius: CGFloat = 30
+    let centre = CGPoint(x: bounds.midX, y: 84)
+    let radius: CGFloat = 28
 
     let colour: UIColor
     if !snapshot.connected {
@@ -425,11 +440,13 @@ final class PipController: NSObject {
 
     if snapshot.transmitting {
       drawText(
-        "ON AIR", in: CGRect(x: 0, y: centre.y - 9, width: bounds.width, height: 20),
-        size: 14, weight: .heavy, colour: .white, alignment: .center)
+        "ON AIR",
+        in: CGRect(x: bounds.minX, y: centre.y - 9, width: bounds.width, height: 20),
+        size: 13, weight: .heavy, colour: .white, alignment: .center)
     } else {
       drawText(
-        "\u{1F3A4}", in: CGRect(x: 0, y: centre.y - 14, width: bounds.width, height: 28),
+        "\u{1F3A4}",
+        in: CGRect(x: bounds.minX, y: centre.y - 14, width: bounds.width, height: 28),
         size: 20, weight: .bold, colour: .white, alignment: .center)
     }
   }
@@ -437,16 +454,6 @@ final class PipController: NSObject {
   private func drawTitle(in bounds: CGRect) {
     // The arming prompt outranks everything: it is the only state here with a
     // deadline, and the frame is the only place it can be said.
-    if hangupArmed {
-      drawText(
-        "Skip forward again to hang up",
-        in: CGRect(x: 12, y: 136, width: bounds.width - 24, height: 26),
-        size: 17, weight: .heavy,
-        colour: UIColor(red: 1.0, green: 0.42, blue: 0.38, alpha: 1),
-        alignment: .center)
-      return
-    }
-
     let text: String
     if !snapshot.connected {
       text = "Not connected"
@@ -457,11 +464,14 @@ final class PipController: NSObject {
     } else if snapshot.muted {
       text = "Muted"
     } else {
-      text = "Listening"
+      // Not just "Listening": that reads as though the microphone is open, and
+      // the whole point of this line is to say that it is not.
+      text = "Listening, but\nnot transmitting"
     }
     drawText(
-      text, in: CGRect(x: 12, y: 136, width: bounds.width - 24, height: 26),
-      size: 19, weight: .semibold, colour: .white, alignment: .center)
+      text,
+      in: CGRect(x: bounds.minX + 8, y: 126, width: bounds.width - 16, height: 44),
+      size: 15, weight: .semibold, colour: .white, alignment: .center, lines: 2)
   }
 
   private func drawBadges(in bounds: CGRect) {
@@ -471,7 +481,7 @@ final class PipController: NSObject {
     guard !labels.isEmpty else { return }
     drawText(
       labels.joined(separator: "  \u{00B7}  "),
-      in: CGRect(x: 12, y: 162, width: bounds.width - 24, height: 18),
+      in: CGRect(x: bounds.minX + 8, y: 172, width: bounds.width - 16, height: 18),
       size: 12, weight: .bold,
       colour: UIColor(red: 0.98, green: 0.72, blue: 0.35, alpha: 1),
       alignment: .center)
@@ -484,7 +494,8 @@ final class PipController: NSObject {
   /// the floor climbs with speed, and a meter showing only the threshold makes
   /// that look like a control that has drifted rather than wind.
   private func drawMeter(in bounds: CGRect) {
-    let track = CGRect(x: 44, y: 194, width: bounds.width - 88, height: 14)
+    let track = CGRect(
+      x: bounds.minX + 40, y: 200, width: bounds.width - 80, height: 12)
     let radius = track.height / 2
 
     UIColor(white: 1, alpha: 0.12).setFill()
@@ -514,18 +525,22 @@ final class PipController: NSObject {
       colour: UIColor(red: 1.0, green: 0.78, blue: 0.25, alpha: 1), height: 7)
 
     drawText(
-      "noise", in: CGRect(x: 4, y: 193, width: 38, height: 16),
+      "noise", in: CGRect(x: bounds.minX + 2, y: 198, width: 36, height: 16),
       size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
       alignment: .right)
     drawText(
-      "open", in: CGRect(x: bounds.width - 42, y: 193, width: 38, height: 16),
+      "open", in: CGRect(x: track.maxX + 2, y: 198, width: 36, height: 16),
       size: 9, weight: .semibold, colour: UIColor(white: 1, alpha: 0.5),
       alignment: .left)
+  }
 
-    // The system controls carry no labels and cannot be given any, so what
-    // they do is spelled out here — the only surface this window has.
+  /// What the one remaining system button does.
+  ///
+  /// The window has no labels of its own and cannot be given any, so the only
+  /// place to say it is in the picture.
+  private func drawLegend(in bounds: CGRect) {
     drawText(
-      "\u{25C0} mute      \u{25B6}\u{2016} talk      \u{25B6}\u{25B6} hang up",
+      "\u{25B6}\u{2016} talk",
       in: CGRect(x: 8, y: 246, width: bounds.width - 16, height: 16),
       size: 10, weight: .semibold, colour: UIColor(white: 1, alpha: 0.45),
       alignment: .center)
@@ -544,33 +559,84 @@ final class PipController: NSObject {
     ).fill()
   }
 
+  /// Who is talking, and how loudly.
+  ///
+  /// A name on its own says someone is connected; a name with a moving bar
+  /// says they are being heard, which is the thing actually in doubt when a
+  /// helmet has gone quiet. Three at once is the practical limit at this size,
+  /// and a group larger than that is counted rather than listed.
   private func drawSpeakers(in bounds: CGRect) {
-    // The window is small and the list is glanced at, not read.
-    let visible = snapshot.names.prefix(2)
-    let text: String
-    if visible.isEmpty {
-      text = snapshot.connected ? "\u{2014}" : ""
-    } else if snapshot.names.count > visible.count {
-      text = visible.joined(separator: ", ") + " +\(snapshot.names.count - visible.count)"
-    } else {
-      text = visible.joined(separator: ", ")
+    let inset = bounds.insetBy(dx: 14, dy: 0)
+
+    guard !snapshot.speakers.isEmpty else {
+      drawText(
+        snapshot.connected ? "Nobody speaks" : "\u{2014}",
+        in: CGRect(x: inset.minX, y: 122, width: inset.width, height: 22),
+        size: 14, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
+        alignment: .center)
+      return
     }
 
     drawText(
-      text, in: CGRect(x: 12, y: 224, width: bounds.width - 24, height: 40),
-      size: 16, weight: .medium,
-      colour: UIColor(red: 0.55, green: 0.83, blue: 1.0, alpha: 1),
-      alignment: .center)
+      "SPEAKING",
+      in: CGRect(x: inset.minX, y: 30, width: inset.width, height: 14),
+      size: 10, weight: .heavy, colour: UIColor(white: 1, alpha: 0.4),
+      alignment: .left)
+
+    let visible = snapshot.speakers.prefix(3)
+    var y: CGFloat = 56
+    for speaker in visible {
+      drawText(
+        speaker.name,
+        in: CGRect(x: inset.minX, y: y, width: inset.width, height: 20),
+        size: 15, weight: .semibold,
+        colour: UIColor(red: 0.55, green: 0.83, blue: 1.0, alpha: 1),
+        alignment: .left)
+
+      let track = CGRect(x: inset.minX, y: y + 22, width: inset.width, height: 8)
+      UIColor(white: 1, alpha: 0.12).setFill()
+      UIBezierPath(roundedRect: track, cornerRadius: 4).fill()
+
+      let level = CGFloat(max(0, min(1, speaker.level)))
+      if level > 0.001 {
+        // The same three-colour scale as every meter in the app: green while
+        // there is headroom, amber approaching the top, red at it.
+        let colour: UIColor
+        if level > 0.85 {
+          colour = UIColor(red: 0.94, green: 0.32, blue: 0.28, alpha: 1)
+        } else if level > 0.65 {
+          colour = UIColor(red: 0.98, green: 0.75, blue: 0.25, alpha: 1)
+        } else {
+          colour = UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
+        }
+        colour.setFill()
+        UIBezierPath(
+          roundedRect: CGRect(
+            x: track.minX, y: track.minY,
+            width: max(track.height, track.width * level), height: track.height),
+          cornerRadius: 4
+        ).fill()
+      }
+      y += 44
+    }
+
+    if snapshot.speakers.count > visible.count {
+      drawText(
+        "+\(snapshot.speakers.count - visible.count) more",
+        in: CGRect(x: inset.minX, y: y - 6, width: inset.width, height: 16),
+        size: 11, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
+        alignment: .left)
+    }
   }
 
   private func drawText(
     _ text: String, in rect: CGRect, size: CGFloat, weight: UIFont.Weight,
-    colour: UIColor, alignment: NSTextAlignment
+    colour: UIColor, alignment: NSTextAlignment, lines: Int = 1
   ) {
     guard !text.isEmpty else { return }
     let paragraph = NSMutableParagraphStyle()
     paragraph.alignment = alignment
-    paragraph.lineBreakMode = .byTruncatingTail
+    paragraph.lineBreakMode = lines > 1 ? .byWordWrapping : .byTruncatingTail
     let attributes: [NSAttributedString.Key: Any] = [
       .font: UIFont.systemFont(ofSize: size, weight: weight),
       .foregroundColor: colour,
@@ -594,14 +660,19 @@ extension PipController: AVPictureInPictureSampleBufferPlaybackDelegate {
     channel.invokeMethod("setTransmitting", arguments: playing)
   }
 
-  /// A finite range is what makes the system offer the two skip buttons; an
-  /// infinite one marks the stream live and leaves only play/pause. The values
-  /// are never used for anything else — nothing here is seekable.
+  /// An indefinite range marks this a live stream, which is what it is, and
+  /// leaves the system showing play/pause alone.
+  ///
+  /// A finite range brings the two skip buttons with it. They were carrying
+  /// mute and hang-up, since three controls were all the window could ever
+  /// have — but they are unlabelled arrows next to the talk button, and an
+  /// unlabelled arrow that ends the call is a poor thing to have under a glove
+  /// at speed. Both actions remain in the app, and on the lock screen the
+  /// window is now one button that does one thing.
   func pictureInPictureControllerTimeRangeForPlayback(
     _ pictureInPictureController: AVPictureInPictureController
   ) -> CMTimeRange {
-    CMTimeRange(
-      start: .zero, duration: CMTime(seconds: 3600, preferredTimescale: 600))
+    CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
   }
 
   func pictureInPictureControllerIsPlaybackPaused(
@@ -629,23 +700,12 @@ extension PipController: AVPictureInPictureSampleBufferPlaybackDelegate {
     render()
   }
 
+  /// Required by the protocol, and unreachable: an indefinite time range
+  /// leaves the system with no skip buttons to offer.
   func pictureInPictureController(
     _ pictureInPictureController: AVPictureInPictureController,
     skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void
   ) {
-    // Only the direction carries meaning; the interval is ignored.
-    if skipInterval.seconds < 0 {
-      channel.invokeMethod("toggleMute", arguments: nil)
-    } else if hangupArmed {
-      hangupArmedUntil = nil
-      channel.invokeMethod("hangup", arguments: nil)
-    } else {
-      // Roughly five seconds at ten frames a second: long enough to read the
-      // prompt and press again, short enough that a stray tap does not leave
-      // the call one press from ending for the rest of the ride.
-      hangupArmedUntil = frame &+ 50
-    }
-    render()
     completionHandler()
   }
 }
@@ -679,11 +739,14 @@ extension PipController: AVPictureInPictureControllerDelegate {
   ) {
     // Closing the window only closes the window. Hang-up has a button of its
     // own now, so dismissing this must never drop the call.
-    // Dismissed from the system chrome rather than from settings, and it has
-    // to dismantle just as thoroughly: otherwise the automatic-start flag is
-    // still armed, and the window the user just closed comes back the next
-    // time they leave the app.
-    stop()
+    // Deliberately does not dismantle anything. This fires whenever the
+    // window closes, and much the commonest reason is the user coming back to
+    // the app — not a decision to be rid of it. Tearing down here disarmed the
+    // automatic start, so the window never returned on leaving again, and the
+    // setting appeared to have switched itself off.
+    //
+    // Turning the setting off calls stop() directly, which is where taking it
+    // apart belongs.
     channel.invokeMethod("dismissed", arguments: nil)
   }
 }

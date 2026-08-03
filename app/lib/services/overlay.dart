@@ -182,6 +182,7 @@ class OverlayBridge {
   /// the caller knows when something actually changed.
   Future<void> update({
     required List<String> names,
+    required List<({String name, double levelDb})> speakers,
     required bool transmitting,
     required bool connected,
     required bool muted,
@@ -195,6 +196,14 @@ class OverlayBridge {
     try {
       await _channel.invokeMethod<void>('update', {
         'names': names,
+        // Names and levels together, on the same scale as every other meter in
+        // the app. A name alone says somebody is connected; a name with a
+        // level says they are being heard, which is the thing in doubt when a
+        // helmet has gone quiet.
+        'speakers': [
+          for (final s in speakers)
+            {'name': s.name, 'level': meterFraction(s.levelDb)},
+        ],
         'transmitting': transmitting,
         'connected': connected,
         'muted': muted,

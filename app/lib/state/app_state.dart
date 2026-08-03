@@ -1394,7 +1394,10 @@ class AppState extends ChangeNotifier {
     overlay.onToggleDeafen = toggleDeafen;
     overlay.onHangup = hangupAll;
     overlay.onDismissed = () {
-      overlayEnabled = false;
+      // Deliberately does not turn the setting off. The window closes whenever
+      // the app comes back to the front, which is not the user saying they no
+      // longer want it — and having the switch flip itself off every time they
+      // looked at the app made it read as broken.
       notifyListeners();
     };
     overlay.onStatus = (message) {
@@ -1440,12 +1443,20 @@ class AppState extends ChangeNotifier {
   void _pushOverlay() {
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
+    final speakers = [
+      for (final rt in runtimes.values)
+        if (rt.isLive)
+          for (final u in rt.channelPeers)
+            if (rt.speakerLevels[u.session] case final db?)
+              (name: u.name, levelDb: db),
+    ];
     final connected = runtimes.values.any((r) => r.isLive);
     // The level arrives ten times a second and never repeats exactly, so it is
     // rounded to whole decibels before being compared. Without that the
     // signature always differs and the check stops filtering anything.
     final signature =
-        '${names.join(',')}|$_transmitting|$connected|$_muted'
+        '${speakers.map((s) => '${s.name}:${s.levelDb.round()}').join(',')}'
+        '|$_transmitting|$connected|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
@@ -1453,6 +1464,7 @@ class AppState extends ChangeNotifier {
     unawaited(
       overlay.update(
         names: names,
+        speakers: speakers,
         transmitting: _transmitting,
         connected: connected,
         muted: _muted,

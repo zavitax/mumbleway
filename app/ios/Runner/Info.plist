@@ -55,6 +55,24 @@
 	     connections to local addresses unless the app says why it wants them,
 	     and the block is immediate, so it presents as a server that refuses
 	     the connection rather than as a permission that was never asked for. -->
+	<!-- Export compliance. True, because it is: the voice path encrypts with
+	     AES-128 under OCB2, implemented in this app rather than taken from the
+	     system, and the control channel runs TLS from a library compiled into
+	     the binary. None of the exemptions fit — this is not HTTPS only, not
+	     limited to authentication, and not encryption provided by the
+	     operating system. No operating system offers OCB2, so the last of
+	     those is out of reach for any Mumble client however it is built.
+
+	     Declaring false here would be a false statement to a government
+	     agency, not merely a wrong setting.
+
+	     What this costs: App Store Connect asks for export documentation. Once
+	     a self-classification report has been filed (ECCN 5D992.c, to BIS and
+	     the NSA) Apple issues a compliance code, and adding that as
+	     ITSEncryptionExportComplianceCode stops it asking on every build. See
+	     docs/RELEASING.md. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>MumbleWay connects to Mumble servers on your network, such as one running at home or at a club.</string>
 	<key>NSMicrophoneUsageDescription</key>

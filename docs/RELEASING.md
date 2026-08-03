@@ -255,6 +255,37 @@ certificate. Enable development signing in the Signing & Capabilities editor.
 
 ---
 
+### 2h. Export compliance
+
+Both Info.plists declare `ITSAppUsesNonExemptEncryption` as **true**, and it is
+true. The voice path encrypts with AES-128 under OCB2, implemented in this app
+rather than taken from the system, and the control channel runs TLS from a
+library compiled into the binary.
+
+None of Apple's exemptions fit. This is not HTTPS only, not limited to
+authentication, and not encryption provided by the operating system — and that
+last one is worth understanding before anyone proposes reaching it by rewriting
+the crypto onto CryptoKit. **No operating system provides OCB2.** Mumble
+specified it, every client implements it, and no amount of work moves it into
+the OS. A client that used Apple's TLS, Apple's AES and Apple's SHA would still
+implement OCB2 itself and still answer this question the same way.
+
+Declaring false to make the question go away would be a false statement to a
+government agency rather than a wrong setting.
+
+**What follows from it.** The algorithms here are standard and published rather
+than proprietary, which is the ordinary position for a voice app: US export
+rules generally place such software under ECCN 5D992.c, reached by filing a
+self-classification report with BIS and the NSA, renewed annually. Apple then
+issues a compliance code; adding it as `ITSEncryptionExportComplianceCode`
+stops App Store Connect asking on every build.
+
+That filing is a legal determination about your product and your distribution,
+not a technical one, and it is worth twenty minutes of somebody who does export
+compliance rather than a guess from a developer.
+
+---
+
 ## 3. Android — upload key and Play access
 
 ### 3a. Generate an upload keystore

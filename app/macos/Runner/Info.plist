@@ -33,6 +33,24 @@
 	     on connect rather than as a missing plist key. -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MumbleWay uses your microphone so you can talk to other riders.</string>
+	<!-- Export compliance. True, because it is: the voice path encrypts with
+	     AES-128 under OCB2, implemented in this app rather than taken from the
+	     system, and the control channel runs TLS from a library compiled into
+	     the binary. None of the exemptions fit — this is not HTTPS only, not
+	     limited to authentication, and not encryption provided by the
+	     operating system. No operating system offers OCB2, so the last of
+	     those is out of reach for any Mumble client however it is built.
+
+	     Declaring false here would be a false statement to a government
+	     agency, not merely a wrong setting.
+
+	     What this costs: App Store Connect asks for export documentation. Once
+	     a self-classification report has been filed (ECCN 5D992.c, to BIS and
+	     the NSA) Apple issues a compliance code, and adding that as
+	     ITSEncryptionExportComplianceCode stops it asking on every build. See
+	     docs/RELEASING.md. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

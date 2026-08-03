@@ -133,6 +133,14 @@ pub struct AudioShared {
     echo_cancellation: AtomicBool,
     /// Which feedback guard is in use, as a [`FeedbackMode`] discriminant.
     feedback_mode: AtomicU8,
+    /// How the microphone opens, and how hard the suppressor works.
+    ///
+    /// Held here rather than read from the startup config, which is where they
+    /// used to live: the capture loop copied the config once and nothing could
+    /// reach it afterwards, so changing either in settings did nothing at all
+    /// until the app was restarted.
+    transmit_mode: AtomicU8,
+    noise_profile: AtomicU8,
     /// Pre-rendered notification tones waiting to reach the output device.
     ///
     /// Rendering up front rather than synthesising in the worker keeps the cue
@@ -337,6 +345,8 @@ impl AudioShared {
             monitor: AtomicBool::new(false),
             echo_cancellation: AtomicBool::new(true),
             feedback_mode: AtomicU8::new(0),
+            transmit_mode: AtomicU8::new(0),
+            noise_profile: AtomicU8::new(0),
             normalise_levels: AtomicBool::new(true),
             reverb_enabled: AtomicBool::new(true),
             reverb: Mutex::new(Reverb::new(REVERB_DECAY_SECS, REVERB_WET)),
@@ -454,6 +464,46 @@ impl AudioShared {
 
     pub fn normalise_levels_enabled(&self) -> bool {
         self.normalise_levels.load(Ordering::Relaxed)
+    }
+
+    pub fn set_transmit_mode(&self, mode: TransmitMode) {
+        self.transmit_mode.store(
+            match mode {
+                TransmitMode::VoiceActivity => 0u8,
+                TransmitMode::PushToTalk => 1,
+                TransmitMode::Continuous => 2,
+            },
+            Ordering::Relaxed,
+        );
+    }
+
+    pub fn transmit_mode(&self) -> TransmitMode {
+        match self.transmit_mode.load(Ordering::Relaxed) {
+            1 => TransmitMode::PushToTalk,
+            2 => TransmitMode::Continuous,
+            _ => TransmitMode::VoiceActivity,
+        }
+    }
+
+    pub fn set_noise_profile(&self, profile: NoiseProfile) {
+        self.noise_profile.store(
+            match profile {
+                NoiseProfile::Off => 0u8,
+                NoiseProfile::Light => 1,
+                NoiseProfile::Standard => 2,
+                NoiseProfile::Helmet => 3,
+            },
+            Ordering::Relaxed,
+        );
+    }
+
+    pub fn noise_profile(&self) -> NoiseProfile {
+        match self.noise_profile.load(Ordering::Relaxed) {
+            1 => NoiseProfile::Light,
+            2 => NoiseProfile::Standard,
+            3 => NoiseProfile::Helmet,
+            _ => NoiseProfile::Off,
+        }
     }
 
     pub fn set_feedback_mode(&self, mode: FeedbackMode) {
@@ -883,6 +933,10 @@ impl AudioEngine {
         F: FnMut(u64, Vec<u8>, bool) + Send + 'static,
     {
         let shared = Arc::new(AudioShared::new());
+        // Seeded from the starting configuration, since these now live here
+        // rather than being read out of the config by the capture loop.
+        shared.set_transmit_mode(config.transmit_mode);
+        shared.set_noise_profile(config.noise_profile);
         // Seed the request with the starting choice so `devices()` reports it.
         *shared.device_request.lock() = (config.input_device.clone(), config.output_device.clone());
 
@@ -1161,6 +1215,11 @@ where
 
             // Picked up here rather than at construction so the switch takes
             // effect on the next block instead of the next restart.
+            let want_profile = shared.noise_profile();
+            if want_profile != processor.profile() {
+                processor.set_profile(want_profile);
+            }
+
             let want_aec = shared.echo_cancellation_enabled();
             if want_aec != processor.echo_cancellation_enabled() {
                 processor.set_echo_cancellation(want_aec);
@@ -1189,7 +1248,7 @@ where
             }
 
             let allowed = !shared.is_muted()
-                && match config.transmit_mode {
+                && match shared.transmit_mode() {
                     TransmitMode::Continuous => true,
                     TransmitMode::PushToTalk => shared.transmitting.load(Ordering::Relaxed),
                     TransmitMode::VoiceActivity => analysis.speaking,

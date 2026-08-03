@@ -236,6 +236,10 @@ class ServerRuntime {
   /// is noise rather than news.
   Set<int>? knownPeers;
 
+  /// When a join or leave was last announced, so a roster that flaps cannot
+  /// turn into a repeating tone.
+  DateTime? lastCueAt;
+
   /// The channel [knownPeers] was collected for, so moving channels starts a
   /// fresh comparison rather than reporting the whole new room as arrivals.
   int? knownPeersChannel;
@@ -1015,6 +1019,7 @@ class AppState extends ChangeNotifier {
             NoiseSetting.values[v] != noise) {
       noise = NoiseSetting.values[v];
       await prefs.setInt(_prefsNoise, v);
+      setNoise(noise: noise);
       changed = true;
     }
     if (read<int>('micMode') case final v?
@@ -1023,6 +1028,7 @@ class AppState extends ChangeNotifier {
             MicMode.values[v] != micMode) {
       micMode = MicMode.values[v];
       await prefs.setInt(_prefsMic, v);
+      setMicMode(mode: micMode);
       changed = true;
     }
     if (read<double>('inputGain') case final v? when v != inputGainDbValue) {
@@ -1824,11 +1830,29 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    // Only compare against a roster that includes us. The server sends state
+    // for individual users as well as whole rosters, and both arrive as the
+    // same event — so a partial one replaced the list with a single person,
+    // making everybody else appear to leave and then arrive again a moment
+    // later. With three devices on one server that produced a cue every few
+    // seconds, which is the opposite of the point.
+    if (!rt.users.any((u) => u.session == rt.selfSession)) return;
+
     final now = rt.channelPeers.map((u) => u.session).toSet();
     final before = rt.knownPeersChannel == channel ? rt.knownPeers : null;
     rt.knownPeers = now;
     rt.knownPeersChannel = channel;
     if (before == null) return;
+
+    // And never more than one cue a second, whatever the rosters say. A cue
+    // that can repeat is a cue that can become a metronome, and a rider cannot
+    // reach the phone to stop it.
+    final now_ = DateTime.now();
+    if (rt.lastCueAt != null &&
+        now_.difference(rt.lastCueAt!) < const Duration(seconds: 1)) {
+      return;
+    }
+    rt.lastCueAt = now_;
 
     // One cue per event, not per person: three people leaving at once is one
     // thing happening, and three overlapping tones is just a noise.
@@ -1856,12 +1880,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> updateNoise(NoiseSetting v) async {
     noise = v;
+    setNoise(noise: v);
     await _persist();
     notifyListeners();
   }
 
   Future<void> updateMicMode(MicMode v) async {
     micMode = v;
+    setMicMode(mode: v);
     if (v != MicMode.pushToTalk && _transmitting) setTransmit(false);
     await _persist();
     notifyListeners();

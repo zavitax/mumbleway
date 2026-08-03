@@ -175,6 +175,15 @@ void setEchoCancellation({required bool on_}) =>
 bool isEchoCancellationEnabled() =>
     RustLib.instance.api.crateApiMumblewayIsEchoCancellationEnabled();
 
+/// How the microphone opens. Takes effect on the next block, not the next
+/// launch — which is what it used to do, silently.
+void setMicMode({required MicMode mode}) =>
+    RustLib.instance.api.crateApiMumblewaySetMicMode(mode: mode);
+
+/// How hard the noise suppressor works. Also live rather than at launch.
+void setNoise({required NoiseSetting noise}) =>
+    RustLib.instance.api.crateApiMumblewaySetNoise(noise: noise);
+
 /// Applied after the echo canceller, to whatever it could not model.
 void setFeedbackGuard({required FeedbackGuardMode mode}) =>
     RustLib.instance.api.crateApiMumblewaySetFeedbackGuard(mode: mode);

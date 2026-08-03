@@ -1040,6 +1040,21 @@ pub enum FeedbackGuardMode {
     Residual,
 }
 
+/// How the microphone opens. Takes effect on the next block, not the next
+/// launch — which is what it used to do, silently.
+#[frb(sync)]
+pub fn set_mic_mode(mode: MicMode) -> anyhow::Result<()> {
+    app()?.shared.set_transmit_mode(to_transmit(mode));
+    Ok(())
+}
+
+/// How hard the noise suppressor works. Also live rather than at launch.
+#[frb(sync)]
+pub fn set_noise(noise: NoiseSetting) -> anyhow::Result<()> {
+    app()?.shared.set_noise_profile(to_profile(noise));
+    Ok(())
+}
+
 /// Applied after the echo canceller, to whatever it could not model.
 #[frb(sync)]
 pub fn set_feedback_guard(mode: FeedbackGuardMode) -> anyhow::Result<()> {

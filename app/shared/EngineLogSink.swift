@@ -1,6 +1,13 @@
-import Flutter
 import Foundation
 import os
+
+// The Flutter module is named differently on each platform, and this file is
+// built into both targets.
+#if canImport(Flutter)
+  import Flutter
+#elseif canImport(FlutterMacOS)
+  import FlutterMacOS
+#endif
 
 /// Repeats the engine's log into the system log.
 ///

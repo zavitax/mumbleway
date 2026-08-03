@@ -80,6 +80,16 @@ class ServerDetailPane extends StatelessWidget {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
+            if (rt.selfName ?? s.username case final me when me.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(
+                '@$me',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
           ],
         ),
 

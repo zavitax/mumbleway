@@ -964,6 +964,34 @@ class LEn extends L {
       'Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.';
 
   @override
+  String get dehiss => 'Hiss removal';
+
+  @override
+  String get dehissBody =>
+      'For the steady hiss a microphone adds under everything. Separate from noise suppression, which handles the road and the wind: those are loud and change with speed, while hiss is quiet, high and unvarying.';
+
+  @override
+  String get dehissOff => 'No hiss removal';
+
+  @override
+  String get dehissOffBody =>
+      'Leaves the sound alone. Start here — both of the others discard something, and a link that already sounds fine is not worth changing.';
+
+  @override
+  String get dehissExpander => 'Turn quiet passages down further';
+
+  @override
+  String get dehissExpanderBody =>
+      'Attenuates in proportion to how far below the noise floor the sound sits, so speech is untouched and the gaps between words go quiet. Cannot make a voice sound processed; can make the background breathe.';
+
+  @override
+  String get dehissSpectral => 'Learn the hiss and subtract it';
+
+  @override
+  String get dehissSpectralBody =>
+      'Measures the noise while nobody is talking and removes it frequency by frequency, so hiss goes from under speech as well as from the gaps. The strongest option, and the one that can leave a faint flicker behind it.';
+
+  @override
   String get serverBusyChange =>
       'Disconnect from this server before changing or removing it.';
 

@@ -1849,6 +1849,54 @@ abstract class L {
   /// **'Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.'**
   String get feedbackResidualBody;
 
+  /// No description provided for @dehiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Hiss removal'**
+  String get dehiss;
+
+  /// No description provided for @dehissBody.
+  ///
+  /// In en, this message translates to:
+  /// **'For the steady hiss a microphone adds under everything. Separate from noise suppression, which handles the road and the wind: those are loud and change with speed, while hiss is quiet, high and unvarying.'**
+  String get dehissBody;
+
+  /// No description provided for @dehissOff.
+  ///
+  /// In en, this message translates to:
+  /// **'No hiss removal'**
+  String get dehissOff;
+
+  /// No description provided for @dehissOffBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Leaves the sound alone. Start here — both of the others discard something, and a link that already sounds fine is not worth changing.'**
+  String get dehissOffBody;
+
+  /// No description provided for @dehissExpander.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn quiet passages down further'**
+  String get dehissExpander;
+
+  /// No description provided for @dehissExpanderBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Attenuates in proportion to how far below the noise floor the sound sits, so speech is untouched and the gaps between words go quiet. Cannot make a voice sound processed; can make the background breathe.'**
+  String get dehissExpanderBody;
+
+  /// No description provided for @dehissSpectral.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn the hiss and subtract it'**
+  String get dehissSpectral;
+
+  /// No description provided for @dehissSpectralBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Measures the noise while nobody is talking and removes it frequency by frequency, so hiss goes from under speech as well as from the gaps. The strongest option, and the one that can leave a faint flicker behind it.'**
+  String get dehissSpectralBody;
+
   /// No description provided for @serverBusyChange.
   ///
   /// In en, this message translates to:

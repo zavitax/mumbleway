@@ -19,6 +19,7 @@ use std::collections::{HashMap, VecDeque};
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
+use super::dehiss::{DehissMode, Expander, SpectralSubtractor};
 use super::feedback::{FeedbackGuard, FeedbackMode};
 use super::dsp::{interleaved_to_mono, Reverb};
 use super::jitter::SpeakerBuffer;
@@ -133,6 +134,8 @@ pub struct AudioShared {
     echo_cancellation: AtomicBool,
     /// Which feedback guard is in use, as a [`FeedbackMode`] discriminant.
     feedback_mode: AtomicU8,
+    /// 0 off, 1 expander, 2 spectral subtraction. Live-settable like the rest.
+    dehiss_mode: AtomicU8,
     /// How the microphone opens, and how hard the suppressor works.
     ///
     /// Held here rather than read from the startup config, which is where they
@@ -345,6 +348,7 @@ impl AudioShared {
             monitor: AtomicBool::new(false),
             echo_cancellation: AtomicBool::new(true),
             feedback_mode: AtomicU8::new(0),
+            dehiss_mode: AtomicU8::new(0),
             transmit_mode: AtomicU8::new(0),
             noise_profile: AtomicU8::new(0),
             normalise_levels: AtomicBool::new(true),
@@ -504,6 +508,22 @@ impl AudioShared {
             3 => NoiseProfile::Helmet,
             _ => NoiseProfile::Off,
         }
+    }
+
+    /// Which de-hissing method the capture loop should apply, if any.
+    pub fn set_dehiss_mode(&self, mode: DehissMode) {
+        self.dehiss_mode.store(
+            match mode {
+                DehissMode::Off => 0,
+                DehissMode::Expander => 1,
+                DehissMode::Spectral => 2,
+            },
+            Ordering::Relaxed,
+        );
+    }
+
+    pub fn dehiss_mode(&self) -> u8 {
+        self.dehiss_mode.load(Ordering::Relaxed)
     }
 
     pub fn set_feedback_mode(&self, mode: FeedbackMode) {
@@ -1191,6 +1211,10 @@ where
 {
     let mut processor = CaptureProcessor::new(config.noise_profile);
     let mut guard = FeedbackGuard::default();
+    // Both are built whatever the setting, so switching between them mid-call
+    // costs nothing and neither has to learn from scratch on every change.
+    let mut expander = Expander::standard();
+    let mut subtractor = SpectralSubtractor::new();
     let mut encoder = match VoiceEncoder::new(config.quality) {
         Ok(e) => e,
         Err(e) => {
@@ -1267,6 +1291,25 @@ where
             // modelled and subtracted.
             guard.set_mode(shared.feedback_mode());
             guard.process(&mut block, &echo_ref);
+
+            // De-hissing last of the reductions, and before the level is
+            // published: everything above it either removes a correlated signal
+            // or ducks, and what is left over is the stationary floor this is
+            // for. Placed ahead of the meters so the rider sees the level that
+            // will actually be transmitted.
+            match DehissMode::from_index(shared.dehiss_mode()) {
+                DehissMode::Off => {}
+                DehissMode::Expander => {
+                    expander.process(&mut block, analysis.level_db, analysis.noise_floor_db);
+                }
+                DehissMode::Spectral => {
+                    // Learning is gated on the detector rather than on a timer:
+                    // a spectrum learned while somebody is talking has their
+                    // voice subtracted out of everything that follows.
+                    subtractor.process(&mut block, analysis.speaking);
+                }
+            }
+
             shared.store_level(analysis.level_db);
             shared.store_threshold(analysis.activation_threshold_db);
             shared.store_noise_floor(analysis.noise_floor_db);

@@ -57,6 +57,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ConnStatus dco_decode_conn_status(dynamic raw);
 
   @protected
+  DehissOption dco_decode_dehiss_option(dynamic raw);
+
+  @protected
   double dco_decode_f_32(dynamic raw);
 
   @protected
@@ -198,6 +201,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ConnStatus sse_decode_conn_status(SseDeserializer deserializer);
+
+  @protected
+  DehissOption sse_decode_dehiss_option(SseDeserializer deserializer);
 
   @protected
   double sse_decode_f_32(SseDeserializer deserializer);
@@ -356,6 +362,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_conn_status(ConnStatus self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_dehiss_option(DehissOption self, SseSerializer serializer);
 
   @protected
   void sse_encode_f_32(double self, SseSerializer serializer);

@@ -2,6 +2,7 @@
 
 pub mod aec;
 pub mod codec;
+pub mod dehiss;
 pub mod denoise;
 pub mod feedback;
 pub mod dsp;

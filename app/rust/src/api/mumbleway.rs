@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 use mumbleway_core::audio::engine::{
     AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode,
 };
+use mumbleway_core::audio::dehiss::DehissMode;
 use mumbleway_core::audio::feedback::FeedbackMode;
 use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};
@@ -1180,6 +1181,34 @@ pub fn set_feedback_guard(mode: FeedbackGuardMode) -> anyhow::Result<()> {
         FeedbackGuardMode::Duck => FeedbackMode::Duck,
         FeedbackGuardMode::HowlGuard => FeedbackMode::HowlGuard,
         FeedbackGuardMode::Residual => FeedbackMode::Residual,
+    });
+    Ok(())
+}
+
+/// How to deal with the steady hiss a microphone adds under speech.
+///
+/// Separate from noise suppression, which handles the road and the wind. Those
+/// are loud and change with speed; hiss is quiet, high and unvarying, and the
+/// two want opposite treatments.
+pub enum DehissOption {
+    /// Change nothing. The default, because both of the others discard
+    /// something and a voice link that is working should be left alone.
+    Off,
+    /// Turns quiet passages down further, in proportion to how quiet they are.
+    /// Cannot make speech sound synthetic; can make the floor breathe.
+    Expander,
+    /// Learns the noise spectrum while nobody talks and subtracts it per
+    /// frequency. Removes hiss from under speech as well as between words; the
+    /// price is a faint flicker in the gaps if it is pushed hard.
+    Spectral,
+}
+
+#[frb(sync)]
+pub fn set_dehiss(mode: DehissOption) -> anyhow::Result<()> {
+    app()?.shared.set_dehiss_mode(match mode {
+        DehissOption::Off => DehissMode::Off,
+        DehissOption::Expander => DehissMode::Expander,
+        DehissOption::Spectral => DehissMode::Spectral,
     });
     Ok(())
 }

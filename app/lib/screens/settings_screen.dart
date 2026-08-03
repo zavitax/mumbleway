@@ -78,6 +78,27 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const Divider(height: 32),
+          _SectionHeader(l.dehiss),
+          _Explainer(l.dehissBody),
+          RadioGroup<DehissOption>(
+            groupValue: state.dehiss,
+            onChanged: (v) {
+              if (v != null) state.updateDehiss(v);
+            },
+            child: Column(
+              children: [
+                for (final m in DehissOption.values)
+                  RadioListTile<DehissOption>(
+                    value: m,
+                    title: Text(_dehissTitle(l, m)),
+                    subtitle: Text(_dehissSubtitle(l, m)),
+                    isThreeLine: true,
+                  ),
+              ],
+            ),
+          ),
+
+          const Divider(height: 32),
           _SectionHeader(l.micMode),
           _Explainer(l.micModeBody),
           RadioGroup<MicMode>(
@@ -158,6 +179,18 @@ class SettingsScreen extends StatelessWidget {
     FeedbackGuardMode.duck => l.feedbackDuckBody,
     FeedbackGuardMode.howlGuard => l.feedbackHowlBody,
     FeedbackGuardMode.residual => l.feedbackResidualBody,
+  };
+
+  static String _dehissTitle(L l, DehissOption m) => switch (m) {
+    DehissOption.off => l.dehissOff,
+    DehissOption.expander => l.dehissExpander,
+    DehissOption.spectral => l.dehissSpectral,
+  };
+
+  static String _dehissSubtitle(L l, DehissOption m) => switch (m) {
+    DehissOption.off => l.dehissOffBody,
+    DehissOption.expander => l.dehissExpanderBody,
+    DehissOption.spectral => l.dehissSpectralBody,
   };
 
   static String _micTitle(L l, MicMode m) => switch (m) {

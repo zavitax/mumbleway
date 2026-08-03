@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File, Platform;
 
@@ -196,6 +196,21 @@ class ServerRuntime {
       status == ConnStatus.handshaking ||
       status == ConnStatus.reconnecting;
 
+  /// The name this server knows us by.
+  ///
+  /// Read from the roster rather than from the saved entry, because the two can
+  /// disagree: a server that already has a "Ilya" connected hands the second
+  /// one "Ilya1", and the saved name would then be a quiet lie about who the
+  /// other riders are hearing. Null until the roster arrives.
+  String? get selfName {
+    final me = selfSession;
+    if (me == null) return null;
+    for (final u in users) {
+      if (u.session == me) return u.name;
+    }
+    return null;
+  }
+
   /// Whether the saved entry behind this session may be edited or removed.
   ///
   /// Only when genuinely disconnected: never started, stopped, or given up.
@@ -299,6 +314,7 @@ class AppState extends ChangeNotifier {
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
+  static const _prefsDehiss = 'mumbleway.dehiss';
   static const _prefsSettingStamps = 'mumbleway.settingStamps';
   static const _prefsProxyEnabled = 'mumbleway.proxyEnabled';
   static const _prefsProxyManual = 'mumbleway.proxyManual';
@@ -595,6 +611,10 @@ class AppState extends ChangeNotifier {
         guard < FeedbackGuardMode.values.length) {
       feedbackGuard = FeedbackGuardMode.values[guard];
     }
+    final hiss = prefs.getInt(_prefsDehiss);
+    if (hiss != null && hiss >= 0 && hiss < DehissOption.values.length) {
+      dehiss = DehissOption.values[hiss];
+    }
     // On by default: a user with two devices almost always wants the same
     // servers on both, and there is nothing to configure for it to work.
     cloudSync = prefs.getBool(_prefsCloudSync) ?? true;
@@ -614,6 +634,7 @@ class AppState extends ChangeNotifier {
     setLevelNormalisation(on_: normaliseLevels);
     setReverb(on_: reverb);
     setFeedbackGuard(mode: feedbackGuard);
+    setDehiss(mode: dehiss);
     if (selectedInput != null || selectedOutput != null) {
       await setAudioDevices(input: selectedInput, output: selectedOutput);
     }
@@ -1004,6 +1025,7 @@ class AppState extends ChangeNotifier {
     'normaliseLevels': normaliseLevels,
     'reverb': reverb,
     'feedbackGuard': feedbackGuard.index,
+    'dehiss': dehiss.index,
     'floatingWindow': _wantOverlay,
     'locale': _locale?.languageCode,
     'proxyEnabled': SystemProxy.instance.enabled,
@@ -1096,6 +1118,15 @@ class AppState extends ChangeNotifier {
       feedbackGuard = FeedbackGuardMode.values[v];
       await prefs.setInt(_prefsFeedbackGuard, v);
       audioChanged = true;
+    }
+    if (read<int>('dehiss') case final v?
+        when v >= 0 &&
+            v < DehissOption.values.length &&
+            DehissOption.values[v] != dehiss) {
+      dehiss = DehissOption.values[v];
+      await prefs.setInt(_prefsDehiss, v);
+      setDehiss(mode: dehiss);
+      changed = true;
     }
     if (read<String>('locale') case final v?
         when v != _locale?.languageCode &&
@@ -1572,6 +1603,21 @@ class AppState extends ChangeNotifier {
   /// one of these costs something вЂ” half duplex, a hard cut, or a quieter
   /// talker вЂ” which is not worth paying until there is a fault to fix.
   FeedbackGuardMode feedbackGuard = FeedbackGuardMode.off;
+
+  /// How to deal with the steady hiss a microphone adds under speech.
+  ///
+  /// Off by default. Both of the others discard something real, and a link that
+  /// is already carrying a voice is not worth degrading until there is a fault
+  /// to fix.
+  DehissOption dehiss = DehissOption.off;
+
+  Future<void> updateDehiss(DehissOption mode) async {
+    dehiss = mode;
+    setDehiss(mode: mode);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsDehiss, mode.index);
+  }
 
   Future<void> updateFeedbackGuard(FeedbackGuardMode mode) async {
     feedbackGuard = mode;

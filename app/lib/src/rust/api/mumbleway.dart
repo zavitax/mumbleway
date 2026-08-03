@@ -201,6 +201,9 @@ void setNoise({required NoiseSetting noise}) =>
 void setFeedbackGuard({required FeedbackGuardMode mode}) =>
     RustLib.instance.api.crateApiMumblewaySetFeedbackGuard(mode: mode);
 
+void setDehiss({required DehissOption mode}) =>
+    RustLib.instance.api.crateApiMumblewaySetDehiss(mode: mode);
+
 /// Plays a tone on the output device, to check the speaker choice.
 void playTestTone({required int millis}) =>
     RustLib.instance.api.crateApiMumblewayPlayTestTone(millis: millis);
@@ -389,6 +392,26 @@ enum ConnStatus {
   reconnecting,
   disconnected,
   failed,
+}
+
+/// How to deal with the steady hiss a microphone adds under speech.
+///
+/// Separate from noise suppression, which handles the road and the wind. Those
+/// are loud and change with speed; hiss is quiet, high and unvarying, and the
+/// two want opposite treatments.
+enum DehissOption {
+  /// Change nothing. The default, because both of the others discard
+  /// something and a voice link that is working should be left alone.
+  off,
+
+  /// Turns quiet passages down further, in proportion to how quiet they are.
+  /// Cannot make speech sound synthetic; can make the floor breathe.
+  expander,
+
+  /// Learns the noise spectrum while nobody talks and subtracts it per
+  /// frequency. Removes hiss from under speech as well as between words; the
+  /// price is a faint flicker in the gaps if it is pushed hard.
+  spectral,
 }
 
 /// What to do about the speaker being heard by the microphone.

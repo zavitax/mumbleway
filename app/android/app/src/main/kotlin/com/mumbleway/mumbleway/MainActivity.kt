@@ -43,11 +43,17 @@ class MainActivity : FlutterActivity() {
         // Brings the app forward when the floating window is tapped.
         OverlayService.onOpenApp = {
             runOnUiThread {
+                // No NEW_TASK. The manifest gives this activity an empty
+                // taskAffinity, so NEW_TASK belongs to no existing task and
+                // Android obliges by making another one — which is how tapping
+                // the window produced a second running copy of the app. Started
+                // from the activity's own context, none is needed: REORDER and
+                // SINGLE_TOP bring the instance that already exists forward.
                 startActivity(
                     Intent(this, MainActivity::class.java).apply {
                         addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP,
                         )
                     },
                 )

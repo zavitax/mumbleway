@@ -137,6 +137,23 @@ class ServerCard extends StatelessWidget {
                             style: const TextStyle(fontSize: 12),
                           ),
                         ),
+                        // Who this server thinks you are. Worth the space when
+                        // two servers are connected at once under different
+                        // names — "who am I on this one" is otherwise a trip
+                        // into the editor to find out.
+                        if (rt.selfName ?? server.username case final me
+                            when me.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            '@$me',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     if (showDetails) ...[

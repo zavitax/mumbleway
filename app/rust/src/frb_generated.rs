@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -741825496;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2132080425;
 
 // Section: executor
 
@@ -1364,6 +1364,38 @@ fn wire__crate__api__mumbleway__set_default_channel_impl(
         },
     )
 }
+fn wire__crate__api__mumbleway__set_dehiss_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_dehiss",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_mode = <crate::api::mumbleway::DehissOption>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::mumbleway::set_dehiss(api_mode)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 fn wire__crate__api__mumbleway__set_echo_cancellation_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -2107,6 +2139,19 @@ impl SseDecode for crate::api::mumbleway::ConnStatus {
     }
 }
 
+impl SseDecode for crate::api::mumbleway::DehissOption {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::mumbleway::DehissOption::Off,
+            1 => crate::api::mumbleway::DehissOption::Expander,
+            2 => crate::api::mumbleway::DehissOption::Spectral,
+            _ => unreachable!("Invalid variant for DehissOption: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for f32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2601,23 +2646,23 @@ fn pde_ffi_dispatcher_primary_impl(
         39 => {
             wire__crate__api__mumbleway__set_default_channel_impl(port, ptr, rust_vec_len, data_len)
         }
-        50 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
-        52 => {
+        51 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
+        53 => {
             wire__crate__api__mumbleway__set_user_local_mute_impl(port, ptr, rust_vec_len, data_len)
         }
-        53 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
+        54 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        54 => wire__crate__api__mumbleway__set_user_server_mute_impl(
+        55 => wire__crate__api__mumbleway__set_user_server_mute_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        55 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2656,20 +2701,21 @@ fn pde_ffi_dispatcher_sync_impl(
         33 => wire__crate__api__mumbleway__recent_logs_impl(ptr, rust_vec_len, data_len),
         35 => wire__crate__api__mumbleway__reset_audio_glitches_impl(ptr, rust_vec_len, data_len),
         38 => wire__crate__api__mumbleway__set_deafened_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__mumbleway__set_echo_cancellation_impl(ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__mumbleway__set_feedback_guard_impl(ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__mumbleway__set_input_gain_db_impl(ptr, rust_vec_len, data_len),
-        43 => {
+        40 => wire__crate__api__mumbleway__set_dehiss_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__mumbleway__set_echo_cancellation_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__mumbleway__set_feedback_guard_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__mumbleway__set_input_gain_db_impl(ptr, rust_vec_len, data_len),
+        44 => {
             wire__crate__api__mumbleway__set_level_normalisation_impl(ptr, rust_vec_len, data_len)
         }
-        44 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
-        51 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
-        56 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        45 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2807,6 +2853,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::ConnStatus>
     for crate::api::mumbleway::ConnStatus
 {
     fn into_into_dart(self) -> crate::api::mumbleway::ConnStatus {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::DehissOption {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Off => 0.into_dart(),
+            Self::Expander => 1.into_dart(),
+            Self::Spectral => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::DehissOption
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::DehissOption>
+    for crate::api::mumbleway::DehissOption
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::DehissOption {
         self
     }
 }
@@ -3262,6 +3330,23 @@ impl SseEncode for crate::api::mumbleway::ConnStatus {
                 crate::api::mumbleway::ConnStatus::Reconnecting => 4,
                 crate::api::mumbleway::ConnStatus::Disconnected => 5,
                 crate::api::mumbleway::ConnStatus::Failed => 6,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::api::mumbleway::DehissOption {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::mumbleway::DehissOption::Off => 0,
+                crate::api::mumbleway::DehissOption::Expander => 1,
+                crate::api::mumbleway::DehissOption::Spectral => 2,
                 _ => {
                     unimplemented!("");
                 }

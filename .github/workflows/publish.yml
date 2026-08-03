@@ -87,7 +87,12 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build appbundle --release
+          # The build number has to rise with every upload: App Store Connect
+          # and Play both reject one they have seen before, and a rejection
+          # arrives after the build, not before it. run_number only ever goes
+          # up, which is the whole requirement — the version in pubspec.yaml
+          # stays the human-facing one.
+          flutter build appbundle --release --build-number=${{ github.run_number }}
 
       - name: Upload to Play
         if: steps.gate.outputs.ready == 'true' && env.PLAY_SERVICE_ACCOUNT != ''
@@ -227,7 +232,12 @@ jobs:
           IPHONEOS_DEPLOYMENT_TARGET: '13.0'
         run: |
           flutter pub get
-          flutter build ipa --release \
+          # The build number has to rise with every upload: App Store Connect
+          # and Play both reject one they have seen before, and the rejection
+          # arrives after the build rather than before it. run_number only ever
+          # goes up, which is the whole requirement — the version in
+          # pubspec.yaml stays the human-facing one.
+          flutter build ipa --release --build-number=${{ github.run_number }} \
             --export-options-plist=ios/ExportOptions.plist
 
       - name: Upload to TestFlight
@@ -436,7 +446,12 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build macos --release
+          # The build number has to rise with every upload: App Store Connect
+          # and Play both reject one they have seen before, and a rejection
+          # arrives after the build, not before it. run_number only ever goes
+          # up, which is the whole requirement — the version in pubspec.yaml
+          # stays the human-facing one.
+          flutter build macos --release --build-number=${{ github.run_number }}
 
       # productbuild, not pkgbuild. The store wants a distribution package;
       # pkgbuild makes a component package, which uploads and is then rejected

@@ -223,4 +223,100 @@ void main() {
       );
     });
   });
+
+  group('the round trip through the cloud', () {
+    // An entry that has been through iCloud has had its password lifted out
+    // and put back, which moves that key to the end of the map. JSON keeps
+    // insertion order, so the two encodings differ while the data does not.
+    Map<String, dynamic> roundTripped(Map<String, dynamic> e) {
+      final copy = Map<String, dynamic>.of(e);
+      final password = copy.remove('password');
+      return {...copy, 'password': password};
+    }
+
+    test('does not change what an entry is', () {
+      final local = {...entry('a', at: since(500)), 'password': 'pw'};
+      expect(
+        sameSnapshot(snap([local]), snap([roundTripped(local)])),
+        isTrue,
+        reason: 'key order is not a difference in the data',
+      );
+    });
+
+    test('key order does not decide a tie', () {
+      // The bug this exists for, in its exact shape. Learning a certificate on
+      // connect edited the entry without moving its timestamp, so it tied with
+      // the copy in the cloud, and the tie fell to raw JSON — where the
+      // round-tripped side sorts first whatever it contains. The stale null
+      // won, the entry looked changed on every sync, the live session was
+      // rebuilt each time, and the client hammered the server about once a
+      // second until it began refusing connections.
+      //
+      // The same timestamp on both sides is the point: that is what left the
+      // layout deciding instead of the data.
+      const at = 500;
+      final mine = {
+        ...entry('a', at: since(at)),
+        'password': 'pw',
+        'certFingerprint': 'AB:CD',
+      };
+      final stale = roundTripped({
+        ...entry('a', at: since(at)),
+        'password': 'pw',
+        'certFingerprint': null,
+      });
+
+      final m = mergeSnapshots(snap([mine]), snap([stale]), nowMs: now);
+      expect(
+        m.servers.single['certFingerprint'],
+        'AB:CD',
+        reason: 'content decides, not which side has been through the cloud',
+      );
+    });
+
+    test('and both devices reach that answer, whichever side asks', () {
+      // Otherwise each prefers its own copy and they rewrite one another
+      // indefinitely.
+      const at = 500;
+      final withFingerprint = {
+        ...entry('a', at: since(at)),
+        'certFingerprint': 'AB:CD',
+      };
+      final without = roundTripped({
+        ...entry('a', at: since(at)),
+        'certFingerprint': null,
+      });
+      expect(
+        mergeSnapshots(
+          snap([withFingerprint]),
+          snap([without]),
+          nowMs: now,
+        ).servers.single['certFingerprint'],
+        mergeSnapshots(
+          snap([without]),
+          snap([withFingerprint]),
+          nowMs: now,
+        ).servers.single['certFingerprint'],
+      );
+    });
+
+    test('merging is idempotent once both sides agree', () {
+      // Whatever the merge settles on has to stay settled. A merge that keeps
+      // producing something new is what turned a sync into a retry loop.
+      final mine = {...entry('a', at: since(500)), 'password': 'pw'};
+      final theirs = roundTripped(mine);
+      final first = mergeSnapshots(snap([mine]), snap([theirs]), nowMs: now);
+      final second = mergeSnapshots(first, snap([theirs]), nowMs: now);
+      final third = mergeSnapshots(second, first, nowMs: now);
+      expect(sameSnapshot(second, first), isTrue);
+      expect(sameSnapshot(third, first), isTrue);
+    });
+
+    test('the payload is byte-identical whatever the key order', () {
+      // So two devices holding the same list stop rewriting each other's copy,
+      // each write waking the other to do the same.
+      final mine = {...entry('a', at: since(500)), 'password': 'pw'};
+      expect(snap([mine]).encode(), snap([roundTripped(mine)]).encode());
+    });
+  });
 }

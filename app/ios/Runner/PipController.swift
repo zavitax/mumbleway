@@ -94,15 +94,30 @@ final class PipController: NSObject {
       let layer = AVSampleBufferDisplayLayer()
       layer.videoGravity = .resizeAspect
 
-      // The layer has to be in the hierarchy and not hidden, or the system
-      // refuses to start. It sits behind Flutter's opaque view, so it takes
-      // part in layout without ever being seen.
+      // The layer has to be in the hierarchy, in a window, sized and not
+      // hidden, or the system refuses to start Picture in Picture at all.
+      // Meeting that without the user ever seeing it is the whole difficulty.
+      //
+      // It goes into the window, behind the Flutter view — not into the
+      // Flutter view. `hostView` here is the FlutterView, and Flutter draws
+      // into that view's own layer rather than into a child, so *any* subview
+      // of it lands on top of the entire app. At the frame size and origin
+      // this had, that was an opaque rectangle across the top of the screen
+      // covering the controls, immovable, with the call meter painted on it.
+      //
+      // As a sibling underneath, it is completely covered by an opaque
+      // full-screen view and never seen. The system does not mind: it reads
+      // the sample buffers we enqueue, not the pixels on screen, and being
+      // occluded is not being hidden.
+      guard let window = hostView.window else {
+        throw PipError.unsupported("The app window is not ready yet.")
+      }
       let carrier = UIView(
         frame: CGRect(origin: .zero, size: Self.frameSize))
       carrier.isUserInteractionEnabled = false
       layer.frame = carrier.bounds
       carrier.layer.addSublayer(layer)
-      hostView.insertSubview(carrier, at: 0)
+      window.insertSubview(carrier, at: 0)
       carrierView = carrier
 
       let source = AVPictureInPictureController.ContentSource(

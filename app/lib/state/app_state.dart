@@ -749,6 +749,10 @@ class AppState extends ChangeNotifier {
   Timer? _syncTimer;
   bool _syncing = false;
 
+  /// Servers whose details changed under a session that was in use, so the
+  /// rebuild was deferred until it is not.
+  final Set<String> _pendingRegistration = {};
+
   CloudKind get cloudKind => CloudSync.instance.kind;
 
   /// Whether this platform lets the user pick an audio device at all.
@@ -923,15 +927,28 @@ class AppState extends ChangeNotifier {
         continue;
       }
       // A renamed server keeps talking. Connection details are baked into the
-      // session when it is registered, so only those warrant an interruption.
+      // session when it is registered, so only those warrant a rebuild.
       if (old.sameConnection(s)) continue;
-      final wasLive = runtimeFor(s.id).isLive;
+
+      // But never mid-call. A conversation is not worth interrupting for a
+      // detail somebody altered on a laptop, and the change is not urgent —
+      // it applies at the next connect, which is when it first matters.
+      //
+      // This is also the backstop against a merge that keeps changing its
+      // mind. One did: a stale field kept winning, the entry looked different
+      // every round, and each round tore down the connection and rebuilt it,
+      // about once a second, until the server started refusing us. Whatever
+      // decides the merge, it cannot reach through this.
+      final rt = runtimeFor(s.id);
+      if (rt.isLive || rt.isBusy) {
+        _pendingRegistration.add(s.id);
+        continue;
+      }
       try {
         await removeServer(serverId: s.id);
       } catch (_) {}
       runtimes.remove(s.id);
       await _register(s);
-      if (wasLive) unawaited(connect(s.id));
     }
 
     notifyListeners();
@@ -1054,6 +1071,18 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> connect(String id) async {
+    // Details that arrived from another device while this session was in use
+    // are applied now, on the way in, rather than having interrupted it then.
+    if (_pendingRegistration.remove(id)) {
+      final i = servers.indexWhere((s) => s.id == id);
+      if (i >= 0) {
+        try {
+          await removeServer(serverId: id);
+        } catch (_) {}
+        runtimes.remove(id);
+        await _register(servers[i]);
+      }
+    }
     try {
       await connectServer(serverId: id);
     } catch (e) {
@@ -1076,7 +1105,11 @@ class AppState extends ChangeNotifier {
     if (fp == null) return;
     final i = servers.indexWhere((s) => s.id == id);
     if (i >= 0) {
-      servers[i] = servers[i].copyWith(certFingerprint: fp);
+      // Stamped, because this is a change to the entry like any other. Without
+      // it the edit carries the old timestamp, ties with the copy in the cloud
+      // that predates it, and loses to whatever the tie-break happens to
+      // prefer — so the trust the user just granted gets rolled back.
+      servers[i] = servers[i].copyWith(certFingerprint: fp).stamped();
       await _persist();
     }
     rt.certificateChanged = false;
@@ -1660,7 +1693,9 @@ class AppState extends ChangeNotifier {
         if (!changed) {
           final i = servers.indexWhere((s) => s.id == serverId);
           if (i >= 0 && servers[i].certFingerprint == null) {
-            servers[i] = servers[i].copyWith(certFingerprint: fingerprint);
+            servers[i] = servers[i]
+                .copyWith(certFingerprint: fingerprint)
+                .stamped();
             unawaited(_persist());
           }
         }

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/audio_session.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/overlay.dart';
@@ -414,6 +415,36 @@ class AppState extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _loadSettings(prefs);
+
+      // Before the engine, not after. iOS hands out a playback-only session
+      // until asked otherwise, and an engine started against one finds zero
+      // input channels and fails inside CoreAudio with wording that describes
+      // the symptom and not the cause.
+      final session = await AudioSessionBridge.instance.prepare();
+      if (!session.granted) {
+        _startupError =
+            'MumbleWay needs permission to use the microphone. '
+            'Allow it in Settings, then reopen the app.';
+        notifyListeners();
+        return;
+      }
+      if (session.inputChannels == 0) {
+        _startupError =
+            session.error ??
+            'This device is not offering any audio input right now. '
+                'If a headset is connected, try reconnecting it.';
+        notifyListeners();
+        return;
+      }
+      // A call or a Siri request takes the session away and does not give it
+      // back. The platform side reactivates it; the meters need to know the
+      // levels they are showing went stale in the meantime.
+      AudioSessionBridge.instance.onResumed = () {
+        for (final rt in runtimes.values) {
+          rt.speakerLevels.clear();
+        }
+        notifyListeners();
+      };
 
       final dir = await getApplicationSupportDirectory();
       await startEngine(

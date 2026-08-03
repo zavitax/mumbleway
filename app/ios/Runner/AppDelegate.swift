@@ -7,6 +7,7 @@ import UIKit
   private var pip: AnyObject?
   private var overlayChannel: FlutterMethodChannel?
   private var cloud: CloudStore?
+  private var audioSession: AudioSession?
 
   override func application(
     _ application: UIApplication,
@@ -26,6 +27,9 @@ import UIKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayCloud") {
       cloud = CloudStore(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayAudioSession") {
+      audioSession = AudioSession(messenger: registrar.messenger())
     }
   }
 

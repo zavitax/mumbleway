@@ -1,7 +1,9 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mumbleway/services/audio_session.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/services/button_controller.dart';
 import 'package:mumbleway/services/overlay.dart';
@@ -16,10 +18,15 @@ import 'package:mumbleway/widgets/status_badge.dart';
 void main() {
   group('SystemProxy parsing', () {
     test('reads a plain host:port and strips any scheme', () {
-      expect(SystemProxy.stripScheme('http://127.0.0.1:10809'), '127.0.0.1:10809');
+      expect(
+        SystemProxy.stripScheme('http://127.0.0.1:10809'),
+        '127.0.0.1:10809',
+      );
       expect(SystemProxy.stripScheme('127.0.0.1:10809'), '127.0.0.1:10809');
-      expect(SystemProxy.pickFromWindowsValue('http://10.0.0.1:8080'),
-          '10.0.0.1:8080');
+      expect(
+        SystemProxy.pickFromWindowsValue('http://10.0.0.1:8080'),
+        '10.0.0.1:8080',
+      );
     });
 
     test('prefers the https entry in a per-scheme list', () {
@@ -30,8 +37,10 @@ void main() {
     });
 
     test('falls back to the http entry when there is no https one', () {
-      expect(SystemProxy.pickFromWindowsValue('http=proxy-a:1;ftp=proxy-c:3'),
-          'proxy-a:1');
+      expect(
+        SystemProxy.pickFromWindowsValue('http=proxy-a:1;ftp=proxy-c:3'),
+        'proxy-a:1',
+      );
     });
 
     test('splits bypass lists on both separators', () {
@@ -57,18 +66,18 @@ void main() {
   // Widgets under test resolve localised strings, so the harness has to supply
   // the delegates just as the real app does.
   Widget wrap(Widget child) => MaterialApp(
-        theme: buildTheme(Brightness.dark),
-        supportedLocales: AppState.supportedLocales,
-        localizationsDelegates: const [
-          L.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          // MaterialApp needs a Cupertino delegate covering every supported
-          // locale, even on Android and desktop.
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        home: Scaffold(body: Center(child: child)),
-      );
+    theme: buildTheme(Brightness.dark),
+    supportedLocales: AppState.supportedLocales,
+    localizationsDelegates: const [
+      L.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      // MaterialApp needs a Cupertino delegate covering every supported
+      // locale, even on Android and desktop.
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    home: Scaffold(body: Center(child: child)),
+  );
 
   group('StatusVisual', () {
     test('connected, error and reconnecting never share a colour', () {
@@ -121,13 +130,20 @@ void main() {
         expect(id, lessThan(flutterPlaneStart), reason: 'code $code');
       }
 
-      expect(ButtonController.mediaKeyId(85),
-          isNot(LogicalKeyboardKey.mediaPlayPause.keyId));
-      expect(ButtonController.mediaKeyId(85), isNot(LogicalKeyboardKey.space.keyId));
+      expect(
+        ButtonController.mediaKeyId(85),
+        isNot(LogicalKeyboardKey.mediaPlayPause.keyId),
+      );
+      expect(
+        ButtonController.mediaKeyId(85),
+        isNot(LogicalKeyboardKey.space.keyId),
+      );
 
       // Distinct codes stay distinct.
-      expect(ButtonController.mediaKeyId(85),
-          isNot(ButtonController.mediaKeyId(87)));
+      expect(
+        ButtonController.mediaKeyId(85),
+        isNot(ButtonController.mediaKeyId(87)),
+      );
     });
 
     test('hold-to-talk keys on press and unkeys on release', () {
@@ -144,7 +160,8 @@ void main() {
       // what makes those usable.
       final id = ButtonController.mediaKeyId(85);
       c.addBinding(
-          ButtonBinding(keyId: id, action: ButtonAction.toggleTransmit));
+        ButtonBinding(keyId: id, action: ButtonAction.toggleTransmit),
+      );
 
       c.handleMediaButton(85, true);
       c.handleMediaButton(85, false);
@@ -195,27 +212,32 @@ void main() {
     /// Pumps an app in [locale] and hands back a context that resolves strings.
     Future<BuildContext> contextFor(WidgetTester tester, Locale locale) async {
       late BuildContext captured;
-      await tester.pumpWidget(MaterialApp(
-        locale: locale,
-        supportedLocales: AppState.supportedLocales,
-        localizationsDelegates: const [
-          L.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          // MaterialApp needs a Cupertino delegate covering every supported
-          // locale, even on Android and desktop.
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        home: Builder(builder: (c) {
-          captured = c;
-          return const SizedBox();
-        }),
-      ));
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: locale,
+          supportedLocales: AppState.supportedLocales,
+          localizationsDelegates: const [
+            L.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            // MaterialApp needs a Cupertino delegate covering every supported
+            // locale, even on Android and desktop.
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: Builder(
+            builder: (c) {
+              captured = c;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
       return captured;
     }
 
-    testWidgets('every connection status has a label in both languages',
-        (tester) async {
+    testWidgets('every connection status has a label in both languages', (
+      tester,
+    ) async {
       for (final locale in AppState.supportedLocales) {
         final ctx = await contextFor(tester, locale);
         for (final s in ConnStatus.values) {
@@ -250,33 +272,39 @@ void main() {
   });
 
   testWidgets('StatusBadge shows the state label', (tester) async {
-    await tester.pumpWidget(wrap(
-      const StatusBadge(status: ConnStatus.connected),
-    ));
+    await tester.pumpWidget(
+      wrap(const StatusBadge(status: ConnStatus.connected)),
+    );
     expect(find.text('Connected'), findsOneWidget);
   });
 
-  testWidgets('StatusBadge distinguishes reconnecting from connected',
-      (tester) async {
-    await tester.pumpWidget(wrap(
-      const StatusBadge(status: ConnStatus.reconnecting, detail: 'ping timeout'),
-    ));
+  testWidgets('StatusBadge distinguishes reconnecting from connected', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        const StatusBadge(
+          status: ConnStatus.reconnecting,
+          detail: 'ping timeout',
+        ),
+      ),
+    );
     expect(find.text('Reconnecting'), findsOneWidget);
     expect(find.text('Connected'), findsNothing);
   });
 
   testWidgets('TransportChip reports UDP with its ping', (tester) async {
-    await tester.pumpWidget(wrap(
-      const TransportChip(transport: 'udp', pingMs: 42),
-    ));
+    await tester.pumpWidget(
+      wrap(const TransportChip(transport: 'udp', pingMs: 42)),
+    );
     expect(find.textContaining('UDP'), findsOneWidget);
     expect(find.textContaining('42'), findsOneWidget);
   });
 
   testWidgets('TransportChip reports a tunnelled TCP fallback', (tester) async {
-    await tester.pumpWidget(wrap(
-      const TransportChip(transport: 'tcp', pingMs: 0),
-    ));
+    await tester.pumpWidget(
+      wrap(const TransportChip(transport: 'tcp', pingMs: 0)),
+    );
     expect(find.textContaining('TCP'), findsOneWidget);
   });
 
@@ -334,8 +362,10 @@ void main() {
     // between the markers rather than look wrong.
     expect(OverlayBridge.meterFraction(0), 1.0);
     expect(OverlayBridge.meterFraction(VoiceMeter.floorDb), 0.0);
-    expect(OverlayBridge.meterFraction(VoiceMeter.floorDb / 2),
-        closeTo(0.5, 1e-9));
+    expect(
+      OverlayBridge.meterFraction(VoiceMeter.floorDb / 2),
+      closeTo(0.5, 1e-9),
+    );
     // Silence is reported as -120 dBFS, well below the floor.
     expect(OverlayBridge.meterFraction(-120), 0.0);
     expect(OverlayBridge.meterFraction(12), 1.0);
@@ -347,8 +377,9 @@ void main() {
     expect(OverlayBridge.meterFraction(-25), VoiceMeter.fractionFor(-25));
   });
 
-  testWidgets('the on-air light flashes rather than sitting steady',
-      (tester) async {
+  testWidgets('the on-air light flashes rather than sitting steady', (
+    tester,
+  ) async {
     await tester.pumpWidget(wrap(const OnAirIndicator()));
     // Scoped to the indicator: the surrounding MaterialApp has fades of its
     // own, so an unscoped finder matches more than one.
@@ -373,9 +404,50 @@ void main() {
     // The system owns the buttons there and offers exactly three, which go to
     // talk, mute and hang up. Deafen is the one that gives way, being a
     // comfort setting rather than a control the call needs.
-    expect(OverlayBridge.hasDeafenFor(FloatingKind.iosPictureInPicture), isFalse);
+    expect(
+      OverlayBridge.hasDeafenFor(FloatingKind.iosPictureInPicture),
+      isFalse,
+    );
     expect(OverlayBridge.hasDeafenFor(FloatingKind.androidOverlay), isTrue);
     expect(OverlayBridge.hasDeafenFor(FloatingKind.macosPanel), isTrue);
     expect(OverlayBridge.hasDeafenFor(FloatingKind.none), isFalse);
+  });
+
+  group('audio session', () {
+    // The bug this guards: iOS reports zero input channels until the session
+    // is configured, and the engine then fails inside CoreAudio with wording
+    // that names the symptom and not the cause.
+    test('a refused microphone is not usable', () {
+      const s = AudioSessionState(
+        granted: false,
+        inputChannels: 2,
+        sampleRate: 48000,
+      );
+      expect(s.usable, isFalse);
+    });
+
+    test('granted but silent hardware is not usable either', () {
+      const s = AudioSessionState(
+        granted: true,
+        inputChannels: 0,
+        sampleRate: 48000,
+      );
+      expect(s.usable, isFalse);
+    });
+
+    test('platforms without a session are never blocked by this', () {
+      // -1 rather than 0: nothing was asked, so nothing was refused, and the
+      // startup check must not read that as an absent microphone.
+      expect(AudioSessionState.notNeeded.usable, isTrue);
+      expect(AudioSessionState.notNeeded.inputChannels, isNot(0));
+    });
+
+    test('it is only iOS that needs one', () {
+      expect(
+        AudioSessionBridge.instance.isNeeded,
+        Platform.isIOS,
+        reason: 'macOS, Android and Windows have no session to configure',
+      );
+    });
   });
 }

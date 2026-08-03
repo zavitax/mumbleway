@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
+
 /// What a bound button does.
 enum ButtonAction {
   /// Transmit while held. What a handlebar remote is usually for.
@@ -18,11 +20,14 @@ enum ButtonAction {
 }
 
 extension ButtonActionLabel on ButtonAction {
-  String get label => switch (this) {
-    ButtonAction.pushToTalk => 'Push to talk (hold)',
-    ButtonAction.toggleTransmit => 'Push to talk (toggle)',
-    ButtonAction.toggleMute => 'Mute / unmute',
-    ButtonAction.toggleDeafen => 'Deafen / undeafen',
+  /// Takes the localisations rather than reading a global, because an enum has
+  /// no context of its own and a label that quietly stays English is exactly
+  /// what this went unnoticed as.
+  String label(L l) => switch (this) {
+    ButtonAction.pushToTalk => l.actionPushToTalkHold,
+    ButtonAction.toggleTransmit => l.actionPushToTalkToggle,
+    ButtonAction.toggleMute => l.actionToggleMute,
+    ButtonAction.toggleDeafen => l.actionToggleDeafen,
   };
 }
 

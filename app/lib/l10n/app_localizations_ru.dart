@@ -812,4 +812,32 @@ class LRu extends L {
 
   @override
   String get diagParticipants => 'Участников';
+
+  @override
+  String get levelsHelp =>
+      'Стремитесь к тому, чтобы при обычной речи индикатор доходил примерно до трёх четвертей. Избыточное усиление поднимает шум двигателя вместе с голосом.';
+
+  @override
+  String get floatingAndroidBody =>
+      'Говорить, отключать микрофон и звук, завершать вызов поверх других приложений. Требуется разрешение «поверх других приложений».';
+
+  @override
+  String get floatingIosBody =>
+      'Картинка в картинке — появляется, когда вы выходите из приложения. Система даёт три кнопки: воспроизведение/пауза говорит, назад отключает микрофон, вперёд завершает вызов (дважды для подтверждения).';
+
+  @override
+  String get floatingMacosBody =>
+      'Небольшая панель поверх всех окон: говорить, отключить микрофон, отключить звук, завершить вызов.';
+
+  @override
+  String get actionPushToTalkHold => 'Рация (удерживать)';
+
+  @override
+  String get actionPushToTalkToggle => 'Рация (переключатель)';
+
+  @override
+  String get actionToggleMute => 'Выключить / включить микрофон';
+
+  @override
+  String get actionToggleDeafen => 'Выключить / включить звук';
 }

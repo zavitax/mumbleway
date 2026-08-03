@@ -1,4 +1,5 @@
-import 'dart:io' show Platform;
+import 'dart:convert';
+import 'dart:io' show File, Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -490,6 +491,45 @@ void main() {
       await pumpAt(tester, 40);
       expect(find.bySemanticsLabel('MumbleWay'), findsOneWidget);
       handle.dispose();
+    });
+  });
+
+  group('translation coverage', () {
+    // The gaps found on a real phone were of two kinds: keys translated in the
+    // .arb files but never used by the widget, and strings that were never
+    // keys at all. This catches neither directly — but it does catch the third
+    // kind, a key added to English and forgotten in Russian, which is how the
+    // first kind starts.
+    test('every string exists in both languages, and differs', () async {
+      final en =
+          jsonDecode(await File('lib/l10n/app_en.arb').readAsString())
+              as Map<String, dynamic>;
+      final ru =
+          jsonDecode(await File('lib/l10n/app_ru.arb').readAsString())
+              as Map<String, dynamic>;
+
+      bool isString(String k) => !k.startsWith('@');
+      final enKeys = en.keys.where(isString).toSet();
+      final ruKeys = ru.keys.where(isString).toSet();
+
+      expect(enKeys.difference(ruKeys), isEmpty, reason: 'missing in Russian');
+      expect(ruKeys.difference(enKeys), isEmpty, reason: 'stale in Russian');
+
+      // A handful are legitimately identical: the product name, and hints that
+      // are format examples rather than prose.
+      const sameOnPurpose = {
+        'appTitle',
+        'proxyHostPortHint',
+        'serverAddressHint',
+      };
+      final untranslated = [
+        for (final k in enKeys)
+          if (!sameOnPurpose.contains(k) &&
+              en[k] == ru[k] &&
+              (en[k] as String).length > 3)
+            k,
+      ];
+      expect(untranslated, isEmpty, reason: 'English left in the Russian file');
     });
   });
 }

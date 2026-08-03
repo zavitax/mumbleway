@@ -805,4 +805,32 @@ class LEn extends L {
 
   @override
   String get diagParticipants => 'Participants';
+
+  @override
+  String get levelsHelp =>
+      'Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.';
+
+  @override
+  String get floatingAndroidBody =>
+      'Talk, mute, deafen and hang up over other apps. Needs the \"display over other apps\" permission.';
+
+  @override
+  String get floatingIosBody =>
+      'Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).';
+
+  @override
+  String get floatingMacosBody =>
+      'A small always-on-top panel with talk, mute, deafen and hang up.';
+
+  @override
+  String get actionPushToTalkHold => 'Push to talk (hold)';
+
+  @override
+  String get actionPushToTalkToggle => 'Push to talk (toggle)';
+
+  @override
+  String get actionToggleMute => 'Mute / unmute';
+
+  @override
+  String get actionToggleDeafen => 'Deafen / undeafen';
 }

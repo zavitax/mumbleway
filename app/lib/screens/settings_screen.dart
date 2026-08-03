@@ -456,8 +456,7 @@ class _LevelsSection extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Aim for the meter to peak around three quarters while speaking '
-            'normally. Too much gain lifts the engine noise with your voice.',
+            l.levelsHelp,
             style: TextStyle(
               fontSize: 11,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -542,7 +541,7 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
           ListTile(
             leading: const Icon(Icons.radio_button_checked),
             title: Text(b.displayName),
-            subtitle: Text(b.action.label),
+            subtitle: Text(b.action.label(l)),
             trailing: IconButton(
               icon: const Icon(Icons.close),
               tooltip: l.removeBinding,
@@ -571,7 +570,7 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
                   ),
                   items: [
                     for (final a in ButtonAction.values)
-                      DropdownMenuItem(value: a, child: Text(a.label)),
+                      DropdownMenuItem(value: a, child: Text(a.label(l))),
                   ],
                   onChanged: (v) => setState(() => _action = v ?? _action),
                 ),
@@ -692,15 +691,11 @@ class _OverlayTileState extends State<_OverlayTile> {
   String _subtitleFor(FloatingKind kind) {
     switch (kind) {
       case FloatingKind.androidOverlay:
-        return 'Talk, mute, deafen and hang up over other apps. '
-            'Needs the "display over other apps" permission.';
+        return L.of(context).floatingAndroidBody;
       case FloatingKind.iosPictureInPicture:
-        return 'Picture in Picture, appearing when you leave the app. '
-            'The system allows three buttons: play/pause talks, '
-            'skip back mutes, skip forward hangs up (twice to confirm).';
+        return L.of(context).floatingIosBody;
       case FloatingKind.macosPanel:
-        return 'A small always-on-top panel with talk, mute, deafen '
-            'and hang up.';
+        return L.of(context).floatingMacosBody;
       case FloatingKind.none:
         return L.of(context).notAvailableHere;
     }

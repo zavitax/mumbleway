@@ -1584,6 +1584,54 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Participants'**
   String get diagParticipants;
+
+  /// No description provided for @levelsHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.'**
+  String get levelsHelp;
+
+  /// No description provided for @floatingAndroidBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk, mute, deafen and hang up over other apps. Needs the \"display over other apps\" permission.'**
+  String get floatingAndroidBody;
+
+  /// No description provided for @floatingIosBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).'**
+  String get floatingIosBody;
+
+  /// No description provided for @floatingMacosBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A small always-on-top panel with talk, mute, deafen and hang up.'**
+  String get floatingMacosBody;
+
+  /// No description provided for @actionPushToTalkHold.
+  ///
+  /// In en, this message translates to:
+  /// **'Push to talk (hold)'**
+  String get actionPushToTalkHold;
+
+  /// No description provided for @actionPushToTalkToggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Push to talk (toggle)'**
+  String get actionPushToTalkToggle;
+
+  /// No description provided for @actionToggleMute.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute / unmute'**
+  String get actionToggleMute;
+
+  /// No description provided for @actionToggleDeafen.
+  ///
+  /// In en, this message translates to:
+  /// **'Deafen / undeafen'**
+  String get actionToggleDeafen;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

@@ -19,9 +19,43 @@ class MainActivity : FlutterActivity() {
 
     private var channel: MethodChannel? = null
     private var buttonChannel: MethodChannel? = null
+    private var logChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // The engine's own log, repeated into logcat so a device on a cable can
+        // be watched live rather than only questioned through the app's panel
+        // afterwards. Same lines either way; this copy is the one reachable
+        // while the app is misbehaving.
+        val logs = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/log",
+        )
+        logChannel = logs
+        logs.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "write" -> {
+                    val lines = call.argument<List<Map<String, Any?>>>("lines")
+                    if (lines == null) {
+                        result.error("args", "write wants a list of lines.", null)
+                    } else {
+                        for (line in lines) {
+                            val message = line["message"] as? String ?: ""
+                            when (line["level"] as? Int ?: 2) {
+                                0, 1 -> android.util.Log.d(LOG_TAG, message)
+                                3 -> android.util.Log.w(LOG_TAG, message)
+                                4 -> android.util.Log.e(LOG_TAG, message)
+                                else -> android.util.Log.i(LOG_TAG, message)
+                            }
+                        }
+                        result.success(null)
+                    }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
 
         val ch = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -149,6 +183,13 @@ class MainActivity : FlutterActivity() {
         OverlayService.onHangup = null
         channel?.setMethodCallHandler(null)
         buttonChannel?.setMethodCallHandler(null)
+        logChannel?.setMethodCallHandler(null)
         super.onDestroy()
+    }
+
+    private companion object {
+        /// Short, because logcat truncates a tag past 23 characters on older
+        /// releases and a truncated tag cannot be filtered on.
+        const val LOG_TAG = "MumbleWay"
     }
 }

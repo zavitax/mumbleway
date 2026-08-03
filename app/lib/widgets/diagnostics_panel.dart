@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../src/rust/api/mumbleway.dart';
 import '../l10n/app_localizations.dart';
+import '../services/engine_log.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
@@ -253,6 +255,11 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 16),
+                    // Last of all: the graphs say when something went wrong,
+                    // and this says what the engine thought it was doing at
+                    // the time.
+                    const _LogView(),
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -282,6 +289,182 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     if (rt.attempt > 0)
       _Row(l.diagReconnectAttempts, '${rt.attempt}', bad: true),
   ];
+}
+
+/// What the engine has said about itself, newest last.
+///
+/// The numbers above say that something went wrong and roughly when; this says
+/// what the engine was doing at the time, which is the part no counter can
+/// carry. Deliberately verbatim rather than summarised — the whole value of it
+/// is that a rider can read it back to us unedited.
+class _LogView extends StatefulWidget {
+  const _LogView();
+
+  @override
+  State<_LogView> createState() => _LogViewState();
+}
+
+class _LogViewState extends State<_LogView> {
+  final _log = EngineLog.instance;
+  final _scroll = ScrollController();
+
+  /// Hides the chatter. Warnings and errors are what a rider is asked to look
+  /// for, and on a phone screen twenty routine lines will bury one of them.
+  bool _problemsOnly = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _log.addListener(_onLines);
+  }
+
+  void _onLines() {
+    if (!mounted) return;
+    setState(() {});
+    // Follow the tail, but only from the tail: scrolling back to read
+    // something and being yanked to the bottom by the next line makes the log
+    // unusable precisely when it is being used.
+    if (!_scroll.hasClients) return;
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 24) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scroll.hasClients) {
+          _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _log.removeListener(_onLines);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Color _colour(LogLevel level, ColorScheme scheme) => switch (level) {
+    LogLevel.error => StatusColors.failed,
+    LogLevel.warn => StatusColors.connecting,
+    LogLevel.trace || LogLevel.debug => scheme.onSurfaceVariant,
+    LogLevel.info => scheme.onSurface,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final quiet = scheme.onSurfaceVariant;
+    final lines = _problemsOnly
+        ? _log.lines.where((e) => e.level.index >= LogLevel.warn.index).toList()
+        : _log.lines;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                l.diagLog.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: quiet,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _problemsOnly = !_problemsOnly),
+              child: Text(_problemsOnly ? l.diagLogAll : l.diagLogProblems),
+            ),
+            IconButton(
+              tooltip: l.diagLogCopy,
+              icon: const Icon(Icons.copy_all_outlined, size: 18),
+              onPressed: lines.isEmpty
+                  ? null
+                  : () {
+                      Clipboard.setData(ClipboardData(text: _log.asText()));
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(l.diagLogCopied)));
+                    },
+            ),
+            IconButton(
+              tooltip: l.diagLogClear,
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              onPressed: _log.isEmpty ? null : () => _log.clear(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Container(
+          height: 190,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: quiet.withValues(alpha: 0.18)),
+          ),
+          child: lines.isEmpty
+              ? Center(
+                  child: Text(
+                    _problemsOnly ? l.diagLogNoProblems : l.diagLogEmpty,
+                    style: TextStyle(fontSize: 12, color: quiet),
+                  ),
+                )
+              // Horizontally scrollable rather than wrapped: these lines are
+              // read by scanning down the timestamps, and a wrapped line breaks
+              // that column apart.
+              : Scrollbar(
+                  controller: _scroll,
+                  child: ListView.builder(
+                    controller: _scroll,
+                    itemCount: lines.length,
+                    itemBuilder: (context, i) {
+                      final line = lines[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1),
+                        child: SelectableText.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: '${line.clock} ',
+                                style: TextStyle(color: quiet),
+                              ),
+                              TextSpan(
+                                text: '${line.target} ',
+                                style: TextStyle(
+                                  color: quiet,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              TextSpan(
+                                text: line.message,
+                                style: TextStyle(
+                                  color: _colour(line.level, scheme),
+                                  fontWeight: line.level.index >= 3
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            height: 1.35,
+                            fontFamily: 'monospace',
+                            fontFamilyFallback: ['Menlo', 'Consolas'],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 /// The bridge hands `u64` across as `BigInt`; converting once here keeps the

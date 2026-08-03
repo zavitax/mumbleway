@@ -959,4 +959,28 @@ class LEn extends L {
 
   @override
   String get disconnectFirst => 'Disconnect first';
+
+  @override
+  String get diagLog => 'Engine log';
+
+  @override
+  String get diagLogProblems => 'Problems only';
+
+  @override
+  String get diagLogAll => 'Show all';
+
+  @override
+  String get diagLogCopy => 'Copy the whole log';
+
+  @override
+  String get diagLogCopied => 'Log copied to the clipboard.';
+
+  @override
+  String get diagLogClear => 'Clear the log';
+
+  @override
+  String get diagLogEmpty => 'Nothing logged yet.';
+
+  @override
+  String get diagLogNoProblems => 'No warnings or errors.';
 }

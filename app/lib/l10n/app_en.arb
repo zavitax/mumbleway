@@ -339,5 +339,14 @@
   "feedbackResidualBody": "Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.",
 
   "serverBusyChange": "Disconnect from this server before changing or removing it.",
-  "disconnectFirst": "Disconnect first"
+  "disconnectFirst": "Disconnect first",
+
+  "diagLog": "Engine log",
+  "diagLogProblems": "Problems only",
+  "diagLogAll": "Show all",
+  "diagLogCopy": "Copy the whole log",
+  "diagLogCopied": "Log copied to the clipboard.",
+  "diagLogClear": "Clear the log",
+  "diagLogEmpty": "Nothing logged yet.",
+  "diagLogNoProblems": "No warnings or errors."
 }

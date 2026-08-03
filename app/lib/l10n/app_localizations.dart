@@ -1854,6 +1854,54 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Disconnect first'**
   String get disconnectFirst;
+
+  /// No description provided for @diagLog.
+  ///
+  /// In en, this message translates to:
+  /// **'Engine log'**
+  String get diagLog;
+
+  /// No description provided for @diagLogProblems.
+  ///
+  /// In en, this message translates to:
+  /// **'Problems only'**
+  String get diagLogProblems;
+
+  /// No description provided for @diagLogAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Show all'**
+  String get diagLogAll;
+
+  /// No description provided for @diagLogCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy the whole log'**
+  String get diagLogCopy;
+
+  /// No description provided for @diagLogCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Log copied to the clipboard.'**
+  String get diagLogCopied;
+
+  /// No description provided for @diagLogClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear the log'**
+  String get diagLogClear;
+
+  /// No description provided for @diagLogEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged yet.'**
+  String get diagLogEmpty;
+
+  /// No description provided for @diagLogNoProblems.
+  ///
+  /// In en, this message translates to:
+  /// **'No warnings or errors.'**
+  String get diagLogNoProblems;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

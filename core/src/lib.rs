@@ -6,6 +6,7 @@
 
 pub mod audio;
 pub mod crypto;
+pub mod diag;
 pub mod error;
 pub mod net;
 pub mod proto;

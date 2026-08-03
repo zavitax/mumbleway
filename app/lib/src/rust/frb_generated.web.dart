@@ -84,6 +84,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw);
 
   @protected
+  List<UiLogEntry> dco_decode_list_ui_log_entry(dynamic raw);
+
+  @protected
   List<UiSpeakerLevel> dco_decode_list_ui_speaker_level(dynamic raw);
 
   @protected
@@ -133,6 +136,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiDiagnostics dco_decode_ui_diagnostics(dynamic raw);
+
+  @protected
+  UiLogEntry dco_decode_ui_log_entry(dynamic raw);
 
   @protected
   UiServerStatus dco_decode_ui_server_status(dynamic raw);
@@ -225,6 +231,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> sse_decode_list_ui_channel(SseDeserializer deserializer);
 
   @protected
+  List<UiLogEntry> sse_decode_list_ui_log_entry(SseDeserializer deserializer);
+
+  @protected
   List<UiSpeakerLevel> sse_decode_list_ui_speaker_level(
     SseDeserializer deserializer,
   );
@@ -278,6 +287,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiDiagnostics sse_decode_ui_diagnostics(SseDeserializer deserializer);
+
+  @protected
+  UiLogEntry sse_decode_ui_log_entry(SseDeserializer deserializer);
 
   @protected
   UiServerStatus sse_decode_ui_server_status(SseDeserializer deserializer);
@@ -388,6 +400,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_ui_log_entry(
+    List<UiLogEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ui_speaker_level(
     List<UiSpeakerLevel> self,
     SseSerializer serializer,
@@ -446,6 +464,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_diagnostics(UiDiagnostics self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_log_entry(UiLogEntry self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_server_status(

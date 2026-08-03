@@ -169,6 +169,15 @@ impl Session {
             }
 
             self.set_state(ConnectionState::Connecting).await;
+            // The whole connection story passes through this loop, so logging
+            // it here covers every attempt and every outcome without scattering
+            // lines through the transport. Never the password: this log is
+            // shown in the app and meant to be quoted back to us.
+            tracing::info!(
+                "connecting to {}:{}",
+                self.config.profile.host,
+                self.config.profile.port
+            );
 
             let outcome = self.connect_and_run().await;
             let reason = match outcome {
@@ -178,6 +187,11 @@ impl Session {
 
             match self.reconnect.on_disconnect(&reason) {
                 None => {
+                    if matches!(reason, DisconnectReason::UserRequested) {
+                        tracing::info!("disconnected by request");
+                    } else {
+                        tracing::error!("giving up: {reason}");
+                    }
                     if matches!(reason, DisconnectReason::UserRequested) {
                         self.set_state(ConnectionState::Disconnected {
                             reason: reason.to_string(),
@@ -191,6 +205,11 @@ impl Session {
                     }
                 }
                 Some(delay) => {
+                    tracing::warn!(
+                        "lost connection: {reason} — retry {} in {} ms",
+                        self.reconnect.attempt(),
+                        delay.as_millis()
+                    );
                     self.set_state(ConnectionState::Reconnecting {
                         attempt: self.reconnect.attempt(),
                         retry_in_ms: delay.as_millis() as u64,
@@ -469,6 +488,7 @@ impl Session {
                             state.stats.udp_ping_ms = rtt.as_secs_f32() * 1000.0;
                             if state.transport != Transport::Udp {
                                 state.transport = Transport::Udp;
+                                tracing::info!("voice now direct over UDP");
                                 self.emit(SessionEvent::TransportChanged(Transport::Udp)).await;
                             }
                         }
@@ -479,6 +499,7 @@ impl Session {
                             *udp = None;
                             if state.transport != Transport::TcpTunnel {
                                 state.transport = Transport::TcpTunnel;
+                                tracing::warn!("UDP socket failed, tunnelling voice over TCP");
                                 self.emit(SessionEvent::TransportChanged(Transport::TcpTunnel)).await;
                             }
                         }
@@ -539,6 +560,10 @@ impl Session {
                 _ = health_timer.tick() => {
                     let now = Instant::now();
                     if now.duration_since(state.last_heard) > SERVER_SILENCE_TIMEOUT {
+                        tracing::warn!(
+                            "no reply from the server for {} s, treating the link as dead",
+                            now.duration_since(state.last_heard).as_secs()
+                        );
                         return Ok(DisconnectReason::PingTimeout);
                     }
                     // Fall back to the tunnel if UDP goes quiet mid-session.
@@ -546,6 +571,11 @@ impl Session {
                         && !udp.as_ref().map(|s| s.is_healthy(now)).unwrap_or(false)
                     {
                         state.transport = Transport::TcpTunnel;
+                        // Worth a line of its own: voice keeps working, so
+                        // nothing else announces it, yet it changes latency and
+                        // is the usual reason a link "sounds worse" for no
+                        // visible cause.
+                        tracing::warn!("UDP went quiet, tunnelling voice over TCP");
                         self.emit(SessionEvent::TransportChanged(Transport::TcpTunnel)).await;
                     }
                     if let Some(at) = state.connected_at {

@@ -8,6 +8,7 @@ import 'package:mumbleway/services/audio_session.dart';
 import 'package:mumbleway/widgets/app_bar_title.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/services/button_controller.dart';
+import 'package:mumbleway/services/engine_log.dart';
 import 'package:mumbleway/services/overlay.dart';
 import 'package:mumbleway/services/proxy.dart';
 import 'package:mumbleway/state/app_state.dart';
@@ -559,6 +560,80 @@ void main() {
         sent.difference(drawn),
         isEmpty,
         reason: 'sent to the window but never drawn',
+      );
+    });
+  });
+
+  group('engine log', () {
+    UiLogEntry entry(int seq, {int level = 2, String message = 'x'}) =>
+        UiLogEntry(
+          seq: BigInt.from(seq),
+          atMs: BigInt.from(1735689600000 + seq),
+          level: level,
+          target: 'session',
+          message: message,
+        );
+
+    setUp(() async {
+      // A singleton, so one test's lines are the next one's starting state.
+      await EngineLog.instance.clear();
+    });
+
+    test('merges the backfill with the stream instead of duplicating it', () {
+      final log = EngineLog.instance;
+
+      // The stream arrives first, then the fetch returns everything recorded
+      // so far — which is both a repeat of what just streamed and the older
+      // lines written before anything was listening.
+      log.add([entry(10), entry(11)]);
+      log.add([entry(8), entry(9), entry(10), entry(11)]);
+
+      expect(
+        log.lines.map((l) => l.seq),
+        [8, 9, 10, 11],
+        reason: 'must dedupe by seq and sort, not append blindly',
+      );
+    });
+
+    test('keeps the newest once past capacity', () {
+      final log = EngineLog.instance;
+      log.add([
+        for (var i = 1; i <= EngineLog.capacity + 25; i++)
+          entry(i, message: '$i'),
+      ]);
+
+      expect(log.lines.length, EngineLog.capacity);
+      expect(log.lines.first.message, '26', reason: 'oldest go first');
+      expect(log.lines.last.message, '${EngineLog.capacity + 25}');
+
+      // A full ring must still accept what comes next, and still drop from the
+      // front to make room rather than growing or refusing.
+      log.add([entry(EngineLog.capacity + 26, message: 'after the trim')]);
+      expect(log.lines.length, EngineLog.capacity);
+      expect(log.lines.last.message, 'after the trim');
+      expect(log.lines.first.message, '27');
+    });
+
+    test('an unknown level is read as info rather than throwing', () {
+      // The number is a wire format; a build mismatch must not crash the panel
+      // that exists to explain build mismatches.
+      expect(LogLevel.of(99), LogLevel.info);
+      expect(LogLevel.of(-1), LogLevel.info);
+      expect(LogLevel.of(4), LogLevel.error);
+    });
+
+    test('a line renders with its clock, level and origin', () {
+      final log = EngineLog.instance;
+      log.add([entry(1, level: 3, message: 'UDP went quiet')]);
+      final text = log.asText();
+
+      expect(text, contains('WARN'));
+      expect(text, contains('[session]'));
+      expect(text, contains('UDP went quiet'));
+      expect(
+        RegExp(r'^\d{2}:\d{2}:\d{2}\.\d{3} ').hasMatch(text),
+        isTrue,
+        reason: 'lines are scanned down the timestamp column: $text',
       );
     });
   });

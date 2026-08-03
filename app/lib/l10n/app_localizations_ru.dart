@@ -966,4 +966,28 @@ class LRu extends L {
 
   @override
   String get disconnectFirst => 'Сначала отключитесь';
+
+  @override
+  String get diagLog => 'Журнал движка';
+
+  @override
+  String get diagLogProblems => 'Только проблемы';
+
+  @override
+  String get diagLogAll => 'Показать все';
+
+  @override
+  String get diagLogCopy => 'Скопировать весь журнал';
+
+  @override
+  String get diagLogCopied => 'Журнал скопирован в буфер обмена.';
+
+  @override
+  String get diagLogClear => 'Очистить журнал';
+
+  @override
+  String get diagLogEmpty => 'Пока ничего не записано.';
+
+  @override
+  String get diagLogNoProblems => 'Предупреждений и ошибок нет.';
 }

@@ -1045,6 +1045,23 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
     let out_rate = out_cfg.sample_rate();
     let out_channels = out_cfg.channels() as usize;
 
+    // What the hardware actually offered, by name and format.
+    //
+    // Two separate faults have now turned on exactly these numbers — a device
+    // reporting zero input channels, and a phone opening a route that captures
+    // nothing — and in both cases the app could only say that audio had failed,
+    // not what it had been handed. A device name here also settles which of
+    // several possible microphones a helmet headset actually attached to.
+    tracing::info!(
+        "input '{}' at {} Hz, {} ch; output '{}' at {} Hz, {} ch",
+        input,
+        in_rate,
+        in_channels,
+        output,
+        out_rate,
+        out_channels,
+    );
+
     // --- input ------------------------------------------------------------
     let cap_shared = shared.clone();
     let mut in_resampler = Resampler::new(in_rate, SAMPLE_RATE);

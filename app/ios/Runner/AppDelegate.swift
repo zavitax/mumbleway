@@ -9,6 +9,7 @@ import UIKit
   private var cloud: CloudStore?
   private var audioSession: AudioSession?
   private var remoteCommands: RemoteCommands?
+  private var logSink: EngineLogSink?
 
   override func application(
     _ application: UIApplication,
@@ -34,6 +35,9 @@ import UIKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayButtons") {
       remoteCommands = RemoteCommands(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayLog") {
+      logSink = EngineLogSink(messenger: registrar.messenger())
     }
   }
 

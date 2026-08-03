@@ -13,6 +13,7 @@ import '../l10n/app_localizations.dart';
 import '../services/audio_session.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
+import '../services/engine_log.dart';
 import '../services/overlay.dart';
 import '../services/proxy.dart';
 import '../src/rust/api/mumbleway.dart';
@@ -520,6 +521,11 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
+
+      // Collect what the engine said while starting. Those lines predate the
+      // stream, and when starting is what went wrong they are the only ones
+      // that matter.
+      EngineLog.instance.backfill();
 
       // Resolve the proxy once at startup; createClient() uses the cached
       // result, so no request pays for a subprocess.
@@ -2113,6 +2119,11 @@ class AppState extends ChangeNotifier {
         }
       case AppEvent_Welcome(:final serverId, :final text):
         runtimeFor(serverId).welcome = text;
+      case AppEvent_Log(:final entries):
+        // Its own notifier, so a burst of log lines does not rebuild the whole
+        // app: only the panel drawing them is listening.
+        EngineLog.instance.add(entries);
+        return;
     }
     notifyListeners();
     // Keep the island's speaker list in step with the roster.

@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -145,6 +145,19 @@ UiDiagnostics audioDiagnostics() =>
 
 void resetAudioGlitches() =>
     RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
+
+/// Everything the engine has logged so far.
+///
+/// The stream only carries lines recorded after the UI attached to it, and the
+/// interesting ones — why the audio device would not open, what the first
+/// connect said — are written before that. This fetches those. Deliberately not
+/// gated on the engine being up: when startup is what failed, this is the only
+/// place the reason exists.
+List<UiLogEntry> recentLogs() =>
+    RustLib.instance.api.crateApiMumblewayRecentLogs();
+
+/// Empties the log, so a reproduction attempt starts from a clean sheet.
+void clearLogs() => RustLib.instance.api.crateApiMumblewayClearLogs();
 
 /// Sounds an arrival or a departure from the channel.
 ///
@@ -360,6 +373,11 @@ sealed class AppEvent with _$AppEvent {
     required String serverId,
     required int session,
   }) = AppEvent_SelfSession;
+
+  /// Lines the engine wrote about itself, for the log in the diagnostics
+  /// panel and for the platform log behind it.
+  const factory AppEvent.log({required List<UiLogEntry> entries}) =
+      AppEvent_Log;
 }
 
 /// Connection status, flattened for easy rendering.
@@ -631,6 +649,50 @@ class UiDiagnostics {
           voicePacketsOut == other.voicePacketsOut &&
           cpuPercent == other.cpuPercent &&
           memoryMb == other.memoryMb;
+}
+
+/// One line of the engine's log.
+class UiLogEntry {
+  /// Monotonic within a run, so the reader can ask for what it has not seen
+  /// without relying on timestamps being unique.
+  final BigInt seq;
+  final BigInt atMs;
+
+  /// 0 trace, 1 debug, 2 info, 3 warn, 4 error. A number rather than an enum
+  /// because the UI orders and filters by severity, and an enum would have to
+  /// be mapped back to exactly this order to do it.
+  final int level;
+
+  /// The subsystem that spoke: `session`, `engine`, `manager`.
+  final String target;
+  final String message;
+
+  const UiLogEntry({
+    required this.seq,
+    required this.atMs,
+    required this.level,
+    required this.target,
+    required this.message,
+  });
+
+  @override
+  int get hashCode =>
+      seq.hashCode ^
+      atMs.hashCode ^
+      level.hashCode ^
+      target.hashCode ^
+      message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiLogEntry &&
+          runtimeType == other.runtimeType &&
+          seq == other.seq &&
+          atMs == other.atMs &&
+          level == other.level &&
+          target == other.target &&
+          message == other.message;
 }
 
 /// What an unauthenticated status probe reported about a server.

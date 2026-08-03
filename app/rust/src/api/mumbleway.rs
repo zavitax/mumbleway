@@ -17,6 +17,7 @@ use mumbleway_core::audio::engine::{
 };
 use mumbleway_core::audio::feedback::FeedbackMode;
 use mumbleway_core::audio::{NoiseProfile, Quality};
+use mumbleway_core::diag::{self, LogEntry, LogLevel};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
 use mumbleway_core::session::{
@@ -179,6 +180,45 @@ pub enum AppEvent {
         server_id: String,
         session: u32,
     },
+    /// Lines the engine wrote about itself, for the log in the diagnostics
+    /// panel and for the platform log behind it.
+    Log {
+        entries: Vec<UiLogEntry>,
+    },
+}
+
+/// One line of the engine's log.
+#[derive(Debug, Clone)]
+pub struct UiLogEntry {
+    /// Monotonic within a run, so the reader can ask for what it has not seen
+    /// without relying on timestamps being unique.
+    pub seq: u64,
+    pub at_ms: u64,
+    /// 0 trace, 1 debug, 2 info, 3 warn, 4 error. A number rather than an enum
+    /// because the UI orders and filters by severity, and an enum would have to
+    /// be mapped back to exactly this order to do it.
+    pub level: u8,
+    /// The subsystem that spoke: `session`, `engine`, `manager`.
+    pub target: String,
+    pub message: String,
+}
+
+impl From<LogEntry> for UiLogEntry {
+    fn from(e: LogEntry) -> Self {
+        UiLogEntry {
+            seq: e.seq,
+            at_ms: e.at_ms,
+            level: match e.level {
+                LogLevel::Trace => 0,
+                LogLevel::Debug => 1,
+                LogLevel::Info => 2,
+                LogLevel::Warn => 3,
+                LogLevel::Error => 4,
+            },
+            target: e.target,
+            message: e.message,
+        }
+    }
 }
 
 /// One speaker's current loudness.
@@ -386,6 +426,13 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Before anything that might have something to say, so a failure during
+    // startup is in the log rather than being the reason there is no log.
+    diag::install();
+    // Recorded directly rather than through `tracing`, which this crate does
+    // not depend on: the one line it has to say does not justify the dependency.
+    diag::record(LogLevel::Info, "engine", "starting");
+
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -569,6 +616,33 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 })
                 .collect();
             emit(AppEvent::SpeakerLevels { levels });
+        }
+    });
+
+    // Carry new log lines to the UI.
+    //
+    // Pushed on the event stream rather than polled by the panel, because the
+    // lines also go to the platform log — Console on Apple, logcat on Android —
+    // and that has to keep working while the panel is shut, which is nearly
+    // always. Batched on a timer instead of sent per line so that a burst
+    // during a failed connect does not turn into hundreds of separate hops
+    // across the bridge.
+    rt.spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_millis(400));
+        let mut sent = 0u64;
+        loop {
+            tick.tick().await;
+            let fresh = diag::since(sent);
+            if fresh.is_empty() {
+                continue;
+            }
+            // Recorded before the send: the sink may be absent, and retrying
+            // the same lines forever once the UI attaches would replay the
+            // whole startup every time.
+            sent = fresh.last().map(|e| e.seq).unwrap_or(sent);
+            emit(AppEvent::Log {
+                entries: fresh.into_iter().map(UiLogEntry::from).collect(),
+            });
         }
     });
 
@@ -980,6 +1054,24 @@ pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
 pub fn reset_audio_glitches() -> anyhow::Result<()> {
     app()?.shared.reset_glitch_counts();
     Ok(())
+}
+
+/// Everything the engine has logged so far.
+///
+/// The stream only carries lines recorded after the UI attached to it, and the
+/// interesting ones — why the audio device would not open, what the first
+/// connect said — are written before that. This fetches those. Deliberately not
+/// gated on the engine being up: when startup is what failed, this is the only
+/// place the reason exists.
+#[frb(sync)]
+pub fn recent_logs() -> Vec<UiLogEntry> {
+    diag::snapshot().into_iter().map(UiLogEntry::from).collect()
+}
+
+/// Empties the log, so a reproduction attempt starts from a clean sheet.
+#[frb(sync)]
+pub fn clear_logs() {
+    diag::clear();
 }
 
 /// Sounds an arrival or a departure from the channel.

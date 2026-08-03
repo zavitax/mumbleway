@@ -4,6 +4,7 @@ import FlutterMacOS
 class MainFlutterWindow: NSWindow {
   private var callPanel: FloatingPanel?
   private var cloud: CloudStore?
+  private var logSink: EngineLogSink?
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -14,6 +15,7 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerOverlayChannel(with: flutterViewController.engine.binaryMessenger)
     cloud = CloudStore(messenger: flutterViewController.engine.binaryMessenger)
+    logSink = EngineLogSink(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }

@@ -249,6 +249,23 @@ jobs:
           api-key-id: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           api-private-key: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
 
+      # Housekeeping, so it must not turn a successful publish into a failed
+      # run: the build is already uploaded by this point, and a red job would
+      # say otherwise. The step still goes red on its own, which is where the
+      # reason will be.
+      - name: Expire superseded TestFlight builds
+        if: steps.gate.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          BUNDLE_ID: com.mumbleway.mumbleway
+          # Only builds numbered below this one are touched, so it does not
+          # matter that the upload above is still processing and invisible.
+          CURRENT_BUILD: ${{ github.run_number }}
+        run: ruby .github/scripts/expire-testflight-builds.rb
+
       # Kept even when the upload fails: a build that archived and exported
       # correctly is worth having in hand, and losing it because App Store
       # Connect rejected the credentials wastes twenty minutes to learn nothing.

@@ -28,7 +28,8 @@ class LanguageButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
 
-    final current = state.locale?.languageCode ??
+    final current =
+        state.locale?.languageCode ??
         Localizations.localeOf(context).languageCode;
     final locales = AppState.supportedLocales;
     final index = locales.indexWhere((l) => l.languageCode == current);
@@ -37,7 +38,8 @@ class LanguageButton extends StatelessWidget {
 
     final flag = _flags[current];
     return Tooltip(
-      message: '${L.of(context).language}: ${_names[current] ?? current}'
+      message:
+          '${L.of(context).language}: ${_names[current] ?? current}'
           '\n${L.of(context).switchToLanguage(_names[next] ?? next)}',
       child: InkWell(
         onTap: state.cycleLocale,

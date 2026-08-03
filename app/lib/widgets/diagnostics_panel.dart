@@ -613,8 +613,7 @@ class _ResponsiveGrid extends StatelessWidget {
           spacing: gap,
           runSpacing: 12,
           children: [
-            for (final child in children)
-              SizedBox(width: width, child: child),
+            for (final child in children) SizedBox(width: width, child: child),
           ],
         );
       },

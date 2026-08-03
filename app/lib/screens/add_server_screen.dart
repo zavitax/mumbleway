@@ -76,10 +76,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
           children: [
             // Only useful when starting from nothing; while editing they would
             // navigate away from unsaved changes.
-            if (!_editing) ...[
-              const _Shortcuts(),
-              const SizedBox(height: 8),
-            ],
+            if (!_editing) ...[const _Shortcuts(), const SizedBox(height: 8)],
             TextFormField(
               controller: _name,
               textInputAction: TextInputAction.next,
@@ -194,8 +191,9 @@ class _AddServerScreenState extends State<AddServerScreen> {
     setState(() => _saving = false);
 
     if (error != null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error)));
       return;
     }
     Navigator.pop(context);
@@ -216,8 +214,10 @@ class _Shortcuts extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l.quickerWays,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(
+              l.quickerWays,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -226,7 +226,8 @@ class _Shortcuts extends StatelessWidget {
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const PublicServersScreen()),
+                        builder: (_) => const PublicServersScreen(),
+                      ),
                     ),
                     icon: const Icon(Icons.public),
                     label: Text(l.browsePublic),

@@ -34,11 +34,11 @@ class ProxyConfig {
   bool get isDirect => proxy == null || proxy!.isEmpty;
 
   String get description => switch (source) {
-        ProxySource.none => 'Direct connection',
-        ProxySource.system => 'System proxy · $proxy',
-        ProxySource.environment => 'Environment proxy · $proxy',
-        ProxySource.manual => 'Manual proxy · $proxy',
-      };
+    ProxySource.none => 'Direct connection',
+    ProxySource.system => 'System proxy · $proxy',
+    ProxySource.environment => 'Environment proxy · $proxy',
+    ProxySource.manual => 'Manual proxy · $proxy',
+  };
 }
 
 /// Detects the operating system's proxy and builds HTTP clients that use it.
@@ -103,8 +103,10 @@ class SystemProxy {
         _config = ProxyConfig(
           source: ProxySource.environment,
           proxy: stripScheme(v.trim()),
-          bypass: splitBypass(Platform.environment['NO_PROXY'] ??
-              Platform.environment['no_proxy']),
+          bypass: splitBypass(
+            Platform.environment['NO_PROXY'] ??
+                Platform.environment['no_proxy'],
+          ),
         );
         return _config;
       }
@@ -126,7 +128,8 @@ class SystemProxy {
     try {
       final enable = await _regQuery('ProxyEnable');
       // REG_DWORD comes back as hex, e.g. "0x1".
-      if (enable == null || int.tryParse(enable.replaceFirst('0x', ''), radix: 16) != 1) {
+      if (enable == null ||
+          int.tryParse(enable.replaceFirst('0x', ''), radix: 16) != 1) {
         return null;
       }
       final server = await _regQuery('ProxyServer');
@@ -145,11 +148,12 @@ class SystemProxy {
 
   /// Returns the value of a registry entry, or null if absent.
   Future<String?> _regQuery(String name) async {
-    final result = await Process.run(
-      'reg',
-      ['query', _registryPath, '/v', name],
-      runInShell: true,
-    );
+    final result = await Process.run('reg', [
+      'query',
+      _registryPath,
+      '/v',
+      name,
+    ], runInShell: true);
     if (result.exitCode != 0) return null;
 
     // Output shape: "    ProxyServer    REG_SZ    http://host:port"

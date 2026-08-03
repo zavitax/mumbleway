@@ -24,14 +24,18 @@ class StatusVisual {
         return const StatusVisual(StatusColors.connecting, Icons.handshake);
       case ConnStatus.reconnecting:
         return const StatusVisual(
-            StatusColors.reconnecting, Icons.sync_problem);
+          StatusColors.reconnecting,
+          Icons.sync_problem,
+        );
       case ConnStatus.failed:
         return const StatusVisual(StatusColors.failed, Icons.error);
       case ConnStatus.disconnected:
         return const StatusVisual(StatusColors.idle, Icons.cloud_off);
       case ConnStatus.idle:
         return const StatusVisual(
-            StatusColors.idle, Icons.radio_button_unchecked);
+          StatusColors.idle,
+          Icons.radio_button_unchecked,
+        );
     }
   }
 
@@ -74,7 +78,9 @@ class StatusBadge extends StatelessWidget {
     final v = StatusVisual.of(status);
     return Container(
       padding: EdgeInsets.symmetric(
-          horizontal: compact ? 10 : 14, vertical: compact ? 6 : 8),
+        horizontal: compact ? 10 : 14,
+        vertical: compact ? 6 : 8,
+      ),
       decoration: BoxDecoration(
         color: v.color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
@@ -100,7 +106,11 @@ class StatusBadge extends StatelessWidget {
 }
 
 class _Indicator extends StatefulWidget {
-  const _Indicator({required this.color, required this.busy, required this.icon});
+  const _Indicator({
+    required this.color,
+    required this.busy,
+    required this.icon,
+  });
   final Color color;
   final bool busy;
   final IconData icon;
@@ -159,7 +169,11 @@ class _IndicatorState extends State<_Indicator>
 /// Shows how voice is travelling: UDP is the low-latency path, TCP means we
 /// are tunnelling because UDP is blocked.
 class TransportChip extends StatelessWidget {
-  const TransportChip({super.key, required this.transport, required this.pingMs});
+  const TransportChip({
+    super.key,
+    required this.transport,
+    required this.pingMs,
+  });
 
   final String transport;
   final double pingMs;
@@ -181,7 +195,10 @@ class TransportChip extends StatelessWidget {
           Text(
             '${udp ? 'UDP' : 'TCP'}$ping',
             style: TextStyle(
-                fontSize: 12, color: color, fontWeight: FontWeight.w600),
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

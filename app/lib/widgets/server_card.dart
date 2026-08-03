@@ -47,216 +47,227 @@ class ServerCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // A colour strip along the top edge makes the state readable from a
-          // glance at the mount, without focusing on text.
-          Container(height: 5, color: visual.color),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            server.name.isEmpty ? server.host : server.name,
-                            style: const TextStyle(
-                                fontSize: 19, fontWeight: FontWeight.w700),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${server.host}:${server.port}  ·  ${server.username}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color:
-                                  Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    StatusBadge(status: rt.status, detail: rt.detail),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-                _ProbeLine(probe: rt.probe),
-
-                if (rt.status == ConnStatus.reconnecting) ...[
-                  const SizedBox(height: 12),
-                  _ReconnectNotice(rt: rt),
-                ],
-
-                if (rt.detail.isNotEmpty && rt.status == ConnStatus.failed) ...[
-                  const SizedBox(height: 12),
-                  _Banner(
-                    color: StatusColors.failed,
-                    icon: Icons.error_outline,
-                    text: rt.detail,
-                  ),
-                ],
-
-                if (rt.certificateChanged) ...[
-                  const SizedBox(height: 12),
-                  _CertificateWarning(server: server, rt: rt),
-                ],
-
-                if (rt.isLive) ...[
-                  const SizedBox(height: 12),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // A colour strip along the top edge makes the state readable from a
+            // glance at the mount, without focusing on text.
+            Container(height: 5, color: visual.color),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
                     children: [
-                      TransportChip(
-                        transport: rt.transport,
-                        pingMs:
-                            rt.transport == 'udp' ? rt.udpPingMs : rt.tcpPingMs,
-                      ),
-                      const SizedBox(width: 16),
-                      Icon(Icons.tag,
-                          size: 14,
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant),
-                      const SizedBox(width: 4),
                       Expanded(
-                        child: Text(
-                          rt.currentChannel?.name ?? l.joining,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              server.name.isEmpty ? server.host : server.name,
+                              style: const TextStyle(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${server.host}:${server.port}  ·  ${server.username}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      StatusBadge(status: rt.status, detail: rt.detail),
+                    ],
+                  ),
+
+                  const SizedBox(height: 10),
+                  _ProbeLine(probe: rt.probe),
+
+                  if (rt.status == ConnStatus.reconnecting) ...[
+                    const SizedBox(height: 12),
+                    _ReconnectNotice(rt: rt),
+                  ],
+
+                  if (rt.detail.isNotEmpty &&
+                      rt.status == ConnStatus.failed) ...[
+                    const SizedBox(height: 12),
+                    _Banner(
+                      color: StatusColors.failed,
+                      icon: Icons.error_outline,
+                      text: rt.detail,
+                    ),
+                  ],
+
+                  if (rt.certificateChanged) ...[
+                    const SizedBox(height: 12),
+                    _CertificateWarning(server: server, rt: rt),
+                  ],
+
+                  if (rt.isLive) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        TransportChip(
+                          transport: rt.transport,
+                          pingMs: rt.transport == 'udp'
+                              ? rt.udpPingMs
+                              : rt.tcpPingMs,
+                        ),
+                        const SizedBox(width: 16),
+                        Icon(
+                          Icons.tag,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            rt.currentChannel?.name ?? l.joining,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (showDetails) ...[
+                      const SizedBox(height: 6),
+                      _CollapsibleSection(
+                        title: l.inThisChannel(rt.channelPeers.length),
+                        initiallyExpanded: true,
+                        child: ChannelUserList(
+                          serverId: server.id,
+                          users: rt.channelPeers,
+                        ),
+                      ),
+                      _CollapsibleSection(
+                        title: l.channelsHeading(rt.channels.length),
+                        child: ChannelTree(
+                          serverId: server.id,
+                          channels: rt.channels,
+                          currentChannelId: rt.currentChannelId,
+                          defaultChannelName: server.defaultChannel,
+                        ),
+                      ),
+                    ],
+                  ],
+
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: rt.isLive || rt.isBusy
+                            ? OutlinedButton.icon(
+                                onPressed: () => state.disconnect(server.id),
+                                icon: const Icon(Icons.stop_circle_outlined),
+                                label: Text(l.disconnect),
+                              )
+                            : FilledButton.icon(
+                                onPressed: () => state.connect(server.id),
+                                icon: const Icon(Icons.play_arrow_rounded),
+                                label: Text(l.connect),
+                              ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: PopupMenuButton<String>(
+                          tooltip: l.more,
+                          icon: const Icon(Icons.more_horiz),
+                          onSelected: (v) {
+                            switch (v) {
+                              case 'edit':
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        AddServerScreen(existing: server),
+                                  ),
+                                );
+                              case 'link':
+                                _share(context, state, rt, asFile: false);
+                              case 'file':
+                                _share(context, state, rt, asFile: true);
+                              case 'duplicate':
+                                state.duplicateServer(server);
+                              case 'remove':
+                                _confirmForget(context, state);
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.edit_outlined),
+                                title: Text(l.edit),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'link',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.link),
+                                title: Text(l.shareInviteLink),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'file',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.description_outlined),
+                                title: Text(l.shareProfileFile),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'duplicate',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.copy_all_outlined),
+                                title: Text(l.duplicate),
+                              ),
+                            ),
+                            const PopupMenuDivider(),
+                            PopupMenuItem(
+                              value: 'remove',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(
+                                  Icons.delete_outline,
+                                  color: StatusColors.failed,
+                                ),
+                                title: Text(
+                                  l.remove,
+                                  style: const TextStyle(
+                                    color: StatusColors.failed,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  if (showDetails) ...[
-                    const SizedBox(height: 6),
-                    _CollapsibleSection(
-                      title: l.inThisChannel(rt.channelPeers.length),
-                      initiallyExpanded: true,
-                      child: ChannelUserList(
-                        serverId: server.id,
-                        users: rt.channelPeers,
-                      ),
-                    ),
-                    _CollapsibleSection(
-                      title: l.channelsHeading(rt.channels.length),
-                      child: ChannelTree(
-                        serverId: server.id,
-                        channels: rt.channels,
-                        currentChannelId: rt.currentChannelId,
-                        defaultChannelName: server.defaultChannel,
-                      ),
-                    ),
-                  ],
                 ],
-
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: rt.isLive || rt.isBusy
-                          ? OutlinedButton.icon(
-                              onPressed: () => state.disconnect(server.id),
-                              icon: const Icon(Icons.stop_circle_outlined),
-                              label: Text(l.disconnect),
-                            )
-                          : FilledButton.icon(
-                              onPressed: () => state.connect(server.id),
-                              icon: const Icon(Icons.play_arrow_rounded),
-                              label: Text(l.connect),
-                            ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      width: 52,
-                      height: 52,
-                      child: PopupMenuButton<String>(
-                        tooltip: l.more,
-                        icon: const Icon(Icons.more_horiz),
-                        onSelected: (v) {
-                          switch (v) {
-                            case 'edit':
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      AddServerScreen(existing: server),
-                                ),
-                              );
-                            case 'link':
-                              _share(context, state, rt, asFile: false);
-                            case 'file':
-                              _share(context, state, rt, asFile: true);
-                            case 'duplicate':
-                              state.duplicateServer(server);
-                            case 'remove':
-                              _confirmForget(context, state);
-                          }
-                        },
-                        itemBuilder: (_) => [
-                          PopupMenuItem(
-                            value: 'edit',
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.edit_outlined),
-                              title: Text(l.edit),
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'link',
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.link),
-                              title: Text(l.shareInviteLink),
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'file',
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.description_outlined),
-                              title: Text(l.shareProfileFile),
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'duplicate',
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.copy_all_outlined),
-                              title: Text(l.duplicate),
-                            ),
-                          ),
-                          const PopupMenuDivider(),
-                          PopupMenuItem(
-                            value: 'remove',
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: const Icon(Icons.delete_outline,
-                                  color: StatusColors.failed),
-                              title: Text(l.remove,
-                                  style: const TextStyle(
-                                      color: StatusColors.failed)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
@@ -308,10 +319,16 @@ class ServerCard extends StatelessWidget {
     }
 
     final error = asFile
-        ? await state.shareInviteFile(server,
-            channel: channel, includePassword: includePassword)
-        : await state.shareInviteLink(server,
-            channel: channel, includePassword: includePassword);
+        ? await state.shareInviteFile(
+            server,
+            channel: channel,
+            includePassword: includePassword,
+          )
+        : await state.shareInviteLink(
+            server,
+            channel: channel,
+            includePassword: includePassword,
+          );
 
     if (error != null) {
       messenger.showSnackBar(SnackBar(content: Text(error)));
@@ -327,11 +344,13 @@ class ServerCard extends StatelessWidget {
         content: Text(l.removeServerBody(server.name)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: Text(l.cancel)),
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: Text(l.remove)),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.remove),
+          ),
         ],
       ),
     );
@@ -371,8 +390,10 @@ class _ProbeLine extends StatelessWidget {
         children: const [
           Icon(Icons.cloud_off, size: 14, color: StatusColors.idle),
           SizedBox(width: 6),
-          Text('Not responding',
-              style: TextStyle(fontSize: 12, color: StatusColors.idle)),
+          Text(
+            'Not responding',
+            style: TextStyle(fontSize: 12, color: StatusColors.idle),
+          ),
         ],
       );
     }
@@ -381,16 +402,21 @@ class _ProbeLine extends StatelessWidget {
     final quality = ping < 60
         ? StatusColors.connected
         : ping < 150
-            ? StatusColors.connecting
-            : StatusColors.reconnecting;
+        ? StatusColors.connecting
+        : StatusColors.reconnecting;
 
     return Row(
       children: [
         Icon(Icons.network_ping, size: 14, color: quality),
         const SizedBox(width: 6),
-        Text('$ping ms',
-            style: TextStyle(
-                fontSize: 12, color: quality, fontWeight: FontWeight.w600)),
+        Text(
+          '$ping ms',
+          style: TextStyle(
+            fontSize: 12,
+            color: quality,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(width: 12),
         Icon(Icons.people_outline, size: 14, color: muted),
         const SizedBox(width: 4),
@@ -443,7 +469,9 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
                 Text(
                   widget.title,
                   style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w700),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),

@@ -19,11 +19,11 @@ enum ButtonAction {
 
 extension ButtonActionLabel on ButtonAction {
   String get label => switch (this) {
-        ButtonAction.pushToTalk => 'Push to talk (hold)',
-        ButtonAction.toggleTransmit => 'Push to talk (toggle)',
-        ButtonAction.toggleMute => 'Mute / unmute',
-        ButtonAction.toggleDeafen => 'Deafen / undeafen',
-      };
+    ButtonAction.pushToTalk => 'Push to talk (hold)',
+    ButtonAction.toggleTransmit => 'Push to talk (toggle)',
+    ButtonAction.toggleMute => 'Mute / unmute',
+    ButtonAction.toggleDeafen => 'Deafen / undeafen',
+  };
 }
 
 /// A single button binding.
@@ -48,8 +48,11 @@ class ButtonBinding {
     return 'Key 0x${keyId.toRadixString(16)}';
   }
 
-  Map<String, dynamic> toJson() =>
-      {'keyId': keyId, 'action': action.index, 'label': label};
+  Map<String, dynamic> toJson() => {
+    'keyId': keyId,
+    'action': action.index,
+    'label': label,
+  };
 
   static ButtonBinding? fromJson(Map<String, dynamic> j) {
     final id = j['keyId'];
@@ -69,7 +72,7 @@ class ButtonBinding {
 ///
 /// A handlebar remote is the only practical way to key a microphone with
 /// gloves on at speed. Most present as a Bluetooth HID keyboard or a media
-/// controller, so they arrive as ordinary key events — which is why this
+/// controller, so they arrive as ordinary key events вЂ” which is why this
 /// listens for *any* key rather than a fixed list. Whatever the remote sends,
 /// the user can bind it.
 ///
@@ -159,13 +162,17 @@ class ButtonController {
       return true;
     }
 
-    return _dispatch(id, event is KeyDownEvent, isRepeat: event is KeyRepeatEvent);
+    return _dispatch(
+      id,
+      event is KeyDownEvent,
+      isRepeat: event is KeyRepeatEvent,
+    );
   }
 
   /// Handles a media button forwarded from the platform.
   ///
   /// Android key codes, not Flutter key ids, so they are mapped onto the same
-  /// binding space by offset — see [mediaKeyId].
+  /// binding space by offset вЂ” see [mediaKeyId].
   void handleMediaButton(int androidKeyCode, bool pressed) {
     _dispatch(mediaKeyId(androidKeyCode), pressed);
   }
@@ -212,7 +219,9 @@ class ButtonController {
   /// Best-effort human-readable name for a key.
   static String _describe(LogicalKeyboardKey key) {
     if (key.keyLabel.isNotEmpty) return key.keyLabel;
-    if (key.debugName != null && key.debugName!.isNotEmpty) return key.debugName!;
+    if (key.debugName != null && key.debugName!.isNotEmpty) {
+      return key.debugName!;
+    }
     return 'Key 0x${key.keyId.toRadixString(16)}';
   }
 

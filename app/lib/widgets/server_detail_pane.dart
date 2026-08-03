@@ -49,7 +49,10 @@ class ServerDetailPane extends StatelessWidget {
             Expanded(
               child: Text(
                 s.name.isEmpty ? s.host : s.name,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -64,8 +67,11 @@ class ServerDetailPane extends StatelessWidget {
               pingMs: rt.transport == 'udp' ? rt.udpPingMs : rt.tcpPingMs,
             ),
             const SizedBox(width: 14),
-            Icon(Icons.tag,
-                size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            Icon(
+              Icons.tag,
+              size: 14,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(width: 4),
             Expanded(
               child: Text(
@@ -121,17 +127,17 @@ class _Heading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.0,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.0,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
 }
 
 class _Placeholder extends StatelessWidget {
@@ -155,13 +161,17 @@ class _Placeholder extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 56,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+            Icon(
+              icon,
+              size: 56,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 16),
-            Text(title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 8),
             Text(
               body,
@@ -170,10 +180,7 @@ class _Placeholder extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-            if (trailing != null) ...[
-              const SizedBox(height: 16),
-              trailing!,
-            ],
+            if (trailing != null) ...[const SizedBox(height: 16), trailing!],
           ],
         ),
       ),

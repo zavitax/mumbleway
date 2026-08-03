@@ -106,8 +106,10 @@ class _ImportScreenState extends State<ImportScreen> {
 
           const SizedBox(height: 28),
           _Header(L.of(context).profileFileFormat),
-          const _Hint('Either a single object or an array of them. Only the '
-              'host is required.'),
+          const _Hint(
+            'Either a single object or an array of them. Only the '
+            'host is required.',
+          ),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -139,12 +141,12 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Text(
+      text,
+      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+    ),
+  );
 }
 
 class _Hint extends StatelessWidget {
@@ -153,13 +155,13 @@ class _Hint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
 }

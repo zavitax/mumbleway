@@ -57,10 +57,12 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
   Widget build(BuildContext context) {
     final all = _servers;
     final filtered = all
-        ?.where((s) =>
-            _filter.isEmpty ||
-            s.name.toLowerCase().contains(_filter.toLowerCase()) ||
-            s.host.toLowerCase().contains(_filter.toLowerCase()))
+        ?.where(
+          (s) =>
+              _filter.isEmpty ||
+              s.name.toLowerCase().contains(_filter.toLowerCase()) ||
+              s.host.toLowerCase().contains(_filter.toLowerCase()),
+        )
         .toList();
 
     return Scaffold(
@@ -80,7 +82,8 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
           if (_usedFallback && all != null)
             const _Notice(
               icon: Icons.info_outline,
-              text: 'The public directory is not responding, so this is a '
+              text:
+                  'The public directory is not responding, so this is a '
                   'short built-in list. You can still add any server by '
                   'address or link.',
             ),
@@ -97,18 +100,18 @@ class _PublicServersScreenState extends State<PublicServersScreen> {
           Expanded(
             child: switch ((filtered, _error)) {
               (_, final String e) => _Notice(
-                  icon: Icons.error_outline,
-                  text: 'Could not load the list: $e',
-                ),
+                icon: Icons.error_outline,
+                text: 'Could not load the list: $e',
+              ),
               (null, _) => const Center(child: CircularProgressIndicator()),
               (final List<PublicServer> list, _) when list.isEmpty => _Notice(
-                  icon: Icons.search_off,
-                  text: L.of(context).noServersMatchSearch,
-                ),
+                icon: Icons.search_off,
+                text: L.of(context).noServersMatchSearch,
+              ),
               (final List<PublicServer> list, _) => ListView.builder(
-                  itemCount: list.length,
-                  itemBuilder: (_, i) => _PublicServerTile(server: list[i]),
-                ),
+                itemCount: list.length,
+                itemBuilder: (_, i) => _PublicServerTile(server: list[i]),
+              ),
             },
           ),
         ],
@@ -168,18 +171,20 @@ class _PublicServerTileState extends State<_PublicServerTile> {
     if (username == null || username.trim().isEmpty) return;
 
     setState(() => _adding = true);
-    final error = await state.addNewServer(SavedServer(
-      name: widget.server.name,
-      host: widget.server.host,
-      port: widget.server.port,
-      username: username.trim(),
-    ));
+    final error = await state.addNewServer(
+      SavedServer(
+        name: widget.server.name,
+        host: widget.server.host,
+        port: widget.server.port,
+        username: username.trim(),
+      ),
+    );
     if (!mounted) return;
     setState(() => _adding = false);
 
-    messenger.showSnackBar(SnackBar(
-      content: Text(error ?? 'Added ${widget.server.name}'),
-    ));
+    messenger.showSnackBar(
+      SnackBar(content: Text(error ?? 'Added ${widget.server.name}')),
+    );
   }
 }
 
@@ -214,7 +219,9 @@ class _UsernameDialogState extends State<_UsernameDialog> {
       ),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
         FilledButton(
           onPressed: () => Navigator.pop(context, _controller.text),
           child: Text(L.of(context).add),

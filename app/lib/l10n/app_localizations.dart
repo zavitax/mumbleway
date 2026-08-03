@@ -1638,6 +1638,24 @@ abstract class L {
   /// In en, this message translates to:
   /// **'A Bluetooth remote reports its media buttons as a tap, never as a hold, so push-to-talk (hold) cannot work from one. Use the toggle action instead. While a media button is bound, the remote controls MumbleWay rather than your music app.'**
   String get buttonsIosNote;
+
+  /// No description provided for @remoteListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Listening for a remote'**
+  String get remoteListening;
+
+  /// No description provided for @remoteNothingYet.
+  ///
+  /// In en, this message translates to:
+  /// **'no button received yet'**
+  String get remoteNothingYet;
+
+  /// No description provided for @remoteLastButton.
+  ///
+  /// In en, this message translates to:
+  /// **'last button: {name}'**
+  String remoteLastButton(String name);
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

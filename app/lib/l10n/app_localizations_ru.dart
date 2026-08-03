@@ -844,4 +844,15 @@ class LRu extends L {
   @override
   String get buttonsIosNote =>
       'Bluetooth-пульт сообщает о нажатии мультимедийных кнопок, но не об удержании, поэтому рация с удержанием с него не работает. Используйте действие-переключатель. Пока мультимедийная кнопка назначена, пульт управляет MumbleWay, а не музыкальным приложением.';
+
+  @override
+  String get remoteListening => 'Ожидание пульта';
+
+  @override
+  String get remoteNothingYet => 'кнопок пока не получено';
+
+  @override
+  String remoteLastButton(String name) {
+    return 'последняя кнопка: $name';
+  }
 }

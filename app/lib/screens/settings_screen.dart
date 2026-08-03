@@ -523,29 +523,29 @@ class _LabelledSlider extends StatelessWidget {
 /// keys: Bluetooth remotes report all sorts of codes, including ones Flutter
 /// has no name for, and the only reliable way to know what a given remote
 /// sends is to press it.
-/// What the app is actually hearing from a remote.
+/// What the app is hearing from a Bluetooth remote.
 ///
-/// Two separate questions that look identical when a button does nothing: is
-/// the platform listening for media buttons, and does anything — a media
-/// button or an ordinary key — ever arrive. Answering both on screen is
-/// quicker than another build.
+/// Kept because it is the only way to tell two identical-looking failures
+/// apart: a remote that sends nothing an app may see, and an app that is not
+/// listening. iOS hands over only the transport buttons — volume and shutter
+/// codes are consumed by the system before any third party sees them — so a
+/// remote can be perfectly functional and still be invisible here, and the
+/// only way to find out is to press one and watch.
 class _ButtonDiagnostics extends StatelessWidget {
   const _ButtonDiagnostics();
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final buttons = AppStateScope.of(context).buttons;
-    final parts = <String>[
-      if (buttons.captureState case final s?) 'remote buttons: $s',
-      if (buttons.lastMediaKey case final k?) 'last remote button: $k',
-      if (buttons.lastKey case final k?) 'last key: $k',
-    ];
-    if (parts.isEmpty) return const SizedBox.shrink();
+    if (buttons.captureState == null) return const SizedBox.shrink();
 
+    final heard = buttons.lastMediaKey ?? buttons.lastKey;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Text(
-        parts.join('  ·  '),
+        '${l.remoteListening}  ·  '
+        '${heard == null ? l.remoteNothingYet : l.remoteLastButton(heard)}',
         style: TextStyle(
           fontSize: 11,
           color: Theme.of(context).colorScheme.onSurfaceVariant,

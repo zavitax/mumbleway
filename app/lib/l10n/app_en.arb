@@ -295,5 +295,10 @@
   "actionToggleMute": "Mute / unmute",
   "actionToggleDeafen": "Deafen / undeafen",
 
-  "buttonsIosNote": "A Bluetooth remote reports its media buttons as a tap, never as a hold, so push-to-talk (hold) cannot work from one. Use the toggle action instead. While a media button is bound, the remote controls MumbleWay rather than your music app."
+  "buttonsIosNote": "A Bluetooth remote reports its media buttons as a tap, never as a hold, so push-to-talk (hold) cannot work from one. Use the toggle action instead. While a media button is bound, the remote controls MumbleWay rather than your music app.",
+
+  "remoteListening": "Listening for a remote",
+  "remoteNothingYet": "no button received yet",
+  "remoteLastButton": "last button: {name}",
+  "@remoteLastButton": {"placeholders": {"name": {"type": "String"}}}
 }

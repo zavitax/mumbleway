@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' show File, Platform;
 
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -749,6 +750,22 @@ class AppState extends ChangeNotifier {
   bool _syncing = false;
 
   CloudKind get cloudKind => CloudSync.instance.kind;
+
+  /// Whether this platform lets the user pick an audio device at all.
+  ///
+  /// Phones and tablets expose one logical route and switch it themselves as
+  /// headsets come and go, so there is nothing to enumerate and nothing a
+  /// re-check could turn up. A desktop with a single device is a different
+  /// case that looks identical from a device count: there the list really can
+  /// change, and asking again is the way to find out.
+  bool get canPickAudioDevices {
+    if (kIsWeb) return false;
+    try {
+      return !(Platform.isIOS || Platform.isAndroid);
+    } catch (_) {
+      return true;
+    }
+  }
 
   Future<void> setCloudSync(bool on) async {
     cloudSync = on;

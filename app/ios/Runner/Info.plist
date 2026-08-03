@@ -50,6 +50,13 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<!-- Required before iOS will grant microphone access. -->
+	<!-- Mumble servers are very often on the same network as the rider: a
+	     bike-club box at the clubhouse, or one running on a laptop. iOS blocks
+	     connections to local addresses unless the app says why it wants them,
+	     and the block is immediate, so it presents as a server that refuses
+	     the connection rather than as a permission that was never asked for. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>MumbleWay connects to Mumble servers on your network, such as one running at home or at a club.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MumbleWay uses your microphone so you can talk to other riders.</string>
 	<!-- Voice must keep flowing with the screen locked and the phone in a

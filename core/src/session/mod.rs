@@ -211,7 +211,14 @@ impl Session {
     fn classify(e: CoreError) -> DisconnectReason {
         match e {
             CoreError::Disconnected(r) => r,
-            CoreError::Rejected(m) | CoreError::Auth(m) => DisconnectReason::ServerRejected(m),
+            // No reject type reached us here, and both of these mean the
+            // server declined this client rather than that it was busy.
+            CoreError::Rejected(m) | CoreError::Auth(m) => {
+                DisconnectReason::ServerRejected {
+                    reason: m,
+                    retry: false,
+                }
+            }
             CoreError::Timeout(what) => {
                 if what == "handshake" {
                     DisconnectReason::HandshakeTimeout
@@ -606,7 +613,30 @@ impl Session {
             MessageType::Reject => {
                 let m = mumble::Reject::decode(payload)?;
                 let reason = m.reason.unwrap_or_else(|| "rejected".into());
-                return Ok(Some(DisconnectReason::ServerRejected(reason)));
+
+                // Only three of these change on their own. A full server
+                // empties, an authenticator that fell over comes back, and a
+                // server closed to new connections opens again — those are
+                // worth waiting out. Everything else is a statement about this
+                // client that will be just as true in ten seconds: the wrong
+                // password, a name already taken, a version too old, no
+                // certificate. Reconnecting through those achieves nothing
+                // except to bury the explanation.
+                //
+                // An unrecognised or absent type counts as permanent. A
+                // rejection nobody can classify is not evidence that trying
+                // again will help, and stopping puts the server's own words in
+                // front of the user.
+                use mumble::reject::RejectType;
+                let retry = matches!(
+                    m.r#type.and_then(|t| RejectType::try_from(t).ok()),
+                    Some(
+                        RejectType::ServerFull
+                            | RejectType::AuthenticatorFail
+                            | RejectType::NoNewConnections
+                    )
+                );
+                return Ok(Some(DisconnectReason::ServerRejected { reason, retry }));
             }
             MessageType::CryptSetup => {
                 let m = mumble::CryptSetup::decode(payload)?;

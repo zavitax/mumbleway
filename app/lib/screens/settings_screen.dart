@@ -143,51 +143,44 @@ class _DeviceSection extends StatelessWidget {
     final state = AppStateScope.of(context);
     final l = L.of(context);
 
-    // Desktop hosts enumerate real devices. Phones generally expose a single
-    // logical route that the OS switches for you, so there is nothing to pick.
+    // Two different situations that look identical if you only count devices.
+    //
+    // A phone exposes one logical route and switches it itself as headsets
+    // come and go: there is nothing to pick, and nothing a re-check could
+    // turn up, so offering the button puts a control on screen that cannot do
+    // anything. A desktop with one device is not that — plug in a headset and
+    // the list really does change — so there the button is the whole point.
+    final routesItself = !state.canPickAudioDevices;
     final canChoose =
         state.inputDevices.length > 1 || state.outputDevices.length > 1;
 
-    if (!canChoose) {
-      return Column(
-        children: [
-          _Explainer(l.platformRoutesAudio),
+    return Column(
+      children: [
+        if (routesItself) _Explainer(l.platformRoutesAudio),
+        if (!routesItself) ...[
+          if (canChoose) ...[
+            _DevicePicker(
+              label: l.microphone,
+              icon: Icons.mic_none,
+              devices: state.inputDevices,
+              selected: state.selectedInput,
+              onChanged: state.chooseInputDevice,
+            ),
+            _DevicePicker(
+              label: l.speakers,
+              icon: Icons.speaker,
+              devices: state.outputDevices,
+              selected: state.selectedOutput,
+              onChanged: state.chooseOutputDevice,
+            ),
+          ],
           ListTile(
             leading: const Icon(Icons.refresh),
             title: Text(l.recheckDevices),
+            subtitle: Text(l.recheckDevicesBody),
             onTap: state.refreshDevices,
           ),
-          const _MonitorTile(),
-          const _EchoCancellationTile(),
-          const _NormaliseTile(),
-          const _ReverbTile(),
-          const _TestOutputTile(),
         ],
-      );
-    }
-
-    return Column(
-      children: [
-        _DevicePicker(
-          label: l.microphone,
-          icon: Icons.mic_none,
-          devices: state.inputDevices,
-          selected: state.selectedInput,
-          onChanged: state.chooseInputDevice,
-        ),
-        _DevicePicker(
-          label: l.speakers,
-          icon: Icons.speaker,
-          devices: state.outputDevices,
-          selected: state.selectedOutput,
-          onChanged: state.chooseOutputDevice,
-        ),
-        ListTile(
-          leading: const Icon(Icons.refresh),
-          title: Text(l.recheckDevices),
-          subtitle: Text(l.recheckDevicesBody),
-          onTap: state.refreshDevices,
-        ),
         const _MonitorTile(),
         const _EchoCancellationTile(),
         const _NormaliseTile(),

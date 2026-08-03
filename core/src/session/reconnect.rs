@@ -262,11 +262,14 @@ mod tests {
     }
 
     #[test]
-    fn every_non_user_reason_reconnects() {
+    fn anything_that_might_pass_gets_retried() {
         for reason in [
             DisconnectReason::PingTimeout,
             DisconnectReason::TransportLost("reset by peer".into()),
-            DisconnectReason::ServerRejected("server full".into()),
+            DisconnectReason::ServerRejected {
+                reason: "server is full".into(),
+                retry: true,
+            },
             DisconnectReason::HandshakeTimeout,
             DisconnectReason::Error("unknown".into()),
         ] {
@@ -276,6 +279,24 @@ mod tests {
                 "{reason:?} should be retried"
             );
         }
+    }
+
+    #[test]
+    fn a_rejection_that_cannot_change_stops_instead_of_looping() {
+        // A wrong password is wrong at every attempt. Retrying it hammers the
+        // server, risks a ban for repeated failures, and hides the server's
+        // own explanation behind a spinner reading "reconnecting" — which
+        // leaves the one person who could fix it with no idea what is wrong.
+        let mut s = ReconnectState::new(BackoffPolicy::default());
+        let reason = DisconnectReason::ServerRejected {
+            reason: "wrong password".into(),
+            retry: false,
+        };
+        assert!(s.on_disconnect(&reason).is_none());
+        assert!(
+            s.stopped_by_user(),
+            "a permanent rejection must settle, not sit in a retry loop"
+        );
     }
 
     #[test]

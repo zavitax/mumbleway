@@ -51,6 +51,9 @@ final class PipController: NSObject {
   private weak var hostView: UIView?
 
   private var displayLayer: AVSampleBufferDisplayLayer?
+  /// The view holding the display layer. Kept so teardown can remove it: a
+  /// layer left in the hierarchy goes on showing the last frame it was given.
+  private var carrierView: UIView?
   private var pipController: AVPictureInPictureController?
   private var pixelBufferPool: CVPixelBufferPool?
   private var renderTimer: Timer?
@@ -70,6 +73,7 @@ final class PipController: NSObject {
 
   deinit {
     renderTimer?.invalidate()
+    carrierView?.removeFromSuperview()
   }
 
   static var isAvailable: Bool {
@@ -99,6 +103,7 @@ final class PipController: NSObject {
       layer.frame = carrier.bounds
       carrier.layer.addSublayer(layer)
       hostView.insertSubview(carrier, at: 0)
+      carrierView = carrier
 
       let source = AVPictureInPictureController.ContentSource(
         sampleBufferDisplayLayer: layer, playbackDelegate: self)
@@ -143,12 +148,47 @@ final class PipController: NSObject {
     }
   }
 
+  /// Closes the window and dismantles everything behind it.
+  ///
+  /// Stopping the session is not enough on its own. Left as it was, the window
+  /// could not be got rid of short of killing the app, for two separate
+  /// reasons that both have to be dealt with here.
+  ///
+  /// The controller keeps `canStartPictureInPictureAutomaticallyFromInline`,
+  /// which is what makes the window appear by leaving the app rather than by
+  /// pressing anything. Armed on a live content source, it brings the window
+  /// straight back the next time the app goes to the background — so it is
+  /// switched off explicitly rather than left to the controller being
+  /// released.
+  ///
+  /// And the layer goes on displaying the last frame it was handed. It sits
+  /// behind Flutter's view and is normally out of sight, but the system lifts
+  /// the source into view while restoring, which is where the stale meter came
+  /// from. Flushing it and taking the view out of the hierarchy leaves nothing
+  /// to show.
   func stop() {
     renderTimer?.invalidate()
     renderTimer = nil
-    if let pipController, pipController.isPictureInPictureActive {
-      pipController.stopPictureInPicture()
+    hangupArmedUntil = nil
+
+    if let pipController {
+      pipController.canStartPictureInPictureAutomaticallyFromInline = false
+      if pipController.isPictureInPictureActive {
+        pipController.stopPictureInPicture()
+      }
+      pipController.delegate = nil
     }
+    pipController = nil
+
+    displayLayer?.flushAndRemoveImage()
+    displayLayer?.removeFromSuperlayer()
+    displayLayer = nil
+
+    carrierView?.removeFromSuperview()
+    carrierView = nil
+
+    // Rebuilt by the next start(), along with everything else here.
+    pixelBufferPool = nil
   }
 
   func update(_ next: CallSnapshot) {
@@ -584,7 +624,11 @@ extension PipController: AVPictureInPictureControllerDelegate {
   ) {
     // Closing the window only closes the window. Hang-up has a button of its
     // own now, so dismissing this must never drop the call.
-    hangupArmedUntil = nil
+    // Dismissed from the system chrome rather than from settings, and it has
+    // to dismantle just as thoroughly: otherwise the automatic-start flag is
+    // still armed, and the window the user just closed comes back the next
+    // time they leave the app.
+    stop()
     channel.invokeMethod("dismissed", arguments: nil)
   }
 }

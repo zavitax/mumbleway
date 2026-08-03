@@ -53,8 +53,11 @@ pub enum DisconnectReason {
     PingTimeout,
     /// Socket closed or errored.
     TransportLost(String),
-    /// Server actively rejected or kicked us.
-    ServerRejected(String),
+    /// Server actively rejected us.
+    ///
+    /// `retry` separates the rejections worth waiting out from the ones that
+    /// will say exactly the same thing every ten seconds forever.
+    ServerRejected { reason: String, retry: bool },
     /// Handshake did not complete in time.
     HandshakeTimeout,
     /// Anything else.
@@ -63,8 +66,20 @@ pub enum DisconnectReason {
 
 impl DisconnectReason {
     /// Whether the session manager should attempt to reconnect.
+    ///
+    /// A rejection is the interesting case. Retrying a wrong password, a
+    /// username already in use, or a client too old to be allowed in cannot
+    /// ever succeed: the answer is a property of the request, not of the
+    /// moment. Retrying anyway hammers the server, invites a ban for repeated
+    /// authentication failures, and — worst of the three — hides what the
+    /// server actually said behind a spinner that says "reconnecting", so the
+    /// one person who could fix it never finds out what is wrong.
     pub fn is_recoverable(&self) -> bool {
-        !matches!(self, DisconnectReason::UserRequested)
+        match self {
+            DisconnectReason::UserRequested => false,
+            DisconnectReason::ServerRejected { retry, .. } => *retry,
+            _ => true,
+        }
     }
 
     /// Whether backoff should reset — a clean transport loss after a long healthy
@@ -83,7 +98,9 @@ impl fmt::Display for DisconnectReason {
             DisconnectReason::UserRequested => write!(f, "disconnected by user"),
             DisconnectReason::PingTimeout => write!(f, "ping timeout"),
             DisconnectReason::TransportLost(e) => write!(f, "connection lost: {e}"),
-            DisconnectReason::ServerRejected(e) => write!(f, "rejected by server: {e}"),
+            DisconnectReason::ServerRejected { reason, .. } => {
+                write!(f, "rejected by server: {reason}")
+            }
             DisconnectReason::HandshakeTimeout => write!(f, "handshake timed out"),
             DisconnectReason::Error(e) => write!(f, "{e}"),
         }

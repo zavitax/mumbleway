@@ -16,6 +16,12 @@ struct Speaker {
 
 struct CallSnapshot {
   var speakers: [Speaker] = []
+  /// How many saved servers are in each state. The rider wants one glance to
+  /// answer "is anything wrong", and a single connected flag cannot say that
+  /// when two servers are up and a third is trying to come back.
+  var connectedCount = 0
+  var reconnectingCount = 0
+  var failedCount = 0
   var transmitting = false
   var connected = false
   var muted = false
@@ -80,6 +86,22 @@ final class PipController: NSObject {
   deinit {
     renderTimer?.invalidate()
     carrierView?.removeFromSuperview()
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  /// Opens the window again as the app is put away.
+  ///
+  /// `canStartPictureInPictureAutomaticallyFromInline` covers the first time
+  /// and, it turns out, only the first time: once the window has been closed
+  /// by hand or restored back into the app, leaving again did nothing and the
+  /// only way to get it back was to turn the setting off and on. Asking
+  /// explicitly on the way out costs nothing when the window is already open,
+  /// because starting an active controller is a no-op.
+  @objc private func willResignActive() {
+    guard let pipController else { return }
+    guard !pipController.isPictureInPictureActive else { return }
+    guard pipController.isPictureInPicturePossible else { return }
+    pipController.startPictureInPicture()
   }
 
   static var isAvailable: Bool {
@@ -139,6 +161,10 @@ final class PipController: NSObject {
 
       displayLayer = layer
       pipController = controller
+
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(willResignActive),
+        name: UIApplication.willResignActiveNotification, object: nil)
     }
 
     render()
@@ -400,12 +426,50 @@ final class PipController: NSObject {
     UIBezierPath(rect: CGRect(x: divider, y: 22, width: 1, height: bounds.height - 44))
       .fill()
 
+    drawConnection(in: bounds)
     drawOnAir(in: left)
     drawTitle(in: left)
     drawBadges(in: left)
     drawMeter(in: left)
     drawSpeakers(in: right)
     drawLegend(in: bounds)
+  }
+
+  /// One line across the top saying whether the radio is up.
+  ///
+  /// A rider glancing at this wants one question answered — is anything wrong
+  /// — and the answer has to survive being read at arm's length in daylight,
+  /// so it is a coloured dot and a short phrase rather than a list. Amber
+  /// outranks green: two servers up and one struggling is a problem, and
+  /// showing "2 connected" would hide it.
+  private func drawConnection(in bounds: CGRect) {
+    let colour: UIColor
+    let text: String
+
+    if snapshot.reconnectingCount > 0 {
+      colour = UIColor(red: 0.98, green: 0.75, blue: 0.25, alpha: 1)
+      text = snapshot.connectedCount > 0
+        ? "\(snapshot.connectedCount) up · \(snapshot.reconnectingCount) reconnecting"
+        : "Reconnecting…"
+    } else if snapshot.connectedCount > 0 {
+      colour = UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
+      text = snapshot.connectedCount == 1
+        ? "Connected"
+        : "\(snapshot.connectedCount) connected"
+    } else if snapshot.failedCount > 0 {
+      colour = UIColor(red: 0.94, green: 0.32, blue: 0.28, alpha: 1)
+      text = "No connection"
+    } else {
+      colour = UIColor(white: 0.5, alpha: 1)
+      text = "Not connected"
+    }
+
+    let dot = CGRect(x: 16, y: 16, width: 10, height: 10)
+    colour.setFill()
+    UIBezierPath(ovalIn: dot).fill()
+    drawText(
+      text, in: CGRect(x: dot.maxX + 8, y: 12, width: bounds.width - 60, height: 18),
+      size: 12, weight: .bold, colour: colour, alignment: .left)
   }
 
   /// The transmit indicator: a filled ring that blinks while the microphone is
@@ -750,14 +814,19 @@ extension PipController: AVPictureInPictureControllerDelegate {
   ) {
     // Closing the window only closes the window. Hang-up has a button of its
     // own now, so dismissing this must never drop the call.
-    // Deliberately does not dismantle anything. This fires whenever the
-    // window closes, and much the commonest reason is the user coming back to
-    // the app — not a decision to be rid of it. Tearing down here disarmed the
+    // Deliberately does not dismantle anything. This fires whenever the window
+    // closes, and much the commonest reason is the rider coming back to the
+    // app — not a decision to be rid of it. Tearing down here disarmed the
     // automatic start, so the window never returned on leaving again, and the
     // setting appeared to have switched itself off.
     //
     // Turning the setting off calls stop() directly, which is where taking it
     // apart belongs.
+    //
+    // Re-armed on the way out, because the flag does not survive a stop: the
+    // window closed by hand stayed closed however many times the app was left
+    // afterwards.
+    pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = true
     channel.invokeMethod("dismissed", arguments: nil)
   }
 }

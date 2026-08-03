@@ -290,6 +290,7 @@ class AppState extends ChangeNotifier {
   static const _prefsLocale = 'mumbleway.locale';
   static const _prefsButtons = 'mumbleway.buttonBindings';
   static const _prefsCloudSync = 'mumbleway.cloudSync';
+  static const _prefsFloatingWindow = 'mumbleway.floatingWindow';
   static const _prefsDeleted = 'mumbleway.deletedServers';
 
   /// Languages the interface is available in.
@@ -483,6 +484,14 @@ class AppState extends ChangeNotifier {
       CloudSync.instance.onRemoteChange = () => unawaited(syncNow());
       unawaited(syncNow());
 
+      // Not awaited: the window is worth having but nothing else waits on it,
+      // and on Android it can fail for want of a permission the user has to
+      // grant in system settings. A failure there leaves the setting off
+      // without an alarm rather than blocking a startup that is otherwise fine.
+      if (_wantOverlay && overlay.isSupported) {
+        unawaited(enableOverlay());
+      }
+
       _pingTimer = Timer.periodic(_pingInterval, (_) => refreshPings());
       unawaited(refreshPings());
 
@@ -519,6 +528,7 @@ class AppState extends ChangeNotifier {
     // On by default: a user with two devices almost always wants the same
     // servers on both, and there is nothing to configure for it to work.
     cloudSync = prefs.getBool(_prefsCloudSync) ?? true;
+    _wantOverlay = prefs.getBool(_prefsFloatingWindow) ?? true;
     SystemProxy.instance.manualProxy = prefs.getString(_prefsProxyManual);
 
     final code = prefs.getString(_prefsLocale);
@@ -1367,6 +1377,13 @@ class AppState extends ChangeNotifier {
   // --- floating island ---------------------------------------------------
 
   final OverlayBridge overlay = OverlayBridge.instance;
+
+  /// Whether the floating call window should be showing.
+  ///
+  /// On by default and remembered between launches. It is the control a rider
+  /// on a bike depends on and the one they are least able to go and switch on
+  /// again, so it defaults to present rather than to absent — and having to
+  /// turn it on after every launch made it look as though it kept failing.
   bool overlayEnabled = false;
   String _lastOverlaySignature = '';
 
@@ -1408,6 +1425,7 @@ class AppState extends ChangeNotifier {
     overlayStatus = null;
     final error = await overlay.show();
     overlayEnabled = error == null;
+    if (error == null) unawaited(_rememberOverlayChoice(true));
     notifyListeners();
     _lastOverlaySignature = '';
     _pushOverlay();
@@ -1421,7 +1439,20 @@ class AppState extends ChangeNotifier {
   /// requested, the system declines, and nothing was ever going to be thrown.
   String? overlayStatus;
 
+  /// What the user asked for, as opposed to what is currently showing.
+  ///
+  /// The two differ while the window is closed but the setting is still on,
+  /// which is the normal state whenever the app is in the foreground.
+  bool _wantOverlay = true;
+
+  Future<void> _rememberOverlayChoice(bool want) async {
+    _wantOverlay = want;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsFloatingWindow, want);
+  }
+
   Future<void> disableOverlay() async {
+    unawaited(_rememberOverlayChoice(false));
     overlayStatus = null;
     await overlay.hide();
     overlayEnabled = false;
@@ -1450,13 +1481,20 @@ class AppState extends ChangeNotifier {
             if (rt.speakerLevels[u.session] case final db?)
               (name: u.name, levelDb: db),
     ];
-    final connected = runtimes.values.any((r) => r.isLive);
+    final connectedCount = runtimes.values.where((r) => r.isLive).length;
+    final reconnectingCount = runtimes.values
+        .where((r) => r.status == ConnStatus.reconnecting || r.isBusy)
+        .length;
+    final failedCount = runtimes.values
+        .where((r) => r.status == ConnStatus.failed)
+        .length;
+    final connected = connectedCount > 0;
     // The level arrives ten times a second and never repeats exactly, so it is
     // rounded to whole decibels before being compared. Without that the
     // signature always differs and the check stops filtering anything.
     final signature =
         '${speakers.map((s) => '${s.name}:${s.levelDb.round()}').join(',')}'
-        '|$_transmitting|$connected|$_muted'
+        '|$_transmitting|$connectedCount|$reconnectingCount|$failedCount|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';
     if (signature == _lastOverlaySignature) return;
@@ -1467,6 +1505,9 @@ class AppState extends ChangeNotifier {
         speakers: speakers,
         transmitting: _transmitting,
         connected: connected,
+        connectedCount: connectedCount,
+        reconnectingCount: reconnectingCount,
+        failedCount: failedCount,
         muted: _muted,
         deafened: _deafened,
         levelDb: _inputLevelDb,

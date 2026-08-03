@@ -561,6 +561,33 @@ void main() {
         reason: 'sent to the window but never drawn',
       );
     });
+
+    // Android draws its own text too, and did so in hardcoded English for as
+    // long as the window existed — the switch offered a Russian label and then
+    // opened a window that said "No one speaking". It reads a subset of the
+    // same phrases, so it is checked one way only: everything it draws must be
+    // sent, but it need not draw everything iOS does.
+    test('the Android window draws nothing the app does not send', () async {
+      final kotlin = await File(
+        'android/app/src/main/kotlin/com/mumbleway/mumbleway/OverlayService.kt',
+      ).readAsString();
+      final dart = await File('lib/state/app_state.dart').readAsString();
+
+      final drawn = RegExp(
+        r'phrase\("(\w+)"',
+      ).allMatches(kotlin).map((m) => m.group(1)!).toSet();
+      final sent = RegExp(
+        r"'(pip\w+)':",
+      ).allMatches(dart).map((m) => m.group(1)!).toSet();
+
+      expect(drawn, isNotEmpty, reason: 'the Android window draws no text?');
+      expect(
+        drawn.difference(sent),
+        isEmpty,
+        reason:
+            'drawn by the Android window but never sent, so stuck in English',
+      );
+    });
   });
 
   group('engine log', () {

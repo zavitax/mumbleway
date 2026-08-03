@@ -27,7 +27,39 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.graphics.Typeface
 import kotlin.math.abs
+
+/** Somebody currently being heard, with their level on the shared 0..1 scale. */
+data class OverlaySpeaker(val name: String, val level: Float)
+
+/**
+ * Everything the window draws, in one piece.
+ *
+ * A single immutable snapshot rather than a dozen setters, because the frame is
+ * redrawn whole: half-applied state would show a rider "talking" beside "not
+ * connected", and the pair is worse than either.
+ */
+data class OverlayState(
+    val speakers: List<OverlaySpeaker> = emptyList(),
+    /** 0 push to talk, 1 voice activated, 2 always on. */
+    val micMode: Int = 0,
+    /** Whether audio is actually going out, by whatever route. */
+    val live: Boolean = false,
+    /** Built in Dart, where the counts and the grammar live together. */
+    val connectionText: String = "",
+    /** 0 idle, 1 well, 2 struggling, 3 lost. Colour only; no words. */
+    val connectionLevel: Int = 0,
+    val moreSpeakers: String = "",
+    val transmitting: Boolean = false,
+    val connected: Boolean = false,
+    val muted: Boolean = false,
+    val deafened: Boolean = false,
+    val level: Float = 0f,
+    val threshold: Float = 0f,
+    val noiseFloor: Float = 0f,
+    val speaking: Boolean = false,
+)
 
 /**
  * The floating push-to-talk island.
@@ -46,12 +78,10 @@ class OverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var mediaSession: MediaSession? = null
     private var root: LinearLayout? = null
+    private var callView: CallView? = null
     private var talkButton: TextView? = null
-    private var namesView: TextView? = null
     private var muteButton: TextView? = null
     private var deafenButton: TextView? = null
-    private var meterView: MeterView? = null
-    private var dotView: DotView? = null
     private val flashHandler = Handler(Looper.getMainLooper())
     private var flashing = false
     private lateinit var layoutParams: WindowManager.LayoutParams
@@ -93,22 +123,28 @@ class OverlayService : Service() {
 
         val isRunning: Boolean get() = instance != null
 
+        /**
+         * The window's wording, in the app's language.
+         *
+         * Held on the companion rather than the instance so the language
+         * survives the service being stopped and started, which happens every
+         * time the setting is toggled. Without that the window came back in
+         * English until the next time Dart happened to send them.
+         */
+        @Volatile
+        private var phrases: Map<String, String> = emptyMap()
+
+        fun setPhrases(map: Map<String, String>) {
+            phrases = map
+            instance?.callView?.postInvalidate()
+        }
+
+        fun phrase(key: String, fallback: String): String =
+            phrases[key]?.takeIf { it.isNotEmpty() } ?: fallback
+
         /** Pushes the current call state onto the overlay. */
-        fun updateState(
-            names: List<String>,
-            transmitting: Boolean,
-            connected: Boolean,
-            muted: Boolean,
-            deafened: Boolean,
-            level: Float,
-            threshold: Float,
-            noiseFloor: Float,
-            speaking: Boolean,
-        ) {
-            instance?.applyState(
-                names, transmitting, connected, muted, deafened,
-                level, threshold, noiseFloor, speaking,
-            )
+        fun updateState(state: OverlayState) {
+            instance?.applyState(state)
         }
     }
 
@@ -249,33 +285,34 @@ class OverlayService : Service() {
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
 
+        // Laid out like the iOS Picture in Picture frame, because it answers
+        // the same two questions and a rider who uses both phones should not
+        // have to learn the window twice: what this phone is doing with the
+        // microphone on the left, who else is talking on the right.
+        //
+        // The controls sit under the card rather than beside it. iOS gets three
+        // system buttons and no choice about them; Android can offer the real
+        // set, and putting them on their own row keeps the card's proportions
+        // the same as the iOS one rather than squeezing it sideways.
         val container = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(10), dp(8), dp(14), dp(8))
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6), dp(6), dp(6), dp(6))
             background = GradientDrawable().apply {
-                cornerRadius = dp(28).toFloat()
-                setColor(Color.argb(235, 20, 22, 26))
+                cornerRadius = dp(20).toFloat()
+                setColor(Color.argb(235, 16, 24, 34))
                 setStroke(dp(1), Color.argb(90, 255, 255, 255))
             }
         }
 
+        val card = CallView(this)
+
         val talk = TextView(this).apply {
-            text = "TALK"
+            text = phrase("pipTalk", "TALK")
             setTextColor(Color.WHITE)
             textSize = 13f
             gravity = Gravity.CENTER
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPadding(dp(14), dp(11), dp(14), dp(11))
             background = idleTalkBackground()
-        }
-
-        val names = TextView(this).apply {
-            text = "No one speaking"
-            setTextColor(Color.argb(200, 255, 255, 255))
-            textSize = 12f
-            maxLines = 2
-            setPadding(dp(10), 0, 0, 0)
-            maxWidth = dp(150)
         }
 
         // Glyphs rather than words: the row has to stay narrow enough to leave
@@ -289,40 +326,39 @@ class OverlayService : Service() {
             setTextColor(Color.argb(255, 255, 138, 128))
         }
 
-        val dot = DotView(this)
-        val meter = MeterView(this)
-
-        // Names and meter stack vertically so the island stays narrow enough
-        // to leave the navigation app usable.
-        val label = LinearLayout(this).apply {
+        val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(6), dp(4), dp(2))
             addView(
-                dot,
-                LinearLayout.LayoutParams(dp(8), dp(8)).apply {
-                    rightMargin = dp(6)
-                },
+                talk,
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
             )
-            addView(names)
+            addView(
+                mute,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { leftMargin = dp(6) },
+            )
+            addView(
+                deafen,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { leftMargin = dp(6) },
+            )
+            addView(
+                hangup,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { leftMargin = dp(6) },
+            )
         }
 
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, dp(4), 0)
-            addView(label)
-            addView(
-                meter,
-                LinearLayout.LayoutParams(dp(120), dp(10)).apply {
-                    topMargin = dp(4)
-                },
-            )
-        }
-
-        container.addView(talk)
-        container.addView(column)
-        container.addView(mute)
-        container.addView(deafen)
-        container.addView(hangup)
+        container.addView(card, LinearLayout.LayoutParams(dp(300), dp(150)))
+        container.addView(controls)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -366,18 +402,17 @@ class OverlayService : Service() {
         deafen.setOnClickListener { onToggleDeafen?.invoke() }
         hangup.setOnClickListener { onHangup?.invoke() }
 
-        // Dragging by the label area lets the rider move the island clear of
-        // whatever the navigation app is showing.
-        names.setOnTouchListener(DragHandler())
+        // Dragging by the card lets the rider move the island clear of whatever
+        // the navigation app is showing. The card carries no controls of its
+        // own, so nothing is lost by making the whole of it the handle.
+        card.setOnTouchListener(DragHandler())
 
         wm.addView(container, layoutParams)
         root = container
+        callView = card
         talkButton = talk
-        namesView = names
         muteButton = mute
         deafenButton = deafen
-        meterView = meter
-        dotView = dot
     }
 
     /**
@@ -389,42 +424,218 @@ class OverlayService : Service() {
      * showing only the threshold makes that look like a control that has
      * drifted rather than wind.
      */
-    private inner class MeterView(context: Context) : View(context) {
-        var level = 0f
-        var threshold = 0f
-        var noiseFloor = 0f
+    /**
+     * The card, drawn as one piece.
+     *
+     * A canvas rather than a tree of widgets, for the same reason the iOS frame
+     * is one: every element is positioned relative to the others, and expressing
+     * that as nested layouts with margins makes a change to one of them move
+     * three. The two sides are also meant to stay proportional to each other as
+     * the card is resized, which weights and gravities do badly.
+     */
+    private inner class CallView(context: Context) : View(context) {
+        var state = OverlayState()
+
+        /** Blink phase for the on-air light; driven by [setFlashing]. */
+        var lit = true
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
         private val rect = RectF()
 
-        override fun onDraw(canvas: Canvas) {
-            val h = dp(5).toFloat()
-            val top = (height - h) / 2f
-            val r = h / 2f
+        private fun typeface(bold: Boolean) =
+            if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
 
-            rect.set(0f, top, width.toFloat(), top + h)
+        /** Draws one line, returning nothing: every caller places by geometry. */
+        private fun label(
+            canvas: Canvas,
+            value: String,
+            x: Float,
+            y: Float,
+            sizeDp: Int,
+            colour: Int,
+            bold: Boolean = false,
+            align: Paint.Align = Paint.Align.LEFT,
+        ) {
+            text.textSize = dp(sizeDp).toFloat()
+            text.color = colour
+            text.typeface = typeface(bold)
+            text.textAlign = align
+            canvas.drawText(value, x, y, text)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+
+            // Two halves, because the window answers two questions that have
+            // nothing to do with each other. Stacked they read as one list and
+            // the eye has to work out which line belongs to which; side by side
+            // each half is glanced at rather than read, which is all a rider
+            // has time for.
+            val divider = (w * 0.52f)
+
+            paint.color = Color.argb(26, 255, 255, 255)
+            canvas.drawRect(divider, dp(14).toFloat(), divider + dp(1), h - dp(14), paint)
+
+            drawConnection(canvas, divider)
+            drawOnAir(canvas, divider)
+            drawTitle(canvas, divider)
+            drawMeter(canvas, divider, h)
+            drawSpeakers(canvas, divider, w)
+        }
+
+        /**
+         * One line across the top saying whether the radio is up.
+         *
+         * Measured and then centred as one piece rather than each part placed
+         * against an edge: the phrase changes length as servers come and go, and
+         * anchoring the dot would leave the line shuffling sideways every time.
+         */
+        private fun drawConnection(canvas: Canvas, divider: Float) {
+            val value = state.connectionText.ifEmpty {
+                phrase("pipNotConnected", "Not connected")
+            }
+            paint.color = when (state.connectionLevel) {
+                1 -> Color.argb(255, 92, 217, 115)
+                2 -> Color.argb(255, 250, 191, 64)
+                3 -> Color.argb(255, 240, 82, 71)
+                else -> Color.argb(255, 128, 128, 128)
+            }
+
+            text.textSize = dp(11).toFloat()
+            text.typeface = typeface(true)
+            val textWidth = text.measureText(value)
+            val diameter = dp(8).toFloat()
+            val gap = dp(6).toFloat()
+            val startX = divider / 2f - (diameter + gap + textWidth) / 2f
+            val middle = dp(18).toFloat()
+
+            canvas.drawCircle(startX + diameter / 2f, middle, diameter / 2f, paint)
+            // Centred on the dot rather than sharing its top edge, so the two
+            // read as one line.
+            label(
+                canvas, value, startX + diameter + gap,
+                middle - (text.ascent() + text.descent()) / 2f,
+                11, Color.WHITE, bold = true,
+            )
+        }
+
+        private fun drawOnAir(canvas: Canvas, divider: Float) {
+            val cx = divider / 2f
+            val cy = dp(56).toFloat()
+            val radius = dp(20).toFloat()
+
+            val colour = when {
+                !state.connected -> Color.argb(255, 115, 115, 115)
+                state.live -> Color.argb(255, 240, 62, 62)
+                state.speaking -> Color.argb(255, 64, 199, 115)
+                else -> Color.argb(255, 140, 140, 140)
+            }
+            // Steady unless transmitting: a light that is always on is easy to
+            // stop noticing, and a channel left keyed open is the failure worth
+            // catching.
+            val on = !state.live || lit
+
+            if (state.live) {
+                paint.color = colour
+                paint.alpha = if (on) 77 else 26
+                canvas.drawCircle(cx, cy, radius + dp(9), paint)
+            }
+            paint.color = colour
+            paint.alpha = if (on) 255 else 89
+            canvas.drawCircle(cx, cy, radius, paint)
+            paint.alpha = 255
+
+            if (state.live) {
+                label(
+                    canvas, phrase("pipOnAir", "ON AIR"), cx,
+                    cy - (text.ascent() + text.descent()) / 2f,
+                    10, Color.WHITE, bold = true, align = Paint.Align.CENTER,
+                )
+            } else {
+                label(
+                    canvas, "🎤", cx, cy - (text.ascent() + text.descent()) / 2f,
+                    15, Color.WHITE, align = Paint.Align.CENTER,
+                )
+            }
+        }
+
+        private fun drawTitle(canvas: Canvas, divider: Float) {
+            val value = when {
+                !state.connected -> phrase("pipNotConnected", "Not connected")
+                state.live -> phrase("pipTalking", "Talking")
+                state.deafened -> phrase("pipDeafened", "Deafened")
+                state.muted -> phrase("pipMuted", "Muted")
+                // Not just "Listening": that reads as though the microphone is
+                // open, and the point of this line is to say that it is not.
+                else -> phrase("pipListening", "Listening, but\nnot transmitting")
+            }
+
+            var y = dp(93).toFloat()
+            for (line in value.split("\n")) {
+                label(
+                    canvas, line, divider / 2f, y, 12, Color.WHITE,
+                    bold = true, align = Paint.Align.CENTER,
+                )
+                y += dp(14)
+            }
+
+            val badges = buildList {
+                if (state.muted) add(phrase("pipBadgeMuted", "MUTED"))
+                if (state.deafened) add(phrase("pipBadgeDeafened", "DEAFENED"))
+            }
+            if (badges.isNotEmpty()) {
+                label(
+                    canvas, badges.joinToString("  ·  "), divider / 2f, y + dp(2),
+                    10, Color.argb(255, 250, 184, 89),
+                    bold = true, align = Paint.Align.CENTER,
+                )
+            }
+        }
+
+        /**
+         * Input level with the noise floor and the activation threshold marked
+         * on the same scale.
+         *
+         * The two markers are separate because the gap between them is the
+         * margin being tuned. On a bike the floor climbs with road speed, and a
+         * meter showing only the threshold makes that look like a control that
+         * has drifted rather than wind.
+         */
+        private fun drawMeter(canvas: Canvas, divider: Float, h: Float) {
+            val left = dp(16).toFloat()
+            val right = divider - dp(16)
+            val barHeight = dp(5).toFloat()
+            val top = h - dp(18)
+            val r = barHeight / 2f
+
+            rect.set(left, top, right, top + barHeight)
             paint.color = Color.argb(60, 255, 255, 255)
             canvas.drawRoundRect(rect, r, r, paint)
 
-            val filled = level.coerceIn(0f, 1f)
+            val span = right - left
+            val filled = state.level.coerceIn(0f, 1f)
             if (filled > 0.001f) {
                 // Colour answers the only question the meter is asked: would
                 // this level open the gate?
-                paint.color = if (level >= threshold) {
+                paint.color = if (state.level >= state.threshold) {
                     Color.argb(255, 92, 217, 115)
                 } else {
                     Color.argb(255, 184, 184, 184)
                 }
-                rect.set(0f, top, (width * filled).coerceAtLeast(h), top + h)
+                rect.set(left, top, left + (span * filled).coerceAtLeast(barHeight), top + barHeight)
                 canvas.drawRoundRect(rect, r, r, paint)
             }
 
-            tick(canvas, noiseFloor, Color.argb(255, 140, 170, 210), dp(2).toFloat(), top, h)
-            tick(canvas, threshold, Color.argb(255, 255, 199, 64), dp(4).toFloat(), top, h)
+            tick(canvas, left, span, state.noiseFloor, Color.argb(255, 140, 170, 210), dp(2).toFloat(), top, barHeight)
+            tick(canvas, left, span, state.threshold, Color.argb(255, 255, 199, 64), dp(4).toFloat(), top, barHeight)
         }
 
         private fun tick(
             canvas: Canvas,
+            left: Float,
+            span: Float,
             value: Float,
             colour: Int,
             overhang: Float,
@@ -432,28 +643,96 @@ class OverlayService : Service() {
             h: Float,
         ) {
             paint.color = colour
-            val x = width * value.coerceIn(0f, 1f)
+            val x = left + span * value.coerceIn(0f, 1f)
             val w = dp(1).toFloat()
             canvas.drawRect(x - w, top - overhang, x + w, top + h + overhang, paint)
         }
-    }
 
-    /**
-     * The transmit indicator. Blinks while the microphone is going out, the way
-     * a studio on-air light does: a steady colour is easy to stop noticing, and
-     * a channel left keyed open is the failure worth catching.
-     */
-    private inner class DotView(context: Context) : View(context) {
-        var colour = Color.GRAY
-        var lit = true
+        /**
+         * Who is being heard, name against the left edge and level against the
+         * right, on one line and centred on each other.
+         *
+         * A meter under its name reads as a second row and costs the height of
+         * one; on the same line the pairing is obvious and the list can breathe.
+         * A quarter of the width is enough for a level to be seen moving without
+         * taking room from the names, which are what identify who is talking.
+         */
+        private fun drawSpeakers(canvas: Canvas, divider: Float, w: Float) {
+            val left = divider + dp(12)
+            val right = w - dp(12)
 
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            if (state.speakers.isEmpty()) {
+                label(
+                    canvas,
+                    if (state.connected) phrase("pipNobodySpeaks", "Nobody speaks") else "—",
+                    (left + right) / 2f, dp(78).toFloat(), 12,
+                    Color.argb(115, 255, 255, 255), align = Paint.Align.CENTER,
+                )
+                return
+            }
 
-        override fun onDraw(canvas: Canvas) {
-            paint.color = colour
-            paint.alpha = if (lit) 255 else 64
-            val r = minOf(width, height) / 2f
-            canvas.drawCircle(width / 2f, height / 2f, r, paint)
+            label(
+                canvas, phrase("pipSpeaking", "SPEAKING"), left, dp(20).toFloat(),
+                9, Color.argb(102, 255, 255, 255), bold = true,
+            )
+
+            val visible = state.speakers.take(4)
+            val meterWidth = (right - left) * 0.25f
+            val gap = dp(8).toFloat()
+            val nameWidth = right - left - meterWidth - gap
+
+            var y = dp(42).toFloat()
+            for (speaker in visible) {
+                text.textSize = dp(12).toFloat()
+                text.typeface = typeface(true)
+                label(
+                    canvas, ellipsise(speaker.name, nameWidth), left, y, 12,
+                    Color.argb(255, 140, 212, 255), bold = true,
+                )
+
+                val barHeight = dp(6).toFloat()
+                val centre = y - (text.ascent() + text.descent()) / 2f - dp(4)
+                val trackTop = centre - barHeight / 2f
+                val r = barHeight / 2f
+                rect.set(right - meterWidth, trackTop, right, trackTop + barHeight)
+                paint.color = Color.argb(31, 255, 255, 255)
+                canvas.drawRoundRect(rect, r, r, paint)
+
+                val level = speaker.level.coerceIn(0f, 1f)
+                if (level > 0.001f) {
+                    // The same three-colour scale as every meter in the app.
+                    paint.color = when {
+                        level > 0.85f -> Color.argb(255, 240, 82, 71)
+                        level > 0.65f -> Color.argb(255, 250, 191, 64)
+                        else -> Color.argb(255, 92, 217, 115)
+                    }
+                    rect.set(
+                        right - meterWidth, trackTop,
+                        right - meterWidth + (meterWidth * level).coerceAtLeast(barHeight),
+                        trackTop + barHeight,
+                    )
+                    canvas.drawRoundRect(rect, r, r, paint)
+                }
+                y += dp(24)
+            }
+
+            if (state.speakers.size > visible.size && state.moreSpeakers.isNotEmpty()) {
+                label(
+                    canvas, state.moreSpeakers, left, y, 10,
+                    Color.argb(115, 255, 255, 255),
+                )
+            }
+        }
+
+        /** Trims a name to the room it has, rather than letting it run under
+         *  the meter. */
+        private fun ellipsise(value: String, maxWidth: Float): String {
+            if (text.measureText(value) <= maxWidth) return value
+            var cut = value.length
+            while (cut > 1 && text.measureText(value.take(cut) + "…") > maxWidth) {
+                cut--
+            }
+            return value.take(cut) + "…"
         }
     }
 
@@ -518,50 +797,36 @@ class OverlayService : Service() {
         }
     }
 
-    private fun applyState(
-        names: List<String>,
-        transmitting: Boolean,
-        connected: Boolean,
-        muted: Boolean,
-        deafened: Boolean,
-        level: Float,
-        threshold: Float,
-        noiseFloor: Float,
-        speaking: Boolean,
-    ) {
-        val view = namesView ?: return
+    private fun applyState(state: OverlayState) {
+        val card = callView ?: return
         val talk = talkButton ?: return
-        view.post {
-            view.text = when {
-                !connected -> "Not connected"
-                deafened -> "Deafened"
-                muted -> "Muted"
-                names.isEmpty() -> "No one speaking"
-                names.size <= 2 -> names.joinToString(", ")
-                else -> "${names.take(2).joinToString(", ")} +${names.size - 2}"
-            }
+        card.post {
+            card.state = state
+            card.invalidate()
+
+            // The talk button follows whether audio is actually going out, not
+            // whether a finger is down: in the hands-free modes nobody holds
+            // anything and the microphone still opens, and a button that stayed
+            // grey through all of it would be telling the rider they were off
+            // air while they were being heard.
             talk.background =
-                if (transmitting) activeTalkBackground() else idleTalkBackground()
-            muteButton?.background = pillBackground(active = muted)
-            deafenButton?.background = pillBackground(active = deafened)
+                if (state.live) activeTalkBackground() else idleTalkBackground()
 
-            meterView?.let {
-                it.level = level
-                it.threshold = threshold
-                it.noiseFloor = noiseFloor
-                it.invalidate()
+            // Nothing to hold in the hands-free modes, so the button says so
+            // rather than sitting there looking pressable and doing nothing.
+            val handsFree = state.micMode != 0
+            talk.isEnabled = !handsFree
+            talk.alpha = if (handsFree) 0.45f else 1f
+            talk.text = when {
+                !handsFree -> phrase("pipTalk", "TALK")
+                state.micMode == 1 -> phrase("pipHandsFreeVoice", "VOICE")
+                else -> phrase("pipHandsFreeAlways", "OPEN")
             }
 
-            dotView?.let {
-                it.colour = when {
-                    !connected -> Color.GRAY
-                    transmitting -> Color.argb(255, 240, 62, 62)
-                    speaking -> Color.argb(255, 64, 199, 115)
-                    else -> Color.GRAY
-                }
-                it.invalidate()
-            }
-            setFlashing(transmitting)
+            muteButton?.background = pillBackground(active = state.muted)
+            deafenButton?.background = pillBackground(active = state.deafened)
+
+            setFlashing(state.live)
         }
     }
 
@@ -575,7 +840,7 @@ class OverlayService : Service() {
         flashing = on
         flashHandler.removeCallbacksAndMessages(null)
         if (!on) {
-            dotView?.let {
+            callView?.let {
                 it.lit = true
                 it.invalidate()
             }
@@ -583,9 +848,9 @@ class OverlayService : Service() {
         }
         val blink = object : Runnable {
             override fun run() {
-                val dot = dotView ?: return
-                dot.lit = !dot.lit
-                dot.invalidate()
+                val card = callView ?: return
+                card.lit = !card.lit
+                card.invalidate()
                 flashHandler.postDelayed(this, 350)
             }
         }
@@ -600,12 +865,10 @@ class OverlayService : Service() {
             // Already gone; nothing to undo.
         }
         root = null
+        callView = null
         talkButton = null
-        namesView = null
         muteButton = null
         deafenButton = null
-        meterView = null
-        dotView = null
         flashHandler.removeCallbacksAndMessages(null)
         flashing = false
     }

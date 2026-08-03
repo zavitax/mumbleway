@@ -139,26 +139,45 @@ class MainActivity : FlutterActivity() {
 
                 "isShowing" -> result.success(OverlayService.isRunning)
 
+                // The window's wording, so it is not stuck in English. Sent
+                // separately from the state because it changes when the
+                // language does, which is roughly never, while the state
+                // changes ten times a second.
+                "phrases" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val map = call.arguments as? Map<String, String> ?: emptyMap()
+                    OverlayService.setPhrases(map)
+                    result.success(null)
+                }
+
                 "update" -> {
-                    val names = call.argument<List<String>>("names") ?: emptyList()
-                    val transmitting = call.argument<Boolean>("transmitting") ?: false
-                    val connected = call.argument<Boolean>("connected") ?: false
-                    val muted = call.argument<Boolean>("muted") ?: false
-                    val deafened = call.argument<Boolean>("deafened") ?: false
-                    val level = call.argument<Double>("level") ?: 0.0
-                    val threshold = call.argument<Double>("threshold") ?: 0.0
-                    val noiseFloor = call.argument<Double>("noiseFloor") ?: 0.0
-                    val speaking = call.argument<Boolean>("speaking") ?: false
+                    // Speakers arrive with their levels already on the app's
+                    // shared 0..1 scale, so the window cannot draw a different
+                    // loudness from the one on the main screen.
+                    val speakers = (call.argument<List<Map<String, Any?>>>("speakers")
+                        ?: emptyList()).map {
+                        OverlaySpeaker(
+                            name = it["name"] as? String ?: "",
+                            level = ((it["level"] as? Double) ?: 0.0).toFloat(),
+                        )
+                    }
                     OverlayService.updateState(
-                        names,
-                        transmitting,
-                        connected,
-                        muted,
-                        deafened,
-                        level.toFloat(),
-                        threshold.toFloat(),
-                        noiseFloor.toFloat(),
-                        speaking,
+                        OverlayState(
+                            speakers = speakers,
+                            micMode = call.argument<Int>("micMode") ?: 0,
+                            live = call.argument<Boolean>("live") ?: false,
+                            connectionText = call.argument<String>("connectionText") ?: "",
+                            connectionLevel = call.argument<Int>("connectionLevel") ?: 0,
+                            moreSpeakers = call.argument<String>("moreSpeakers") ?: "",
+                            transmitting = call.argument<Boolean>("transmitting") ?: false,
+                            connected = call.argument<Boolean>("connected") ?: false,
+                            muted = call.argument<Boolean>("muted") ?: false,
+                            deafened = call.argument<Boolean>("deafened") ?: false,
+                            level = (call.argument<Double>("level") ?: 0.0).toFloat(),
+                            threshold = (call.argument<Double>("threshold") ?: 0.0).toFloat(),
+                            noiseFloor = (call.argument<Double>("noiseFloor") ?: 0.0).toFloat(),
+                            speaking = call.argument<Boolean>("speaking") ?: false,
+                        ),
                     )
                     result.success(null)
                 }

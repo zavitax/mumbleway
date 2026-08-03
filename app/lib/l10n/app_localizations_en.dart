@@ -446,11 +446,11 @@ class LEn extends L {
       'Push-to-talk is the safest choice at speed: nothing you hit on the road opens the channel by accident.';
 
   @override
-  String get floatingTalkButton => 'Floating talk button';
+  String get floatingCallWindow => 'Floating call window';
 
   @override
-  String get floatingTalkButtonBody =>
-      'Puts a small draggable push-to-talk button over whatever else is on screen.';
+  String get floatingCallWindowBody =>
+      'Keeps the call visible over whatever else is on screen, with the controls in reach without going back to the app.';
 
   @override
   String get buttonsBody =>
@@ -817,10 +817,6 @@ class LEn extends L {
   @override
   String get floatingIosBody =>
       'Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).';
-
-  @override
-  String get floatingMacosBody =>
-      'A small always-on-top panel with talk, mute, deafen and hang up.';
 
   @override
   String get actionPushToTalkHold => 'Push to talk (hold)';

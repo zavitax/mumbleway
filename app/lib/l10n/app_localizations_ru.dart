@@ -415,7 +415,7 @@ class LRu extends L {
   String get buttonActionToggleDeafen => 'Переключать звук';
 
   @override
-  String get floatingWindow => 'Плавающее окно вызова';
+  String get floatingWindow => 'Показывать плавающее окно вызова';
 
   @override
   String get identityFingerprint => 'Отпечаток вашего сертификата';
@@ -446,11 +446,11 @@ class LRu extends L {
       'На скорости надёжнее всего режим «по нажатию»: ничто, задетое в дороге, не откроет канал случайно.';
 
   @override
-  String get floatingTalkButton => 'Плавающая кнопка передачи';
+  String get floatingCallWindow => 'Плавающее окно вызова';
 
   @override
-  String get floatingTalkButtonBody =>
-      'Небольшая перетаскиваемая кнопка передачи поверх остальных приложений.';
+  String get floatingCallWindowBody =>
+      'Держит вызов на виду поверх других приложений, а органы управления — под рукой, без возврата в приложение.';
 
   @override
   String get buttonsBody =>
@@ -824,10 +824,6 @@ class LRu extends L {
   @override
   String get floatingIosBody =>
       'Картинка в картинке — появляется, когда вы выходите из приложения. Система даёт три кнопки: воспроизведение/пауза говорит, назад отключает микрофон, вперёд завершает вызов (дважды для подтверждения).';
-
-  @override
-  String get floatingMacosBody =>
-      'Небольшая панель поверх всех окон: говорить, отключить микрофон, отключить звук, завершить вызов.';
 
   @override
   String get actionPushToTalkHold => 'Рация (удерживать)';

@@ -412,7 +412,6 @@ void main() {
       isFalse,
     );
     expect(OverlayBridge.hasDeafenFor(FloatingKind.androidOverlay), isTrue);
-    expect(OverlayBridge.hasDeafenFor(FloatingKind.macosPanel), isTrue);
     expect(OverlayBridge.hasDeafenFor(FloatingKind.none), isFalse);
   });
 

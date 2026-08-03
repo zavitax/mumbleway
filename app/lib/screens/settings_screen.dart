@@ -99,8 +99,8 @@ class SettingsScreen extends StatelessWidget {
 
           if (state.overlaySupported) ...[
             const Divider(height: 32),
-            _SectionHeader(l.floatingTalkButton),
-            _Explainer(l.floatingTalkButtonBody),
+            _SectionHeader(l.floatingCallWindow),
+            _Explainer(l.floatingCallWindowBody),
             const _OverlayTile(),
           ],
 
@@ -765,8 +765,6 @@ class _OverlayTileState extends State<_OverlayTile> {
         return L.of(context).floatingAndroidBody;
       case FloatingKind.iosPictureInPicture:
         return L.of(context).floatingIosBody;
-      case FloatingKind.macosPanel:
-        return L.of(context).floatingMacosBody;
       case FloatingKind.none:
         return L.of(context).notAvailableHere;
     }

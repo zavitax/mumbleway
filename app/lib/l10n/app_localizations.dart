@@ -925,17 +925,17 @@ abstract class L {
   /// **'Push-to-talk is the safest choice at speed: nothing you hit on the road opens the channel by accident.'**
   String get micModeBody;
 
-  /// No description provided for @floatingTalkButton.
+  /// No description provided for @floatingCallWindow.
   ///
   /// In en, this message translates to:
-  /// **'Floating talk button'**
-  String get floatingTalkButton;
+  /// **'Floating call window'**
+  String get floatingCallWindow;
 
-  /// No description provided for @floatingTalkButtonBody.
+  /// No description provided for @floatingCallWindowBody.
   ///
   /// In en, this message translates to:
-  /// **'Puts a small draggable push-to-talk button over whatever else is on screen.'**
-  String get floatingTalkButtonBody;
+  /// **'Keeps the call visible over whatever else is on screen, with the controls in reach without going back to the app.'**
+  String get floatingCallWindowBody;
 
   /// No description provided for @buttonsBody.
   ///
@@ -1602,12 +1602,6 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).'**
   String get floatingIosBody;
-
-  /// No description provided for @floatingMacosBody.
-  ///
-  /// In en, this message translates to:
-  /// **'A small always-on-top panel with talk, mute, deafen and hang up.'**
-  String get floatingMacosBody;
 
   /// No description provided for @actionPushToTalkHold.
   ///

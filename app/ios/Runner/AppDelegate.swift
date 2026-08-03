@@ -8,6 +8,7 @@ import UIKit
   private var overlayChannel: FlutterMethodChannel?
   private var cloud: CloudStore?
   private var audioSession: AudioSession?
+  private var remoteCommands: RemoteCommands?
 
   override func application(
     _ application: UIApplication,
@@ -30,6 +31,9 @@ import UIKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayAudioSession") {
       audioSession = AudioSession(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayButtons") {
+      remoteCommands = RemoteCommands(messenger: registrar.messenger())
     }
   }
 

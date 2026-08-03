@@ -755,6 +755,21 @@ class AppState extends ChangeNotifier {
 
   CloudKind get cloudKind => CloudSync.instance.kind;
 
+  /// Whether a Bluetooth remote's media buttons arrive as taps rather than as
+  /// a press and a release.
+  ///
+  /// True only on iOS, where those buttons are not key events at all and reach
+  /// the app through the remote command centre, which reports that a button
+  /// was used and never that it is still down.
+  bool get remoteButtonsAreTapsOnly {
+    if (kIsWeb) return false;
+    try {
+      return Platform.isIOS;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Whether this platform lets the user pick an audio device at all.
   ///
   /// Phones and tablets expose one logical route and switch it themselves as

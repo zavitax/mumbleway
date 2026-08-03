@@ -1632,6 +1632,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Deafen / undeafen'**
   String get actionToggleDeafen;
+
+  /// No description provided for @buttonsIosNote.
+  ///
+  /// In en, this message translates to:
+  /// **'A Bluetooth remote reports its media buttons as a tap, never as a hold, so push-to-talk (hold) cannot work from one. Use the toggle action instead. While a media button is bound, the remote controls MumbleWay rather than your music app.'**
+  String get buttonsIosNote;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

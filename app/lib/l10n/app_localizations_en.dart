@@ -833,4 +833,8 @@ class LEn extends L {
 
   @override
   String get actionToggleDeafen => 'Deafen / undeafen';
+
+  @override
+  String get buttonsIosNote =>
+      'A Bluetooth remote reports its media buttons as a tap, never as a hold, so push-to-talk (hold) cannot work from one. Use the toggle action instead. While a media button is bound, the remote controls MumbleWay rather than your music app.';
 }

@@ -110,6 +110,7 @@ class ButtonController {
     _bindings
       ..clear()
       ..addAll(bindings);
+    _syncCapture();
   }
 
   void addBinding(ButtonBinding b) {
@@ -117,10 +118,13 @@ class ButtonController {
     // rather than firing two things at once.
     _bindings.removeWhere((e) => e.keyId == b.keyId);
     _bindings.add(b);
+    _syncCapture();
   }
 
-  void removeBinding(int keyId) =>
-      _bindings.removeWhere((e) => e.keyId == keyId);
+  void removeBinding(int keyId) {
+    _bindings.removeWhere((e) => e.keyId == keyId);
+    _syncCapture();
+  }
 
   /// Starts listening. Safe to call more than once.
   void install() {
@@ -148,9 +152,37 @@ class ButtonController {
   /// Captures the next key press as a new binding.
   void learnNext(void Function(int keyId, String label) onLearned) {
     _learner = onLearned;
+    _syncCapture();
   }
 
-  void cancelLearning() => _learner = null;
+  void cancelLearning() {
+    _learner = null;
+    _syncCapture();
+  }
+
+  /// Tells the platform whether it should claim the remote's media buttons.
+  ///
+  /// Only iOS acts on this, and only because it has to: there, play and
+  /// track-skip never reach an app as key events, and the only way to see them
+  /// is to become the Now Playing app — which stops the rider's music app
+  /// answering its own remote. That is the right trade while a button is bound
+  /// to push-to-talk and plain rude otherwise, so it is asked for only while a
+  /// media binding exists or one is being learned.
+  ///
+  /// Android reports the same buttons through its media session without any of
+  /// this, and has no handler for the call.
+  void _syncCapture() {
+    final want =
+        _learner != null || _bindings.any((b) => b.keyId >= _mediaKeyBase);
+    _channel.invokeMethod<bool>('captureMediaButtons', want).catchError((
+      Object _,
+    ) {
+      // No handler on this platform, which is every platform but iOS.
+      return false;
+    });
+  }
+
+  static const _mediaKeyBase = 0x7000_0000;
 
   bool _handleKeyEvent(KeyEvent event) {
     final id = event.logicalKey.keyId;
@@ -188,7 +220,7 @@ class ButtonController {
   /// Flutter's ids are allocated in documented planes; this uses a private
   /// range well above them so a media button and a keyboard key are never
   /// confused for one another.
-  static int mediaKeyId(int androidKeyCode) => 0x7000_0000 + androidKeyCode;
+  static int mediaKeyId(int androidKeyCode) => _mediaKeyBase + androidKeyCode;
 
   bool _dispatch(int keyId, bool pressed, {bool isRepeat = false}) {
     ButtonBinding? binding;

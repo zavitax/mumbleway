@@ -86,6 +86,9 @@ class SettingsScreen extends StatelessWidget {
           const Divider(height: 32),
           _SectionHeader(l.buttons),
           _Explainer(l.buttonsBody),
+          // Only where it is true. Android's media session reports a press and
+          // a release like any other key, so the limitation is Apple's alone.
+          if (state.remoteButtonsAreTapsOnly) _Explainer(l.buttonsIosNote),
           const _ButtonBindings(),
 
           const Divider(height: 32),

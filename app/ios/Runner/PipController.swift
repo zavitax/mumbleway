@@ -644,13 +644,20 @@ final class PipController: NSObject {
 
     let level = CGFloat(max(0, min(1, snapshot.level)))
     if level > 0.001 {
-      // Green below the threshold, red above it: the colour says whether this
-      // level would open the gate, which is the only question the meter is
-      // being asked.
+      // Colour only while audio is actually going out, matching the meter on
+      // the main screen. The bar still moves off air, so the microphone is
+      // visibly alive; the colour is what says somebody is hearing it. The
+      // speaker meters on the right keep their colours regardless, because
+      // they show other people, who are being heard by definition.
       let open = snapshot.level >= snapshot.threshold
-      let fill = open
-        ? UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
-        : UIColor(white: 0.72, alpha: 1)
+      let fill: UIColor
+      if !snapshot.live {
+        fill = UIColor(white: 0.55, alpha: 1)
+      } else if open {
+        fill = UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
+      } else {
+        fill = UIColor(white: 0.72, alpha: 1)
+      }
       fill.setFill()
       let filled = CGRect(
         x: track.minX, y: track.minY, width: max(track.height, track.width * level),

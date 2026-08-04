@@ -693,12 +693,16 @@ class OverlayService : Service() {
             val span = right - left
             val filled = state.level.coerceIn(0f, 1f)
             if (filled > 0.001f) {
-                // Colour answers the only question the meter is asked: would
-                // this level open the gate?
-                paint.color = if (state.level >= state.threshold) {
-                    Color.argb(255, 92, 217, 115)
-                } else {
-                    Color.argb(255, 184, 184, 184)
+                // Colour only while audio is actually going out, matching the
+                // meter on the main screen. The bar still moves off air, so the
+                // microphone is visibly alive; the colour is what says somebody
+                // is hearing it. The speaker meters on the right keep their
+                // colours, because they show other people, who are being heard
+                // by definition or would not be listed.
+                paint.color = when {
+                    !state.live -> Color.argb(255, 140, 140, 140)
+                    state.level >= state.threshold -> Color.argb(255, 92, 217, 115)
+                    else -> Color.argb(255, 184, 184, 184)
                 }
                 rect.set(left, top, left + (span * filled).coerceAtLeast(barHeight), top + barHeight)
                 canvas.drawRoundRect(rect, r, r, paint)

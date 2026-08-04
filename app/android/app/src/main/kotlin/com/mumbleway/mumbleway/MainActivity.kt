@@ -72,6 +72,35 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "prepare" -> requestMicrophone(result)
+                // Android has no session to take live: the permission is the
+                // whole of it, and the engine opens the device itself.
+                // Answered rather than left unimplemented so that the Dart side
+                // has one code path and iOS is not a special case at the call
+                // site as well as behind it.
+                "activate" -> result.success(
+                    mapOf("ok" to hasMicrophone(), "inputChannels" to -1, "sampleRate" to 0.0)
+                )
+                "deactivate" -> result.success(true)
+                else -> result.notImplemented()
+            }
+        }
+
+        // Whether there is a conversation to keep the processor awake for.
+        //
+        // Its own channel rather than the overlay's, even though the wake lock
+        // happens to live in the same service that draws the window: a rider
+        // who has turned the floating island off in settings still makes
+        // calls, and the two ideas only share a service by accident of where
+        // Android puts a foreground service.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/power",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "callActive" -> {
+                    setCallActive(call.arguments == true)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -352,6 +381,22 @@ class MainActivity : FlutterActivity() {
     private fun hideOverlayWindow() {
         if (!OverlayService.isRunning) return
         startForegroundService(serviceIntent(OverlayService.ACTION_HIDE_WINDOW))
+    }
+
+    /**
+     * Tells the service whether a call is up, so it can hold the CPU awake for
+     * one and let the phone sleep the rest of the time.
+     *
+     * Silently ignored when the service is not running, which is the case
+     * before the microphone has been granted. There is no call to protect then
+     * either, so there is nothing to report.
+     */
+    private fun setCallActive(active: Boolean) {
+        if (!OverlayService.isRunning) return
+        startForegroundService(
+            serviceIntent(OverlayService.ACTION_SET_CALL_ACTIVE)
+                .putExtra(OverlayService.EXTRA_CALL_ACTIVE, active)
+        )
     }
 
     /**

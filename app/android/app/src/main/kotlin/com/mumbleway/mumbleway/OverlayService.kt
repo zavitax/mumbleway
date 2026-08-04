@@ -99,6 +99,10 @@ class OverlayService : Service() {
         const val ACTION_SHOW_WINDOW = "com.mumbleway.overlay.SHOW_WINDOW"
         const val ACTION_HIDE_WINDOW = "com.mumbleway.overlay.HIDE_WINDOW"
 
+        /** Whether a call is up, or being chased. Carries [EXTRA_CALL_ACTIVE]. */
+        const val ACTION_SET_CALL_ACTIVE = "com.mumbleway.overlay.SET_CALL_ACTIVE"
+        const val EXTRA_CALL_ACTIVE = "active"
+
         /** Asked to bring the app back to the front. */
         @Volatile
         var onOpenApp: (() -> Unit)? = null
@@ -163,21 +167,46 @@ class OverlayService : Service() {
         instance = this
         startAsForeground()
         setUpMediaSession()
-        acquireWakeLock()
-        // Deliberately no window yet. The service and the window are separate
-        // things: the service is what keeps this process — and with it the
-        // audio engine and every connection — alive while another app is in
-        // front, and it has to run whether or not the rider wants a window.
+        // Deliberately no window yet, and deliberately no wake lock yet. The
+        // service and the window are separate things: the service is what keeps
+        // this process — and with it the audio engine and every connection —
+        // alive while another app is in front, and it has to run whether or not
+        // the rider wants a window. The lock is narrower still; see
+        // [setCallActive].
     }
 
     /**
-     * Keeps the CPU running with the screen off.
+     * Whether there is a conversation to protect.
+     *
+     * Driven from Dart, which is the only side that knows: it covers a session
+     * that is up, one being dialled and one being chased through a reconnect,
+     * because all three need the CPU and only one of them looks like a call
+     * from outside.
+     *
+     * Deliberately not inferred from whether the floating window is up. A rider
+     * who has turned the window off in settings still makes calls, and reading
+     * the window's state would have left exactly those riders without a lock —
+     * the failure being a conversation that dies when the screen goes off.
+     */
+    private fun setCallActive(active: Boolean) {
+        if (active) acquireWakeLock() else releaseWakeLock()
+    }
+
+    /**
+     * Keeps the CPU running with the screen off, for as long as a call lasts.
      *
      * A foreground service stops Android killing the process, but it does not
      * stop the device suspending: with the screen off in a pocket the audio
      * threads are frozen, which drops the connection and loses whatever was
      * being said. A partial lock leaves the screen off and the CPU awake, which
      * is exactly the state a phone in a tank bag should be in.
+     *
+     * And exactly the state it should not be in the rest of the time. This used
+     * to be taken in `onCreate` and released only when the service died, so
+     * merely having opened the app once held the processor awake — through
+     * every ride with nothing connected, and every night on a bedside table.
+     * Doze could never begin, which is the single most expensive thing an
+     * Android app can do to a battery.
      */
     private fun acquireWakeLock() {
         if (wakeLock != null) return
@@ -191,6 +220,11 @@ class OverlayService : Service() {
             // a lock that expires mid-ride is the bug this prevents.
             acquire()
         }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
     }
 
     /**
@@ -257,6 +291,8 @@ class OverlayService : Service() {
             // going back into the app does not tear down the audio engine.
             ACTION_SHOW_WINDOW -> addOverlay()
             ACTION_HIDE_WINDOW -> removeOverlay()
+            ACTION_SET_CALL_ACTIVE ->
+                setCallActive(intent.getBooleanExtra(EXTRA_CALL_ACTIVE, false))
         }
         // Restart if the system kills us: losing the talk button mid-ride is
         // exactly the failure this feature exists to prevent.
@@ -289,8 +325,7 @@ class OverlayService : Service() {
             release()
         }
         mediaSession = null
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
+        releaseWakeLock()
         instance = null
         super.onDestroy()
     }
@@ -931,8 +966,23 @@ class OverlayService : Service() {
         val card = callView ?: return
         val talk = talkButton ?: return
         card.post {
+            // The state is always taken, whether or not it is drawn: the next
+            // real redraw has to show the newest values, not the ones that
+            // happened to arrive with it.
             card.state = state
+
+            val previous = drawn
+            if (!worthDrawing(previous, state, card)) return@post
+            drawn = state
             card.invalidate()
+
+            // Everything below builds a fresh drawable and assigns it, which
+            // invalidates the view whether or not the result differs, so it is
+            // behind the same gate as the card. These follow the controls
+            // rather than the levels, and the controls change when the rider
+            // does something — a handful of times in a ride, against ten times
+            // a second for a meter.
+            if (previous != null && !controlsDiffer(previous, state)) return@post
 
             // The talk button follows whether audio is actually going out, not
             // whether a finger is down: in the hands-free modes nobody holds
@@ -959,6 +1009,81 @@ class OverlayService : Service() {
             setFlashing(state.live)
         }
     }
+
+    /** The last state actually drawn, as against the last one received. */
+    private var drawn: OverlayState? = null
+
+    private val powerManager: android.os.PowerManager by lazy {
+        getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+    }
+
+    /**
+     * Whether this update would put anything different on screen.
+     *
+     * State arrives ten times a second for the whole of a call, and nearly all
+     * of it is a level that has moved by a fraction of a pixel. Each push cost
+     * a full redraw of the card regardless — the levels, the names, the status
+     * line and the badges — and the window is composited over whatever app the
+     * rider is actually looking at, so the cost lands on the navigation frame
+     * rate as well as on the battery.
+     *
+     * Two things are being asked here. Is the display even on? And if it is,
+     * would the new numbers land on a different pixel from the old ones?
+     */
+    private fun worthDrawing(previous: OverlayState?, next: OverlayState, card: View): Boolean {
+        // Nothing has been drawn yet, or the card has not been laid out and
+        // there is no width to reason about. Draw and find out.
+        if (previous == null || card.width <= 0) return true
+
+        if (controlsDiffer(previous, next)) return true
+
+        // With the display off the window is not on screen at all. Structural
+        // changes above are still applied so that the frame is correct the
+        // instant the screen comes back; a meter moving is not.
+        if (!powerManager.isInteractive) return false
+
+        // A level is a 0..1 fraction of a bar. The input meter is the widest
+        // one on the card at about half its width, so a change that cannot
+        // move *that* bar by a whole pixel cannot move any of them.
+        val span = card.width / 2f
+        fun moved(a: Float, b: Float) = abs(a - b) * span >= 1f
+
+        if (moved(previous.level, next.level) ||
+            moved(previous.threshold, next.threshold) ||
+            moved(previous.noiseFloor, next.noiseFloor)
+        ) {
+            return true
+        }
+
+        // Names are compared as part of the controls above; this is the pairing
+        // of the levels beside them, which by here are known to line up.
+        return previous.speakers.indices.any { i ->
+            moved(previous.speakers[i].level, next.speakers[i].level)
+        }
+    }
+
+    /**
+     * Whether anything other than a level has changed.
+     *
+     * Kept apart from the levels because these are what has to be applied even
+     * with the screen off: the rider looks at the window in the same movement
+     * as waking the phone, and a card that starts on the previous connection
+     * state and corrects itself a tenth of a second later reads as a fault.
+     */
+    private fun controlsDiffer(a: OverlayState, b: OverlayState): Boolean =
+        a.connectionText != b.connectionText ||
+            a.connectionLevel != b.connectionLevel ||
+            a.moreSpeakers != b.moreSpeakers ||
+            a.othersOnline != b.othersOnline ||
+            a.micMode != b.micMode ||
+            a.live != b.live ||
+            a.connected != b.connected ||
+            a.transmitting != b.transmitting ||
+            a.muted != b.muted ||
+            a.deafened != b.deafened ||
+            a.speaking != b.speaking ||
+            a.speakers.size != b.speakers.size ||
+            a.speakers.indices.any { a.speakers[it].name != b.speakers[it].name }
 
     /**
      * Drives the on-air blink from its own runnable rather than from state
@@ -996,6 +1121,9 @@ class OverlayService : Service() {
         }
         root = null
         callView = null
+        // The next window starts blank, so nothing may be skipped as already
+        // drawn on it.
+        drawn = null
         talkButton = null
         muteButton = null
         deafenButton = null

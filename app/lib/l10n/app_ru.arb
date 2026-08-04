@@ -23,6 +23,9 @@
   "maxServersNote": "Одновременно можно подключить до {count} серверов; остальные останутся сохранёнными.",
   "@maxServersNote": { "placeholders": { "count": { "type": "int" } } },
 
+  "allSlotsInUse": "Уже идёт разговор на {count} серверах. Сначала покиньте один из них.",
+  "@allSlotsInUse": { "placeholders": { "count": { "type": "int" } } },
+
   "notConnectedAny": "Нет подключения ни к одному серверу",
   "talkingOnOne": "Разговор на 1 сервере",
   "talkingOnMany": "Разговор одновременно на {count} серверах",

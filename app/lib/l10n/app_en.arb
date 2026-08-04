@@ -23,6 +23,9 @@
   "maxServersNote": "Up to {count} servers can be connected at once; the rest stay saved.",
   "@maxServersNote": { "placeholders": { "count": { "type": "int" } } },
 
+  "allSlotsInUse": "Already talking on {count} servers. Leave one first.",
+  "@allSlotsInUse": { "placeholders": { "count": { "type": "int" } } },
+
   "notConnectedAny": "Not connected to any server",
   "talkingOnOne": "Talking on 1 server",
   "talkingOnMany": "Talking on {count} servers simultaneously",

@@ -472,7 +472,19 @@ class AppState extends ChangeNotifier {
   bool get showTalkButton => micMode == MicMode.pushToTalk;
 
   int get activeCount => runtimes.length;
-  bool get canAddMore => runtimes.length < maxServers;
+  /// Servers that hold a live session in the engine.
+  ///
+  /// Deliberately not `runtimes.length`. [runtimeFor] creates an entry on
+  /// demand, and the server list builds one card per saved server, so merely
+  /// drawing the screen used to make the engine look full: with three saved
+  /// servers the count read three however many were registered, the limit
+  /// checks below all failed, and nothing added or synced afterwards was ever
+  /// registered at all. `runtimes` holds display state for every saved server;
+  /// this holds the ones the engine knows about, which is what the limit is
+  /// about.
+  final Set<String> _registered = {};
+
+  bool get canAddMore => _registered.length < maxServers;
 
   ServerRuntime runtimeFor(String id) =>
       runtimes.putIfAbsent(id, () => ServerRuntime());
@@ -704,9 +716,19 @@ class AppState extends ChangeNotifier {
     if (publish) _scheduleSync();
   }
 
+  /// Drops a server's display state and its claim on an engine slot together.
+  ///
+  /// The two were separate and went out of step: the runtime was removed and
+  /// the slot stayed taken, so a server swapped out never gave its place back.
+  void _deregister(String id) {
+    runtimes.remove(id);
+    _registered.remove(id);
+  }
+
   Future<void> _register(SavedServer s) async {
     try {
       await addServer(config: s.toConfig());
+      _registered.add(s.id);
       runtimeFor(s.id);
       if (s.defaultChannel != null) {
         await setDefaultChannel(serverId: s.id, channel: s.defaultChannel);
@@ -732,7 +754,7 @@ class AppState extends ChangeNotifier {
     servers.add(entry);
     // Only the first `maxServers` get a live session; the rest stay as saved
     // entries the user can swap in.
-    if (runtimes.length < maxServers) {
+    if (_registered.length < maxServers) {
       await _register(entry);
     }
     await _persist();
@@ -772,7 +794,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // Never registered, which is fine вЂ” _register puts it back either way.
     }
-    runtimes.remove(updated.id);
+    _deregister(updated.id);
     await _register(updated);
 
     notifyListeners();
@@ -802,7 +824,7 @@ class AppState extends ChangeNotifier {
         );
         if (servers.any((e) => e.id == s.id)) continue;
         servers.add(s.stamped());
-        if (runtimes.length < maxServers) await _register(s);
+        if (_registered.length < maxServers) await _register(s);
         added++;
       }
       await _persist();
@@ -853,7 +875,7 @@ class AppState extends ChangeNotifier {
         .copyWith(name: '${s.name} (copy)', localId: _uniqueId(s.host, s.port))
         .stamped();
     servers.add(copy);
-    if (runtimes.length < maxServers) await _register(copy);
+    if (_registered.length < maxServers) await _register(copy);
     await _persist();
     notifyListeners();
     unawaited(refreshPings());
@@ -1232,7 +1254,7 @@ class AppState extends ChangeNotifier {
 
     for (final id in before.keys) {
       if (next.any((s) => s.id == id)) continue;
-      runtimes.remove(id);
+      _deregister(id);
       try {
         await removeServer(serverId: id);
       } catch (_) {
@@ -1243,7 +1265,7 @@ class AppState extends ChangeNotifier {
     for (final s in next.take(maxServers)) {
       final old = before[s.id];
       if (old == null) {
-        if (runtimes.length < maxServers) await _register(s);
+        if (_registered.length < maxServers) await _register(s);
         continue;
       }
       // A renamed server keeps talking. Connection details are baked into the
@@ -1267,7 +1289,7 @@ class AppState extends ChangeNotifier {
       try {
         await removeServer(serverId: s.id);
       } catch (_) {}
-      runtimes.remove(s.id);
+      _deregister(s.id);
       await _register(s);
     }
 
@@ -1385,7 +1407,7 @@ class AppState extends ChangeNotifier {
     // deleted rather than left to notice it missing and put it back.
     _deleted[id] = DateTime.now().millisecondsSinceEpoch;
     servers.removeWhere((s) => s.id == id);
-    runtimes.remove(id);
+    _deregister(id);
     try {
       await removeServer(serverId: id);
     } catch (_) {}
@@ -1403,10 +1425,27 @@ class AppState extends ChangeNotifier {
         try {
           await removeServer(serverId: id);
         } catch (_) {}
-        runtimes.remove(id);
+        _deregister(id);
         await _register(servers[i]);
       }
     }
+    // A server past the limit holds no engine slot until somebody wants it.
+    // Slots are surrendered by whichever registered server is not in a call,
+    // so the ceiling applies to conversations rather than to position in the
+    // list — without this the third entry could never be reached however idle
+    // the first two were, which is exactly how it read: a note about servers
+    // "connected at once" on a screen where nothing was connected at all.
+    if (!_registered.contains(id)) {
+      final error = await _claimSlotFor(id);
+      if (error != null) {
+        runtimeFor(id)
+          ..status = ConnStatus.failed
+          ..detail = error;
+        notifyListeners();
+        return;
+      }
+    }
+
     try {
       await connectServer(serverId: id);
     } catch (e) {
@@ -1415,6 +1454,40 @@ class AppState extends ChangeNotifier {
         ..detail = e.toString();
       notifyListeners();
     }
+  }
+
+  /// Registers [id] with the engine, freeing a slot first if they are all
+  /// taken. Returns why it could not be done, or null.
+  ///
+  /// Only a genuinely disconnected server is ever displaced — the same test
+  /// that decides whether one may be edited. Evicting a server mid-call to
+  /// make room for another would be an unannounced drop in a conversation,
+  /// which is the one thing this must not do to a rider.
+  Future<String?> _claimSlotFor(String id) async {
+    final index = servers.indexWhere((s) => s.id == id);
+    if (index < 0) return 'That server is no longer in your list.';
+
+    if (_registered.length >= maxServers) {
+      final spare = _registered
+          .where((other) => runtimeFor(other).isModifiable)
+          .firstOrNull;
+      if (spare == null) return _strings.allSlotsInUse(maxServers);
+
+      try {
+        await removeServer(serverId: spare);
+      } catch (_) {
+        // Already gone as far as the engine is concerned; the slot is still
+        // ours to reclaim either way.
+      }
+      _deregister(spare);
+    }
+
+    await _register(servers[index]);
+    if (_registered.contains(id)) return null;
+    // _register swallows the failure into the runtime's detail, which is where
+    // the reason actually is.
+    final detail = runtimeFor(id).detail;
+    return detail.isEmpty ? 'That server could not be prepared.' : detail;
   }
 
   Future<void> disconnect(String id) async {
@@ -1780,13 +1853,68 @@ class AppState extends ChangeNotifier {
 
     overlayStatus = null;
     await overlay.setPhrases(_overlayPhrases());
+    unawaited(_rememberOverlayChoice(true));
+
+    // Turning the setting on is not the same as putting a window on screen.
+    // With nothing connected there is no call for it to be about, so it stays
+    // armed and invisible until one starts. See [_syncOverlayToCalls].
+    if (!_anyServerLive) {
+      overlayEnabled = false;
+      notifyListeners();
+      return null;
+    }
+
     final error = await overlay.show();
     overlayEnabled = error == null;
-    if (error == null) unawaited(_rememberOverlayChoice(true));
     notifyListeners();
     _lastOverlaySignature = '';
     _pushOverlay();
     return error;
+  }
+
+  bool get _anyServerLive => runtimes.values.any((r) => r.isLive);
+
+  /// Guards the show/hide calls below. [_pushOverlay] runs on every roster and
+  /// level update — ten times a second during a call — and each transition
+  /// must be requested once rather than on every frame until it completes.
+  bool _overlayBusy = false;
+
+  /// Keeps the floating window following the call rather than the app.
+  ///
+  /// The window's whole purpose is to keep a conversation reachable while the
+  /// rider is looking at something else. With nothing connected there is no
+  /// conversation, and what is left is a control panel for a call that is not
+  /// happening — sitting over the map, on a motorcycle, where it is least
+  /// welcome and hardest to dismiss.
+  ///
+  /// So it is driven by whether any server is live, not by the setting alone.
+  /// The setting still decides whether it may appear at all; this decides
+  /// when. It arms itself again by itself the moment a server connects, which
+  /// is why turning it off here does not touch the stored preference.
+  void _syncOverlayToCalls() {
+    if (!_wantOverlay || !overlay.isSupported || _overlayBusy) return;
+    final wanted = _anyServerLive;
+    if (wanted == overlayEnabled) return;
+
+    _overlayBusy = true;
+    unawaited(() async {
+      try {
+        if (wanted) {
+          final error = await overlay.show();
+          overlayEnabled = error == null;
+          _lastOverlaySignature = '';
+        } else {
+          await overlay.hide();
+          overlayEnabled = false;
+        }
+      } catch (_) {
+        // A window that will not open is reported through onStatus already;
+        // failing here must not stop the call state being pushed.
+      } finally {
+        _overlayBusy = false;
+      }
+      notifyListeners();
+    }());
   }
 
   /// Why the floating window did not appear, or null.
@@ -1829,6 +1957,9 @@ class AppState extends ChangeNotifier {
   /// Pushes the call state onto the floating window, skipping the call when
   /// nothing visible has changed вЂ” this runs on every roster update.
   void _pushOverlay() {
+    // Before the early return: the window has to be taken down when the last
+    // server drops, and at that moment overlayEnabled is still true.
+    _syncOverlayToCalls();
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
     final speakers = [

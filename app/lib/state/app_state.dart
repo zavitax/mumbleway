@@ -554,6 +554,16 @@ class AppState extends ChangeNotifier {
       CloudSync.instance.onRemoteChange = () => unawaited(syncNow());
       unawaited(syncNow());
 
+      // Coming back to the app is the moment a stale list is most visible: the
+      // other device was edited while this one sat in a pocket, and the first
+      // thing anyone does is look at the list they expect to have changed.
+      //
+      // A suspended app receives no iCloud notification, and the one the system
+      // posts on wake is not something to rely on — it does not arrive when the
+      // store already held the value, and it has a reputation for not arriving
+      // at all. Asking directly costs one read of a few hundred bytes.
+      _lifecycle = AppLifecycleListener(onResume: () => unawaited(syncNow()));
+
       // Not awaited: the window is worth having but nothing else waits on it,
       // and on Android it can fail for want of a permission the user has to
       // grant in system settings. A failure there leaves the setting off
@@ -868,6 +878,10 @@ class AppState extends ChangeNotifier {
   final Map<String, int> _deleted = {};
 
   Timer? _syncTimer;
+
+  /// Re-reads iCloud when the app is brought back to the front. See where it
+  /// is created for why the system's own notification is not enough.
+  AppLifecycleListener? _lifecycle;
   bool _syncing = false;
 
   /// Servers whose details changed under a session that was in use, so the
@@ -970,7 +984,6 @@ class AppState extends ChangeNotifier {
       );
 
       if (!sameSnapshot(merged, mine)) await _applyMerged(merged);
-      await _applySyncedSettings(merged.settings);
       await _applySyncedSettings(merged.settings);
       if (!sameSnapshot(merged, theirs)) {
         final (payload, secrets) = _withoutPasswords(merged);
@@ -2274,6 +2287,7 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _syncTimer?.cancel();
     _pingTimer?.cancel();
+    _lifecycle?.dispose();
     _events?.cancel();
     super.dispose();
   }

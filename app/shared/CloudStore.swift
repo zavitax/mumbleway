@@ -7,6 +7,12 @@ import Security
   import FlutterMacOS
 #endif
 
+#if canImport(UIKit)
+  import UIKit
+#elseif canImport(AppKit)
+  import AppKit
+#endif
+
 /// The server list in iCloud, shared by the iOS and macOS targets.
 ///
 /// One file rather than one per platform because the interesting part is the
@@ -55,6 +61,24 @@ final class CloudStore {
       selector: #selector(storeChangedExternally(_:)),
       name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
       object: store)
+
+    // The same request, every time the app comes back to the front rather than
+    // only when it is launched.
+    //
+    // A suspended app is not told that iCloud changed; it is told once it is
+    // running again, if at all. Asking on activation is what turns "the list
+    // updates eventually" into "the list is right when you look at it", which
+    // is the only version anyone notices.
+    #if canImport(UIKit)
+      let becameActive = UIApplication.didBecomeActiveNotification
+    #elseif canImport(AppKit)
+      let becameActive = NSApplication.didBecomeActiveNotification
+    #endif
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appBecameActive),
+      name: becameActive,
+      object: nil)
 
     // Asks for whatever arrived while the app was not running. Without this the
     // first read after launch returns the copy this device wrote last time.
@@ -114,6 +138,20 @@ final class CloudStore {
 
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// Pulls on activation, and tells Dart to reconcile either way.
+  ///
+  /// Two steps because `synchronize()` does not finish before it returns: it
+  /// schedules the exchange, and anything read on the next line is still the
+  /// copy this device already had. So the read below is the fast path — usually
+  /// already correct — and `didChangeExternallyNotification` covers the case
+  /// where the pull actually brought something new, a moment later.
+  @objc private func appBecameActive() {
+    store.synchronize()
+    DispatchQueue.main.async { [weak self] in
+      self?.channel.invokeMethod("remoteChanged", arguments: nil)
     }
   }
 

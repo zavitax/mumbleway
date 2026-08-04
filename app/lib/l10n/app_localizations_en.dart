@@ -66,6 +66,11 @@ class LEn extends L {
   }
 
   @override
+  String allSlotsInUse(int count) {
+    return 'Already talking on $count servers. Leave one first.';
+  }
+
+  @override
   String get notConnectedAny => 'Not connected to any server';
 
   @override

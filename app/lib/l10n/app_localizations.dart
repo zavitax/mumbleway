@@ -205,6 +205,12 @@ abstract class L {
   /// **'Up to {count} servers can be connected at once; the rest stay saved.'**
   String maxServersNote(int count);
 
+  /// No description provided for @allSlotsInUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Already talking on {count} servers. Leave one first.'**
+  String allSlotsInUse(int count);
+
   /// No description provided for @notConnectedAny.
   ///
   /// In en, this message translates to:

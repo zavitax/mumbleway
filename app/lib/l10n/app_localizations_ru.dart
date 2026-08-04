@@ -66,6 +66,11 @@ class LRu extends L {
   }
 
   @override
+  String allSlotsInUse(int count) {
+    return 'Уже идёт разговор на $count серверах. Сначала покиньте один из них.';
+  }
+
+  @override
   String get notConnectedAny => 'Нет подключения ни к одному серверу';
 
   @override

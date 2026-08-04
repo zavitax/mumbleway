@@ -68,6 +68,22 @@ const REVERB_WET: f32 = 0.16;
 /// dead. See where it is used for why there is a floor at all.
 const REOPEN_INTERVAL: Duration = Duration::from_secs(1);
 
+/// How long the capture stream may go without delivering a buffer before it is
+/// treated as dead.
+///
+/// Also the device thread's idle wake interval, since that is what paces the
+/// check. One second is many times the longest ordinary gap between callbacks
+/// and short enough that the hole in a conversation is a stumble rather than a
+/// dropped call.
+const CAPTURE_WATCHDOG: Duration = Duration::from_secs(1);
+
+/// How long the device thread sleeps when the devices are shut.
+///
+/// Every wake with nothing open is pure cost. The thread is woken by the
+/// condvar whenever anything actually changes, so this is only a backstop
+/// against a missed signal rather than how work is noticed.
+const IDLE_WAKE: Duration = Duration::from_secs(30);
+
 /// Shared state between the callbacks, the worker and the API layer.
 pub struct AudioShared {
     /// Raw mono 48 kHz samples captured from the microphone.
@@ -139,6 +155,14 @@ pub struct AudioShared {
     /// acts. A flag as well as a generation bump so that a device reporting the
     /// same failure repeatedly asks once.
     reopen_pending: AtomicBool,
+
+    /// Bumped by every capture callback, watched by the device thread.
+    ///
+    /// The only honest evidence that the microphone is still being read. A
+    /// stream that has been taken away stops calling back, and on Android it
+    /// does not reliably say so first — so silence here is the signal, and
+    /// there is no other.
+    capture_ticks: AtomicU64,
 
     /// The backlog every speaker buffer returns to, in 20 ms frames.
     ///
@@ -416,6 +440,7 @@ impl AudioShared {
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
             reopen_pending: AtomicBool::new(false),
+            capture_ticks: AtomicU64::new(0),
             jitter_target_frames: AtomicUsize::new(DEFAULT_TARGET_FRAMES),
             open_outcome: Mutex::new(None),
             open_settled: Condvar::new(),
@@ -1242,6 +1267,7 @@ impl AudioEngine {
                 // scheduled is not slept through.
                 let mut applied = u64::MAX;
                 let mut opened_at: Option<std::time::Instant> = None;
+                let mut last_ticks = 0u64;
 
                 while dev_shared.is_running() {
                     let generation = dev_shared.device_generation();
@@ -1297,12 +1323,48 @@ impl AudioEngine {
                         }
                     }
 
+                    // Is the microphone still actually being read?
+                    //
+                    // The error callback is the polite way to be told a stream
+                    // has gone, and it is not always used: on Android a
+                    // capture stream taken away by a routing change can simply
+                    // stop calling back, saying nothing. That leaves the app
+                    // holding a stream object that will never produce another
+                    // sample, a meter at silence, and a rider being heard by
+                    // nobody with nothing anywhere to say why.
+                    //
+                    // So the callbacks themselves are the evidence. They come
+                    // every few milliseconds whether or not anyone is
+                    // speaking — silence is still samples — so a whole second
+                    // without one means the stream is gone, not that the rider
+                    // is quiet.
+                    if streams.is_some() && dev_shared.audio_wanted() {
+                        let ticks = dev_shared.capture_ticks.load(Ordering::Relaxed);
+                        let settled = opened_at
+                            .map(|at| at.elapsed() >= CAPTURE_WATCHDOG)
+                            .unwrap_or(false);
+                        if settled && ticks == last_ticks {
+                            tracing::warn!("capture stream stopped delivering audio; rebuilding");
+                            dev_shared.request_reopen();
+                        }
+                        last_ticks = ticks;
+                    }
+
                     // Woken by `set_devices` and `set_audio_wanted`, not by a
                     // clock. This thread exists to notice a value that changes
                     // when the user taps a dropdown or joins a server, and it
                     // used to look ten times a second for the entire life of
-                    // the app to catch it.
-                    dev_shared.await_device_change(applied, Duration::from_secs(5));
+                    // the app to catch it. The timeout is what paces the
+                    // watchdog above; nothing else needs a tick — and with the
+                    // devices shut there is nothing to watch, so it goes back
+                    // to sleeping properly rather than waking every second for
+                    // the life of an app that is not in a call.
+                    let idle = if dev_shared.audio_wanted() {
+                        CAPTURE_WATCHDOG
+                    } else {
+                        IDLE_WAKE
+                    };
+                    dev_shared.await_device_change(applied, idle);
                 }
                 tracing::info!("audio thread stopping, closing its streams");
                 drop(streams);
@@ -1381,6 +1443,12 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
         .build_input_stream(
             in_cfg.config(),
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                // Proof of life for the watchdog. A counter rather than a
+                // clock: this runs on the audio thread every few milliseconds
+                // for the whole of a call, and reading the time there is work
+                // the watchdog can do for itself, off the hot path.
+                cap_shared.capture_ticks.fetch_add(1, Ordering::Relaxed);
+
                 interleaved_to_mono(data, in_channels, &mut mono_scratch);
                 resampled.clear();
                 in_resampler.process(&mono_scratch, &mut resampled);
@@ -2512,6 +2580,39 @@ mod tests {
         assert!(
             !shared.take_reopen_request(),
             "the request outlived the pass that acted on it"
+        );
+    }
+
+    #[test]
+    fn a_silent_capture_stream_is_noticed_without_being_told() {
+        // The Android failure this exists for: the stream is taken away and
+        // never says so, it simply stops calling back. The counter is the only
+        // evidence, so this is the whole of the watchdog's reasoning.
+        let shared = AudioShared::new();
+        shared.set_audio_wanted(true);
+
+        // A stream that is delivering. Callbacks arrive every few
+        // milliseconds, whether or not anybody is speaking — silence is still
+        // samples — so movement here means alive.
+        let before = shared.capture_ticks.load(Ordering::Relaxed);
+        shared.capture_ticks.fetch_add(1, Ordering::Relaxed);
+        assert_ne!(
+            shared.capture_ticks.load(Ordering::Relaxed),
+            before,
+            "a live stream must look different from a dead one"
+        );
+
+        // And one that has stopped. Two reads with nothing in between is what
+        // the device thread sees a second apart.
+        let stalled = shared.capture_ticks.load(Ordering::Relaxed);
+        assert_eq!(shared.capture_ticks.load(Ordering::Relaxed), stalled);
+
+        // Which it answers by asking for the pair to be rebuilt.
+        let generation = shared.device_generation();
+        shared.request_reopen();
+        assert!(
+            shared.device_generation() > generation,
+            "a stalled microphone was left shut with nothing to reopen it"
         );
     }
 

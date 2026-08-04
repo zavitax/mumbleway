@@ -55,24 +55,27 @@
 	     connections to local addresses unless the app says why it wants them,
 	     and the block is immediate, so it presents as a server that refuses
 	     the connection rather than as a permission that was never asked for. -->
-	<!-- Export compliance. True, because it is: the voice path encrypts with
-	     AES-128 under OCB2, implemented in this app rather than taken from the
-	     system, and the control channel runs TLS from a library compiled into
-	     the binary. None of the exemptions fit — this is not HTTPS only, not
-	     limited to authentication, and not encryption provided by the
-	     operating system. No operating system offers OCB2, so the last of
-	     those is out of reach for any Mumble client however it is built.
+	<!-- Export compliance. False here does not say the app has no encryption.
+	     The key asks about NON-EXEMPT encryption specifically, and Apple's own
+	     wording for it ("specify that you don't use encryption") is shorthand
+	     that reads as the opposite of what the key means. The app does encrypt:
+	     the voice path uses AES-128 under OCB2 implemented in this repository,
+	     and the control channel runs TLS from a library compiled into the
+	     binary. Those facts are unchanged by this setting.
 
-	     Declaring false here would be a false statement to a government
-	     agency, not merely a wrong setting.
+	     It is false because App Store Connect's export questionnaire, answered
+	     for this app, returned "you don't need to upload any documents" and
+	     directed that the key be set accordingly. That questionnaire result —
+	     in App Store Connect under App Information — is the record, not this
+	     file. A build whose plist disagrees with it is rejected on upload with
+	     error 90592, which is how the mismatch surfaced.
 
-	     What this costs: App Store Connect asks for export documentation. Once
-	     a self-classification report has been filed (ECCN 5D992.c, to BIS and
-	     the NSA) Apple issues a compliance code, and adding that as
-	     ITSEncryptionExportComplianceCode stops it asking on every build. See
-	     docs/RELEASING.md. -->
+	     So this key is a mirror of a determination made elsewhere. If the
+	     cryptography changes, the questionnaire has to be answered again
+	     before this value can be trusted; do not reason from this comment
+	     alone. See docs/RELEASING.md. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
+	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>MumbleWay connects to Mumble servers on your network, such as one running at home or at a club.</string>
 	<key>NSMicrophoneUsageDescription</key>

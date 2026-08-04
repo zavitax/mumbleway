@@ -257,32 +257,49 @@ certificate. Enable development signing in the Signing & Capabilities editor.
 
 ### 2h. Export compliance
 
-Both Info.plists declare `ITSAppUsesNonExemptEncryption` as **true**, and it is
-true. The voice path encrypts with AES-128 under OCB2, implemented in this app
-rather than taken from the system, and the control channel runs TLS from a
-library compiled into the binary.
+Both Info.plists declare `ITSAppUsesNonExemptEncryption` as **false**, and the
+first thing to understand is what that key actually asks. It is not "does this
+app use encryption". It is "does this app use **non-exempt** encryption".
+Apple's own UI blurs the two — it offers to let you "specify that you don't use
+encryption" — and a reader who takes that at face value will conclude the
+repository is lying about itself.
 
-None of Apple's exemptions fit. This is not HTTPS only, not limited to
-authentication, and not encryption provided by the operating system — and that
-last one is worth understanding before anyone proposes reaching it by rewriting
-the crypto onto CryptoKit. **No operating system provides OCB2.** Mumble
-specified it, every client implements it, and no amount of work moves it into
-the OS. A client that used Apple's TLS, Apple's AES and Apple's SHA would still
-implement OCB2 itself and still answer this question the same way.
+**What the app does cryptographically** is unchanged by the setting, and is
+worth stating plainly, because this is the input to the determination below:
 
-Declaring false to make the question go away would be a false statement to a
-government agency rather than a wrong setting.
+- The voice path encrypts with AES-128 under OCB2, implemented in this
+  repository (`core/src/crypto/ocb2.rs`) rather than taken from the system.
+  **No operating system provides OCB2** — Mumble specified it and every client
+  implements it, so no amount of rewriting onto CryptoKit reaches the
+  "encryption provided by the OS" exemption.
+- The control channel runs TLS 1.2/1.3 from rustls/ring, compiled into the
+  binary.
+- The client identity is a self-signed ECDSA P-256 certificate; server
+  certificates are pinned by SHA-256 fingerprint.
 
-**What follows from it.** The algorithms here are standard and published rather
-than proprietary, which is the ordinary position for a voice app: US export
-rules generally place such software under ECCN 5D992.c, reached by filing a
-self-classification report with BIS and the NSA, renewed annually. Apple then
-issues a compliance code; adding it as `ITSEncryptionExportComplianceCode`
-stops App Store Connect asking on every build.
+**Where the value comes from.** App Store Connect's export questionnaire was
+answered for this app and returned *"Based on your answers, you don't need to
+upload any documents. You can specify that you don't use encryption in the
+Info.plist"*. That result — under **App Information** in App Store Connect — is
+the record. The plist mirrors it. When the two disagree, the upload is rejected
+with **error 90592**, `Invalid Export Compliance Code`, which is exactly how the
+mismatch was found.
 
-That filing is a legal determination about your product and your distribution,
-not a technical one, and it is worth twenty minutes of somebody who does export
-compliance rather than a guess from a developer.
+So the direction of authority runs one way: the questionnaire decides, the plist
+follows. Do not change this key to match a reading of the code. If the
+cryptography changes, answer the questionnaire again first.
+
+**The part that is still yours.** Apple not wanting documents is not the same as
+BIS not wanting a filing. The algorithms here are standard and published rather
+than proprietary, which is the ordinary position for a voice app, and US export
+rules generally place such software under ECCN 5D992.c — reached by filing a
+self-classification report with BIS and the NSA, renewed annually. Whether that
+obligation applies to your distribution is a legal determination about your
+product, not a technical one, and it is worth twenty minutes of somebody who
+does export compliance rather than a guess from a developer.
+
+If a compliance code is ever issued, it goes in as
+`ITSEncryptionExportComplianceCode` alongside this key.
 
 ---
 

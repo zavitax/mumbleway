@@ -1,4 +1,4 @@
-﻿//! Flutter-facing API.
+//! Flutter-facing API.
 //!
 //! Everything here is deliberately plain data: `flutter_rust_bridge` mirrors
 //! these types into Dart, so they avoid lifetimes, generics and borrowed data.
@@ -12,10 +12,10 @@ use flutter_rust_bridge::frb;
 use parking_lot::Mutex;
 use tokio::sync::mpsc;
 
+use mumbleway_core::audio::dehiss::DehissMode;
 use mumbleway_core::audio::engine::{
     AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode,
 };
-use mumbleway_core::audio::dehiss::DehissMode;
 use mumbleway_core::audio::feedback::FeedbackMode;
 use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};

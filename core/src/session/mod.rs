@@ -232,12 +232,10 @@ impl Session {
             CoreError::Disconnected(r) => r,
             // No reject type reached us here, and both of these mean the
             // server declined this client rather than that it was busy.
-            CoreError::Rejected(m) | CoreError::Auth(m) => {
-                DisconnectReason::ServerRejected {
-                    reason: m,
-                    retry: false,
-                }
-            }
+            CoreError::Rejected(m) | CoreError::Auth(m) => DisconnectReason::ServerRejected {
+                reason: m,
+                retry: false,
+            },
             CoreError::Timeout(what) => {
                 if what == "handshake" {
                     DisconnectReason::HandshakeTimeout

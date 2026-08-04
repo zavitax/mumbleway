@@ -1,4 +1,4 @@
-﻿//! Real-time audio engine: cpal devices, DSP thread and mixing.
+//! Real-time audio engine: cpal devices, DSP thread and mixing.
 //!
 //! Threading model:
 //!
@@ -25,10 +25,10 @@ use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
-use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
 use super::dehiss::{DehissMode, Expander, SpectralSubtractor};
-use super::feedback::{FeedbackGuard, FeedbackMode};
+use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
 use super::dsp::{interleaved_to_mono, Reverb};
+use super::feedback::{FeedbackGuard, FeedbackMode};
 use super::jitter::{SpeakerBuffer, SILENT_DB};
 use super::resample::Resampler;
 use crate::error::{CoreError, Result};
@@ -2424,9 +2424,18 @@ mod tests {
     #[test]
     fn closing_the_devices_throws_away_what_was_in_flight() {
         let shared = AudioShared::new();
-        shared.capture_queue.lock().extend(std::iter::repeat_n(0.5, 480));
-        shared.playback_queue.lock().extend(std::iter::repeat_n(0.5, 480));
-        shared.echo_reference.lock().extend(std::iter::repeat_n(0.5, 480));
+        shared
+            .capture_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.5, 480));
+        shared
+            .playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.5, 480));
+        shared
+            .echo_reference
+            .lock()
+            .extend(std::iter::repeat_n(0.5, 480));
         for (i, f) in encoded_frames(3).into_iter().enumerate() {
             shared.push_incoming(0, &packet(1, i as u64, f, false));
         }

@@ -1,12 +1,12 @@
-﻿//! Audio capture, processing, coding and playback.
+//! Audio capture, processing, coding and playback.
 
 pub mod aec;
 pub mod codec;
 pub mod dehiss;
 pub mod denoise;
-pub mod feedback;
 pub mod dsp;
 pub mod engine;
+pub mod feedback;
 pub mod jitter;
 pub mod resample;
 

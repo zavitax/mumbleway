@@ -429,7 +429,10 @@ mod tests {
             ss.process(&mut block, true);
         }
         let after = crate::audio::dsp::rms(&block);
-        assert!(after > before * 0.5, "speech was gutted: {before} -> {after}");
+        assert!(
+            after > before * 0.5,
+            "speech was gutted: {before} -> {after}"
+        );
     }
 
     #[test]

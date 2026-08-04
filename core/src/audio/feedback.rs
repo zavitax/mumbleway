@@ -281,7 +281,12 @@ mod tests {
     fn ducking_never_closes_the_channel_completely() {
         // A rider shouting a warning has to get through something.
         let mut guard = FeedbackGuard::new(FeedbackMode::Duck);
-        let g = settle(&mut guard, &tone(300.0, 960, 0.5), &tone(400.0, 960, 1.0), 200);
+        let g = settle(
+            &mut guard,
+            &tone(300.0, 960, 0.5),
+            &tone(400.0, 960, 1.0),
+            200,
+        );
         assert!(g > 0.15, "ducked to {g}, which is effectively muted");
     }
 
@@ -289,7 +294,10 @@ mod tests {
     fn a_howl_is_caught_and_speech_is_not() {
         let mut guard = FeedbackGuard::new(FeedbackMode::HowlGuard);
         let howling = settle(&mut guard, &tone(900.0, 960, 0.6), &[], 12);
-        assert!(howling < 0.5, "a sustained tone should be cut, got {howling}");
+        assert!(
+            howling < 0.5,
+            "a sustained tone should be cut, got {howling}"
+        );
 
         let mut guard = FeedbackGuard::new(FeedbackMode::HowlGuard);
         let speech = settle(&mut guard, &noise(960, 0.4), &[], 12);
@@ -304,7 +312,10 @@ mod tests {
         // Somebody talking over a quiet far end: left alone.
         let mut guard = FeedbackGuard::new(FeedbackMode::Residual);
         let talking = settle(&mut guard, &noise(960, 0.5), &tone(400.0, 960, 0.05), 60);
-        assert!(talking > 0.9, "a near-end talker was attenuated to {talking}");
+        assert!(
+            talking > 0.9,
+            "a near-end talker was attenuated to {talking}"
+        );
 
         // Residue under a loud far end: pushed down.
         let mut guard = FeedbackGuard::new(FeedbackMode::Residual);
@@ -317,7 +328,12 @@ mod tests {
         // Otherwise turning the guard off leaves the microphone quiet, and the
         // setting looks as though it has broken something.
         let mut guard = FeedbackGuard::new(FeedbackMode::Duck);
-        settle(&mut guard, &tone(300.0, 960, 0.5), &tone(400.0, 960, 0.9), 60);
+        settle(
+            &mut guard,
+            &tone(300.0, 960, 0.5),
+            &tone(400.0, 960, 0.9),
+            60,
+        );
         assert!(guard.gain() < 0.5);
         guard.set_mode(FeedbackMode::Off);
         assert_eq!(guard.gain(), 1.0);

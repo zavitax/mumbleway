@@ -200,10 +200,27 @@ class _Placeholder extends StatelessWidget {
 
 /// Width at which the two-pane layout takes over.
 ///
-/// 900 logical pixels is about where a phone in landscape and a small tablet
-/// diverge: below it a second pane would be too cramped to be worth the
-/// horizontal space it steals from the server cards.
-const double kWideLayoutBreakpoint = 900;
+/// Set from what the layout needs rather than from what kind of device it is:
+/// a master column that stays readable at 400, a divider, and a detail pane
+/// with at least 320 to put a channel tree and a roster in. Below that the
+/// second pane is too cramped to be worth the width it takes from the cards.
+///
+/// It was 900, which drew the line between "phone" and "tablet" instead — and
+/// landed just above where nearly every phone sits in landscape. A 932-point
+/// iPhone turned sideways cleared it; an 852-point one did not, and got a
+/// single narrow column across a screen with room for two. What matters is
+/// whether the panes fit, and at 720 they do.
+const double kWideLayoutBreakpoint = 720;
+
+/// The master column's share of a two-pane layout.
+///
+/// Proportional between the bounds so that the detail pane keeps the majority
+/// on every screen: fixed at 400, a phone in landscape gave the list nearly
+/// half the width and left the roster in a slot narrower than the cards beside
+/// it. Clamped at the top so a desktop window does not stretch a list of cards
+/// that gain nothing from being wider.
+double masterPaneWidth(double available) =>
+    (available * 0.42).clamp(320.0, 400.0);
 
 /// Whether the current context is wide enough for the two-pane layout.
 bool isWideLayout(BuildContext context) =>

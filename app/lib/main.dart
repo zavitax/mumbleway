@@ -12,12 +12,22 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await RustLib.init();
 
-  // Riders use this on a handlebar mount; locking to portrait keeps the
-  // push-to-talk button in a predictable place.
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  // Which way up the app may be is the platform's business, not ours.
+  //
+  // This used to lock every device to portrait, for a handlebar mount and a
+  // talk button in a predictable place. That reasoning holds for a phone
+  // clamped to a bar and for nothing else: it also locked every iPad, every
+  // tablet and every phone being used off the bike, and it overruled the
+  // per-device answers the platforms already carry. iPhone's Info.plist offers
+  // portrait and both landscapes but not upside-down — an inverted phone would
+  // put the talk button where the rider's hand is not — while iPad offers all
+  // four and Android carries no lock at all.
+  //
+  // An empty list is what hands the decision back to those three, rather than
+  // this app answering for all of them with the narrowest option. The button
+  // stays predictable a better way: see the talk panel, which keeps it in the
+  // same corner whichever way the screen turns.
+  await SystemChrome.setPreferredOrientations(const []);
 
   runApp(const MumbleWayApp());
 }

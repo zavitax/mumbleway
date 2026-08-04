@@ -120,7 +120,7 @@ class HomeScreen extends StatelessWidget {
                 // wider.
                 final wide = constraints.maxWidth >= kWideLayoutBreakpoint;
                 return wide
-                    ? _WideBody(state: state)
+                    ? _WideBody(state: state, available: constraints.maxWidth)
                     : _NarrowBody(state: state);
               },
             ),
@@ -189,8 +189,14 @@ class _NarrowBody extends StatelessWidget {
 
 /// Tablet and wide-window layout: a master list beside a detail pane.
 class _WideBody extends StatelessWidget {
-  const _WideBody({required this.state});
+  const _WideBody({required this.state, required this.available});
   final AppState state;
+
+  /// Width this body actually has, which is the layout's rather than the
+  /// screen's: a safe area on a notched phone in landscape takes a bite out of
+  /// both edges, and sizing the master column off the screen would push the
+  /// detail pane narrower than it was told it could be.
+  final double available;
 
   @override
   Widget build(BuildContext context) {
@@ -199,8 +205,9 @@ class _WideBody extends StatelessWidget {
       children: [
         SizedBox(
           // Wide enough for a card to stay readable, narrow enough to leave the
-          // detail pane the majority of the space.
-          width: 400,
+          // detail pane the majority of the space. See [masterPaneWidth] for
+          // why it is not simply a fixed 400 any more.
+          width: masterPaneWidth(available),
           child: Column(
             children: [
               Expanded(
@@ -267,50 +274,119 @@ class _TalkPanel extends StatelessWidget {
   const _TalkPanel({required this.state});
   final AppState state;
 
+  /// Height below which the panel folds sideways instead of stacking.
+  ///
+  /// A phone in landscape is about 390 to 430 points tall. Stacked, this panel
+  /// is roughly 240 of them — the talk button alone is 132, because it is meant
+  /// to be hit in gloves without looking — which would leave a server list too
+  /// short to show one card. Every tall case is well clear of this: a phone in
+  /// portrait starts around 660, an iPad in landscape at 768.
+  static const double _shortViewport = 600;
+
   @override
   Widget build(BuildContext context) {
     final live = state.runtimes.values.where((r) => r.isLive).length;
+    final short = MediaQuery.sizeOf(context).height < _shortViewport;
+
+    final status = Text(
+      live == 0
+          ? L.of(context).notConnectedAny
+          : live == 1
+          ? L.of(context).talkingOnOne
+          : L.of(context).talkingOnMany(live),
+      textAlign: short ? TextAlign.start : TextAlign.center,
+      style: TextStyle(
+        fontSize: 12,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: EdgeInsets.fromLTRB(16, short ? 8 : 12, 16, short ? 10 : 16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // With the microphone shut there is nothing for a meter to show and
-          // nothing for the talk button to key. Drawing them anyway gives a
-          // bar that never moves and a control that does nothing, which reads
-          // as an app that has broken rather than one that is idle — so the
-          // panel says what it is waiting for instead.
-          if (!state.audioActive)
-            const _MicIdleNotice()
-          else ...[
-            const LevelMeter(),
-            // The talk button only exists for push-to-talk. In the automatic
-            // modes it is a status light the meter already provides, so the
-            // vertical space goes back to the server list.
-            if (state.showTalkButton) ...[
-              const SizedBox(height: 12),
-              const PttButton(),
-            ],
-          ],
-          const SizedBox(height: 8),
-          Text(
-            live == 0
-                ? L.of(context).notConnectedAny
-                : live == 1
-                ? L.of(context).talkingOnOne
-                : L.of(context).talkingOnMany(live),
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
+      // With the microphone shut there is nothing for a meter to show and
+      // nothing for the talk button to key. Drawing them anyway gives a bar
+      // that never moves and a control that does nothing, which reads as an
+      // app that has broken rather than one that is idle — so the panel says
+      // what it is waiting for instead.
+      child: !state.audioActive
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [const _MicIdleNotice(), const SizedBox(height: 8), status],
+            )
+          : short
+          ? _SideBySide(state: state, status: status)
+          : _Stacked(state: state, status: status),
+    );
+  }
+}
+
+/// The talk controls with room to breathe: meter, button, status, in a column.
+class _Stacked extends StatelessWidget {
+  const _Stacked({required this.state, required this.status});
+  final AppState state;
+  final Widget status;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const LevelMeter(),
+        // The talk button only exists for push-to-talk. In the automatic modes
+        // it is a status light the meter already provides, so the vertical
+        // space goes back to the server list.
+        if (state.showTalkButton) ...[
+          const SizedBox(height: 12),
+          const PttButton(),
         ],
-      ),
+        const SizedBox(height: 8),
+        status,
+      ],
+    );
+  }
+}
+
+/// The same controls folded sideways for a screen that is wider than it is tall.
+///
+/// Nothing is dropped — a rider in landscape needs the meter and the connection
+/// count exactly as much as one in portrait. The button keeps the trailing
+/// side, which is where it sits at the bottom of the stacked layout too, so
+/// rotating the device moves it a short way rather than across the screen.
+class _SideBySide extends StatelessWidget {
+  const _SideBySide({required this.state, required this.status});
+  final AppState state;
+  final Widget status;
+
+  @override
+  Widget build(BuildContext context) {
+    final meterAndStatus = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [const LevelMeter(), const SizedBox(height: 6), status],
+    );
+
+    if (!state.showTalkButton) return meterAndStatus;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(flex: 3, child: meterAndStatus),
+        const SizedBox(width: 16),
+        // Shared out rather than fixed. This panel sits in the master column
+        // when the two-pane layout is up, which on a landscape phone is about
+        // 360 points wide — a fixed button would have left the meter and the
+        // connection line squeezed into what was left, on the one screen where
+        // this arrangement exists to save space.
+        //
+        // Still oversized for a gloved thumb, just no longer the full 132: the
+        // width it gains sideways buys back most of what the height gives up,
+        // and a target this size is one the rider can still find by feel.
+        const Expanded(flex: 2, child: PttButton(height: 84)),
+      ],
     );
   }
 }

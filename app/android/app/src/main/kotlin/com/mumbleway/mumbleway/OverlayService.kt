@@ -751,11 +751,21 @@ class OverlayService : Service() {
                 // Underneath, because silence on its own is ambiguous: it says
                 // nobody is talking, not whether anybody is there to talk.
                 if (state.othersOnline.isNotEmpty()) {
-                    label(
-                        canvas, ellipsise(state.othersOnline, right - left),
-                        (left + right) / 2f, dp(90).toFloat(), 10,
-                        Color.argb(82, 255, 255, 255), align = Paint.Align.CENTER,
-                    )
+                    // Wrapped rather than cut. The right half is about 120 dp
+                    // wide and this sentence does not fit on one line in either
+                    // language — trimming it to "Nobody else is here …" loses
+                    // the only word that mattered.
+                    text.textSize = dp(10).toFloat()
+                    text.typeface = typeface(false)
+                    var y2 = dp(88).toFloat()
+                    for (line in wrap(state.othersOnline, right - left)) {
+                        label(
+                            canvas, line, (left + right) / 2f, y2, 10,
+                            Color.argb(82, 255, 255, 255),
+                            align = Paint.Align.CENTER,
+                        )
+                        y2 += dp(12)
+                    }
                 }
                 return
             }
@@ -817,6 +827,31 @@ class OverlayService : Service() {
                     Color.argb(115, 255, 255, 255),
                 )
             }
+        }
+
+        /**
+         * Breaks a sentence onto as many lines as it needs.
+         *
+         * On whole words, and measured with the caller's current text size, so
+         * it stays right if either the wording or the type changes. A word too
+         * long for the width on its own is left to overrun rather than being
+         * broken mid-word, which is rarer and less misleading than a hyphen
+         * nobody asked for.
+         */
+        private fun wrap(value: String, maxWidth: Float): List<String> {
+            val lines = mutableListOf<String>()
+            var current = StringBuilder()
+            for (word in value.split(' ')) {
+                val candidate = if (current.isEmpty()) word else "$current $word"
+                if (text.measureText(candidate) <= maxWidth || current.isEmpty()) {
+                    current = StringBuilder(candidate)
+                } else {
+                    lines.add(current.toString())
+                    current = StringBuilder(word)
+                }
+            }
+            if (current.isNotEmpty()) lines.add(current.toString())
+            return lines
         }
 
         /** Trims a name to the room it has, rather than letting it run under

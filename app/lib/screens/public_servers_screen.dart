@@ -161,6 +161,9 @@ class _PublicServerTileState extends State<_PublicServerTile> {
   Future<void> _add() async {
     final state = AppStateScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    // Captured before the dialog and the await: this screen is about to be
+    // popped out from under the context that owns it.
+    final navigator = Navigator.of(context);
 
     // Public servers need a username, and the list does not carry one; ask
     // rather than inventing one that a server may reject as taken.
@@ -185,6 +188,13 @@ class _PublicServerTileState extends State<_PublicServerTile> {
     messenger.showSnackBar(
       SnackBar(content: Text(error ?? 'Added ${widget.server.name}')),
     );
+
+    // Back to the list of servers, not to the form that led here. Adding from
+    // the directory is finished business: the next thing anyone wants is the
+    // server they just added, and leaving them on the browser — behind an
+    // "add server" screen they never filled in — means two taps of Back before
+    // anything can be done with it.
+    if (error == null) navigator.popUntil((r) => r.isFirst);
   }
 }
 

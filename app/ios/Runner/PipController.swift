@@ -743,9 +743,11 @@ final class PipController: NSObject {
       if !snapshot.othersOnlineText.isEmpty {
         drawText(
           snapshot.othersOnlineText,
-          in: CGRect(x: inset.minX, y: 148, width: inset.width, height: 18),
+          // Two lines allowed: this sentence does not always fit across the
+          // right half, and in Russian it is longer still.
+          in: CGRect(x: inset.minX, y: 148, width: inset.width, height: 34),
           size: 12, weight: .medium, colour: UIColor(white: 1, alpha: 0.32),
-          alignment: .center)
+          alignment: .center, lines: 2)
       }
       return
     }

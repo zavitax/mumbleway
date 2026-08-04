@@ -142,11 +142,22 @@ final class PipController: NSObject {
       return
     }
     pipController.stopPictureInPicture()
+    // Belt and braces with the delegate callback. If that ever failed to
+    // arrive the app would go on drawing full-rate frames for a window it had
+    // just closed, which is the exact fault this pair of rates exists to fix.
+    startRenderTimer(every: Self.hiddenFrameInterval)
   }
 
   @objc private func willResignActive() {
     guard let pipController else { return }
     guard !pipController.isPictureInPictureActive else { return }
+
+    // Up to the full rate before asking, not after being told it opened. The
+    // system decides whether it can open the window from the content it has
+    // been given, and asking it to judge that on a feed running at one frame a
+    // second is the kind of difference that shows up on one device model and
+    // no other.
+    startRenderTimer(every: Self.visibleFrameInterval)
 
     // Belt and braces with the same clear on the way out: whatever the system
     // last recorded about playback, there is no window and so nothing paused.
@@ -226,7 +237,7 @@ final class PipController: NSObject {
     }
 
     render()
-    startRenderTimer()
+    startRenderTimer(every: Self.hiddenFrameInterval)
     beginWhenPossible(attemptsLeft: 12)
   }
 
@@ -288,8 +299,7 @@ final class PipController: NSObject {
   }
 
   func stop() {
-    renderTimer?.invalidate()
-    renderTimer = nil
+    stopRenderTimer()
 
     if let pipController {
       pipController.canStartPictureInPictureAutomaticallyFromInline = false
@@ -322,28 +332,67 @@ final class PipController: NSObject {
     if next.transmitting != wasTransmitting {
       pipController?.invalidatePlaybackState()
     }
-    render()
+    // Only when there is a window to draw into. State arrives ten times a
+    // second during a call; with the window closed the next frame is a second
+    // away and will carry all of this, because it reads the same snapshot.
+    if pipController?.isPictureInPictureActive == true {
+      render()
+    }
   }
 
   // MARK: - Frame production
 
-  /// A still image can leave the window looking stalled, and the render is a
-  /// few hundred pixels of flat colour, so it is cheaper to keep feeding it
-  /// than to reason about when the system needs a fresh frame.
+  /// How often the frame is redrawn while the window is actually on screen.
   ///
-  /// The rate is driven by the meter and the on-air flash rather than by the
-  /// call state, which changes rarely. Ten a second is enough for a level bar
-  /// to look continuous and for the flash to have clean edges; the frame is a
-  /// few hundred pixels of flat colour, so the cost is negligible.
-  private func startRenderTimer() {
+  /// A still image can leave the window looking stalled, so it is fed
+  /// continuously rather than only when something changes. Ten a second is
+  /// enough for a level bar to look continuous and for the on-air flash to
+  /// have clean edges.
+  private static let visibleFrameInterval: TimeInterval = 0.1
+
+  /// How often it is redrawn while the window is *not* on screen.
+  ///
+  /// It cannot simply stop. `isPictureInPicturePossible` only becomes true
+  /// once the layer has been given content, and it is what both the automatic
+  /// start and [`willResignActive`] wait on — a layer that has been starved
+  /// has nothing to open. So the feed continues, at a tenth of the rate, purely
+  /// to keep the window openable.
+  ///
+  /// The rate matters because the frame is not free: each one is a 480×270
+  /// buffer drawn with Core Graphics, wrapped in a `CMSampleBuffer` and
+  /// composited by a layer deliberately left visible at 2% opacity. That ran at
+  /// the full rate for the entire length of a call, with the app in front and
+  /// the window nowhere on screen — half a megabyte a frame, ten a second,
+  /// for something nobody could see.
+  private static let hiddenFrameInterval: TimeInterval = 1.0
+
+  /// The interval the current timer runs at, so that asking for the rate it is
+  /// already running at does not restart it and reset the flash.
+  private var renderInterval: TimeInterval = 0
+
+  private func startRenderTimer(every interval: TimeInterval) {
+    if renderTimer != nil, renderInterval == interval { return }
     renderTimer?.invalidate()
-    let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+    renderInterval = interval
+
+    let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
       guard let self else { return }
       self.frame &+= 1
       self.render()
     }
+    // Lets iOS fire this alongside whatever else is already waking the app
+    // rather than insisting on its own wakeup. A fifth of the interval is
+    // invisible at either rate and is the difference between a timer the
+    // system can group and one it cannot.
+    timer.tolerance = interval * 0.2
     RunLoop.main.add(timer, forMode: .common)
     renderTimer = timer
+  }
+
+  private func stopRenderTimer() {
+    renderTimer?.invalidate()
+    renderTimer = nil
+    renderInterval = 0
   }
 
   /// Frames since the timer started, used for the on-air flash. A counter
@@ -933,6 +982,9 @@ extension PipController: AVPictureInPictureControllerDelegate {
     // Clears whatever the last attempt had to say about itself.
     report(nil)
 
+    // There is now a window to draw into, so the frames become worth making.
+    startRenderTimer(every: Self.visibleFrameInterval)
+
     // The window had to claim to be playing to get itself opened — iOS will
     // not open one for content it believes is paused. That answer is cached,
     // so without this the window arrives showing a stop button while nobody
@@ -959,6 +1011,11 @@ extension PipController: AVPictureInPictureControllerDelegate {
     // window closed by hand stayed closed however many times the app was left
     // afterwards.
     pictureInPictureController.canStartPictureInPictureAutomaticallyFromInline = true
+
+    // Back to the trickle that keeps the window openable. The commonest way to
+    // get here is the rider returning to the app, where the frames would be
+    // drawn behind the interface that replaced them.
+    startRenderTimer(every: Self.hiddenFrameInterval)
 
     // And the cached playback state is cleared, which is the other half of why
     // the window would not come back.

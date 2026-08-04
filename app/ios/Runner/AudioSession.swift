@@ -27,6 +27,10 @@ final class AudioSession {
       switch call.method {
       case "prepare":
         self.prepare(result)
+      case "activate":
+        self.activateForCall(result)
+      case "deactivate":
+        self.deactivate(result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -43,37 +47,92 @@ final class AudioSession {
     NotificationCenter.default.removeObserver(self)
   }
 
-  /// Asks for the microphone, configures the session, and reports what the
-  /// hardware then offers.
+  /// Asks for the microphone and settles the category, without going live.
+  ///
+  /// Deliberately stops short of activating. An active `playAndRecord` session
+  /// is not a passive declaration of intent: it lights the orange recording
+  /// indicator, and it lets the system route a Bluetooth headset over the
+  /// hands-free profile — so a podcast playing through a helmet intercom drops
+  /// to telephone bandwidth for as long as this app is merely open. Both used
+  /// to be true from launch until the app was killed.
+  ///
+  /// The channel count is no longer reported from here, because there is no
+  /// session live to ask; it comes back from [activateForCall] instead, which
+  /// is where the answer can still be acted on.
   ///
   /// Returns rather than throws on refusal: a declined microphone is an answer,
   /// not a failure, and the app has something useful to say about it.
   private func prepare(_ result: @escaping FlutterResult) {
-    requestPermission { [weak self] granted in
-      guard let self else { return }
+    requestPermission { granted in
       guard granted else {
         result(["granted": false, "inputChannels": 0, "sampleRate": 0.0])
         return
       }
-      do {
-        try self.activate()
-        let session = AVAudioSession.sharedInstance()
-        result([
-          "granted": true,
-          // Reported back so Dart can say "no input available" instead of
-          // letting the engine fail with CoreAudio's wording.
-          "inputChannels": session.inputNumberOfChannels,
-          "sampleRate": session.sampleRate,
-        ])
-      } catch {
-        result(
-          FlutterError(
-            code: "session", message: error.localizedDescription, details: nil))
-      }
+      // Negative rather than zero: "not asked" and "asked, and there is
+      // nothing to record with" need different things from the user, and
+      // treating the first as the second refuses to start over a question
+      // nobody has put yet.
+      result(["granted": true, "inputChannels": -1, "sampleRate": 0.0])
     }
   }
 
+  /// Takes the session live for a conversation.
+  ///
+  /// Called as a call is being set up rather than as the first word is spoken.
+  /// Activation is not instant — a Bluetooth headset has an SCO link to
+  /// negotiate — and it can be refused outright by a phone call or a voice
+  /// memo holding a session that will not mix. Both are worth several seconds
+  /// of a connect and neither is worth clipping the start of a sentence.
+  private func activateForCall(_ result: @escaping FlutterResult) {
+    do {
+      try activate()
+      let session = AVAudioSession.sharedInstance()
+      result([
+        "ok": true,
+        // Reported so Dart can say "no input available" instead of letting the
+        // engine fail with CoreAudio's wording about channel counts.
+        "inputChannels": session.inputNumberOfChannels,
+        "sampleRate": session.sampleRate,
+      ])
+    } catch {
+      // An answer, not a crash. Something else holds the microphone, and the
+      // rider needs to be told which of their own actions to undo.
+      result([
+        "ok": false,
+        "inputChannels": 0,
+        "sampleRate": 0.0,
+        "error": error.localizedDescription,
+      ])
+    }
+  }
+
+  /// Hands the session back when there is no longer a call.
+  ///
+  /// `notifyOthersOnDeactivation` is what lets whatever was playing before
+  /// resume, and lets a headset fall back off the hands-free profile — which
+  /// is most of the point: the helmet unit's own battery lasts longer, and
+  /// music stops sounding like a telephone.
+  private func deactivate(_ result: @escaping FlutterResult) {
+    wantedActive = false
+    do {
+      try AVAudioSession.sharedInstance().setActive(
+        false, options: [.notifyOthersOnDeactivation])
+      result(true)
+    } catch {
+      // Not worth reporting upwards. The session being hard to put down costs
+      // battery, not function, and there is nothing for the rider to do about
+      // it — the next call will activate over the top regardless.
+      NSLog("MumbleWay: could not deactivate the audio session: \(error)")
+      result(false)
+    }
+  }
+
+  /// Whether a call is in progress, so that an interruption ending knows
+  /// whether the session is meant to come back at all.
+  private var wantedActive = false
+
   private func activate() throws {
+    wantedActive = true
     let session = AVAudioSession.sharedInstance()
     try session.setCategory(
       .playAndRecord,
@@ -126,6 +185,13 @@ final class AudioSession {
       // Nothing to do: the system has already taken the session away.
       break
     case .ended:
+      // Only if there was a conversation to come back to. The session is no
+      // longer live for the whole life of the app, so an interruption ending
+      // while nothing is connected must leave it down rather than quietly
+      // taking the microphone back — which is the state this app spent its
+      // first year in.
+      guard wantedActive else { return }
+
       // Reactivating is right even when `shouldResume` is absent. That flag is
       // about resuming *playback*, and this is a conversation the user is in
       // the middle of rather than a track they were listening to.

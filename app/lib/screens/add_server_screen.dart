@@ -232,37 +232,46 @@ class _Shortcuts extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PublicServersScreen(),
+            // Sized to the tallest of the three rather than each to its own
+            // content. Whether a label wraps depends on the width left over
+            // and on the language — "Browse public" takes two lines on a
+            // narrow phone and one on a wide one — and a row where one button
+            // is visibly shorter than its neighbours reads as a mistake, not
+            // as a smaller control.
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const PublicServersScreen(),
+                        ),
                       ),
+                      icon: const Icon(Icons.public),
+                      label: Text(l.browsePublic),
                     ),
-                    icon: const Icon(Icons.public),
-                    label: Text(l.browsePublic),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const ImportScreen()),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ImportScreen()),
+                      ),
+                      icon: const Icon(Icons.download),
+                      label: Text(l.importLabel),
                     ),
-                    icon: const Icon(Icons.download),
-                    label: Text(l.importLabel),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // Not Expanded: the other two carry words and need the room,
-                // and a third equal share would squeeze all three. This one is
-                // a glyph and asks for only what a glyph needs.
-                const QrIntakeButton(),
-              ],
+                  const SizedBox(width: 10),
+                  // Not Expanded: the other two carry words and need the room,
+                  // and a third equal share would squeeze all three. This one
+                  // is a glyph and asks for only what a glyph needs.
+                  const QrIntakeButton(),
+                ],
+              ),
             ),
           ],
         ),

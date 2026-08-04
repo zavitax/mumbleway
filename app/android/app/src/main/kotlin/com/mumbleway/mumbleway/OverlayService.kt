@@ -491,12 +491,19 @@ class OverlayService : Service() {
         talk.setOnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    talkHeld = true
                     view.background = activeTalkBackground()
                     onTransmit?.invoke(true)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    talkHeld = false
                     view.background = idleTalkBackground()
+                    // Anything that changed during the press was skipped rather
+                    // than queued, so the next push has to be treated as the
+                    // first one: without this a mode changed from the app while
+                    // the button was held would never reach it.
+                    drawn = null
                     onTransmit?.invoke(false)
                     true
                 }
@@ -978,29 +985,39 @@ class OverlayService : Service() {
 
             // Everything below builds a fresh drawable and assigns it, which
             // invalidates the view whether or not the result differs, so it is
-            // behind the same gate as the card. These follow the controls
-            // rather than the levels, and the controls change when the rider
-            // does something — a handful of times in a ride, against ten times
-            // a second for a meter.
-            if (previous != null && !controlsDiffer(previous, state)) return@post
+            // behind a gate of its own — and a narrower one than the card's.
+            //
+            // Narrower on purpose. The card is redrawn for anything a rider can
+            // see on it, which includes whether the microphone is currently
+            // hearing speech: a flag that flips every time a sentence ends. The
+            // buttons show none of that, so redrawing them on it was work for
+            // nothing at best, and at worst the bug below.
+            if (previous != null && !buttonsDiffer(previous, state)) return@post
 
-            // The talk button follows whether audio is actually going out, not
-            // whether a finger is down: in the hands-free modes nobody holds
-            // anything and the microphone still opens, and a button that stayed
-            // grey through all of it would be telling the rider they were off
-            // air while they were being heard.
-            talk.background =
-                if (state.live) activeTalkBackground() else idleTalkBackground()
+            // Not while a finger is down. The touch listener owns the talk
+            // button's look for the length of a press, and assigning a fresh
+            // drawable underneath it is what took the button back to its idle
+            // colour mid-sentence — the rider still holding it, still on air,
+            // and the control saying otherwise.
+            if (!talkHeld) {
+                // The talk button follows whether audio is actually going out,
+                // not whether a finger is down: in the hands-free modes nobody
+                // holds anything and the microphone still opens, and a button
+                // that stayed grey through all of it would be telling the rider
+                // they were off air while they were being heard.
+                talk.background =
+                    if (state.live) activeTalkBackground() else idleTalkBackground()
 
-            // Nothing to hold in the hands-free modes, so the button says so
-            // rather than sitting there looking pressable and doing nothing.
-            val handsFree = state.micMode != 0
-            talk.isEnabled = !handsFree
-            talk.alpha = if (handsFree) 0.45f else 1f
-            talk.text = when {
-                !handsFree -> phrase("pipTalk", "TALK")
-                state.micMode == 1 -> phrase("pipHandsFreeVoice", "VOICE")
-                else -> phrase("pipHandsFreeAlways", "OPEN")
+                // Nothing to hold in the hands-free modes, so the button says so
+                // rather than sitting there looking pressable and doing nothing.
+                val handsFree = state.micMode != 0
+                talk.isEnabled = !handsFree
+                talk.alpha = if (handsFree) 0.45f else 1f
+                talk.text = when {
+                    !handsFree -> phrase("pipTalk", "TALK")
+                    state.micMode == 1 -> phrase("pipHandsFreeVoice", "VOICE")
+                    else -> phrase("pipHandsFreeAlways", "OPEN")
+                }
             }
 
             muteButton?.background = pillBackground(active = state.muted)
@@ -1012,6 +1029,14 @@ class OverlayService : Service() {
 
     /** The last state actually drawn, as against the last one received. */
     private var drawn: OverlayState? = null
+
+    /**
+     * Whether a finger is on the talk button right now.
+     *
+     * The press is the one piece of overlay state that does not come from Dart,
+     * and it is authoritative while it lasts: the rider's thumb is on the glass.
+     */
+    private var talkHeld = false
 
     private val powerManager: android.os.PowerManager by lazy {
         getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
@@ -1086,6 +1111,21 @@ class OverlayService : Service() {
             a.speakers.indices.any { a.speakers[it].name != b.speakers[it].name }
 
     /**
+     * Whether anything the three buttons actually show has changed.
+     *
+     * Exactly the fields read when they are rebuilt, and nothing else. The card
+     * is a picture of the whole call and is redrawn for any of it; the buttons
+     * are three pieces of state, and reassigning their drawables for a speech
+     * flag or a moving name is a redraw nobody asked for — over another app's
+     * frames, and on the one control the rider may have a thumb on.
+     */
+    private fun buttonsDiffer(a: OverlayState, b: OverlayState): Boolean =
+        a.live != b.live ||
+            a.micMode != b.micMode ||
+            a.muted != b.muted ||
+            a.deafened != b.deafened
+
+    /**
      * Drives the on-air blink from its own runnable rather than from state
      * pushes, so the rate stays even no matter how often there is something
      * new to report.
@@ -1124,6 +1164,16 @@ class OverlayService : Service() {
         // The next window starts blank, so nothing may be skipped as already
         // drawn on it.
         drawn = null
+        // The window can go while a thumb is still on the button, and the view
+        // that would have reported the release has just been destroyed. Said
+        // here instead, because the alternative is a transmit flag stuck on:
+        // the app's own talk button would then read the next press as no
+        // change at all, and the release after it as the moment to stop —
+        // every press inverted, and the first one silent.
+        if (talkHeld) {
+            talkHeld = false
+            onTransmit?.invoke(false)
+        }
         talkButton = null
         muteButton = null
         deafenButton = null

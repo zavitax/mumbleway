@@ -78,6 +78,10 @@
 	<false/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>MumbleWay connects to Mumble servers on your network, such as one running at home or at a club.</string>
+	<!-- Only ever asked for when the rider taps the scan button; the camera is
+	     not opened anywhere else in the app, and this says so. -->
+	<key>NSCameraUsageDescription</key>
+	<string>MumbleWay uses the camera to scan a QR code containing a server invitation. It is not used for anything else.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MumbleWay uses your microphone so you can talk to other riders.</string>
 	<!-- Voice must keep flowing with the screen locked and the phone in a
@@ -86,6 +90,23 @@
 	<array>
 		<string>audio</string>
 		<string>voip</string>
+	</array>
+	<!-- Invitation links, and how a code scanned by the Camera app reaches us:
+	     it recognises the scheme and offers to open whatever claims it. The
+	     role is Viewer rather than Editor because this is Mumble's scheme, not
+	     ours — several clients answer to it and none of them owns it. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.mumbleway.mumbleway.invite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mumble</string>
+			</array>
+		</dict>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

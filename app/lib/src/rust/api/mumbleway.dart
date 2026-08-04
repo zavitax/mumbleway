@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
@@ -476,6 +476,15 @@ class ServerConfig {
   final String? password;
   final String? certFingerprint;
 
+  /// Channel to drop into on connecting, as the link carried it.
+  ///
+  /// Here because an invitation is about a place as much as a server: the
+  /// `mumble://` scheme puts the channel in the path, the core has always
+  /// parsed it, and it was then dropped on the way across this boundary —
+  /// so following a link that named a channel landed the guest in the root
+  /// and left them to find the conversation themselves.
+  final String? defaultChannel;
+
   const ServerConfig({
     required this.id,
     required this.name,
@@ -484,6 +493,7 @@ class ServerConfig {
     required this.username,
     this.password,
     this.certFingerprint,
+    this.defaultChannel,
   });
 
   @override
@@ -494,7 +504,8 @@ class ServerConfig {
       port.hashCode ^
       username.hashCode ^
       password.hashCode ^
-      certFingerprint.hashCode;
+      certFingerprint.hashCode ^
+      defaultChannel.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -507,7 +518,8 @@ class ServerConfig {
           port == other.port &&
           username == other.username &&
           password == other.password &&
-          certFingerprint == other.certFingerprint;
+          certFingerprint == other.certFingerprint &&
+          defaultChannel == other.defaultChannel;
 }
 
 /// Startup options.

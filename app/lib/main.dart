@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'l10n/app_localizations.dart';
+import 'screens/add_server_screen.dart';
+import 'services/deep_links.dart';
+import 'services/qr_intake.dart';
 import 'src/rust/frb_generated.dart';
 import 'state/app_state.dart';
 import 'screens/home_screen.dart';
@@ -42,14 +47,68 @@ class MumbleWayApp extends StatefulWidget {
 class _MumbleWayAppState extends State<MumbleWayApp> {
   final AppState _state = AppState();
 
+  /// Lets a `mumble://` link open a screen from outside the widget tree.
+  ///
+  /// A link arrives from the platform, not from a tap on anything, so there is
+  /// no context to push from at the moment it lands.
+  final GlobalKey<NavigatorState> _navigator = GlobalKey<NavigatorState>();
+
+  StreamSubscription<String>? _linkSub;
+
   @override
   void initState() {
     super.initState();
     _state.start();
+    _linkSub = DeepLinks.instance.links.listen(_openLink);
+    unawaited(_startLinks());
+  }
+
+  Future<void> _startLinks() async {
+    final initial = await DeepLinks.instance.start();
+    if (initial != null) _openLink(initial);
+  }
+
+  /// Opens the add-server form on whatever the link describes.
+  ///
+  /// A draft, never a saved entry, and never a connection: a link can be
+  /// planted anywhere a rider might tap — a web page, a message from a
+  /// stranger, a code stuck to a lamp post — and an app that joined a voice
+  /// server because a link said so would be handing over a live microphone on
+  /// somebody else's say-so. The details are shown and the rider decides.
+  Future<void> _openLink(String url) async {
+    final navigator = await _readyNavigator();
+    if (navigator == null) return;
+
+    final result = await QrReader.fromText(url, _state.suggestedUsername);
+    if (result case QrInvitation(:final server)) {
+      await navigator.push(
+        MaterialPageRoute(builder: (_) => AddServerScreen(prefill: server)),
+      );
+    }
+    // Anything else came from a link this app should not have been handed in
+    // the first place. There is nobody to apologise to and nothing to fix.
+  }
+
+  /// The navigator, once there is one.
+  ///
+  /// A link that launched the app is asked for in `initState`, which can beat
+  /// the first frame — and a link handled before the navigator is mounted is a
+  /// link silently dropped, which on a cold start is *every* link, the one
+  /// case that matters most. Waits a few frames rather than assuming either
+  /// order.
+  Future<NavigatorState?> _readyNavigator() async {
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final navigator = _navigator.currentState;
+      if (navigator != null) return navigator;
+      if (!mounted) return null;
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    return _navigator.currentState;
   }
 
   @override
   void dispose() {
+    _linkSub?.cancel();
     _state.dispose();
     super.dispose();
   }
@@ -78,6 +137,7 @@ class _MumbleWayAppState extends State<MumbleWayApp> {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
+          navigatorKey: _navigator,
           home: const HomeScreen(),
         ),
       ),

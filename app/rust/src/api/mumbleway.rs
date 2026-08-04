@@ -48,6 +48,14 @@ pub struct ServerConfig {
     pub username: String,
     pub password: Option<String>,
     pub cert_fingerprint: Option<String>,
+    /// Channel to drop into on connecting, as the link carried it.
+    ///
+    /// Here because an invitation is about a place as much as a server: the
+    /// `mumble://` scheme puts the channel in the path, the core has always
+    /// parsed it, and it was then dropped on the way across this boundary —
+    /// so following a link that named a channel landed the guest in the root
+    /// and left them to find the conversation themselves.
+    pub default_channel: Option<String>,
 }
 
 /// Connection status, flattened for easy rendering.
@@ -1439,7 +1447,7 @@ pub fn export_servers(configs: Vec<ServerConfig>) -> anyhow::Result<String> {
             port: Some(c.port),
             username: Some(c.username),
             password: c.password,
-            channel: None,
+            channel: c.default_channel,
             // Pinned fingerprints stay on the device that made the trust
             // decision; exporting them would launder it onto another machine.
             cert_fingerprint: None,
@@ -1455,6 +1463,7 @@ fn config_to_profile(c: ServerConfig) -> ServerProfile {
     let mut p = ServerProfile::new(c.name, c.host, c.port, c.username);
     p.password = c.password;
     p.cert_fingerprint = c.cert_fingerprint;
+    p.auto_join_channel = c.default_channel;
     if !c.id.trim().is_empty() {
         p.id = c.id;
     }
@@ -1485,6 +1494,7 @@ pub fn import_servers(
             username: p.username,
             password: p.password,
             cert_fingerprint: p.cert_fingerprint,
+            default_channel: p.auto_join_channel,
         })
         .collect())
 }

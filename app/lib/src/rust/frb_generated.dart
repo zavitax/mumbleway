@@ -2175,8 +2175,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ServerConfig dco_decode_server_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return ServerConfig(
       id: dco_decode_String(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -2185,6 +2185,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       username: dco_decode_String(arr[4]),
       password: dco_decode_opt_String(arr[5]),
       certFingerprint: dco_decode_opt_String(arr[6]),
+      defaultChannel: dco_decode_opt_String(arr[7]),
     );
   }
 
@@ -2725,6 +2726,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_username = sse_decode_String(deserializer);
     var var_password = sse_decode_opt_String(deserializer);
     var var_certFingerprint = sse_decode_opt_String(deserializer);
+    var var_defaultChannel = sse_decode_opt_String(deserializer);
     return ServerConfig(
       id: var_id,
       name: var_name,
@@ -2733,6 +2735,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       username: var_username,
       password: var_password,
       certFingerprint: var_certFingerprint,
+      defaultChannel: var_defaultChannel,
     );
   }
 
@@ -3296,6 +3299,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.username, serializer);
     sse_encode_opt_String(self.password, serializer);
     sse_encode_opt_String(self.certFingerprint, serializer);
+    sse_encode_opt_String(self.defaultChannel, serializer);
   }
 
   @protected

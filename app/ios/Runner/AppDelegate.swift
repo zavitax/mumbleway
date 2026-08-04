@@ -39,6 +39,12 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayLog") {
       logSink = EngineLogSink(messenger: registrar.messenger())
     }
+    // Invitation links. The scene delegate receives them; this end is only
+    // where the channel is opened, and it may well happen after a link has
+    // already arrived and been put aside.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayLinks") {
+      DeepLinks.shared.register(messenger: registrar.messenger())
+    }
   }
 
   private func registerOverlayChannel(with messenger: FlutterBinaryMessenger) {

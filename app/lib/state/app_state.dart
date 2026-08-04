@@ -139,6 +139,18 @@ class SavedServer {
     username: username,
     password: password,
     certFingerprint: certFingerprint,
+    defaultChannel: defaultChannel,
+  );
+
+  /// A draft entry from what the core parsed out of a link or a profile file.
+  factory SavedServer.fromConfig(ServerConfig c) => SavedServer(
+    name: c.name,
+    host: c.host,
+    port: c.port,
+    username: c.username,
+    password: c.password,
+    certFingerprint: c.certFingerprint,
+    defaultChannel: c.defaultChannel,
   );
 }
 
@@ -860,14 +872,7 @@ class AppState extends ChangeNotifier {
       );
       var added = 0;
       for (final c in configs) {
-        final s = SavedServer(
-          name: c.name,
-          host: c.host,
-          port: c.port,
-          username: c.username,
-          password: c.password,
-          certFingerprint: c.certFingerprint,
-        );
+        final s = SavedServer.fromConfig(c);
         if (servers.any((e) => e.id == s.id)) continue;
         servers.add(s.stamped());
         if (_registered.length < maxServers) await _register(s);
@@ -902,6 +907,11 @@ class AppState extends ChangeNotifier {
 
   String _suggestUsername() =>
       servers.isNotEmpty ? servers.first.username : 'rider';
+
+  /// The name to use when an invitation carries none, which most public ones
+  /// do not. Exposed so a scanned code fills the form the same way a pasted
+  /// link does.
+  String get suggestedUsername => _suggestUsername();
 
   /// Picks an unused local id for a new entry.
   String _uniqueId(String host, int port) {

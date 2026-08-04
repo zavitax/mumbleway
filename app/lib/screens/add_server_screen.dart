@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../widgets/app_bar_title.dart';
 import '../widgets/language_button.dart';
 import 'import_screen.dart';
+import '../widgets/qr_intake_button.dart';
 import 'public_servers_screen.dart';
 
 /// Form for adding a server, or editing one already saved.
@@ -15,10 +16,19 @@ import 'public_servers_screen.dart';
 /// entirely in what happens on save. Two screens would be two places to keep a
 /// validation rule in step.
 class AddServerScreen extends StatefulWidget {
-  const AddServerScreen({super.key, this.existing});
+  const AddServerScreen({super.key, this.existing, this.prefill});
 
   /// The server being edited, or null when adding a new one.
   final SavedServer? existing;
+
+  /// Details to start a *new* entry from, rather than one to edit.
+  ///
+  /// What arrives from a scanned code or a `mumble://` link followed from
+  /// outside the app. Deliberately not [existing]: nothing has been saved yet,
+  /// the form is still a draft, and the rider can change any of it — or back
+  /// out — before anything is written. A link is a suggestion, not an
+  /// instruction.
+  final SavedServer? prefill;
 
   @override
   State<AddServerScreen> createState() => _AddServerScreenState();
@@ -38,16 +48,16 @@ class _AddServerScreenState extends State<AddServerScreen> {
   @override
   void initState() {
     super.initState();
-    final existing = widget.existing;
-    if (existing == null) {
+    final source = widget.existing ?? widget.prefill;
+    if (source == null) {
       _port.text = defaultPort().toString();
       return;
     }
-    _name.text = existing.name;
-    _host.text = existing.host;
-    _port.text = existing.port.toString();
-    _user.text = existing.username;
-    _password.text = existing.password ?? '';
+    _name.text = source.name;
+    _host.text = source.host;
+    _port.text = source.port.toString();
+    _user.text = source.username;
+    _password.text = source.password ?? '';
   }
 
   @override
@@ -180,7 +190,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
       // certificate and default channel belong to the entry, not the form.
       localId: existing?.localId,
       certFingerprint: existing?.certFingerprint,
-      defaultChannel: existing?.defaultChannel,
+      // The channel has no field on this form, so it rides along from wherever
+      // the entry came from: the saved one when editing, and the link's own
+      // when a code or an invitation filled the form in.
+      defaultChannel: existing?.defaultChannel ?? widget.prefill?.defaultChannel,
     );
 
     final error = existing == null
@@ -244,6 +257,11 @@ class _Shortcuts extends StatelessWidget {
                     label: Text(l.importLabel),
                   ),
                 ),
+                const SizedBox(width: 10),
+                // Not Expanded: the other two carry words and need the room,
+                // and a third equal share would squeeze all three. This one is
+                // a glyph and asks for only what a glyph needs.
+                const QrIntakeButton(),
               ],
             ),
           ],

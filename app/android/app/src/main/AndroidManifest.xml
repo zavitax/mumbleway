@@ -19,6 +19,12 @@
          the app works without it, just without the island. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Scanning an invitation code, and nothing else. Declared optional so a
+         device without a camera — a head unit, a tablet in a mount — can still
+         install the app; the button offers an image file instead there. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
 
     <!-- A microphone is essential; without one the app cannot function. -->
     <uses-feature android:name="android.hardware.microphone" android:required="true"/>
@@ -50,6 +56,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Invitation links, which is also how a QR code scanned by the
+                 phone's own camera app reaches us: the camera recognises the
+                 scheme and offers to open whatever claims it.
+
+                 BROWSABLE is what lets a link in a web page or a message be
+                 followed; without it the filter only matches intents built by
+                 another app on purpose. No autoVerify and no host: this is a
+                 private scheme rather than an https link, so there is no
+                 domain to prove ownership of. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="mumble"/>
             </intent-filter>
         </activity>
         <!-- Keeps the audio engine and the overlay alive while another app is

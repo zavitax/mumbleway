@@ -21,8 +21,44 @@ class MainActivity : FlutterActivity() {
     private var buttonChannel: MethodChannel? = null
     private var logChannel: MethodChannel? = null
 
+    /// A `mumble://` link the app was launched with, held until Dart asks.
+    ///
+    /// A cold start delivers the intent long before the interface exists, so
+    /// pushing it down the channel then would send it into a void. Kept here
+    /// and handed over on request instead; see [DeepLinks].
+    private var pendingLink: String? = null
+
+    private var linkChannel: MethodChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Invitation links. Also how a code scanned by the phone's own camera
+        // app arrives: it recognises the scheme and offers to open us.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/links",
+        ).also { channel ->
+            linkChannel = channel
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "initialLink" -> {
+                        result.success(pendingLink)
+                        // Handed over once. A rider who backs out of the form
+                        // and later rotates the screen should not have it
+                        // reappear as though the link had just arrived.
+                        pendingLink = null
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+
+        // The launching intent, if this is a cold start from a link. Put aside
+        // rather than sent: the channel exists by now, but Dart has not run a
+        // line yet and so has nothing listening on the other end of it. It is
+        // collected by the first `initialLink`.
+        pendingLink = linkIn(intent) ?: pendingLink
 
         // Before anything can start the audio engine.
         //
@@ -419,6 +455,39 @@ class MainActivity : FlutterActivity() {
      * which is the same "covering our own UI" problem in a form that flickers.
      * onStop is the callback that means the activity is genuinely hidden.
      */
+    /// A link arriving while the app is already running.
+    ///
+    /// `launchMode` is singleTop, so a second link does not build a second
+    /// activity — it comes through here instead, and an app that only read the
+    /// launching intent would ignore every link after the first.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeLink(intent)
+    }
+
+    /// The `mumble://` link [intent] carries, if it carries one.
+    private fun linkIn(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_VIEW) return null
+        return intent.data
+            ?.takeIf { it.scheme.equals("mumble", ignoreCase = true) }
+            ?.toString()
+    }
+
+    /// Delivers a link that arrived while the app was already running.
+    private fun takeLink(intent: Intent?) {
+        val url = linkIn(intent) ?: return
+        val channel = linkChannel
+        if (channel == null) {
+            // Nothing to deliver to yet; held for the first `initialLink`.
+            pendingLink = url
+            return
+        }
+        // On the main thread: the channel refuses to be used from anywhere
+        // else, and onNewIntent is not guaranteed to be on one.
+        runOnUiThread { channel.invokeMethod("link", url) }
+    }
+
     override fun onStart() {
         super.onStart()
         inForeground = true

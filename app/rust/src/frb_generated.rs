@@ -2506,6 +2506,7 @@ impl SseDecode for crate::api::mumbleway::ServerConfig {
         let mut var_username = <String>::sse_decode(deserializer);
         let mut var_password = <Option<String>>::sse_decode(deserializer);
         let mut var_certFingerprint = <Option<String>>::sse_decode(deserializer);
+        let mut var_defaultChannel = <Option<String>>::sse_decode(deserializer);
         return crate::api::mumbleway::ServerConfig {
             id: var_id,
             name: var_name,
@@ -2514,6 +2515,7 @@ impl SseDecode for crate::api::mumbleway::ServerConfig {
             username: var_username,
             password: var_password,
             cert_fingerprint: var_certFingerprint,
+            default_channel: var_defaultChannel,
         };
     }
 }
@@ -3101,6 +3103,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::ServerConfig {
             self.username.into_into_dart().into_dart(),
             self.password.into_into_dart().into_dart(),
             self.cert_fingerprint.into_into_dart().into_dart(),
+            self.default_channel.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -3711,6 +3714,7 @@ impl SseEncode for crate::api::mumbleway::ServerConfig {
         <String>::sse_encode(self.username, serializer);
         <Option<String>>::sse_encode(self.password, serializer);
         <Option<String>>::sse_encode(self.cert_fingerprint, serializer);
+        <Option<String>>::sse_encode(self.default_channel, serializer);
     }
 }
 

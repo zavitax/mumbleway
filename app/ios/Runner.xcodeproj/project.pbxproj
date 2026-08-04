@@ -13,6 +13,7 @@
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		A1B2C3D4E5F6000000000101 /* PipController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000102 /* PipController.swift */; };
 		A1B2C3D4E5F6000000000105 /* AudioSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000106 /* AudioSession.swift */; };
+		A1B2C3D4E5F6000000000121 /* DeepLinks.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000122 /* DeepLinks.swift */; };
 		A1B2C3D4E5F6000000000107 /* RemoteCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000108 /* RemoteCommands.swift */; };
 		A1B2C3D4E5F6000000000103 /* CloudStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000104 /* CloudStore.swift */; };
 		A1B2C3D4E5F6000000000109 /* EngineLogSink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600000000010A /* EngineLogSink.swift */; };
@@ -56,6 +57,7 @@
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000000000102 /* PipController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PipController.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000000000106 /* AudioSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSession.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000122 /* DeepLinks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinks.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000000000108 /* RemoteCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommands.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000000000104 /* CloudStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudStore.swift; path = "../shared/CloudStore.swift"; sourceTree = SOURCE_ROOT; };
 		A1B2C3D4E5F600000000010A /* EngineLogSink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EngineLogSink.swift; path = "../shared/EngineLogSink.swift"; sourceTree = SOURCE_ROOT; };
@@ -134,6 +136,7 @@
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				A1B2C3D4E5F6000000000102 /* PipController.swift */,
 				A1B2C3D4E5F6000000000106 /* AudioSession.swift */,
+				A1B2C3D4E5F6000000000122 /* DeepLinks.swift */,
 				A1B2C3D4E5F6000000000108 /* RemoteCommands.swift */,
 				A1B2C3D4E5F6000000000104 /* CloudStore.swift */,
 				A1B2C3D4E5F600000000010A /* EngineLogSink.swift */,
@@ -299,6 +302,7 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				A1B2C3D4E5F6000000000101 /* PipController.swift in Sources */,
 				A1B2C3D4E5F6000000000105 /* AudioSession.swift in Sources */,
+				A1B2C3D4E5F6000000000121 /* DeepLinks.swift in Sources */,
 				A1B2C3D4E5F6000000000107 /* RemoteCommands.swift in Sources */,
 				A1B2C3D4E5F6000000000103 /* CloudStore.swift in Sources */,
 				A1B2C3D4E5F6000000000109 /* EngineLogSink.swift in Sources */,

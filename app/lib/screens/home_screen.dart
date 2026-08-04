@@ -280,13 +280,22 @@ class _TalkPanel extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const LevelMeter(),
-          // The talk button only exists for push-to-talk. In the automatic
-          // modes it is a status light the meter already provides, so the
-          // vertical space goes back to the server list.
-          if (state.showTalkButton) ...[
-            const SizedBox(height: 12),
-            const PttButton(),
+          // With the microphone shut there is nothing for a meter to show and
+          // nothing for the talk button to key. Drawing them anyway gives a
+          // bar that never moves and a control that does nothing, which reads
+          // as an app that has broken rather than one that is idle — so the
+          // panel says what it is waiting for instead.
+          if (!state.audioActive)
+            const _MicIdleNotice()
+          else ...[
+            const LevelMeter(),
+            // The talk button only exists for push-to-talk. In the automatic
+            // modes it is a status light the meter already provides, so the
+            // vertical space goes back to the server list.
+            if (state.showTalkButton) ...[
+              const SizedBox(height: 12),
+              const PttButton(),
+            ],
           ],
           const SizedBox(height: 8),
           Text(
@@ -298,6 +307,60 @@ class _TalkPanel extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Stands in for the meter and the talk button while the microphone is shut.
+///
+/// Two sentences rather than one. The first says what will appear and when,
+/// because a rider looking at a panel that used to hold a large button wants
+/// to know it is coming back. The second says why it is not there now — the
+/// microphone being closed is the whole point of the change, and left
+/// unexplained it looks like something failed to load.
+class _MicIdleNotice extends StatelessWidget {
+  const _MicIdleNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.mic_off, size: 18, color: muted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  // Only promises the button to someone who has chosen the
+                  // mode that has one. In the hands-free modes it never
+                  // appears, and saying it would be a small lie repeated on
+                  // every screen.
+                  state.showTalkButton
+                      ? l.micIdleWithTalkButton
+                      : l.micIdleMeterOnly,
+                  style: TextStyle(fontSize: 13, color: muted),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l.micIdleWhy,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: muted.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

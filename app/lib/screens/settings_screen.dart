@@ -13,8 +13,56 @@ import '../theme.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 
-class SettingsScreen extends StatelessWidget {
+/// The audio settings, which hold the microphone open for as long as they are
+/// on screen.
+///
+/// Every control here is about a signal: the gain slider, the noise profile,
+/// the activation threshold, the de-hisser. Judging any of them means watching
+/// the meter move while you talk, so the devices are opened on the way in
+/// rather than waiting for the microphone test to be switched on — which would
+/// leave the meter above the gain slider dead at exactly the moment somebody
+/// is dragging it.
+///
+/// Released on the way out, unless a call or the microphone test still wants
+/// them. Nothing else in the app holds them just for being looked at.
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  AppState? _held;
+
+  /// Why the microphone could not be opened, if it could not.
+  ///
+  /// Shown where the meter would have been. A dead meter with no explanation
+  /// reads as a broken app; the reason is usually another application holding
+  /// the device, which is something the user can go and undo.
+  String? _audioError;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Not initState: the state object is reached through an inherited widget,
+    // which is not available that early. Guarded because this runs again on
+    // every dependency change, and a second hold would never be released.
+    if (_held != null) return;
+    final state = AppStateScope.of(context);
+    _held = state;
+    unawaited(
+      state.holdAudio().then((error) {
+        if (mounted) setState(() => _audioError = error);
+      }),
+    );
+  }
+
+  @override
+  void dispose() {
+    _held?.releaseAudio();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +81,7 @@ class SettingsScreen extends StatelessWidget {
 
           const Divider(height: 32),
           _SectionHeader(l.levels),
-          const _LevelsSection(),
+          _LevelsSection(audioError: _audioError),
 
           const Divider(height: 32),
           _SectionHeader(l.noiseCancellation),
@@ -340,7 +388,15 @@ class _MonitorTile extends StatelessWidget {
       title: Text(l.testMicrophone),
       subtitle: Text(l.testMicrophoneBody),
       value: state.monitoring,
-      onChanged: (_) => state.toggleMonitoring(),
+      onChanged: (_) async {
+        // Captured before the await: the switch can be gone by the time the
+        // microphone answers, and this is the only place the reason appears.
+        final messenger = ScaffoldMessenger.of(context);
+        final error = await state.toggleMonitoring();
+        if (error != null) {
+          messenger.showSnackBar(SnackBar(content: Text(error)));
+        }
+      },
     );
   }
 }
@@ -480,7 +536,13 @@ class _TestOutputTile extends StatelessWidget {
       title: Text(l.testSpeakers),
       subtitle: Text(l.testSpeakersBody),
       trailing: FilledButton.tonal(
-        onPressed: state.testOutput,
+        onPressed: () async {
+          final messenger = ScaffoldMessenger.of(context);
+          final error = await state.testOutput();
+          if (error != null) {
+            messenger.showSnackBar(SnackBar(content: Text(error)));
+          }
+        },
         child: Text(l.play),
       ),
     );
@@ -490,7 +552,11 @@ class _TestOutputTile extends StatelessWidget {
 /// Input gain and output volume, with the live meter alongside so the effect
 /// of a change is immediately visible.
 class _LevelsSection extends StatelessWidget {
-  const _LevelsSection();
+  const _LevelsSection({this.audioError});
+
+  /// Why the meter is not live, when it is not. The screen opens the devices
+  /// itself, so this is a genuine failure rather than a state to wait out.
+  final String? audioError;
 
   @override
   Widget build(BuildContext context) {
@@ -506,9 +572,41 @@ class _LevelsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 10),
-            child: LevelMeter(showScale: true),
+          // This screen holds the devices open, so the meter is normally live
+          // whether or not anything is connected. It being dead here means
+          // the microphone could not be had at all — a bar that never moves
+          // while somebody drags the gain slider under it is worse than
+          // saying so. The sliders stay usable either way: they are
+          // remembered settings, not live adjustments.
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: state.audioActive
+                ? const LevelMeter(showScale: true)
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.mic_off,
+                        size: 16,
+                        color: StatusColors.failed,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          // The platform's own words when it gave any: they
+                          // name the app holding the device, which is the
+                          // only version anybody can act on.
+                          audioError ?? l.micUnavailable,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
           _LabelledSlider(
             label: l.microphoneGain,

@@ -265,6 +265,37 @@ void main() {
       expect(ru.kick, isNot(en.kick));
     });
 
+    testWidgets('the idle microphone notice is translated', (tester) async {
+      // This is the only thing in the talk panel while nothing is connected,
+      // which for a new install is the first screen anybody sees. Falling back
+      // to English there would be the most visible untranslated string in the
+      // app.
+      final en = L.of(await contextFor(tester, const Locale('en')));
+      final ru = L.of(await contextFor(tester, const Locale('ru')));
+
+      for (final l in [en, ru]) {
+        expect(l.micIdleWithTalkButton, isNotEmpty);
+        expect(l.micIdleMeterOnly, isNotEmpty);
+        expect(l.micIdleWhy, isNotEmpty);
+        // The panel picks between the two by whether push-to-talk is the
+        // chosen mode. If they ever said the same thing the choice would be
+        // dead code promising a button that hands-free riders never get.
+        expect(l.micIdleWithTalkButton, isNot(l.micIdleMeterOnly));
+      }
+
+      expect(ru.micIdleWithTalkButton, isNot(en.micIdleWithTalkButton));
+      expect(ru.micIdleMeterOnly, isNot(en.micIdleMeterOnly));
+      expect(ru.micIdleWhy, isNot(en.micIdleWhy));
+
+      // The refusal a rider sees when something else holds the microphone.
+      // Reached through a code path that has no BuildContext, so it is the
+      // string most likely to be left in English by accident.
+      for (final l in [en, ru]) {
+        expect(l.micUnavailable, isNotEmpty);
+      }
+      expect(ru.micUnavailable, isNot(en.micUnavailable));
+    });
+
     testWidgets('placeholders survive translation', (tester) async {
       final ru = L.of(await contextFor(tester, const Locale('ru')));
       expect(ru.talkingOnMany(3), contains('3'));

@@ -89,7 +89,61 @@ class AudioSessionBridge {
     });
   }
 
-  /// Asks for the microphone and activates the session.
+  /// Takes the platform's audio session live for a call.
+  ///
+  /// Separate from [prepare] because the two answer different questions at
+  /// different times. Permission is asked for once, at startup, and is a
+  /// property of the install; the session is live only while there is a
+  /// conversation, and holding it the rest of the time lights the recording
+  /// indicator and drags a Bluetooth headset onto the hands-free profile,
+  /// where everything else the rider listens to sounds like a telephone.
+  ///
+  /// Called while a connection is being set up rather than when the first word
+  /// is spoken. Activation is not instant and can be refused outright by a
+  /// phone call holding a session that will not mix, and neither is worth
+  /// discovering half-way through a sentence.
+  Future<AudioSessionState> activate() async {
+    if (!isNeeded) return AudioSessionState.notNeeded;
+    _ensureHandler();
+    try {
+      final r = await _channel.invokeMapMethod<String, dynamic>('activate');
+      return AudioSessionState(
+        granted: true,
+        inputChannels: r?['ok'] == true
+            ? (r?['inputChannels'] as num?)?.toInt() ?? 0
+            : 0,
+        sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
+        error: r?['error'] as String?,
+      );
+    } on MissingPluginException {
+      // An older platform side. Let the engine try rather than refusing: it
+      // either works or produces the error this exists to explain.
+      return AudioSessionState.notNeeded;
+    } on PlatformException catch (e) {
+      return AudioSessionState(
+        granted: true,
+        inputChannels: 0,
+        sampleRate: 0,
+        error: e.message,
+      );
+    }
+  }
+
+  /// Hands the session back when the last call ends.
+  ///
+  /// Best effort on purpose: failing to put the session down costs battery,
+  /// not function, and there is nothing the rider could do about it. The next
+  /// [activate] takes it back regardless.
+  Future<void> deactivate() async {
+    if (!isNeeded) return;
+    try {
+      await _channel.invokeMethod<bool>('deactivate');
+    } catch (_) {
+      // Older platform side, or a session that was not ours to release.
+    }
+  }
+
+  /// Asks for the microphone.
   ///
   /// Must complete before the engine starts. Everywhere else this is a no-op
   /// that reports success, so the caller has one code path.

@@ -199,6 +199,19 @@ class _UserRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     final state = AppStateScope.of(context);
+
+    // Whether this person is talking comes from the decoded audio, so it
+    // arrives with the levels rather than with the roster. Listening here
+    // rather than to the state as a whole is what keeps a channel of twenty
+    // people from rebuilding all twenty rows ten times a second because one
+    // of them is speaking.
+    return ListenableBuilder(
+      listenable: state.meters,
+      builder: (context, _) => _row(context, l, state),
+    );
+  }
+
+  Widget _row(BuildContext context, L l, AppState state) {
     final speaking = state.runtimeFor(serverId).isSpeaking(user.session);
     final (icon, color) = _statusVisual(user, speaking: speaking);
 

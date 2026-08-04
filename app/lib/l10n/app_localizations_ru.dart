@@ -71,6 +71,22 @@ class LRu extends L {
   }
 
   @override
+  String get micIdleWithTalkButton =>
+      'Кнопка разговора и индикатор микрофона появятся здесь после подключения к серверу.';
+
+  @override
+  String get micIdleMeterOnly =>
+      'Индикатор микрофона появится здесь после подключения к серверу.';
+
+  @override
+  String get micIdleWhy =>
+      'До этого микрофон остаётся выключенным: запись не ведётся, а гарнитура сохраняет качество звука для других приложений.';
+
+  @override
+  String get micUnavailable =>
+      'Не удалось включить микрофон. Возможно, его использует другое приложение.';
+
+  @override
   String get notConnectedAny => 'Нет подключения ни к одному серверу';
 
   @override

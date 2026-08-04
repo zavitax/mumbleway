@@ -211,6 +211,30 @@ abstract class L {
   /// **'Already talking on {count} servers. Leave one first.'**
   String allSlotsInUse(int count);
 
+  /// No description provided for @micIdleWithTalkButton.
+  ///
+  /// In en, this message translates to:
+  /// **'The talk button and microphone meter appear here once you connect to a server.'**
+  String get micIdleWithTalkButton;
+
+  /// No description provided for @micIdleMeterOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'The microphone meter appears here once you connect to a server.'**
+  String get micIdleMeterOnly;
+
+  /// No description provided for @micIdleWhy.
+  ///
+  /// In en, this message translates to:
+  /// **'The microphone stays closed until then, so nothing is recorded and your headset keeps its sound quality for other apps.'**
+  String get micIdleWhy;
+
+  /// No description provided for @micUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The microphone could not be opened. Another app may be using it.'**
+  String get micUnavailable;
+
   /// No description provided for @notConnectedAny.
   ///
   /// In en, this message translates to:

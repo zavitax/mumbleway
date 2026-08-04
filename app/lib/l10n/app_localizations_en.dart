@@ -71,6 +71,22 @@ class LEn extends L {
   }
 
   @override
+  String get micIdleWithTalkButton =>
+      'The talk button and microphone meter appear here once you connect to a server.';
+
+  @override
+  String get micIdleMeterOnly =>
+      'The microphone meter appears here once you connect to a server.';
+
+  @override
+  String get micIdleWhy =>
+      'The microphone stays closed until then, so nothing is recorded and your headset keeps its sound quality for other apps.';
+
+  @override
+  String get micUnavailable =>
+      'The microphone could not be opened. Another app may be using it.';
+
+  @override
   String get notConnectedAny => 'Not connected to any server';
 
   @override

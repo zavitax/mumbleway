@@ -28,28 +28,38 @@ class PttButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppStateScope.of(context);
     final ptt = state.micMode == MicMode.pushToTalk;
-    final live = ptt ? state.transmitting : state.speaking;
     final enabled = !state.muted;
-
-    final color = !enabled
-        ? StatusColors.idle
-        : live
-        ? StatusColors.talking
-        : Theme.of(context).colorScheme.surfaceContainerHighest;
 
     return Semantics(
       button: ptt,
       label: ptt
           ? L.of(context).micPushToTalk
           : L.of(context).transmissionIndicator,
-      child: Stack(
-        children: [
-          _body(context, state, ptt, live, enabled, color),
-          // Sits over the button rather than inside it so the label keeps the
-          // full width it needs to scale into.
-          if (live)
-            const Positioned(top: 12, right: 12, child: OnAirIndicator()),
-        ],
+      // In the hands-free modes the light follows voice activation, which is
+      // reported with the levels rather than with the rest of the state. The
+      // builder is the whole button because the colour reaches all of it, and
+      // it is one button — the saving is in everything *outside* here that no
+      // longer rebuilds ten times a second alongside it.
+      child: ListenableBuilder(
+        listenable: state.meters,
+        builder: (context, _) {
+          final live = ptt ? state.transmitting : state.speaking;
+          final color = !enabled
+              ? StatusColors.idle
+              : live
+              ? StatusColors.talking
+              : Theme.of(context).colorScheme.surfaceContainerHighest;
+
+          return Stack(
+            children: [
+              _body(context, state, ptt, live, enabled, color),
+              // Sits over the button rather than inside it so the label keeps
+              // the full width it needs to scale into.
+              if (live)
+                const Positioned(top: 12, right: 12, child: OnAirIndicator()),
+            ],
+          );
+        },
       ),
     );
   }
@@ -236,6 +246,15 @@ class LevelMeter extends StatelessWidget {
     // where it tells the rider how far above the engine they have to speak.
     final showThreshold = state.micMode == MicMode.voiceActivity;
 
+    // Every value below moves with the microphone, so the whole row is the
+    // part that changes and there is nothing to be gained by wrapping less.
+    return ListenableBuilder(
+      listenable: state.meters,
+      builder: (context, _) => _row(context, state, showThreshold),
+    );
+  }
+
+  Widget _row(BuildContext context, AppState state, bool showThreshold) {
     return Row(
       children: [
         Icon(

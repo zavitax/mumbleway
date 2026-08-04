@@ -26,6 +26,11 @@
   "allSlotsInUse": "Already talking on {count} servers. Leave one first.",
   "@allSlotsInUse": { "placeholders": { "count": { "type": "int" } } },
 
+  "micIdleWithTalkButton": "The talk button and microphone meter appear here once you connect to a server.",
+  "micIdleMeterOnly": "The microphone meter appears here once you connect to a server.",
+  "micIdleWhy": "The microphone stays closed until then, so nothing is recorded and your headset keeps its sound quality for other apps.",
+  "micUnavailable": "The microphone could not be opened. Another app may be using it.",
+
   "notConnectedAny": "Not connected to any server",
   "talkingOnOne": "Talking on 1 server",
   "talkingOnMany": "Talking on {count} servers simultaneously",

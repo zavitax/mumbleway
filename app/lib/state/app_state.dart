@@ -15,6 +15,7 @@ import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/engine_log.dart';
 import '../services/overlay.dart';
+import '../services/power.dart';
 import '../services/proxy.dart';
 import '../src/rust/api/mumbleway.dart';
 import 'server_sync.dart';
@@ -301,6 +302,22 @@ class ServerRuntime {
       users.where((u) => isSpeaking(u.session)).map((u) => u.name).toList();
 }
 
+/// Notifier for the values that move at the audio frame rate.
+///
+/// The level meters change ten times a second for as long as the microphone is
+/// open, and they are the only part of the interface that does. Driving them
+/// from [AppState]'s own notifier meant the roster, the server cards, the
+/// buttons and the title bar were all rebuilt twenty times a second to redraw
+/// two bars — everything else in the frame being identical to the one before.
+///
+/// The precedent is [EngineLog], which was split out for the same reason: a
+/// burst of log lines should not rebuild an app that is not showing the log.
+class _MeterNotifier extends ChangeNotifier {
+  /// [ChangeNotifier.notifyListeners] is protected, and this class exists to
+  /// widen exactly that one call to the state object next door.
+  void moved() => notifyListeners();
+}
+
 /// Central application state.
 class AppState extends ChangeNotifier {
   static const _prefsKey = 'mumbleway.servers';
@@ -489,6 +506,20 @@ class AppState extends ChangeNotifier {
   ServerRuntime runtimeFor(String id) =>
       runtimes.putIfAbsent(id, () => ServerRuntime());
 
+  final _MeterNotifier _meters = _MeterNotifier();
+
+  /// Fires when a level has moved and nothing else has.
+  ///
+  /// Anything that draws a meter, or is styled by whether somebody is
+  /// currently speaking, should listen to this instead of to the state object
+  /// as a whole — and should wrap only the part that actually changes, since
+  /// this fires ten times a second whenever the microphone is open.
+  ///
+  /// Everything reachable from here still lives on [AppState]; this says when
+  /// to look, not what to look at. A widget that reads a level without
+  /// listening to this is not wrong, only slow to notice.
+  Listenable get meters => _meters;
+
   /// Every user currently talking across all connected servers.
   List<String> get allSpeakingNames => [
     for (final rt in runtimes.values)
@@ -500,10 +531,11 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       _loadSettings(prefs);
 
-      // Before the engine, not after. iOS hands out a playback-only session
-      // until asked otherwise, and an engine started against one finds zero
-      // input channels and fails inside CoreAudio with wording that describes
-      // the symptom and not the cause.
+      // Permission only. The session is taken live per call, not here — see
+      // [_acquireAudio] — so that the recording indicator and the hands-free
+      // Bluetooth profile belong to a conversation rather than to having the
+      // app installed. A refusal is still worth catching now, because it is
+      // the one answer that makes everything downstream pointless.
       final session = await AudioSessionBridge.instance.prepare();
       if (!session.granted) {
         _startupError =
@@ -543,7 +575,7 @@ class AppState extends ChangeNotifier {
       gainRange = gainLimits();
 
       _events = appEvents().listen(
-        _onEvent,
+        onEvent,
         onError: (Object e) {
           _startupError = e.toString();
           notifyListeners();
@@ -574,7 +606,17 @@ class AppState extends ChangeNotifier {
       // posts on wake is not something to rely on — it does not arrive when the
       // store already held the value, and it has a reputation for not arriving
       // at all. Asking directly costs one read of a few hundred bytes.
-      _lifecycle = AppLifecycleListener(onResume: () => unawaited(syncNow()));
+      _lifecycle = AppLifecycleListener(
+        onResume: () {
+          unawaited(syncNow());
+          // Belt and braces with [onShow]. Visibility is the signal that
+          // matters here, but a platform that reports only resume must not be
+          // left with a list that never refreshes again.
+          _resumeProbing();
+        },
+        onShow: _resumeProbing,
+        onHide: _pauseProbing,
+      );
 
       // Not awaited: the window is worth having but nothing else waits on it,
       // and on Android it can fail for want of a permission the user has to
@@ -584,8 +626,7 @@ class AppState extends ChangeNotifier {
         unawaited(enableOverlay());
       }
 
-      _pingTimer = Timer.periodic(_pingInterval, (_) => refreshPings());
-      unawaited(refreshPings());
+      _resumeProbing();
 
       _ready = true;
     } catch (e) {
@@ -1416,6 +1457,141 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  // --- microphone and speaker -------------------------------------------
+
+  /// How long the devices stay open after the last call ends.
+  ///
+  /// Long enough that leaving one server and joining another, or a reconnect
+  /// landing, does not close and reopen them. On Bluetooth that matters more
+  /// than the battery it costs: each reopen renegotiates an SCO link, which
+  /// takes a second or two and is audible in the helmet.
+  static const _audioIdleGrace = Duration(seconds: 10);
+
+  Timer? _audioRelease;
+  bool _audioActive = false;
+
+  /// Whether the microphone and speaker are open.
+  ///
+  /// The interface asks so it can say what is going on rather than drawing a
+  /// dead level meter, which reads as a microphone that has broken.
+  bool get audioActive => _audioActive;
+
+  /// Opens the devices for a call. Returns why it could not, or null.
+  ///
+  /// Awaited from [connect] rather than deferred to the first press of the
+  /// talk button. Opening a Bluetooth headset means negotiating an SCO link:
+  /// one to two seconds, audible, and impossible to hide — so it goes where
+  /// there is already a wait, behind a connect that takes about as long. A
+  /// rider who presses talk and loses the first half of their sentence would
+  /// have no idea why.
+  Future<String?> _acquireAudio() async {
+    _audioRelease?.cancel();
+    _audioRelease = null;
+    if (_audioActive) return null;
+
+    // The platform session first: on iOS there is nothing for the engine to
+    // open until the category is live, and the failure it produces otherwise
+    // is CoreAudio's, which describes a channel count rather than the phone
+    // call that is holding the microphone.
+    final session = await AudioSessionBridge.instance.activate();
+    if (!session.usable) {
+      // The platform's own wording when there is one — it names the app that
+      // has the microphone, which is the only version anybody can act on —
+      // and ours, translated, when there is not.
+      return session.error ?? _strings.micUnavailable;
+    }
+
+    try {
+      await setAudioActive(on_: true);
+    } catch (e) {
+      // Never leave the session live with no engine behind it: that is the
+      // recording indicator on, for nothing.
+      await AudioSessionBridge.instance.deactivate();
+      return e.toString();
+    }
+
+    _audioActive = true;
+    notifyListeners();
+    return null;
+  }
+
+  /// Closes the devices once nothing has wanted them for a while.
+  void _releaseAudioSoon() {
+    if (!_audioActive || _audioRelease != null) return;
+    _audioRelease = Timer(_audioIdleGrace, () async {
+      _audioRelease = null;
+      // Re-checked rather than assumed: ten seconds is long enough for a
+      // reconnect to land, and closing the devices under a live call would be
+      // a conversation going silent for no reason anybody could see.
+      if (_audioNeeded || !_audioActive) return;
+      try {
+        await setAudioActive(on_: false);
+      } catch (_) {
+        // Already shut, or the engine has gone. Either way there is nothing
+        // holding the devices that matters.
+      }
+      await AudioSessionBridge.instance.deactivate();
+      _audioActive = false;
+      notifyListeners();
+    });
+  }
+
+  /// Screens that want the devices open for as long as they are on show.
+  ///
+  /// A count rather than a flag: the audio settings can be reached from more
+  /// than one route, and two screens releasing a single flag would shut the
+  /// microphone under whichever was still open.
+  int _audioHolds = 0;
+
+  /// Opens the devices and keeps them open until [releaseAudio].
+  ///
+  /// For the audio settings, where every control is about a signal the user
+  /// needs to hear or see the effect of. Waiting for them to switch on the
+  /// microphone test first would mean the meter above the gain slider — the
+  /// one thing that says whether a change helped — is dead at the moment it
+  /// matters most.
+  Future<String?> holdAudio() async {
+    _audioHolds++;
+    final error = await _acquireAudio();
+    if (error != null) {
+      // Given back through the same door it was taken from, rather than by
+      // decrementing here. A screen closed while the microphone was still
+      // answering has already released this hold, and a second bare `--`
+      // would take the count below zero — where the next screen to ask for
+      // audio would raise it only to nought and be quietly ignored.
+      releaseAudio();
+    }
+    return error;
+  }
+
+  void releaseAudio() {
+    if (_audioHolds > 0) _audioHolds--;
+    _syncAudioToUse();
+  }
+
+  /// Everything that needs the devices open, which is not only calls.
+  ///
+  /// The microphone test in settings is a rider holding a headset and
+  /// listening to themselves through it. That needs the devices exactly as
+  /// much as a conversation does, and leaving it out would have turned a
+  /// switch that works into one that silently does nothing.
+  bool get _audioNeeded => _callInProgress || monitoring || _audioHolds > 0;
+
+  /// Keeps the devices following whatever is using them.
+  ///
+  /// Only ever releases. Acquiring is done by the things that need them —
+  /// [connect], [toggleMonitoring], [testOutput] — because each has somewhere
+  /// to report a refusal to and something to abandon if the microphone cannot
+  /// be had. This runs from an event handler, where both would be lost.
+  void _syncAudioToUse() {
+    if (_audioNeeded) {
+      _audioRelease?.cancel();
+      _audioRelease = null;
+      return;
+    }
+    _releaseAudioSoon();
+  }
+
   Future<void> connect(String id) async {
     // Details that arrived from another device while this session was in use
     // are applied now, on the way in, rather than having interrupted it then.
@@ -1446,6 +1622,19 @@ class AppState extends ChangeNotifier {
       }
     }
 
+    // Before the handshake, and awaited. There is no point joining a channel
+    // this device cannot speak or listen on, and the reason a microphone
+    // could not be opened — another app holding it, a headset that has gone
+    // — is something the rider can act on only if they are told.
+    final audioError = await _acquireAudio();
+    if (audioError != null) {
+      runtimeFor(id)
+        ..status = ConnStatus.failed
+        ..detail = audioError;
+      notifyListeners();
+      return;
+    }
+
     try {
       await connectServer(serverId: id);
     } catch (e) {
@@ -1453,6 +1642,9 @@ class AppState extends ChangeNotifier {
         ..status = ConnStatus.failed
         ..detail = e.toString();
       notifyListeners();
+      // Nothing came of it, so the devices go back unless something else is
+      // using them.
+      _syncAudioToUse();
     }
   }
 
@@ -1518,7 +1710,45 @@ class AppState extends ChangeNotifier {
 
   // --- ping -------------------------------------------------------------
 
+  /// Starts re-probing saved servers, and probes once straight away.
+  ///
+  /// Idempotent: [AppLifecycleListener] reports both showing and resuming on
+  /// the way back, and doing this twice would fire two rounds of probes at the
+  /// exact moment the interface is being rebuilt.
+  void _resumeProbing() {
+    if (_pingTimer != null) return;
+    _pingTimer = Timer.periodic(_pingInterval, (_) => refreshPings());
+    // Immediately, not in fifteen seconds. Coming back to the app is when a
+    // stale reading is most visible, and the timer's first tick is a whole
+    // interval away.
+    unawaited(refreshPings());
+  }
+
+  /// Stops probing while the app is not on screen.
+  ///
+  /// Each round opens a UDP socket per saved server and waits up to three
+  /// seconds for a reply. On a phone the packet is not the cost — waking the
+  /// radio is, every fifteen seconds, for a list nobody is looking at. On a
+  /// bike that is the normal state: the app is behind a map for the whole ride.
+  ///
+  /// This cannot affect a live connection. The probe is an anonymous status
+  /// query on its own socket ([`ping_server`]); a session's keepalive and the
+  /// silence timeout that detects a dropped link both run inside the engine,
+  /// on their own timers, and never consult this. What stops here is the
+  /// reachability line on the server cards, which is a thing you read, and
+  /// there is nobody reading it.
+  void _pauseProbing() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
+  }
+
   /// Re-probes every saved server. Offline servers simply report unreachable.
+  ///
+  /// Connected servers are probed too. The reachability line is shown on every
+  /// card whether or not it is joined, and the occupancy in it — how many
+  /// people are on the server, as against in your channel — has no other
+  /// source. Skipping them would save one packet per server and freeze a line
+  /// the rider can see.
   Future<void> refreshPings() async {
     final snapshot = List<SavedServer>.from(servers);
     await Future.wait(
@@ -1652,10 +1882,24 @@ class AppState extends ChangeNotifier {
     await _persist();
   }
 
-  void toggleMonitoring() {
+  /// Loopback: hear your own microphone. Returns why it could not start.
+  ///
+  /// Opens the devices first, and holds them for as long as it is on. This is
+  /// the one place in the app where somebody wants the microphone without
+  /// wanting a conversation, and the whole point of the test is hearing
+  /// something — a switch that turned itself on over a shut microphone would
+  /// be a worse answer than the refusal.
+  Future<String?> toggleMonitoring() async {
+    if (!monitoring) {
+      final error = await _acquireAudio();
+      if (error != null) return error;
+    }
     monitoring = !monitoring;
     setMonitoring(on_: monitoring);
     notifyListeners();
+    // Hands the devices back when it is switched off, unless a call has them.
+    _syncAudioToUse();
+    return null;
   }
 
   /// Acoustic echo cancellation. On by default, because a speaker in the same
@@ -1740,7 +1984,20 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_prefsFeedbackGuard, mode.index);
   }
 
-  void testOutput() => playTestTone(millis: 700);
+  /// Plays a short tone through the speaker. Returns why it could not.
+  ///
+  /// Needs the devices as much as a call does — this is somebody checking
+  /// which end of a headset is which — so it opens them and lets the idle
+  /// timer hand them back. The grace period outlasts the tone by some way,
+  /// which also means pressing the button twice does not close and reopen a
+  /// Bluetooth link in between.
+  Future<String?> testOutput() async {
+    final error = await _acquireAudio();
+    if (error != null) return error;
+    playTestTone(millis: 700);
+    _syncAudioToUse();
+    return null;
+  }
 
   void setTransmit(bool on) {
     if (_transmitting == on) return;
@@ -1874,6 +2131,30 @@ class AppState extends ChangeNotifier {
 
   bool get _anyServerLive => runtimes.values.any((r) => r.isLive);
 
+  /// Whether the engine is holding a conversation, or chasing one.
+  ///
+  /// Wider than [_anyServerLive] on purpose. A session being dialled or fought
+  /// back through a reconnect needs the processor exactly as much as a
+  /// connected one — more, since it is doing the work — and it is precisely
+  /// during a reconnect, with the phone in a pocket and the screen off, that
+  /// letting the device suspend turns a recoverable drop into a lost call.
+  bool get _callInProgress =>
+      runtimes.values.any((r) => r.isLive || r.isBusy);
+
+  bool? _lastCallActive;
+
+  /// Tells the platform whether there is a call worth staying awake for.
+  ///
+  /// Only on transitions. This is reached from [_pushOverlay], which runs on
+  /// every roster and level update, and a method channel hop ten times a
+  /// second to repeat an unchanged answer would be its own small drain.
+  void _syncKeepAliveToCalls() {
+    final active = _callInProgress;
+    if (active == _lastCallActive) return;
+    _lastCallActive = active;
+    unawaited(PowerBridge.instance.setCallActive(active));
+  }
+
   /// Guards the show/hide calls below. [_pushOverlay] runs on every roster and
   /// level update — ten times a second during a call — and each transition
   /// must be requested once rather than on every frame until it completes.
@@ -1957,9 +2238,13 @@ class AppState extends ChangeNotifier {
   /// Pushes the call state onto the floating window, skipping the call when
   /// nothing visible has changed вЂ” this runs on every roster update.
   void _pushOverlay() {
-    // Before the early return: the window has to be taken down when the last
-    // server drops, and at that moment overlayEnabled is still true.
+    // Both before the early return: the window has to be taken down when the
+    // last server drops, and at that moment overlayEnabled is still true —
+    // and the wake lock has to be released whether or not there was ever a
+    // window, which for a rider who turned the island off there was not.
     _syncOverlayToCalls();
+    _syncKeepAliveToCalls();
+    _syncAudioToUse();
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
     final speakers = [
@@ -2315,7 +2600,13 @@ class AppState extends ChangeNotifier {
 
   // --- event handling ---------------------------------------------------
 
-  void _onEvent(AppEvent event) {
+  /// Applies one event from the engine.
+  ///
+  /// Exposed for tests because which events notify whom is a decision that has
+  /// to keep holding: routing a level report through the main notifier costs
+  /// nothing visible and rebuilds the whole interface twenty times a second.
+  @visibleForTesting
+  void onEvent(AppEvent event) {
     switch (event) {
       case AppEvent_Status(:final field0):
         final rt = runtimeFor(field0.serverId);
@@ -2361,7 +2652,12 @@ class AppState extends ChangeNotifier {
         _speaking = speaking;
         _thresholdDb = thresholdDb;
         _noiseFloorDb = noiseFloorDb;
+        // Returns rather than falling through to [notifyListeners]: see
+        // [meters]. Nothing outside a meter has changed, and this arrives ten
+        // times a second for as long as the microphone is open.
+        _meters.moved();
         _pushOverlay();
+        return;
       case AppEvent_SpeakerLevels(:final levels):
         final reported = <String, Set<int>>{};
         for (final entry in levels) {
@@ -2376,7 +2672,9 @@ class AppState extends ChangeNotifier {
         for (final entry in runtimes.entries) {
           entry.value.decayUnreported(reported[entry.key] ?? const <int>{});
         }
+        _meters.moved();
         _pushOverlay();
+        return;
       case AppEvent_Moderated(:final muted, :final deafened, :final by):
         // The cue already played in the core; this is the visible half.
         final what = deafened != null
@@ -2418,8 +2716,10 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _syncTimer?.cancel();
     _pingTimer?.cancel();
+    _audioRelease?.cancel();
     _lifecycle?.dispose();
     _events?.cancel();
+    _meters.dispose();
     super.dispose();
   }
 }

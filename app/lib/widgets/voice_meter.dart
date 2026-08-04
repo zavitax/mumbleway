@@ -77,6 +77,12 @@ class VoiceMeter extends StatelessWidget {
   /// level in about a third of a second: fast enough to read as "they
   /// stopped", slow enough not to flicker between words. Rises are immediate,
   /// since anything slower clips the start of every word.
+  ///
+  /// The engine stops reporting once every speaker has gone quiet, and knows
+  /// how long to keep sending empty reports for from this number and
+  /// [silentDb]. Raising either — or lowering this — without revisiting
+  /// `SILENT_LEVEL_TAIL` in `api/mumbleway.rs` leaves meters frozen part-way
+  /// down instead of falling to nothing.
   static const fallPerReportDb = 9.0;
 
   /// Level reported when nothing is arriving at all.

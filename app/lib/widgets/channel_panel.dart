@@ -79,7 +79,15 @@ class ChannelTree extends StatelessWidget {
       InkWell(
         onTap: isCurrent
             ? null
-            : () => state.joinChannelOn(serverId, channel.id),
+            : () async {
+                // Captured before the await: the panel can be rebuilt or
+                // dismissed while the server is deciding.
+                final messenger = ScaffoldMessenger.of(context);
+                final error = await state.joinChannelOn(serverId, channel.id);
+                if (error != null) {
+                  messenger.showSnackBar(SnackBar(content: Text(error)));
+                }
+              },
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: EdgeInsets.fromLTRB(8.0 + depth * 16, 8, 4, 8),

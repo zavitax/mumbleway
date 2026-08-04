@@ -1454,10 +1454,20 @@ class AppState extends ChangeNotifier {
 
   // --- channels and users ------------------------------------------------
 
-  Future<void> joinChannelOn(String id, int channelId) async {
+  /// Moves to another channel. Returns why not, when it fails.
+  ///
+  /// The failure used to be swallowed whole, which made a refused join
+  /// indistinguishable from a dead button: the tap did nothing, said nothing,
+  /// and left no trace anywhere. A server can decline for reasons the app
+  /// cannot see — a full channel, one that needs a password, or a permission
+  /// the account does not have — so the reason has to come back out.
+  Future<String?> joinChannelOn(String id, int channelId) async {
     try {
       await joinChannel(serverId: id, channelId: channelId);
-    } catch (_) {}
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
   }
 
   /// Sets (or clears) the channel joined automatically on connect.

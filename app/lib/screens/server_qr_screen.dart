@@ -142,23 +142,34 @@ class _Body extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 18),
-        // Said plainly, and next to the thing it is about. A code on a screen
-        // in a cafe is readable from further away than most people expect, and
-        // this one is a working password.
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.warning_amber_rounded, size: 18, color: scheme.tertiary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                l.qrCarriesPassword,
-                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+        // Only when there is actually a password in it.
+        //
+        // Public servers have none, and a warning about a secret that is not
+        // there is worse than no warning: it appears on most codes, gets read
+        // past, and is then not believed on the one code where it is true.
+        if ((server.password ?? '').isNotEmpty) ...[
+          // Said plainly, and next to the thing it is about. A code on a screen
+          // in a cafe is readable from further away than most people expect,
+          // and this one is a working password.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                size: 18,
+                color: scheme.tertiary,
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  l.qrCarriesPassword,
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+        ],
         FilledButton.icon(
           onPressed: () => _shareImage(context),
           icon: const Icon(Icons.ios_share),

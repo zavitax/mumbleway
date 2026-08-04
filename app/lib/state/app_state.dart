@@ -2044,7 +2044,7 @@ class AppState extends ChangeNotifier {
           .timeout(const Duration(seconds: 20));
 
       if (res.statusCode == 200 && res.body.contains('<server')) {
-        final parsed = _parsePublicList(res.body);
+        final parsed = parsePublicList(res.body);
         if (parsed.isNotEmpty) return (parsed, false);
       }
     } catch (_) {
@@ -2087,7 +2087,8 @@ class AppState extends ChangeNotifier {
 
   /// Parses the directory's XML without pulling in an XML package: the schema
   /// is a flat list of self-closing `<server .../>` elements.
-  static List<PublicServer> _parsePublicList(String xml) {
+  @visibleForTesting
+  static List<PublicServer> parsePublicList(String xml) {
     final out = <PublicServer>[];
     final re = RegExp(r'<server\b([^>]*)/?>', caseSensitive: false);
     final attr = RegExp('([a-zA-Z_]+)\\s*=\\s*"([^"]*)"');
@@ -2095,7 +2096,9 @@ class AppState extends ChangeNotifier {
     for (final m in re.allMatches(xml)) {
       final attrs = <String, String>{};
       for (final a in attr.allMatches(m.group(1) ?? '')) {
-        attrs[a.group(1)!.toLowerCase()] = a.group(2)!;
+        // Decoded here rather than at the point of display, so every attribute
+        // is unescaped exactly once no matter which of them gets used later.
+        attrs[a.group(1)!.toLowerCase()] = _unescapeXml(a.group(2)!);
       }
       final host = attrs['ip'] ?? '';
       final port = int.tryParse(attrs['port'] ?? '') ?? 64738;
@@ -2110,6 +2113,50 @@ class AppState extends ChangeNotifier {
       );
     }
     return out;
+  }
+
+  static final RegExp _xmlEntity = RegExp(
+    r'&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|(amp|lt|gt|quot|apos));',
+  );
+
+  static const Map<String, String> _namedEntities = {
+    'amp': '&',
+    'lt': '<',
+    'gt': '>',
+    'quot': '"',
+    'apos': "'",
+  };
+
+  /// Decodes the character references an XML attribute value can hold.
+  ///
+  /// The directory is XML, so a server called `Dordogne & Suisse` arrives as
+  /// `Dordogne &amp; Suisse` — correctly encoded, and displayed verbatim by
+  /// anything that forgets to decode it.
+  ///
+  /// One pass over the string, not a chain of `replaceAll` calls. Decoding
+  /// `&amp;` first and the others afterwards would turn the literal text
+  /// `&amp;lt;` into `<`, which is a different name than the one the server
+  /// published. A single pass cannot rewrite its own output, so the ordering
+  /// problem does not arise.
+  static String _unescapeXml(String value) {
+    if (!value.contains('&')) return value;
+    return value.replaceAllMapped(_xmlEntity, (m) {
+      final named = m[3];
+      if (named != null) return _namedEntities[named]!;
+
+      final digits = m[1] ?? m[2]!;
+      final code = int.tryParse(digits, radix: m[1] != null ? 10 : 16);
+      // Unrepresentable, or half a surrogate pair: leave the reference as
+      // written. One malformed name should cost that name its ampersands, not
+      // throw and take the whole directory listing down with it.
+      if (code == null ||
+          code < 0x20 ||
+          code > 0x10FFFF ||
+          (code >= 0xD800 && code <= 0xDFFF)) {
+        return m[0]!;
+      }
+      return String.fromCharCode(code);
+    });
   }
 
   static const List<PublicServer> _knownPublicServers = [

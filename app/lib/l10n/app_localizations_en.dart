@@ -650,10 +650,6 @@ class LEn extends L {
   String get syncSignedOut => 'Sign in to iCloud on this device to use this.';
 
   @override
-  String get syncBodyAndroid =>
-      'Your servers and settings ride along with Android\'s backup, so they return when you set up a new phone. It does not keep two phones in step while you are using them.';
-
-  @override
   String get syncNow => 'Sync now';
 
   @override

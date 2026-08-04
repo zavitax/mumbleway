@@ -144,7 +144,7 @@ class SettingsScreen extends StatelessWidget {
           // permanently greyed row explaining an absence is worse than no row:
           // it reads as a feature that is broken rather than one that was never
           // offered, and it is the sort of thing a user taps at repeatedly.
-          if (state.cloudKind != CloudKind.none) ...[
+          if (state.cloudKind == CloudKind.icloud) ...[
             const Divider(height: 32),
             _SectionHeader(l.syncTitle),
             const _SyncTile(),
@@ -359,22 +359,15 @@ class _SyncTile extends StatelessWidget {
     final state = AppStateScope.of(context);
 
     switch (state.cloudKind) {
+      // Both unreachable: the caller shows this section only where something
+      // genuinely keeps two devices in step. Android's backup restores to a new
+      // phone and never syncs between two that are in use; Windows has nothing
+      // at all. Describing either under a heading called "Sync" promises
+      // something that will not happen. Kept because the switch must be
+      // exhaustive, and drawing nothing is the right answer by any other route.
       case CloudKind.none:
-        // Unreachable: the caller leaves the whole section out rather than
-        // showing a row about something this platform cannot do. Kept because
-        // the switch must be exhaustive, and drawing nothing is the right
-        // answer if it is ever reached by another route.
-        return const SizedBox.shrink();
-
       case CloudKind.androidBackup:
-        // No switch: this is Android's setting, not ours, and offering a
-        // control that cannot actually turn it off would be a lie.
-        return ListTile(
-          leading: const Icon(Icons.settings_backup_restore),
-          title: Text(l.syncServers),
-          subtitle: Text(l.syncBodyAndroid),
-          isThreeLine: true,
-        );
+        return const SizedBox.shrink();
 
       case CloudKind.icloud:
         final error = state.cloudError;

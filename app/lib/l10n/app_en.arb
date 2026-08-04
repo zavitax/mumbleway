@@ -232,7 +232,6 @@
   "syncServers": "Sync servers and settings across devices",
   "syncBodyICloud": "Your server list and your settings travel through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.",
   "syncSignedOut": "Sign in to iCloud on this device to use this.",
-  "syncBodyAndroid": "Your servers and settings ride along with Android's backup, so they return when you set up a new phone. It does not keep two phones in step while you are using them.",
   "syncNow": "Sync now",
   "syncFailed": "Last sync failed: {error}",
   "@syncFailed": { "placeholders": { "error": { "type": "String" } } },

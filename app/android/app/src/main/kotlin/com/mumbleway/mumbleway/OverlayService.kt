@@ -780,7 +780,13 @@ class OverlayService : Service() {
                 )
 
                 val barHeight = dp(6).toFloat()
-                val centre = y - (text.ascent() + text.descent()) / 2f - dp(4)
+                // `y` is the baseline, not the top: Canvas.drawText measures
+                // from there. The visual middle of the line sits at the
+                // baseline plus half of (ascent + descent), and ascent is
+                // negative, so that lands above it. Getting the sign wrong put
+                // the bar below its name, which a fixed nudge then hid at one
+                // text size and one density and nowhere else.
+                val centre = y + (text.ascent() + text.descent()) / 2f
                 val trackTop = centre - barHeight / 2f
                 val r = barHeight / 2f
                 rect.set(right - meterWidth, trackTop, right, trackTop + barHeight)

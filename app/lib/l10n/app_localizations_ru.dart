@@ -701,6 +701,52 @@ class LRu extends L {
       'Приводит всех к сопоставимой громкости. Подстраивается под то, что слышит, поэтому если между фразами нарастает шипение, выключите и проверьте.';
 
   @override
+  String get qrCodeTitle => 'QR-код';
+
+  @override
+  String get shareQrCode => 'Поделиться QR-кодом';
+
+  @override
+  String get qrCarriesPassword =>
+      'В коде содержится пароль. Любой, кто его увидит — через плечо или на фотографии, — сможет подключиться от вашего имени.';
+
+  @override
+  String get shareQrImage => 'Отправить код';
+
+  @override
+  String get copyMumbleUrl => 'Скопировать ссылку mumble://';
+
+  @override
+  String get linkCopied => 'Ссылка скопирована';
+
+  @override
+  String get qrCouldNotRender => 'Не удалось построить код.';
+
+  @override
+  String joinMeOn(String name) {
+    return 'Подключайтесь: $name';
+  }
+
+  @override
+  String get scanQrCode => 'Сканировать QR-код';
+
+  @override
+  String get importQrImage => 'Загрузить изображение с QR-кодом';
+
+  @override
+  String get qrNoCodeFound => 'На изображении не найден QR-код.';
+
+  @override
+  String get qrNotAnInvite => 'Этот код не является приглашением MumbleWay.';
+
+  @override
+  String get qrCameraDenied =>
+      'Для сканирования кода нужен доступ к камере. Разрешите его в настройках системы и повторите попытку.';
+
+  @override
+  String get qrPointAtCode => 'Наведите камеру на код';
+
+  @override
   String get jitterBuffer => 'Буфер входящего звука';
 
   @override

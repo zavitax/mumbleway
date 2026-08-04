@@ -695,6 +695,52 @@ class LEn extends L {
       'Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.';
 
   @override
+  String get qrCodeTitle => 'QR code';
+
+  @override
+  String get shareQrCode => 'Share QR code';
+
+  @override
+  String get qrCarriesPassword =>
+      'This code contains the password. Anyone who can see it — including over your shoulder, or in a photograph — can connect as you.';
+
+  @override
+  String get shareQrImage => 'Share the code';
+
+  @override
+  String get copyMumbleUrl => 'Copy mumble:// URL';
+
+  @override
+  String get linkCopied => 'Link copied';
+
+  @override
+  String get qrCouldNotRender => 'The code could not be drawn.';
+
+  @override
+  String joinMeOn(String name) {
+    return 'Join me on $name';
+  }
+
+  @override
+  String get scanQrCode => 'Scan a QR code';
+
+  @override
+  String get importQrImage => 'Import a QR code image';
+
+  @override
+  String get qrNoCodeFound => 'No QR code was found in that image.';
+
+  @override
+  String get qrNotAnInvite => 'That code is not a MumbleWay invitation.';
+
+  @override
+  String get qrCameraDenied =>
+      'MumbleWay needs the camera to scan a code. Grant it in system settings and try again.';
+
+  @override
+  String get qrPointAtCode => 'Point the camera at the code';
+
+  @override
   String get jitterBuffer => 'Incoming audio buffer';
 
   @override

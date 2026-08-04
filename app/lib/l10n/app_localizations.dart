@@ -1357,6 +1357,90 @@ abstract class L {
   /// **'Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.'**
   String get evenOutLoudnessBody;
 
+  /// No description provided for @qrCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'QR code'**
+  String get qrCodeTitle;
+
+  /// No description provided for @shareQrCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Share QR code'**
+  String get shareQrCode;
+
+  /// No description provided for @qrCarriesPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'This code contains the password. Anyone who can see it — including over your shoulder, or in a photograph — can connect as you.'**
+  String get qrCarriesPassword;
+
+  /// No description provided for @shareQrImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Share the code'**
+  String get shareQrImage;
+
+  /// No description provided for @copyMumbleUrl.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy mumble:// URL'**
+  String get copyMumbleUrl;
+
+  /// No description provided for @linkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Link copied'**
+  String get linkCopied;
+
+  /// No description provided for @qrCouldNotRender.
+  ///
+  /// In en, this message translates to:
+  /// **'The code could not be drawn.'**
+  String get qrCouldNotRender;
+
+  /// Subject line when sharing an invite.
+  ///
+  /// In en, this message translates to:
+  /// **'Join me on {name}'**
+  String joinMeOn(String name);
+
+  /// No description provided for @scanQrCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Scan a QR code'**
+  String get scanQrCode;
+
+  /// No description provided for @importQrImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Import a QR code image'**
+  String get importQrImage;
+
+  /// No description provided for @qrNoCodeFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No QR code was found in that image.'**
+  String get qrNoCodeFound;
+
+  /// No description provided for @qrNotAnInvite.
+  ///
+  /// In en, this message translates to:
+  /// **'That code is not a MumbleWay invitation.'**
+  String get qrNotAnInvite;
+
+  /// No description provided for @qrCameraDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'MumbleWay needs the camera to scan a code. Grant it in system settings and try again.'**
+  String get qrCameraDenied;
+
+  /// No description provided for @qrPointAtCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Point the camera at the code'**
+  String get qrPointAtCode;
+
   /// No description provided for @jitterBuffer.
   ///
   /// In en, this message translates to:

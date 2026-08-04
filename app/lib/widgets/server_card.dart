@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../screens/add_server_screen.dart';
+import '../screens/server_qr_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'channel_panel.dart';
@@ -211,6 +212,22 @@ class ServerCard extends StatelessWidget {
                                         AddServerScreen(existing: server),
                                   ),
                                 );
+                              case 'qr':
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ServerQrScreen(
+                                      server: server,
+                                      // Where this device is now, falling back
+                                      // to the saved default — the same choice
+                                      // the link and file shares make, so all
+                                      // three land a guest in the same place.
+                                      channel:
+                                          rt.currentChannel?.name ??
+                                          server.defaultChannel,
+                                    ),
+                                  ),
+                                );
                               case 'link':
                                 _share(context, state, rt, asFile: false);
                               case 'file':
@@ -240,6 +257,15 @@ class ServerCard extends StatelessWidget {
                                 subtitle: state.canModifyServer(server.id)
                                     ? null
                                     : Text(l.disconnectFirst),
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'qr',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.qr_code_2),
+                                title: Text(l.shareQrCode),
                               ),
                             ),
                             PopupMenuItem(

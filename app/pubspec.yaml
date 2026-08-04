@@ -47,12 +47,30 @@ dependencies:
   http: ^1.6.0
   share_plus: ^13.3.0
   file_selector: ^1.1.0
+
+  # Renders a server's details as a QR code, and reads one back.
+  #
+  # Three packages rather than one because no single package covers every
+  # platform this app runs on. `qr_flutter` draws, everywhere. `mobile_scanner`
+  # reads from a camera, which only phones and tablets have — held at version 5
+  # deliberately: 6 and later require iOS 15.5, and adding a share feature is
+  # not a reason to drop every device below it. `zxing2` reads from an image
+  # file in pure Dart, which is how macOS and Windows import a code somebody
+  # sent them, and it needs `image` to turn a PNG or JPEG into pixels first.
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.2.3
+  zxing2: ^0.2.3
+  image: ^4.3.0
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # The encoder underneath qr_flutter, used directly by the codec test to draw
+  # a code without needing a Flutter binding or a golden file.
+  qr: ^3.0.2
 
   # flutter_rust_bridge generates freezed unions for data-carrying enums.
   freezed: ^3.0.0

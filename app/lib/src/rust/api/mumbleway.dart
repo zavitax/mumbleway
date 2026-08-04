@@ -108,6 +108,23 @@ Future<UiServerStatus> pingServer({
   port: port,
 );
 
+/// Opens or closes the microphone and speaker.
+///
+/// The engine holds no devices until this is called. Ask for them as a call is
+/// being set up, not as the first word is spoken: opening a Bluetooth headset
+/// means negotiating an SCO link, which takes one to two seconds and is
+/// audible, and a rider who presses talk into a device that is still opening
+/// loses the beginning of what they said. A connect already takes that long,
+/// so asking here costs nothing that is not already being waited for.
+///
+/// Turning them on blocks until the device answers, because the answer is the
+/// point: no microphone, a refused permission or a headset held by another app
+/// are all things the rider can do something about, and all of them surface
+/// here. Turning them off returns at once — there is nothing to wait for and
+/// nothing that can fail.
+Future<void> setAudioActive({required bool on_}) =>
+    RustLib.instance.api.crateApiMumblewaySetAudioActive(on_: on_);
+
 /// Selects capture and playback devices. `None` means the system default.
 /// Takes effect within a few hundred milliseconds, without dropping sessions.
 Future<void> setAudioDevices({String? input, String? output}) => RustLib

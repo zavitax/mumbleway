@@ -9,20 +9,27 @@
 //!   into a 20 ms Opus frame and hands it to the session.
 //! * Incoming packets are decoded per speaker by [`super::jitter::SpeakerBuffer`],
 //!   mixed, and left in a queue that the cpal **output callback** drains.
+//!
+//! The worker is woken by whoever gave it something to do rather than waking up
+//! to look. It used to poll every 2 ms, which on a phone is five hundred
+//! wakeups a second whether or not anybody was talking — enough on its own to
+//! keep the CPU out of its deep idle states for as long as the app was open.
+//! See [`AudioShared::signal_work`].
 
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, VecDeque};
+use std::time::Duration;
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
 use super::dehiss::{DehissMode, Expander, SpectralSubtractor};
 use super::feedback::{FeedbackGuard, FeedbackMode};
 use super::dsp::{interleaved_to_mono, Reverb};
-use super::jitter::SpeakerBuffer;
+use super::jitter::{SpeakerBuffer, SILENT_DB};
 use super::resample::Resampler;
 use crate::error::{CoreError, Result};
 use crate::net::audio_packet::VoicePacket;
@@ -88,6 +95,44 @@ pub struct AudioShared {
     /// Whether the last processed block counted as speech.
     speech_detected: AtomicBool,
     running: AtomicBool,
+
+    /// Set when the worker has something to do, cleared when it takes it up.
+    ///
+    /// A flag rather than a bare condvar because the signal can arrive while
+    /// the worker is still busy with the previous block. A notification sent
+    /// then is simply lost, and the work it was announcing would wait for the
+    /// timeout instead of being picked up on the next pass.
+    work_pending: Mutex<bool>,
+    work_ready: Condvar,
+
+    /// Woken when [`Self::set_devices`] changes the requested devices.
+    ///
+    /// Guards nothing itself; [`Self::device_generation`] is still the value
+    /// being watched. The mutex exists so the watcher can re-read that
+    /// generation and go to sleep atomically, which is what stops a change
+    /// landing in the gap between the two and being slept through.
+    device_wake: Mutex<()>,
+    device_changed: Condvar,
+
+    /// Whether the capture and playback devices should be open at all.
+    ///
+    /// False until somebody asks. The engine used to open both the moment it
+    /// started and hold them for the life of the process, which meant the
+    /// microphone was live — and said so, in the status bar — from the first
+    /// launch until the app was killed, whether or not there was anyone to
+    /// talk to. It also pinned a Bluetooth headset to the hands-free profile,
+    /// so music played through a helmet intercom dropped to telephone
+    /// bandwidth for as long as this app was merely open.
+    audio_wanted: AtomicBool,
+
+    /// How the most recent open attempt went, for whoever asked for it.
+    ///
+    /// Opening a device is the one part of this that routinely fails for
+    /// reasons the user can do something about — no microphone, permission
+    /// refused, a headset claimed by another app — so the answer has to get
+    /// back to the caller rather than into a log.
+    open_outcome: Mutex<Option<std::result::Result<(), String>>>,
+    open_settled: Condvar,
 
     /// Microphone gain in dB * 100, applied before the DSP chain so the meter
     /// reflects what the pipeline actually sees.
@@ -343,6 +388,13 @@ impl AudioShared {
             noise_floor: AtomicU32::new(0),
             speech_detected: AtomicBool::new(false),
             running: AtomicBool::new(true),
+            work_pending: Mutex::new(false),
+            work_ready: Condvar::new(),
+            device_wake: Mutex::new(()),
+            device_changed: Condvar::new(),
+            audio_wanted: AtomicBool::new(false),
+            open_outcome: Mutex::new(None),
+            open_settled: Condvar::new(),
             input_gain_db: AtomicI32::new(0),
             output_volume_db: AtomicI32::new(0),
             monitor: AtomicBool::new(false),
@@ -591,7 +643,11 @@ impl AudioShared {
     /// default. Takes effect within a few hundred milliseconds.
     pub fn set_devices(&self, input: Option<String>, output: Option<String>) {
         *self.device_request.lock() = (input, output);
+        // Bumped with the wake lock held so the watcher cannot be part-way
+        // through deciding to sleep: see [`Self::await_device_change`].
+        let _guard = self.device_wake.lock();
         self.device_generation.fetch_add(1, Ordering::Release);
+        self.device_changed.notify_all();
     }
 
     pub fn devices(&self) -> (Option<String>, Option<String>) {
@@ -706,14 +762,142 @@ impl AudioShared {
             },
         };
         buf.push(packet.sequence, packet.opus.clone(), packet.terminator);
+        drop(speakers);
+        // Somebody started talking. Nothing else would wake the mixer for the
+        // first packet of a burst: the output callback only asks for more when
+        // it is already draining something.
+        self.signal_work();
     }
 
     pub fn stop(&self) {
         self.running.store(false, Ordering::Relaxed);
+        // Both threads are asleep on a condvar by design, so setting the flag
+        // alone leaves them there until their timeout expires. Waking them is
+        // what makes shutdown prompt rather than eventual.
+        self.signal_work();
+        let _guard = self.device_wake.lock();
+        self.device_changed.notify_all();
     }
 
     fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
+    }
+
+    /// Tells the DSP worker there is something waiting for it.
+    ///
+    /// Called from the cpal callbacks, which are real-time threads: this takes
+    /// an uncontended lock and sets a bool, which is the same order of cost as
+    /// the queue lock they already hold on either side of it.
+    fn signal_work(&self) {
+        *self.work_pending.lock() = true;
+        self.work_ready.notify_one();
+    }
+
+    /// Blocks the worker until there is work, or `timeout` elapses.
+    ///
+    /// The timeout is a backstop, not the mechanism. Everything that produces
+    /// work signals, so under normal running this returns because it was woken;
+    /// the deadline only decides how long a missed signal could ever cost, and
+    /// keeps [`Self::is_running`] being re-read on an idle engine.
+    fn await_work(&self, timeout: Duration) {
+        let mut pending = self.work_pending.lock();
+        if !*pending {
+            self.work_ready.wait_for(&mut pending, timeout);
+        }
+        *pending = false;
+    }
+
+    pub fn audio_wanted(&self) -> bool {
+        self.audio_wanted.load(Ordering::Acquire)
+    }
+
+    /// Asks for the devices to be opened or closed.
+    ///
+    /// Returns at once; the work happens on the device thread, which owns the
+    /// streams because cpal's are not `Send` everywhere. Wait on
+    /// [`Self::await_open`] for the answer when turning them on.
+    ///
+    /// Rides on the device generation rather than introducing a second thing
+    /// to watch: from the thread's side "which devices" and "any devices at
+    /// all" are the same question, asked whenever that counter moves.
+    pub fn set_audio_wanted(&self, wanted: bool) {
+        let previous = self.audio_wanted.swap(wanted, Ordering::AcqRel);
+
+        if wanted {
+            // Asking again after a refusal is a retry; asking again after a
+            // success is a no-op. Treating both as "no change" would mean a
+            // rider whose headset was claimed by another app the first time
+            // could never get the microphone back without restarting.
+            let already_open = previous && matches!(*self.open_outcome.lock(), Some(Ok(())));
+            if already_open {
+                return;
+            }
+            // Cleared before the request, not after the answer: otherwise the
+            // caller can be handed the verdict on the *previous* open.
+            *self.open_outcome.lock() = None;
+        } else if !previous {
+            return;
+        }
+
+        let _guard = self.device_wake.lock();
+        self.device_generation.fetch_add(1, Ordering::Release);
+        self.device_changed.notify_all();
+    }
+
+    /// Waits for the pending open to succeed or fail.
+    ///
+    /// Timing out is reported as a failure rather than as success, because the
+    /// caller is about to join a conversation and "the microphone did not open
+    /// in ten seconds" is the same news to a rider as "it did not open".
+    pub fn await_open(&self, timeout: Duration) -> std::result::Result<(), String> {
+        let mut outcome = self.open_outcome.lock();
+        if outcome.is_none() {
+            self.open_settled.wait_for(&mut outcome, timeout);
+        }
+        match outcome.clone() {
+            Some(result) => result,
+            None => Err("the audio device did not open in time".into()),
+        }
+    }
+
+    fn publish_open(&self, result: std::result::Result<(), String>) {
+        *self.open_outcome.lock() = Some(result);
+        self.open_settled.notify_all();
+    }
+
+    /// Throws away everything in flight when the devices close.
+    ///
+    /// Without this the queues keep whatever was captured at the moment of
+    /// closing, and the next call opens with a fragment of the last one still
+    /// in them — heard as a bark of stale audio at the far end. The meters are
+    /// reset for the same reason: a bar frozen at the last level anybody spoke
+    /// at reads as a live microphone.
+    fn discard_in_flight(&self) {
+        self.capture_queue.lock().clear();
+        self.playback_queue.lock().clear();
+        self.monitor_queue.lock().clear();
+        self.echo_reference.lock().clear();
+        self.speakers.lock().clear();
+        self.active_speakers.store(0, Ordering::Relaxed);
+        self.speech_detected.store(false, Ordering::Relaxed);
+        self.store_level(SILENT_DB);
+        self.store_output_level(SILENT_DB);
+        self.store_threshold(SILENT_DB);
+        self.store_noise_floor(SILENT_DB);
+    }
+
+    /// Blocks the device watcher until the requested devices change.
+    ///
+    /// `seen` is the generation the caller has already acted on. Re-reading it
+    /// under the lock is what makes this race-free: a [`Self::set_devices`]
+    /// arriving now is either already visible here, or is still waiting for the
+    /// lock this releases on the way into the wait.
+    fn await_device_change(&self, seen: u64, timeout: Duration) {
+        let mut guard = self.device_wake.lock();
+        if self.device_generation() != seen || !self.is_running() {
+            return;
+        }
+        self.device_changed.wait_for(&mut guard, timeout);
     }
 }
 
@@ -962,7 +1146,11 @@ impl AudioEngine {
 
         // cpal streams are not Send on every platform, so they are created and
         // owned by a dedicated thread that outlives them.
-        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<()>>();
+        //
+        // Nothing is opened here. The thread starts with the devices shut and
+        // waits to be asked, which is what makes the microphone a thing this
+        // app holds during a conversation rather than for as long as it is
+        // installed. See [`AudioShared::set_audio_wanted`].
         let dev_shared = shared.clone();
         let dev_config = config.clone();
 
@@ -970,73 +1158,58 @@ impl AudioEngine {
             .name("mumbleway-audio".into())
             .spawn(move || {
                 let mut config = dev_config;
-                let mut generation = dev_shared.device_generation();
-
-                let mut streams = match build_streams(&config, &dev_shared) {
-                    Ok(s) => {
-                        let _ = ready_tx.send(Ok(()));
-                        Some(s)
-                    }
-                    Err(e) => {
-                        let _ = ready_tx.send(Err(e));
-                        return;
-                    }
-                };
-
-                // Logged because the streams closing again is indistinguishable
-                // from them never opening, from anywhere outside this thread.
-                if !dev_shared.is_running() {
-                    tracing::warn!("audio thread asked to stop before it began");
-                }
+                let mut streams: Option<Streams> = None;
+                // Deliberately not the current generation: the first pass has
+                // to run so that a request arriving before the thread was
+                // scheduled is not slept through.
+                let mut applied = u64::MAX;
 
                 while dev_shared.is_running() {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    let generation = dev_shared.device_generation();
+                    if generation != applied {
+                        applied = generation;
 
-                    let current = dev_shared.device_generation();
-                    if current == generation {
-                        continue;
-                    }
-                    generation = current;
+                        let (input, output) = dev_shared.devices();
+                        config.input_device = input;
+                        config.output_device = output;
 
-                    let (input, output) = dev_shared.devices();
-                    config.input_device = input;
-                    config.output_device = output;
+                        // Always closed first, whether this is a shutdown or a
+                        // change of device: some drivers, and most Bluetooth
+                        // headsets, allow only one exclusive client.
+                        streams = None;
 
-                    // Close the old streams before opening the new ones: some
-                    // drivers (and most Bluetooth headsets) only allow one
-                    // exclusive client at a time.
-                    streams = None;
-                    match build_streams(&config, &dev_shared) {
-                        Ok(s) => streams = Some(s),
-                        Err(e) => {
-                            // Keep the engine alive with no device rather than
-                            // killing the session; the user can pick another.
-                            tracing::error!("could not switch audio device: {e}");
+                        if dev_shared.audio_wanted() {
+                            match build_streams(&config, &dev_shared) {
+                                Ok(s) => {
+                                    tracing::info!("audio streams open");
+                                    streams = Some(s);
+                                    dev_shared.publish_open(Ok(()));
+                                }
+                                Err(e) => {
+                                    // Reported rather than fatal: the engine
+                                    // stays up with no device, so the user can
+                                    // choose another instead of restarting.
+                                    tracing::error!("audio device refused to open: {e}");
+                                    dev_shared.publish_open(Err(e.to_string()));
+                                }
+                            }
+                        } else {
+                            tracing::info!("audio streams closed");
+                            dev_shared.discard_in_flight();
                         }
                     }
+
+                    // Woken by `set_devices` and `set_audio_wanted`, not by a
+                    // clock. This thread exists to notice a value that changes
+                    // when the user taps a dropdown or joins a server, and it
+                    // used to look ten times a second for the entire life of
+                    // the app to catch it.
+                    dev_shared.await_device_change(applied, Duration::from_secs(5));
                 }
                 tracing::info!("audio thread stopping, closing its streams");
                 drop(streams);
             })
             .map_err(|e| CoreError::Audio(format!("spawning audio thread: {e}")))?;
-
-        // Surface device errors to the caller rather than failing silently.
-        match ready_rx.recv_timeout(std::time::Duration::from_secs(10)) {
-            Ok(Ok(())) => {
-                tracing::info!("audio streams open");
-            }
-            Ok(Err(e)) => {
-                tracing::error!("audio device refused to open: {e}");
-                return Err(e);
-            }
-            Err(_) => {
-                // Says which of the two it was, because "did not start" reads
-                // as a device fault and this branch is a deadline expiring —
-                // the device may yet open, seconds after nobody is waiting.
-                tracing::error!("audio device took longer than 10 s to open");
-                return Err(CoreError::Audio("audio device did not start".into()));
-            }
-        }
 
         // Worker: capture DSP + encode, and playback mixing.
         let worker_shared = shared.clone();
@@ -1114,18 +1287,27 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                 resampled.clear();
                 in_resampler.process(&mono_scratch, &mut resampled);
 
-                let mut q = cap_shared.capture_queue.lock();
-                // Drop the oldest audio rather than growing without bound if the
-                // worker ever falls behind.
-                if q.len() + resampled.len() > MAX_QUEUED_INPUT_SAMPLES {
-                    let excess = q.len() + resampled.len() - MAX_QUEUED_INPUT_SAMPLES;
-                    let drop_count = excess.min(q.len());
-                    q.drain(..drop_count);
-                    cap_shared
-                        .capture_dropped_samples
-                        .fetch_add(drop_count as u64, Ordering::Relaxed);
+                let ready = {
+                    let mut q = cap_shared.capture_queue.lock();
+                    // Drop the oldest audio rather than growing without bound if the
+                    // worker ever falls behind.
+                    if q.len() + resampled.len() > MAX_QUEUED_INPUT_SAMPLES {
+                        let excess = q.len() + resampled.len() - MAX_QUEUED_INPUT_SAMPLES;
+                        let drop_count = excess.min(q.len());
+                        q.drain(..drop_count);
+                        cap_shared
+                            .capture_dropped_samples
+                            .fetch_add(drop_count as u64, Ordering::Relaxed);
+                    }
+                    q.extend(resampled.iter().copied());
+                    q.len() >= FRAME_SIZE
+                };
+                // Only once there is a whole block to work on. A device period
+                // shorter than 10 ms would otherwise wake the worker for a
+                // partial block it is going to put straight back.
+                if ready {
+                    cap_shared.signal_work();
                 }
-                q.extend(resampled.iter().copied());
             },
             move |e| tracing::warn!("input stream error: {e}"),
             None,
@@ -1189,6 +1371,18 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                         .fetch_add(underruns, Ordering::Relaxed);
                 }
                 play_shared.store_output_level(super::dsp::to_dbfs(peak));
+
+                // Ask for more only while somebody is actually streaming.
+                // An empty queue is the normal state when nobody is talking,
+                // and treating that as work to be done would put the wakeups
+                // straight back at one per device period, for a mixer that has
+                // nothing to mix. The first packet of a burst is covered by
+                // `push_incoming` instead.
+                if play_shared.active_speakers.load(Ordering::Relaxed) > 0
+                    && play_shared.playback_queue.lock().len() < FRAME_SAMPLES * 3
+                {
+                    play_shared.signal_work();
+                }
             },
             move |e| tracing::warn!("output stream error: {e}"),
             None,
@@ -1372,8 +1566,13 @@ where
         }
 
         if !did_work {
-            // Nothing to do; sleep for well under one block so we never fall behind.
-            std::thread::sleep(std::time::Duration::from_millis(2));
+            // Nothing to do. Woken by whoever produces the next block rather
+            // than by a timer, so an idle engine costs no wakeups at all.
+            //
+            // The deadline is a backstop against a signal this has not thought
+            // of, and is well under one block so that even then nothing falls
+            // behind. It is not what the loop runs on.
+            shared.await_work(Duration::from_millis(20));
         }
     }
 }
@@ -1996,6 +2195,257 @@ mod tests {
         s.set_devices(None, Some("Speakers".into()));
         assert_eq!(s.devices(), (None, Some("Speakers".to_string())));
         assert!(s.device_generation() > mid);
+    }
+
+    /// Long enough that a wait which is genuinely running to its deadline
+    /// cannot be mistaken for one that was woken, short enough that a broken
+    /// signal path fails the test in a moment rather than stalling the suite.
+    const NEVER: Duration = Duration::from_secs(30);
+
+    #[test]
+    fn the_worker_is_woken_by_incoming_audio_rather_than_by_a_timer() {
+        let shared = Arc::new(AudioShared::new());
+
+        // Nothing waiting: this must not return early, or the wait is not
+        // actually waiting and the loop is a spin by another name.
+        let start = std::time::Instant::now();
+        shared.await_work(Duration::from_millis(30));
+        assert!(
+            start.elapsed() >= Duration::from_millis(25),
+            "an idle worker should sleep to its deadline, slept {:?}",
+            start.elapsed()
+        );
+
+        let waker = shared.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            let mut enc = VoiceEncoder::new(Quality::Balanced).unwrap();
+            let opus = enc.encode(&vec![0.1; FRAME_SAMPLES]).unwrap();
+            waker.push_incoming(0, &packet(1, 0, opus, false));
+        });
+
+        let start = std::time::Instant::now();
+        shared.await_work(NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the first packet of a burst has to wake the mixer itself; \
+             nothing else asks for it"
+        );
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_signal_arriving_while_the_worker_is_busy_is_not_lost() {
+        let shared = AudioShared::new();
+        // Sent while nobody is waiting, which is what happens whenever a block
+        // lands mid-pass. Without the pending flag the notification would go
+        // nowhere and this block would wait for the backstop instead.
+        shared.signal_work();
+
+        let start = std::time::Instant::now();
+        shared.await_work(NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "work signalled before the wait began was dropped"
+        );
+
+        // And it is consumed, not sticky: a second wait has nothing to take up.
+        let start = std::time::Instant::now();
+        shared.await_work(Duration::from_millis(30));
+        assert!(
+            start.elapsed() >= Duration::from_millis(25),
+            "the pending flag was never cleared, so the worker will spin"
+        );
+    }
+
+    #[test]
+    fn the_device_watcher_sleeps_until_the_selection_changes() {
+        let shared = Arc::new(AudioShared::new());
+        let generation = shared.device_generation();
+
+        let start = std::time::Instant::now();
+        shared.await_device_change(generation, Duration::from_millis(30));
+        assert!(
+            start.elapsed() >= Duration::from_millis(25),
+            "the watcher polled instead of waiting"
+        );
+
+        let waker = shared.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            waker.set_devices(Some("Headset".into()), None);
+        });
+
+        let start = std::time::Instant::now();
+        shared.await_device_change(generation, NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "changing the device must wake the thread that rebuilds the streams"
+        );
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_change_that_lands_before_the_wait_does_not_sleep_through_it() {
+        let shared = AudioShared::new();
+        let generation = shared.device_generation();
+        shared.set_devices(Some("Headset".into()), None);
+
+        // The race this closes: the watcher reads the generation, a change
+        // lands, and only then does it go to sleep — on a notification that
+        // has already been sent.
+        let start = std::time::Instant::now();
+        shared.await_device_change(generation, NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "a device change was slept through"
+        );
+    }
+
+    #[test]
+    fn stopping_wakes_both_threads_instead_of_leaving_them_on_their_deadlines() {
+        let shared = Arc::new(AudioShared::new());
+        let generation = shared.device_generation();
+
+        let stopper = shared.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            stopper.stop();
+        });
+
+        let start = std::time::Instant::now();
+        shared.await_work(NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the DSP thread would outlive the engine by its whole timeout"
+        );
+
+        // Already stopped by now, so this must refuse to wait at all rather
+        // than blocking on a notification that will never come again.
+        let start = std::time::Instant::now();
+        shared.await_device_change(generation, NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the device thread never noticed the engine had stopped"
+        );
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn the_devices_start_shut() {
+        let shared = AudioShared::new();
+        assert!(
+            !shared.audio_wanted(),
+            "the microphone must not be open before anybody asks for it"
+        );
+    }
+
+    #[test]
+    fn asking_for_audio_wakes_the_thread_that_owns_the_streams() {
+        let shared = Arc::new(AudioShared::new());
+        let generation = shared.device_generation();
+
+        let waker = shared.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            waker.set_audio_wanted(true);
+        });
+
+        let start = std::time::Instant::now();
+        shared.await_device_change(generation, NEVER);
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "the device thread slept through a request to open the microphone"
+        );
+        assert!(shared.audio_wanted());
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn the_caller_is_told_whether_the_device_opened() {
+        let shared = Arc::new(AudioShared::new());
+        shared.set_audio_wanted(true);
+
+        let opener = shared.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            opener.publish_open(Err("no input device available".into()));
+        });
+
+        // The reason has to reach the caller: this is the one failure here a
+        // rider can act on, and it happens as they try to join a server.
+        assert_eq!(
+            shared.await_open(NEVER),
+            Err("no input device available".to_string())
+        );
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_device_that_never_answers_is_a_failure_not_a_success() {
+        let shared = AudioShared::new();
+        shared.set_audio_wanted(true);
+        assert!(
+            shared.await_open(Duration::from_millis(30)).is_err(),
+            "a silent timeout must not read as an open microphone"
+        );
+    }
+
+    #[test]
+    fn asking_again_after_a_refusal_retries() {
+        let shared = AudioShared::new();
+
+        shared.set_audio_wanted(true);
+        shared.publish_open(Err("device busy".into()));
+        let after_failure = shared.device_generation();
+
+        // The headset has been given up by whatever had it. Asking again has
+        // to actually try again rather than hand back the old refusal.
+        shared.set_audio_wanted(true);
+        assert!(
+            shared.device_generation() > after_failure,
+            "a retry after a refused open was swallowed"
+        );
+
+        shared.publish_open(Ok(()));
+        assert_eq!(shared.await_open(NEVER), Ok(()));
+
+        // And once it is open, asking again does nothing: this runs on every
+        // connect, and rebuilding a working stream would cut the audio.
+        let settled = shared.device_generation();
+        shared.set_audio_wanted(true);
+        assert_eq!(
+            shared.device_generation(),
+            settled,
+            "an already-open device was needlessly reopened"
+        );
+    }
+
+    #[test]
+    fn closing_the_devices_throws_away_what_was_in_flight() {
+        let shared = AudioShared::new();
+        shared.capture_queue.lock().extend(std::iter::repeat_n(0.5, 480));
+        shared.playback_queue.lock().extend(std::iter::repeat_n(0.5, 480));
+        shared.echo_reference.lock().extend(std::iter::repeat_n(0.5, 480));
+        for (i, f) in encoded_frames(3).into_iter().enumerate() {
+            shared.push_incoming(0, &packet(1, i as u64, f, false));
+        }
+        shared.store_level(-12.0);
+        shared.speech_detected.store(true, Ordering::Relaxed);
+
+        shared.discard_in_flight();
+
+        // Otherwise the next call opens with a fragment of the last one still
+        // queued, and the far end hears a bark of stale audio.
+        assert!(shared.capture_queue.lock().is_empty());
+        assert!(shared.playback_queue.lock().is_empty());
+        assert!(shared.echo_reference.lock().is_empty());
+        assert!(shared.speakers.lock().is_empty());
+        // And a bar frozen at the last level anybody spoke at reads as a live
+        // microphone, which is precisely the claim this change exists to stop
+        // the app making.
+        assert_eq!(shared.input_level_db(), SILENT_DB);
+        assert!(!shared.speech_detected());
     }
 
     #[test]

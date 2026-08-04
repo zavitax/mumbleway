@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2132080425;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -896556605;
 
 // Section: executor
 
@@ -1251,6 +1251,41 @@ fn wire__crate__api__mumbleway__send_text_impl(
                     (move || {
                         let output_ok =
                             crate::api::mumbleway::send_text(api_server_id, api_message)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__mumbleway__set_audio_active_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_audio_active",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_on = <bool>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::mumbleway::set_audio_active(api_on)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -2640,29 +2675,30 @@ fn pde_ffi_dispatcher_primary_impl(
         30 => wire__crate__api__mumbleway__ping_server_impl(port, ptr, rust_vec_len, data_len),
         34 => wire__crate__api__mumbleway__remove_server_impl(port, ptr, rust_vec_len, data_len),
         36 => wire__crate__api__mumbleway__send_text_impl(port, ptr, rust_vec_len, data_len),
-        37 => {
+        37 => wire__crate__api__mumbleway__set_audio_active_impl(port, ptr, rust_vec_len, data_len),
+        38 => {
             wire__crate__api__mumbleway__set_audio_devices_impl(port, ptr, rust_vec_len, data_len)
         }
-        39 => {
+        40 => {
             wire__crate__api__mumbleway__set_default_channel_impl(port, ptr, rust_vec_len, data_len)
         }
-        51 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
-        53 => {
+        52 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
+        54 => {
             wire__crate__api__mumbleway__set_user_local_mute_impl(port, ptr, rust_vec_len, data_len)
         }
-        54 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
+        55 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        55 => wire__crate__api__mumbleway__set_user_server_mute_impl(
+        56 => wire__crate__api__mumbleway__set_user_server_mute_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        56 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2700,22 +2736,22 @@ fn pde_ffi_dispatcher_sync_impl(
         32 => wire__crate__api__mumbleway__play_test_tone_impl(ptr, rust_vec_len, data_len),
         33 => wire__crate__api__mumbleway__recent_logs_impl(ptr, rust_vec_len, data_len),
         35 => wire__crate__api__mumbleway__reset_audio_glitches_impl(ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__mumbleway__set_deafened_impl(ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__mumbleway__set_dehiss_impl(ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__mumbleway__set_echo_cancellation_impl(ptr, rust_vec_len, data_len),
-        42 => wire__crate__api__mumbleway__set_feedback_guard_impl(ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__mumbleway__set_input_gain_db_impl(ptr, rust_vec_len, data_len),
-        44 => {
+        39 => wire__crate__api__mumbleway__set_deafened_impl(ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__mumbleway__set_dehiss_impl(ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__mumbleway__set_echo_cancellation_impl(ptr, rust_vec_len, data_len),
+        43 => wire__crate__api__mumbleway__set_feedback_guard_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__mumbleway__set_input_gain_db_impl(ptr, rust_vec_len, data_len),
+        45 => {
             wire__crate__api__mumbleway__set_level_normalisation_impl(ptr, rust_vec_len, data_len)
         }
-        45 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
-        50 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
-        57 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
+        51 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
+        58 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

@@ -312,6 +312,19 @@ struct App {
 /// lands two or three times across one wait.
 const WAITING_CUE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(4);
 
+/// Empty speaker reports still sent after the last voice stops.
+///
+/// The UI fades a meter out rather than blanking it, and it needs a report per
+/// step to do it: `VoiceMeter.fallPerReportDb` is 9 dB, from a ceiling of 0 to
+/// `silentDb` of -120, so fourteen steps empty the loudest possible meter and
+/// one more clears the entry. Stopping the instant the mixer goes quiet would
+/// leave every meter frozen part-way down instead of falling to nothing.
+///
+/// Deliberately generous, and deliberately spelled out rather than tuned: this
+/// number is the only thing coupling the two sides, and being a few reports too
+/// long costs nothing while being one too short is visible on every utterance.
+const SILENT_LEVEL_TAIL: u32 = 16;
+
 /// Whether a status means "still trying to get connected".
 ///
 /// Covers the wait between attempts as well as the attempts themselves: from
@@ -609,8 +622,21 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     // Publish the microphone level a few times a second for the meter.
     rt.spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_millis(100));
+        // Starts spent: until somebody speaks there is nothing to fade out, so
+        // the first report goes out only when there is one to make.
+        let mut silent_ticks = SILENT_LEVEL_TAIL;
         loop {
             tick.tick().await;
+
+            // Nothing is being captured, so there is no level to report and
+            // nothing drawing one — the interface says so in words instead.
+            // Reporting silence ten times a second into a meter that is not on
+            // screen is the shape of waste this whole pass is about.
+            if !level_shared.audio_wanted() {
+                silent_ticks = SILENT_LEVEL_TAIL;
+                continue;
+            }
+
             emit(AppEvent::InputLevel {
                 level_db: level_shared.input_level_db(),
                 speaking: level_shared.speech_detected(),
@@ -637,7 +663,19 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         })
                 })
                 .collect();
-            emit(AppEvent::SpeakerLevels { levels });
+
+            if !levels.is_empty() {
+                silent_ticks = 0;
+                emit(AppEvent::SpeakerLevels { levels });
+            } else if silent_ticks < SILENT_LEVEL_TAIL {
+                // Still fading the last speaker out; see [`SILENT_LEVEL_TAIL`].
+                silent_ticks += 1;
+                emit(AppEvent::SpeakerLevels { levels });
+            }
+            // Otherwise nobody is talking and every meter has already emptied.
+            // The report would be an empty list, compared against an empty
+            // list, to change nothing — ten times a second, for as long as the
+            // app is open. Which is nearly all of the time.
         }
     });
 
@@ -932,6 +970,31 @@ pub async fn ping_server(server_id: String, host: String, port: u16) -> UiServer
 // ---------------------------------------------------------------------------
 // Audio devices and levels
 // ---------------------------------------------------------------------------
+
+/// Opens or closes the microphone and speaker.
+///
+/// The engine holds no devices until this is called. Ask for them as a call is
+/// being set up, not as the first word is spoken: opening a Bluetooth headset
+/// means negotiating an SCO link, which takes one to two seconds and is
+/// audible, and a rider who presses talk into a device that is still opening
+/// loses the beginning of what they said. A connect already takes that long,
+/// so asking here costs nothing that is not already being waited for.
+///
+/// Turning them on blocks until the device answers, because the answer is the
+/// point: no microphone, a refused permission or a headset held by another app
+/// are all things the rider can do something about, and all of them surface
+/// here. Turning them off returns at once — there is nothing to wait for and
+/// nothing that can fail.
+pub fn set_audio_active(on: bool) -> anyhow::Result<()> {
+    let app = app()?;
+    app.shared.set_audio_wanted(on);
+    if !on {
+        return Ok(());
+    }
+    app.shared
+        .await_open(std::time::Duration::from_secs(10))
+        .map_err(|e| anyhow::anyhow!(e))
+}
 
 /// Selects capture and playback devices. `None` means the system default.
 /// Takes effect within a few hundred milliseconds, without dropping sessions.

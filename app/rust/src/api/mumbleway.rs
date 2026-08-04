@@ -775,11 +775,7 @@ pub fn add_server(config: ServerConfig) -> anyhow::Result<String> {
     let (out_tx, out_rx) = mpsc::channel::<(u64, Vec<u8>, bool)>(64);
     let (in_tx, mut in_rx) = mpsc::channel::<mumbleway_core::net::VoicePacket>(256);
 
-    let slot = {
-        let mut slots = app.slots.lock();
-        let next = slots.len() as u16;
-        *slots.entry(id.clone()).or_insert(next)
-    };
+    let slot = allocate_slot(&app.slots, &id);
 
     let shared = app.shared.clone();
     app.rt.spawn(async move {
@@ -808,6 +804,37 @@ pub fn add_server(config: ServerConfig) -> anyhow::Result<String> {
             Err(anyhow::anyhow!(e.to_string()))
         }
     }
+}
+
+/// Gives `id` an audio slot, which namespaces its speakers from every other
+/// server's.
+///
+/// The slot is half of the key each incoming voice stream is filed under, and
+/// it is also how a level found in the mixer is traced back to the server it
+/// came from — so two servers holding the same slot is not a cosmetic clash.
+/// It merges two people's audio into one jitter buffer whenever their session
+/// ids happen to match, and it makes the reverse lookup ambiguous: levels for
+/// both servers are then attributed to whichever of them the map happens to
+/// yield first, and the other server's meters sit at silence for the whole
+/// call while its audio plays perfectly.
+///
+/// This used to hand out `slots.len()`, which is only ever right if slots are
+/// never given back. They are — a disconnect removes the entry — so connecting
+/// to two servers, dropping the first and reconnecting it produced the pair
+/// {A:1, B:1}. Two servers, one slot, and a rider watching a roster of people
+/// they could plainly hear with nothing moving beside their names.
+///
+/// The lowest free number instead, which is stable, reuses slots that have
+/// genuinely been released, and cannot collide.
+fn allocate_slot(slots: &Arc<Mutex<HashMap<String, u16>>>, id: &str) -> u16 {
+    let mut slots = slots.lock();
+    if let Some(existing) = slots.get(id) {
+        return *existing;
+    }
+    let taken: std::collections::HashSet<u16> = slots.values().copied().collect();
+    let next = (0u16..).find(|s| !taken.contains(s)).unwrap_or(u16::MAX);
+    slots.insert(id.to_string(), next);
+    next
 }
 
 fn send_command(server_id: String, cmd: SessionCommand) -> anyhow::Result<()> {
@@ -1465,6 +1492,61 @@ pub fn import_servers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn slot_map() -> Arc<Mutex<HashMap<String, u16>>> {
+        Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    #[test]
+    fn two_servers_never_share_an_audio_slot() {
+        let slots = slot_map();
+        assert_eq!(allocate_slot(&slots, "a"), 0);
+        assert_eq!(allocate_slot(&slots, "b"), 1);
+
+        // The failure this replaced. Slots are handed back on disconnect, so
+        // counting the map gave the reconnecting server the number the one
+        // still connected was already using — and the levels for both were
+        // then attributed to whichever the map yielded first, leaving the
+        // other server's meters at silence for the whole call.
+        slots.lock().remove("a");
+        assert_eq!(
+            allocate_slot(&slots, "a"),
+            0,
+            "a reconnecting server took a slot that was still in use"
+        );
+
+        let taken: Vec<u16> = {
+            let map = slots.lock();
+            let mut v: Vec<u16> = map.values().copied().collect();
+            v.sort_unstable();
+            v
+        };
+        assert_eq!(taken, vec![0, 1]);
+    }
+
+    #[test]
+    fn asking_twice_gives_the_same_slot() {
+        // Reconnecting without disconnecting first must not consume a second
+        // number, or the streams already filed under the old one are orphaned.
+        let slots = slot_map();
+        let first = allocate_slot(&slots, "a");
+        assert_eq!(allocate_slot(&slots, "a"), first);
+        assert_eq!(slots.lock().len(), 1);
+    }
+
+    #[test]
+    fn a_released_slot_is_reused_rather_than_left_as_a_hole() {
+        let slots = slot_map();
+        for id in ["a", "b", "c"] {
+            allocate_slot(&slots, id);
+        }
+        slots.lock().remove("b");
+        assert_eq!(
+            allocate_slot(&slots, "d"),
+            1,
+            "the lowest free slot should be taken before a new one"
+        );
+    }
 
     #[test]
     fn drop_cue_only_fires_when_a_working_connection_is_lost() {

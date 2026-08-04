@@ -695,6 +695,18 @@ class LEn extends L {
       'Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.';
 
   @override
+  String get jitterBuffer => 'Incoming audio buffer';
+
+  @override
+  String get jitterBufferBody =>
+      'How much of what others say is held back before it is played. More buffer rides out a patchy signal without gaps; less means you hear them sooner. MumbleWay adds to it by itself when a link starts losing packets, and comes back down to this. Raise it if the playback gaps counter in Diagnostics keeps climbing.';
+
+  @override
+  String milliseconds(int ms) {
+    return '$ms ms';
+  }
+
+  @override
   String get notAvailableHere => 'Not available on this platform.';
 
   @override

@@ -198,6 +198,24 @@ void setLevelNormalisation({required bool on_}) =>
 bool isLevelNormalisationEnabled() =>
     RustLib.instance.api.crateApiMumblewayIsLevelNormalisationEnabled();
 
+/// How much incoming audio to hold back before playing it, in milliseconds.
+///
+/// The trade the rider is making is delay against dropouts, and which way it
+/// should go is a property of the network they are on rather than of the app.
+/// Rounded to whole 20 ms packets, which is the unit voice arrives in.
+void setJitterBufferMs({required int ms}) =>
+    RustLib.instance.api.crateApiMumblewaySetJitterBufferMs(ms: ms);
+
+int jitterBufferMs() => RustLib.instance.api.crateApiMumblewayJitterBufferMs();
+
+/// The range the setting above accepts, as `(minimum, maximum, step)` in ms.
+///
+/// Reported rather than written into the interface twice: the bounds come from
+/// the buffer's own frame arithmetic, and a slider that let somebody pick a
+/// value the engine then silently rounded would be lying about what it set.
+(int, int, int) jitterBufferBoundsMs() =>
+    RustLib.instance.api.crateApiMumblewayJitterBufferBoundsMs();
+
 /// Acoustic echo cancellation, applied to the microphone before anything else.
 void setEchoCancellation({required bool on_}) =>
     RustLib.instance.api.crateApiMumblewaySetEchoCancellation(on_: on_);

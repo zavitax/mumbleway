@@ -16,7 +16,9 @@
 //! keep the CPU out of its deep idle states for as long as the app was open.
 //! See [`AudioShared::signal_work`].
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicI32, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+};
 use std::sync::Arc;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -29,7 +31,9 @@ use super::dehiss::{DehissMode, Expander, SpectralSubtractor};
 use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
 use super::dsp::{interleaved_to_mono, Reverb};
 use super::feedback::{FeedbackGuard, FeedbackMode};
-use super::jitter::{SpeakerBuffer, SILENT_DB};
+use super::jitter::{
+    SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES, SILENT_DB,
+};
 use super::resample::Resampler;
 use crate::error::{CoreError, Result};
 use crate::net::audio_packet::VoicePacket;
@@ -59,6 +63,10 @@ const REVERB_DECAY_SECS: f32 = 0.28;
 
 /// How much of the tail is mixed under the voice.
 const REVERB_WET: f32 = 0.16;
+
+/// The shortest gap between two rebuilds forced by a stream reporting itself
+/// dead. See where it is used for why there is a floor at all.
+const REOPEN_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Shared state between the callbacks, the worker and the API layer.
 pub struct AudioShared {
@@ -124,6 +132,20 @@ pub struct AudioShared {
     /// so music played through a helmet intercom dropped to telephone
     /// bandwidth for as long as this app was merely open.
     audio_wanted: AtomicBool,
+
+    /// A stream has told us it is dead and wants the pair rebuilt.
+    ///
+    /// Set from cpal's error callback, cleared by the device thread when it
+    /// acts. A flag as well as a generation bump so that a device reporting the
+    /// same failure repeatedly asks once.
+    reopen_pending: AtomicBool,
+
+    /// The backlog every speaker buffer returns to, in 20 ms frames.
+    ///
+    /// Lives here rather than in each buffer because buffers come and go with
+    /// the people talking, and a setting that only reached whoever happened to
+    /// be speaking when it was changed would be no setting at all.
+    jitter_target_frames: AtomicUsize,
 
     /// How the most recent open attempt went, for whoever asked for it.
     ///
@@ -393,6 +415,8 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
+            reopen_pending: AtomicBool::new(false),
+            jitter_target_frames: AtomicUsize::new(DEFAULT_TARGET_FRAMES),
             open_outcome: Mutex::new(None),
             open_settled: Condvar::new(),
             input_gain_db: AtomicI32::new(0),
@@ -516,6 +540,19 @@ impl AudioShared {
 
     pub fn set_normalise_levels(&self, on: bool) {
         self.normalise_levels.store(on, Ordering::Relaxed);
+    }
+
+    /// How much audio to hold before playing it, in milliseconds.
+    ///
+    /// Stored in frames, because that is the unit the buffers work in and
+    /// rounding once here beats rounding on every mixer pass.
+    pub fn set_jitter_buffer_ms(&self, ms: u32) {
+        let frames = ((ms as usize + 10) / 20).clamp(MIN_TARGET_FRAMES, MAX_TARGET_FRAMES);
+        self.jitter_target_frames.store(frames, Ordering::Relaxed);
+    }
+
+    pub fn jitter_buffer_ms(&self) -> u32 {
+        (self.jitter_target_frames.load(Ordering::Relaxed) * 20) as u32
     }
 
     pub fn normalise_levels_enabled(&self) -> bool {
@@ -823,6 +860,13 @@ impl AudioShared {
     pub fn set_audio_wanted(&self, wanted: bool) {
         let previous = self.audio_wanted.swap(wanted, Ordering::AcqRel);
 
+        // A deliberate open or close is not a recovery, whatever a stream said
+        // on its way down. Left set, a straggling error from the last close
+        // would put the second-long recovery pause in front of the next call's
+        // microphone — a rider pressing talk and losing the start of a sentence
+        // to a wait that exists to protect a driver from being hammered.
+        self.reopen_pending.store(false, Ordering::Release);
+
         if wanted {
             // Asking again after a refusal is a retry; asking again after a
             // success is a no-op. Treating both as "no change" would mean a
@@ -842,6 +886,38 @@ impl AudioShared {
         let _guard = self.device_wake.lock();
         self.device_generation.fetch_add(1, Ordering::Release);
         self.device_changed.notify_all();
+    }
+
+    /// Asks for the streams to be rebuilt because one of them has died.
+    ///
+    /// cpal reports a stream that has been taken away — a headset unplugged, a
+    /// route changed under us, another app claiming the device — through the
+    /// error callback and then goes quiet forever. Nothing polls the stream
+    /// afterwards, so without this the microphone simply stops: the meter sits
+    /// at silence, the far end hears nothing, and the app has no idea anything
+    /// is wrong. Android is where it bites, because moving between the floating
+    /// window and the activity is enough to change the routing.
+    ///
+    /// Called from cpal's error thread, never from a data callback, and only
+    /// when the stream is already gone — so the lock taken here cannot delay
+    /// audio that is still flowing.
+    pub fn request_reopen(&self) {
+        // A stream that errors on the way down, after the devices were given
+        // back on purpose, is not a fault to recover from.
+        if !self.audio_wanted() {
+            return;
+        }
+        if self.reopen_pending.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let _guard = self.device_wake.lock();
+        self.device_generation.fetch_add(1, Ordering::Release);
+        self.device_changed.notify_all();
+    }
+
+    /// Whether this pass of the device thread is a recovery, clearing the flag.
+    fn take_reopen_request(&self) -> bool {
+        self.reopen_pending.swap(false, Ordering::AcqRel)
     }
 
     /// Waits for the pending open to succeed or fail.
@@ -917,11 +993,13 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
     let mut active = 0usize;
 
     let normalise = shared.normalise_levels_enabled();
+    let base_target = shared.jitter_target_frames.load(Ordering::Relaxed);
     speakers.retain(|_, buf| {
         if buf.is_finished() {
             return false;
         }
         buf.set_normalisation(normalise);
+        buf.set_base_target(base_target);
         if !buf.ready() {
             // Held but not played: a burst shorter than the target backlog
             // would otherwise wait for a transmission that already finished.
@@ -1163,11 +1241,29 @@ impl AudioEngine {
                 // to run so that a request arriving before the thread was
                 // scheduled is not slept through.
                 let mut applied = u64::MAX;
+                let mut opened_at: Option<std::time::Instant> = None;
 
                 while dev_shared.is_running() {
                     let generation = dev_shared.device_generation();
                     if generation != applied {
                         applied = generation;
+
+                        // A rebuild asked for by a dying stream can be asked
+                        // for again the instant the new one opens, if whatever
+                        // killed the first is still there. Once a second is
+                        // quick enough for a headset being swapped mid-ride and
+                        // slow enough that a device which refuses to stay open
+                        // cannot spin this thread — or, worse, hammer a driver
+                        // that is already in trouble. Only recoveries wait; a
+                        // rider changing the device in a dropdown is answered
+                        // immediately, which is the case anyone is watching.
+                        if dev_shared.take_reopen_request() {
+                            if let Some(at) = opened_at {
+                                if let Some(left) = REOPEN_INTERVAL.checked_sub(at.elapsed()) {
+                                    std::thread::sleep(left);
+                                }
+                            }
+                        }
 
                         let (input, output) = dev_shared.devices();
                         config.input_device = input;
@@ -1183,6 +1279,7 @@ impl AudioEngine {
                                 Ok(s) => {
                                     tracing::info!("audio streams open");
                                     streams = Some(s);
+                                    opened_at = Some(std::time::Instant::now());
                                     dev_shared.publish_open(Ok(()));
                                 }
                                 Err(e) => {
@@ -1195,6 +1292,7 @@ impl AudioEngine {
                             }
                         } else {
                             tracing::info!("audio streams closed");
+                            opened_at = None;
                             dev_shared.discard_in_flight();
                         }
                     }
@@ -1309,7 +1407,17 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                     cap_shared.signal_work();
                 }
             },
-            move |e| tracing::warn!("input stream error: {e}"),
+            {
+                // A dead capture stream is the failure with no symptom: the
+                // callback simply stops being called, so the level sits at
+                // silence and everything downstream carries on as if the rider
+                // were merely not speaking. Ask for the pair to be rebuilt.
+                let err_shared = shared.clone();
+                move |e| {
+                    tracing::warn!("input stream error: {e}");
+                    err_shared.request_reopen();
+                }
+            },
             None,
         )
         .map_err(|e| CoreError::Audio(format!("building input stream: {e}")))?;
@@ -1384,7 +1492,16 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                     play_shared.signal_work();
                 }
             },
-            move |e| tracing::warn!("output stream error: {e}"),
+            {
+                // Both streams are rebuilt together, so either one dying is
+                // enough to ask. Losing playback is at least audible, but it is
+                // the same fault and the same cure.
+                let err_shared = shared.clone();
+                move |e| {
+                    tracing::warn!("output stream error: {e}");
+                    err_shared.request_reopen();
+                }
+            },
             None,
         )
         .map_err(|e| CoreError::Audio(format!("building output stream: {e}")))?;
@@ -2359,6 +2476,56 @@ mod tests {
         );
         assert!(shared.audio_wanted());
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_dead_stream_asks_for_the_devices_to_be_rebuilt() {
+        let shared = AudioShared::new();
+
+        // Nothing is open, so a stream reporting itself gone is a straggler
+        // from a close the user asked for, not a fault to chase.
+        let idle = shared.device_generation();
+        shared.request_reopen();
+        assert_eq!(
+            shared.device_generation(),
+            idle,
+            "a shut engine tried to reopen devices nobody had asked for"
+        );
+
+        shared.set_audio_wanted(true);
+        let open = shared.device_generation();
+
+        shared.request_reopen();
+        assert!(
+            shared.device_generation() > open,
+            "a dead stream left the microphone shut with nothing to reopen it"
+        );
+
+        // The same failure reported again and again — which is what a device
+        // that has gone actually does — must not queue a rebuild per report.
+        let asked = shared.device_generation();
+        shared.request_reopen();
+        shared.request_reopen();
+        assert_eq!(shared.device_generation(), asked);
+
+        assert!(shared.take_reopen_request());
+        assert!(
+            !shared.take_reopen_request(),
+            "the request outlived the pass that acted on it"
+        );
+    }
+
+    #[test]
+    fn deliberately_closing_the_devices_clears_a_pending_recovery() {
+        let shared = AudioShared::new();
+        shared.set_audio_wanted(true);
+        shared.request_reopen();
+
+        // Giving the devices back on purpose settles whatever the dying
+        // streams said on the way down. Left standing, the next call would
+        // wait out the recovery pause before its microphone opened.
+        shared.set_audio_wanted(false);
+        assert!(!shared.take_reopen_request());
     }
 
     #[test]

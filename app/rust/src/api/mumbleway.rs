@@ -1198,6 +1198,36 @@ pub fn is_level_normalisation_enabled() -> anyhow::Result<bool> {
     Ok(app()?.shared.normalise_levels_enabled())
 }
 
+/// How much incoming audio to hold back before playing it, in milliseconds.
+///
+/// The trade the rider is making is delay against dropouts, and which way it
+/// should go is a property of the network they are on rather than of the app.
+/// Rounded to whole 20 ms packets, which is the unit voice arrives in.
+#[frb(sync)]
+pub fn set_jitter_buffer_ms(ms: u32) -> anyhow::Result<()> {
+    app()?.shared.set_jitter_buffer_ms(ms);
+    Ok(())
+}
+
+#[frb(sync)]
+pub fn jitter_buffer_ms() -> anyhow::Result<u32> {
+    Ok(app()?.shared.jitter_buffer_ms())
+}
+
+/// The range the setting above accepts, as `(minimum, maximum, step)` in ms.
+///
+/// Reported rather than written into the interface twice: the bounds come from
+/// the buffer's own frame arithmetic, and a slider that let somebody pick a
+/// value the engine then silently rounded would be lying about what it set.
+#[frb(sync)]
+pub fn jitter_buffer_bounds_ms() -> (u32, u32, u32) {
+    (
+        (mumbleway_core::audio::MIN_TARGET_FRAMES * 20) as u32,
+        (mumbleway_core::audio::MAX_TARGET_FRAMES * 20) as u32,
+        20,
+    )
+}
+
 /// Acoustic echo cancellation, applied to the microphone before anything else.
 #[frb(sync)]
 pub fn set_echo_cancellation(on: bool) -> anyhow::Result<()> {

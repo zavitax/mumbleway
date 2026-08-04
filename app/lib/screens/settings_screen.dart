@@ -311,6 +311,7 @@ class _DeviceSection extends StatelessWidget {
         const _MonitorTile(),
         const _EchoCancellationTile(),
         const _NormaliseTile(),
+        const _JitterBufferTile(),
         const _ReverbTile(),
         const _TestOutputTile(),
       ],
@@ -502,6 +503,69 @@ class _NormaliseTile extends StatelessWidget {
       isThreeLine: true,
       value: state.normaliseLevels,
       onChanged: (v) => state.setNormaliseLevels(value: v),
+    );
+  }
+}
+
+/// How much incoming audio is held back before it is played.
+///
+/// Given its own tile with the explanation attached rather than dropped into
+/// the level sliders, because it is the one audio control where the right
+/// answer depends on something outside the app — the network the rider is on —
+/// and a number with no explanation is a number nobody will touch.
+class _JitterBufferTile extends StatelessWidget {
+  const _JitterBufferTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    final (lo, hi, step) = AppState.jitterBounds;
+    final value = state.jitterBufferMs.clamp(lo, hi).toDouble();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.network_check, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  l.jitterBuffer,
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ),
+              Text(
+                l.milliseconds(value.round()),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: lo.toDouble(),
+            max: hi.toDouble(),
+            // One stop per whole packet. Voice arrives in 20 ms pieces and the
+            // buffer counts in whole ones, so anything finer would be a
+            // position the engine rounds away the moment it is let go of.
+            divisions: (hi - lo) ~/ step,
+            onChanged: (v) => state.setJitterBuffer(ms: v.round()),
+          ),
+          Text(
+            l.jitterBufferBody,
+            style: TextStyle(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
     );
   }
 }

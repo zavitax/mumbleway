@@ -1357,6 +1357,24 @@ abstract class L {
   /// **'Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.'**
   String get evenOutLoudnessBody;
 
+  /// No description provided for @jitterBuffer.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming audio buffer'**
+  String get jitterBuffer;
+
+  /// No description provided for @jitterBufferBody.
+  ///
+  /// In en, this message translates to:
+  /// **'How much of what others say is held back before it is played. More buffer rides out a patchy signal without gaps; less means you hear them sooner. MumbleWay adds to it by itself when a link starts losing packets, and comes back down to this. Raise it if the playback gaps counter in Diagnostics keeps climbing.'**
+  String get jitterBufferBody;
+
+  /// A duration in milliseconds, shown beside a slider.
+  ///
+  /// In en, this message translates to:
+  /// **'{ms} ms'**
+  String milliseconds(int ms);
+
   /// No description provided for @notAvailableHere.
   ///
   /// In en, this message translates to:

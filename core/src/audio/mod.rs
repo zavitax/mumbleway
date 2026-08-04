@@ -13,5 +13,5 @@ pub mod resample;
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};
 pub use denoise::{CaptureProcessor, NoiseProfile};
 pub use engine::{AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode};
-pub use jitter::SpeakerBuffer;
+pub use jitter::{SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES};
 pub use resample::Resampler;

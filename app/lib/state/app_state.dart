@@ -329,6 +329,7 @@ class AppState extends ChangeNotifier {
   static const _prefsOutputVolume = 'mumbleway.outputVolume';
   static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
+  static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
@@ -667,6 +668,9 @@ class AppState extends ChangeNotifier {
     // throws.
     echoCancellation = prefs.getBool(_prefsEchoCancellation) ?? true;
     normaliseLevels = prefs.getBool(_prefsNormaliseLevels) ?? true;
+    if (prefs.getInt(_prefsJitterBuffer) case final v?) {
+      jitterBufferMs = _clampJitter(v);
+    }
     reverb = prefs.getBool(_prefsReverb) ?? true;
     final guard = prefs.getInt(_prefsFeedbackGuard);
     if (guard != null &&
@@ -695,6 +699,7 @@ class AppState extends ChangeNotifier {
     setOutputVolumeDb(db: outputVolumeDbValue);
     setEchoCancellation(on_: echoCancellation);
     setLevelNormalisation(on_: normaliseLevels);
+    setJitterBufferMs(ms: jitterBufferMs);
     setReverb(on_: reverb);
     setFeedbackGuard(mode: feedbackGuard);
     setDehiss(mode: dehiss);
@@ -1099,6 +1104,7 @@ class AppState extends ChangeNotifier {
     'outputVolume': outputVolumeDbValue,
     'echoCancellation': echoCancellation,
     'normaliseLevels': normaliseLevels,
+    'jitterBufferMs': jitterBufferMs,
     'reverb': reverb,
     'feedbackGuard': feedbackGuard.index,
     'dehiss': dehiss.index,
@@ -1180,6 +1186,12 @@ class AppState extends ChangeNotifier {
     if (read<bool>('normaliseLevels') case final v? when v != normaliseLevels) {
       normaliseLevels = v;
       await prefs.setBool(_prefsNormaliseLevels, v);
+      audioChanged = true;
+    }
+    if (read<int>('jitterBufferMs') case final v?
+        when _clampJitter(v) != jitterBufferMs) {
+      jitterBufferMs = _clampJitter(v);
+      await prefs.setInt(_prefsJitterBuffer, jitterBufferMs);
       audioChanged = true;
     }
     if (read<bool>('reverb') case final v? when v != reverb) {
@@ -1927,6 +1939,46 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsNormaliseLevels, value);
+  }
+
+  /// The bounds the engine will actually honour, in milliseconds, as
+  /// `(minimum, maximum, step)`.
+  ///
+  /// Asked of the engine rather than repeated here. Voice arrives in 20 ms
+  /// packets and the buffer counts in whole ones, so a slider free to pick 95
+  /// would be showing a number the engine had already rounded away.
+  /// The fallback is the same arithmetic, for a widget test that never brought
+  /// the engine up: the bounds are constants either side of the bridge, and a
+  /// settings screen that cannot be built without a running audio engine would
+  /// be untestable for no gain.
+  static final (int, int, int) jitterBounds = () {
+    try {
+      return jitterBufferBoundsMs();
+    } catch (_) {
+      return (40, 500, 20);
+    }
+  }();
+
+  /// How much incoming audio is held back before it is played, in ms.
+  ///
+  /// The floor, not the whole story: the engine still deepens the buffer by
+  /// itself when a link starts losing packets, and comes back down to this.
+  int jitterBufferMs = 100;
+
+  static int _clampJitter(int ms) {
+    final (lo, hi, step) = jitterBounds;
+    final snapped = ((ms + step ~/ 2) ~/ step) * step;
+    return snapped.clamp(lo, hi);
+  }
+
+  Future<void> setJitterBuffer({required int ms}) async {
+    final value = _clampJitter(ms);
+    if (value == jitterBufferMs) return;
+    jitterBufferMs = value;
+    setJitterBufferMs(ms: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsJitterBuffer, value);
   }
 
   Future<void> setEchoCancellationEnabled({required bool value}) async {

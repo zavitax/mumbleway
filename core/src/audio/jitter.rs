@@ -14,12 +14,24 @@ use crate::error::Result;
 /// Loudness every speaker is brought towards, in dBFS.
 const NORMALISE_TARGET_DB: f32 = -20.0;
 
-/// Starting backlog, in 20 ms frames. Three frames is 60 ms, a reasonable
-/// compromise between mouth-to-ear delay and cellular jitter.
-pub const DEFAULT_TARGET_FRAMES: usize = 3;
+/// Starting backlog, in 20 ms frames.
+///
+/// Five frames is 100 ms. It was three — 60 ms — which is the textbook answer
+/// for a fixed line and the wrong one for a phone on a motorway: the buffer
+/// spent its time climbing out of gaps rather than holding a margin, and the
+/// playback gap counter said so. A tenth of a second of mouth-to-ear delay is
+/// below what anyone notices in conversation; a dropout is not.
+pub const DEFAULT_TARGET_FRAMES: usize = 5;
+
+/// The shallowest backlog a rider may ask for, in frames.
+///
+/// Two frames is 40 ms. One would mean no margin at all — every packet that
+/// arrives a millisecond late is a gap — so the bottom of the range stops one
+/// short of useless rather than at zero.
+pub const MIN_TARGET_FRAMES: usize = 2;
 
 /// Never buffer more than this; beyond it we are adding delay, not resilience.
-pub const MAX_TARGET_FRAMES: usize = 15;
+pub const MAX_TARGET_FRAMES: usize = 25;
 
 /// Drop the whole buffer if it somehow exceeds this (a stuck or hostile sender).
 const HARD_CAP_FRAMES: usize = 60;
@@ -97,6 +109,13 @@ pub struct SpeakerBuffer {
     normalizer: LevelNormalizer,
     /// Whether that correction is applied at all.
     normalise: bool,
+    /// The backlog this buffer returns to on a clean link, in frames.
+    ///
+    /// The rider's setting rather than a constant. [`Self::target`] still moves
+    /// above it by itself when the link misbehaves; this is the floor it comes
+    /// back down to, so somebody riding a route with known bad coverage can
+    /// stop it having to relearn that on every call.
+    base_target: usize,
     /// Frames handed out that were invented rather than decoded, cumulative.
     ///
     /// Synthesised audio and real audio sound alike enough to argue about;
@@ -128,6 +147,7 @@ impl SpeakerBuffer {
             pending: BTreeMap::new(),
             next_seq: None,
             target: DEFAULT_TARGET_FRAMES,
+            base_target: DEFAULT_TARGET_FRAMES,
             recent_losses: 0,
             concealed_run: 0,
             clean_run: 0,
@@ -152,6 +172,24 @@ impl SpeakerBuffer {
     /// take it out of the chain settles whether it is the cause in seconds.
     pub fn set_normalisation(&mut self, on: bool) {
         self.normalise = on;
+    }
+
+    /// Sets the backlog this buffer holds on a clean link, in frames.
+    ///
+    /// Raising it takes effect at once, because a rider changing this is
+    /// answering a call that is stuttering now. Lowering it does not pull
+    /// frames back out of a buffer that is already deeper — that would open
+    /// exactly the gap the setting exists to close — so the surplus is given
+    /// back the ordinary way, by the clean-run rule below.
+    pub fn set_base_target(&mut self, frames: usize) {
+        let frames = frames.clamp(MIN_TARGET_FRAMES, MAX_TARGET_FRAMES);
+        if frames == self.base_target {
+            return;
+        }
+        self.base_target = frames;
+        if self.target < frames {
+            self.target = frames;
+        }
     }
 
     /// `(invented, decoded)` frames handed out so far.
@@ -352,7 +390,7 @@ impl SpeakerBuffer {
         self.concealed_run = 0;
         self.decoded_total += 1;
         self.clean_run += 1;
-        if self.clean_run > 250 && self.target > DEFAULT_TARGET_FRAMES {
+        if self.clean_run > 250 && self.target > self.base_target {
             // Sustained clean playback: give the latency back.
             self.target -= 1;
             self.clean_run = 0;
@@ -707,10 +745,34 @@ mod tests {
     }
 
     #[test]
+    fn the_rider_sets_the_floor_the_buffer_returns_to() {
+        let mut b = SpeakerBuffer::new().unwrap();
+        assert_eq!(b.target_frames(), DEFAULT_TARGET_FRAMES);
+
+        // Asking for more takes effect now. Somebody changing this is
+        // answering audio that is breaking up as they listen to it.
+        b.set_base_target(MAX_TARGET_FRAMES);
+        assert_eq!(b.target_frames(), MAX_TARGET_FRAMES);
+
+        // Asking for less does not throw away a cushion already held: pulling
+        // frames back out is the gap the setting exists to close. The clean-run
+        // rule gives the latency back once the link has earned it.
+        b.set_base_target(MIN_TARGET_FRAMES);
+        assert_eq!(b.target_frames(), MAX_TARGET_FRAMES);
+
+        // And nothing outside the range the interface offers gets through.
+        b.set_base_target(usize::MAX);
+        assert_eq!(b.target_frames(), MAX_TARGET_FRAMES);
+    }
+
+    #[test]
     fn running_dry_refills_before_starting_again() {
         // Once genuinely empty, stuttering along one frame at a time is worse
         // than pausing to rebuild a cushion.
-        let packets = frames(4);
+        // Enough to fill the buffer and one to offer afterwards, counted off
+        // the target rather than written out: the default is a tuning decision
+        // and this test is about the refill rule, not about its value.
+        let packets = frames(DEFAULT_TARGET_FRAMES + 1);
         let mut b = SpeakerBuffer::new().unwrap();
         for (i, p) in packets.iter().take(DEFAULT_TARGET_FRAMES).enumerate() {
             b.push(seq(i), p.clone(), false);
@@ -721,7 +783,7 @@ mod tests {
         }
         assert_eq!(b.buffered(), 0);
 
-        b.push(1000, packets[3].clone(), false);
+        b.push(1000, packets[DEFAULT_TARGET_FRAMES].clone(), false);
         assert!(
             !b.ready(),
             "one frame after running dry should rebuild, not restart instantly"

@@ -249,6 +249,13 @@
   "fingerprintCopied": "Fingerprint copied",
   "evenOutLoudness": "Even out speaker loudness",
   "evenOutLoudnessBody": "Brings everyone to a similar level. Adapts on what it hears, so if a hiss rises between sentences, turn this off to check.",
+  "jitterBuffer": "Incoming audio buffer",
+  "jitterBufferBody": "How much of what others say is held back before it is played. More buffer rides out a patchy signal without gaps; less means you hear them sooner. MumbleWay adds to it by itself when a link starts losing packets, and comes back down to this. Raise it if the playback gaps counter in Diagnostics keeps climbing.",
+  "milliseconds": "{ms} ms",
+  "@milliseconds": {
+    "description": "A duration in milliseconds, shown beside a slider.",
+    "placeholders": { "ms": { "type": "int" } }
+  },
   "notAvailableHere": "Not available on this platform.",
   "pasteLinkOrProfile": "Paste a link or profile",
   "downloadProfileFile": "Download a profile file",

@@ -378,6 +378,23 @@ jobs:
       # discards with itself. The second import must not create a keychain of
       # its own: it would replace the first, and the packaging step then fails
       # looking for an identity that was imported and thrown away.
+      #
+      # Both must also name the same keychain password, and that is a separate
+      # thing from either certificate's password. Left unset, the action
+      # invents a random one per invocation: the first created the keychain
+      # with its own, the second then ran
+      #
+      #   security set-key-partition-list ... -k <a different random password>
+      #
+      # against the keychain the first had made, and failed with "the user name
+      # or passphrase you entered is not correct" — which reads like a rejected
+      # certificate password and is not one. The `security import` immediately
+      # above it had already succeeded, which is the step the p12 password is
+      # actually used by.
+      #
+      # The value is not a secret. It guards a keychain that exists for the
+      # length of one job on a machine that is destroyed afterwards, and it
+      # never leaves the runner.
       - name: Import the application certificate
         if: steps.gate.outputs.ready == 'true'
         uses: apple-actions/import-codesign-certs@v3
@@ -385,6 +402,7 @@ jobs:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           keychain: signing_temp
+          keychain-password: mumbleway-${{ github.run_id }}
 
       - name: Import the installer certificate
         if: steps.gate.outputs.ready == 'true'
@@ -393,6 +411,7 @@ jobs:
           p12-file-base64: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_P12 }}
           p12-password: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
           keychain: signing_temp
+          keychain-password: mumbleway-${{ github.run_id }}
           create-keychain: false
 
       - name: Install provisioning profile

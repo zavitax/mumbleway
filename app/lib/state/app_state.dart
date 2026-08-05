@@ -342,6 +342,7 @@ class AppState extends ChangeNotifier {
   static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
   static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
+  static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
@@ -738,9 +739,42 @@ class AppState extends ChangeNotifier {
         ),
       );
 
+    await _repairEscapedNames(prefs);
+
     for (final s in servers.take(maxServers)) {
       await _register(s);
     }
+  }
+
+  /// Decodes XML escapes left in names saved before the directory parser did.
+  ///
+  /// The parser is right and has been for a while — see [parsePublicList] —
+  /// but a name it decoded is only decoded at the moment it is read. Entries
+  /// added before that still hold what the directory sent, so a server called
+  /// "Dordogne & Suisse" sits in the list as `Dordogne &amp; Suisse` and stays
+  /// there. Worse now than it was: that name goes into the invite links and QR
+  /// codes this device hands out, so one stale entry spreads.
+  ///
+  /// Once, guarded by a flag, rather than on every load. A rider who genuinely
+  /// wants `&amp;` in a name they typed themselves is entitled to keep it, and
+  /// a repair that ran forever would take it away every time.
+  Future<void> _repairEscapedNames(SharedPreferences prefs) async {
+    if (prefs.getBool(_prefsNamesRepaired) ?? false) return;
+
+    var changed = false;
+    for (var i = 0; i < servers.length; i++) {
+      final name = servers[i].name;
+      final decoded = _unescapeXml(name);
+      if (decoded == name) continue;
+      // Not stamped: this corrects how the name was always meant to read
+      // rather than changing it, and stamping would have this device win a
+      // sync against another that has the same entry spelled correctly.
+      servers[i] = servers[i].copyWith(name: decoded);
+      changed = true;
+    }
+
+    await prefs.setBool(_prefsNamesRepaired, true);
+    if (changed) await _persist(publish: false);
   }
 
   /// Saves to disk and, unless told otherwise, queues an upload.
@@ -1973,7 +2007,7 @@ class AppState extends ChangeNotifier {
   ///
   /// The floor, not the whole story: the engine still deepens the buffer by
   /// itself when a link starts losing packets, and comes back down to this.
-  int jitterBufferMs = 100;
+  int jitterBufferMs = 200;
 
   static int _clampJitter(int ms) {
     final (lo, hi, step) = jitterBounds;

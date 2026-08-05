@@ -30,6 +30,24 @@ class MainActivity : FlutterActivity() {
 
     private var linkChannel: MethodChannel? = null
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        // Before anything else, so a crash while the engine is still coming up
+        // is reported rather than being the one kind that gets away.
+        CrashReporter.install(this)
+        super.onCreate(savedInstanceState)
+
+        // A report from last time that was never shown — which happens when
+        // the crash was violent enough that the reporting activity could not
+        // be started at all. Better late than lost.
+        CrashReporter.pending(this)?.let { report ->
+            startActivity(
+                Intent(this, CrashActivity::class.java)
+                    .putExtra(CrashActivity.EXTRA_REPORT, report)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 

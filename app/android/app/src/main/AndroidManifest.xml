@@ -73,6 +73,20 @@
                 <data android:scheme="mumble"/>
             </intent-filter>
         </activity>
+        <!-- Shows a crash instead of the app simply disappearing.
+
+             In its own process on purpose: the process that crashed is on its
+             way out and may be in any state at all, so asking it to draw its
+             own error message is asking the broken thing to work. Not
+             exported — nothing outside the app has any business starting it. -->
+        <activity
+            android:name=".CrashActivity"
+            android:process=":crash"
+            android:taskAffinity="com.mumbleway.mumbleway.crash"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Material.NoActionBar"/>
         <!-- Keeps the audio engine and the overlay alive while another app is
              in front. Typed as "microphone" because Android 14 requires a
              foreground service to declare why it runs. -->

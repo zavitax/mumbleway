@@ -461,14 +461,20 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     // what actually happened was the one line nobody could read.
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        diag::record(
-            LogLevel::Error,
-            "panic",
-            match info.location() {
-                Some(at) => format!("{} at {}:{}", info, at.file(), at.line()),
-                None => info.to_string(),
-            },
-        );
+        // With the frames, not just the line. Where a panic was raised is
+        // often a helper several calls below the code that had the wrong idea
+        // — a decoder given a short buffer, a lock taken twice — and the line
+        // number alone names the victim rather than the cause.
+        //
+        // Forced rather than left to RUST_BACKTRACE: nobody can set an
+        // environment variable on a phone, which is exactly where the crashes
+        // nobody can reproduce happen.
+        let trace = std::backtrace::Backtrace::force_capture();
+        let where_ = match info.location() {
+            Some(at) => format!("{} at {}:{}", info, at.file(), at.line()),
+            None => info.to_string(),
+        };
+        diag::record(LogLevel::Error, "panic", format!("{where_}\n{trace}"));
         previous(info);
     }));
 

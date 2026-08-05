@@ -40,7 +40,14 @@ android {
     signingConfigs {
         if (hasReleaseKey) {
             create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                // Resolved from the root project, which is where
+                // key.properties itself lives, so a bare filename in that file
+                // means what anybody writing it would expect: the keystore
+                // beside it. `file()` here would resolve against this module
+                // instead — android/app rather than android — and the build
+                // then fails looking for the keystore one directory deeper
+                // than anyone put it.
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")

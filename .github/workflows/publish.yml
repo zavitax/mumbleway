@@ -132,9 +132,21 @@ jobs:
           packageName: com.mumbleway.mumbleway
           releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
           track: ${{ inputs.track || 'internal' }}
-          # Draft, not live: a release should be promoted by a human who has
-          # looked at it.
-          status: draft
+          # Live on the internal track, draft everywhere else.
+          #
+          # Internal testing reaches only people who have been named in the
+          # console by hand, and the whole point of it is a short loop: a fix
+          # goes out, somebody rides with it, they say whether it worked. A
+          # draft sitting in the console waiting to be promoted breaks that
+          # loop at the least useful moment, and every build in this project so
+          # far has needed a human to go and click a button that has never once
+          # been used to reject anything.
+          #
+          # Every wider track still stops for a person. Alpha, beta and
+          # production reach people who did not opt into a test build, and a
+          # release that goes live because a workflow ran is exactly the sort
+          # of thing that should not.
+          status: ${{ (inputs.track || 'internal') == 'internal' && 'completed' || 'draft' }}
 
       - name: Remove signing material
         if: always() && steps.gate.outputs.ready == 'true'

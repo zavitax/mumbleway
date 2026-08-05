@@ -97,22 +97,27 @@ flutter {
     source = "../.."
 }
 
-dependencies {
-    // The barcode model, inside the app instead of fetched from Play Services.
-    //
-    // mobile_scanner defaults to the unbundled ML Kit variant, which downloads
-    // its model on demand. On a phone where that module has never been fetched
-    // the detector comes back null, and the plugin reports it as
-    //
-    //   MobileScannerErrorCode.genericError
-    //
-    // with nothing attached — while the camera itself opens perfectly, which is
-    // why every other camera app on the device works and this one did not. The
-    // real error was only visible in logcat, as a NullPointerException inside
-    // obfuscated Play Services classes.
-    //
-    // Bundling costs a couple of megabytes in the APK and removes the
-    // dependency on a download that a modest, storage-constrained phone may
-    // never have made — which is precisely the phone this feature is for.
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
-}
+// No barcode dependency is declared here, deliberately. mobile_scanner 7
+// bundles the ML Kit model itself unless
+//
+//   dev.steenbakker.mobile_scanner.useUnbundled=true
+//
+// is set in android/gradle.properties, and it is not set. Only the plugin gets
+// to make that choice, so declaring anything from this module is at best noise.
+//
+// This module did declare `com.google.mlkit:barcode-scanning:17.3.0` for one
+// release, to fix a phone that reported
+//
+//   MobileScannerErrorCode.genericError
+//
+// with nothing attached, while its camera opened perfectly in every other app.
+// That change did not help. The reason is visible in
+//
+//   ./gradlew :app:dependencies --configuration releaseRuntimeClasspath
+//
+// which shows `com.google.mlkit:barcode-scanning` depending on
+// `com.google.android.gms:play-services-mlkit-barcode-scanning` — the bundled
+// artifact is a superset of the unbundled one, not an alternative to it. So
+// the model was already in that APK, and "the model was never downloaded" does
+// not explain the failure. Whatever does, it is not that; do not re-derive it
+// from the dependency list.

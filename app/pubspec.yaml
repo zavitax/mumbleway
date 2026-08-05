@@ -52,13 +52,21 @@ dependencies:
   #
   # Three packages rather than one because no single package covers every
   # platform this app runs on. `qr_flutter` draws, everywhere. `mobile_scanner`
-  # reads from a camera, which only phones and tablets have — held at version 5
-  # deliberately: 6 and later require iOS 15.5, and adding a share feature is
-  # not a reason to drop every device below it. `zxing2` reads from an image
-  # file in pure Dart, which is how macOS and Windows import a code somebody
-  # sent them, and it needs `image` to turn a PNG or JPEG into pixels first.
+  # reads from a camera, which only phones and tablets have. `zxing2` reads from
+  # an image file in pure Dart, which is how macOS and Windows import a code
+  # somebody sent them, and it needs `image` to turn a PNG or JPEG into pixels
+  # first.
+  #
+  # This was pinned at 5.2.3 to avoid the iOS 15.5 floor that 6.0 imposed, on
+  # the reasoning that a share feature is not worth dropping devices for. Both
+  # halves of that were wrong. The floor would have cost no device — iOS 13 and
+  # iOS 15 run on exactly the same iPhones, 6s and later, and iOS 16 is where
+  # hardware actually falls off — and 7.0 puts the floor back at iOS 12 anyway,
+  # below where this project already sits, so the upgrade moves no target at
+  # all. Meanwhile the pin held the Android camera at a plugin two majors
+  # behind, on a phone where it would not start.
   qr_flutter: ^4.1.0
-  mobile_scanner: ^5.2.3
+  mobile_scanner: ^7.4.0
   zxing2: ^0.2.3
   image: ^4.3.0
   flutter_localizations:

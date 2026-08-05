@@ -84,6 +84,22 @@ const CAPTURE_WATCHDOG: Duration = Duration::from_secs(1);
 /// against a missed signal rather than how work is noticed.
 const IDLE_WAKE: Duration = Duration::from_secs(30);
 
+/// How long voice activation keeps sending at full level after the speech
+/// detector drops.
+///
+/// A threshold lands mid-word. The unvoiced consonant that ends a sentence —
+/// the "t" in "right", an "s", an "f" — carries a fraction of the energy of
+/// the vowel before it and falls below the gate while the word is still being
+/// said, so the far end hears the word truncated and waits for the rest.
+const VAD_HOLD_SAMPLES: usize = SAMPLE_RATE as usize * 200 / 1000;
+
+/// And how long it then takes to reach silence.
+///
+/// A ramp rather than a second cliff: cutting a signal to zero in one sample
+/// is a click, and a click at the end of every sentence is more noticeable
+/// than the truncation this is fixing.
+const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 100 / 1000;
+
 /// Shared state between the callbacks, the worker and the API layer.
 pub struct AudioShared {
     /// Raw mono 48 kHz samples captured from the microphone.
@@ -163,6 +179,15 @@ pub struct AudioShared {
     /// does not reliably say so first — so silence here is the signal, and
     /// there is no other.
     capture_ticks: AtomicU64,
+
+    /// Speakers whose audio is actually playing, as against still buffering.
+    ///
+    /// Kept apart from [`Self::active_speakers`], which counts anyone we owe
+    /// audio to and is what decides whether the mixer needs waking. This one
+    /// answers a narrower question — is there a stream mid-flow that ought to
+    /// be producing sound right now — which is the only one a dropout counter
+    /// may be gated on.
+    playing_speakers: AtomicU32,
 
     /// The backlog every speaker buffer returns to, in 20 ms frames.
     ///
@@ -441,6 +466,7 @@ impl AudioShared {
             audio_wanted: AtomicBool::new(false),
             reopen_pending: AtomicBool::new(false),
             capture_ticks: AtomicU64::new(0),
+            playing_speakers: AtomicU32::new(0),
             jitter_target_frames: AtomicUsize::new(DEFAULT_TARGET_FRAMES),
             open_outcome: Mutex::new(None),
             open_settled: Condvar::new(),
@@ -980,6 +1006,7 @@ impl AudioShared {
         self.echo_reference.lock().clear();
         self.speakers.lock().clear();
         self.active_speakers.store(0, Ordering::Relaxed);
+        self.playing_speakers.store(0, Ordering::Relaxed);
         self.speech_detected.store(false, Ordering::Relaxed);
         self.store_level(SILENT_DB);
         self.store_output_level(SILENT_DB);
@@ -1052,6 +1079,14 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
     // underrun meter blind to a buffer that is holding back вЂ” which is exactly
     // the failure worth catching.
     let expecting = speakers.values().filter(|b| b.buffered() > 0).count();
+    // Separately: how many are actually mid-stream, as against still filling.
+    //
+    // This is what the dropout counter is gated on, and the distinction is the
+    // whole of it. A buffer that is filling produces no audio on purpose — for
+    // the length of its target backlog, at the start of every utterance — and
+    // counting that as a gap made the meter grow *faster* the deeper the
+    // buffer was set, which is precisely backwards from what it is read for.
+    let playing = speakers.values().filter(|b| b.is_playing()).count();
     let (invented, decoded) = speakers
         .values()
         .map(|b| b.frame_counts())
@@ -1063,6 +1098,9 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
     shared
         .active_speakers
         .store(active.max(expecting) as u32, Ordering::Relaxed);
+    shared
+        .playing_speakers
+        .store(playing as u32, Ordering::Relaxed);
     if active == 0 {
         mixed.clear();
         return;
@@ -1538,10 +1576,16 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                         *ch = s;
                     }
                 }
-                // Only a gap if somebody was actually talking. Silence while
-                // nobody is is not a dropout, and counting it hides the ones
-                // that matter under hours of idle.
-                if underruns > 0 && play_shared.active_speakers.load(Ordering::Relaxed) > 0 {
+                // Only a gap if somebody's audio was actually playing.
+                //
+                // Not "somebody is tracked": that includes a buffer still
+                // filling to its target, which produces no audio deliberately
+                // and does so at the start of every single utterance. Counting
+                // that made this number rise with the buffer depth — so a
+                // rider following it would keep increasing the setting, adding
+                // delay, and watching the very reading they were chasing get
+                // worse.
+                if underruns > 0 && play_shared.playing_speakers.load(Ordering::Relaxed) > 0 {
                     play_shared
                         .underrun_samples
                         .fetch_add(underruns, Ordering::Relaxed);
@@ -1607,6 +1651,9 @@ where
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
     let mut sequence: u64 = 0;
     let mut was_transmitting = false;
+    // Voice activation's release envelope; see where they are spent.
+    let mut hold_left: usize = 0;
+    let mut fade_left: usize = 0;
 
     let mut mix_scratch = Vec::new();
     let mut mixed = Vec::new();
@@ -1696,20 +1743,70 @@ where
                 .speech_detected
                 .store(analysis.speaking, Ordering::Relaxed);
 
+            let mode = shared.transmit_mode();
+            let open = match mode {
+                TransmitMode::Continuous => true,
+                TransmitMode::PushToTalk => shared.transmitting.load(Ordering::Relaxed),
+                TransmitMode::VoiceActivity => analysis.speaking,
+            };
+
+            let allowed = if shared.is_muted() {
+                // Mute is immediate and absolute. Fading out of it would send
+                // the tail of whatever the rider muted themselves to stop
+                // sending, which is the one thing mute must never do.
+                hold_left = 0;
+                fade_left = 0;
+                false
+            } else if mode == TransmitMode::VoiceActivity {
+                // Voice activation cuts on a threshold, and a threshold lands
+                // mid-word: the quiet consonant that ends a sentence sits below
+                // it, so "right" arrives as "righ" and the listener is left
+                // waiting for a word that was sent. So the gate does not slam.
+                // It stays fully open for a while after the level drops, then
+                // closes over a ramp — long enough to carry a word's tail,
+                // short enough that a rider who stops talking is not still
+                // broadcasting a second later.
+                if open {
+                    hold_left = VAD_HOLD_SAMPLES;
+                    fade_left = VAD_FADE_SAMPLES;
+                }
+                let mut sending = false;
+                for s in block.iter_mut() {
+                    let gain = if open {
+                        1.0
+                    } else if hold_left > 0 {
+                        hold_left -= 1;
+                        1.0
+                    } else if fade_left > 0 {
+                        fade_left -= 1;
+                        // Linear to zero. The ramp is applied per sample rather
+                        // than per block so it cannot be heard as a staircase.
+                        fade_left as f32 / VAD_FADE_SAMPLES as f32
+                    } else {
+                        0.0
+                    };
+                    if gain > 0.0 {
+                        sending = true;
+                    }
+                    *s *= gain;
+                }
+                sending
+            } else {
+                open
+            };
+
             // Loopback monitoring: hear exactly what would be transmitted.
+            //
+            // Below the gate rather than above it, so the release envelope is
+            // in what the rider hears. The microphone test is the one place
+            // anybody can judge whether the tail is long enough, and a monitor
+            // that bypassed it would be answering a different question.
             if shared.is_monitoring() {
                 let mut q = shared.monitor_queue.lock();
                 if q.len() + block.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
                     q.extend(block.iter().copied());
                 }
             }
-
-            let allowed = !shared.is_muted()
-                && match shared.transmit_mode() {
-                    TransmitMode::Continuous => true,
-                    TransmitMode::PushToTalk => shared.transmitting.load(Ordering::Relaxed),
-                    TransmitMode::VoiceActivity => analysis.speaking,
-                };
 
             frame.extend_from_slice(&block);
             if frame.len() >= FRAME_SAMPLES {
@@ -1796,7 +1893,13 @@ mod tests {
     #[test]
     fn mixes_a_single_speaker_into_the_playback_queue() {
         let shared = AudioShared::new();
-        for (i, f) in encoded_frames(6).into_iter().enumerate() {
+        // Enough to clear the target backlog, counted off it rather than
+        // written out: the default is a tuning decision and this test is about
+        // mixing, not about its value.
+        for (i, f) in encoded_frames(DEFAULT_TARGET_FRAMES + 1)
+            .into_iter()
+            .enumerate()
+        {
             shared.push_incoming(0, &packet(1, i as u64, f, false));
         }
         let (mut a, mut b) = (Vec::new(), Vec::new());
@@ -1810,7 +1913,7 @@ mod tests {
     #[test]
     fn mixes_two_speakers_without_clipping() {
         let shared = AudioShared::new();
-        let frames = encoded_frames(6);
+        let frames = encoded_frames(DEFAULT_TARGET_FRAMES + 1);
         for (i, f) in frames.iter().enumerate() {
             shared.push_incoming(0, &packet(1, i as u64, f.clone(), false));
             shared.push_incoming(0, &packet(2, i as u64, f.clone(), false));
@@ -2580,6 +2683,53 @@ mod tests {
         assert!(
             !shared.take_reopen_request(),
             "the request outlived the pass that acted on it"
+        );
+    }
+
+    #[test]
+    fn a_filling_buffer_is_not_counted_as_a_dropout() {
+        // The reading that sent a rider the wrong way: every utterance begins
+        // with the buffer filling to its target, producing no audio on
+        // purpose, and that was counted as a gap — so raising the buffer, the
+        // one control offered for the problem, made the number worse.
+        let shared = AudioShared::new();
+        let frames = encoded_frames(4);
+
+        // Fewer than the target, so the buffer is still filling.
+        for (i, f) in frames.into_iter().enumerate() {
+            shared.push_incoming(0, &packet(1, i as u64, f, false));
+        }
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        mix_speakers(&shared, &mut a, &mut b);
+
+        assert!(
+            shared.active_speakers.load(Ordering::Relaxed) > 0,
+            "audio is owed, so the mixer must still be woken for it"
+        );
+        assert_eq!(
+            shared.playing_speakers.load(Ordering::Relaxed),
+            0,
+            "a buffer that has not started playing was counted as playing"
+        );
+    }
+
+    #[test]
+    fn a_playing_buffer_is_counted() {
+        // Once it is mid-stream, silence really is a hole, and the counter has
+        // to see it. Enough frames to clear the target and start.
+        let shared = AudioShared::new();
+        for (i, f) in encoded_frames(DEFAULT_TARGET_FRAMES + 2)
+            .into_iter()
+            .enumerate()
+        {
+            shared.push_incoming(0, &packet(1, i as u64, f, false));
+        }
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        mix_speakers(&shared, &mut a, &mut b);
+
+        assert!(
+            shared.playing_speakers.load(Ordering::Relaxed) > 0,
+            "a stream that is playing was invisible to the dropout counter"
         );
     }
 

@@ -16,12 +16,12 @@ const NORMALISE_TARGET_DB: f32 = -20.0;
 
 /// Starting backlog, in 20 ms frames.
 ///
-/// Five frames is 100 ms. It was three — 60 ms — which is the textbook answer
+/// Ten frames is 200 ms. It was three — 60 ms — which is the textbook answer
 /// for a fixed line and the wrong one for a phone on a motorway: the buffer
-/// spent its time climbing out of gaps rather than holding a margin, and the
-/// playback gap counter said so. A tenth of a second of mouth-to-ear delay is
-/// below what anyone notices in conversation; a dropout is not.
-pub const DEFAULT_TARGET_FRAMES: usize = 5;
+/// spent its time climbing out of gaps rather than holding a margin. A fifth
+/// of a second of mouth-to-ear delay is still short of what interrupts the
+/// rhythm of a conversation; a dropout is not.
+pub const DEFAULT_TARGET_FRAMES: usize = 10;
 
 /// The shallowest backlog a rider may ask for, in frames.
 ///
@@ -279,6 +279,16 @@ impl SpeakerBuffer {
         if units > 0 {
             self.stride = Some(units);
         }
+    }
+
+    /// Whether this stream has started playing, as against still filling up.
+    ///
+    /// The difference matters to the dropout counter. A buffer that is filling
+    /// is doing what it was asked to do and the listener hears silence because
+    /// nobody has said anything yet; a buffer that was playing and has run dry
+    /// is a hole in the middle of a sentence. Only the second is a fault.
+    pub fn is_playing(&self) -> bool {
+        self.playing
     }
 
     /// True when there is something to play.
@@ -724,7 +734,7 @@ mod tests {
         // frame. Holding frames back whenever the backlog dips below it means
         // the cushion is never actually used, and every late packet becomes a
         // hole — heard as continuous choppiness on an otherwise fine link.
-        let packets = frames(6);
+        let packets = frames(DEFAULT_TARGET_FRAMES + 1);
         let mut b = SpeakerBuffer::new().unwrap();
 
         for (i, p) in packets.iter().take(DEFAULT_TARGET_FRAMES).enumerate() {

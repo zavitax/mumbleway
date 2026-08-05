@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
@@ -202,7 +203,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SectionHeader(l.identity),
           _Explainer(l.identityBody),
           const _FingerprintTile(),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
+          const _VersionFooter(),
+          const SizedBox(height: 28),
         ],
       ),
     );
@@ -1104,6 +1107,61 @@ class _Explainer extends StatelessWidget {
         text,
         style: TextStyle(
           fontSize: 12,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+/// Which build this is, at the foot of the settings screen.
+///
+/// The first question asked of any bug report, and until now the answer was
+/// not in the app at all — a tester had to go to TestFlight or the Play
+/// listing to find it, and on a sideloaded build there was nowhere to look.
+/// The build number is the part that matters: the marketing version stays
+/// still for months while the number underneath it changes with every upload.
+class _VersionFooter extends StatefulWidget {
+  const _VersionFooter();
+
+  @override
+  State<_VersionFooter> createState() => _VersionFooterState();
+}
+
+class _VersionFooterState extends State<_VersionFooter> {
+  String? _text;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(
+        () => _text = '${info.appName} ${info.version} (${info.buildNumber})',
+      );
+    } catch (_) {
+      // Nothing to show and nothing to say about it: an absent version line
+      // is a smaller problem than an error where a version should be.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = _text;
+    if (text == null) return const SizedBox(height: 16);
+
+    return Center(
+      // Selectable so it can be copied into a report rather than copied out
+      // by eye, which is where build numbers get transposed.
+      child: SelectableText(
+        text,
+        style: TextStyle(
+          fontSize: 11,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),

@@ -100,6 +100,14 @@ class ButtonController {
   /// Set while learning a new binding; receives the next key pressed.
   void Function(int keyId, String label)? _learner;
 
+  /// A key whose press ended a learning round, so its release is ignored too.
+  ///
+  /// Learning finishes on the way down, which clears [_learner] — and then the
+  /// way up finds nothing learning and dispatches normally. The rider has not
+  /// pressed anything since; they are still letting go of the button they just
+  /// bound, and that is not a command.
+  int? _swallowRelease;
+
   bool _installed = false;
   bool _toggleState = false;
 
@@ -217,11 +225,17 @@ class ButtonController {
       if (event is KeyDownEvent) {
         final learner = _learner!;
         _learner = null;
+        _swallowRelease = id;
         learner(id, _describe(event.logicalKey));
         // Swallow it: the key that is being bound should not also trigger
         // whatever it happens to be bound to already.
         return true;
       }
+      return true;
+    }
+
+    if (event is KeyUpEvent && _swallowRelease == id) {
+      _swallowRelease = null;
       return true;
     }
 
@@ -237,14 +251,43 @@ class ButtonController {
   /// Android key codes, not Flutter key ids, so they are mapped onto the same
   /// binding space by offset вЂ” see [mediaKeyId].
   void handleMediaButton(int androidKeyCode, bool pressed) {
+    final id = mediaKeyId(androidKeyCode);
+
     // Recorded whether or not anything is bound to it. A remote that sends
     // nothing and a platform that hears nothing look identical otherwise, and
     // that ambiguity has already cost a round of builds.
     if (pressed) {
-      lastMediaKey = describeMediaKey(mediaKeyId(androidKeyCode));
+      lastMediaKey = describeMediaKey(id);
       onCaptureChanged?.call();
     }
-    _dispatch(mediaKeyId(androidKeyCode), pressed);
+
+    // Learning ends here too.
+    //
+    // It used to end only on the keyboard path, and a remote that sends media
+    // buttons never reaches that one — which is every handlebar remote worth
+    // having, and the only kind iOS forwards at all. So the press was seen,
+    // named, and shown in the diagnostics panel, while the screen went on
+    // waiting for a button that had already been pressed. It looked like the
+    // remote was not reaching the app, which is the one thing the panel was
+    // added to rule out.
+    if (_learner != null) {
+      if (pressed) {
+        final learner = _learner!;
+        _learner = null;
+        _swallowRelease = id;
+        learner(id, describeMediaKey(id));
+      }
+      // Swallowed either way: the button being bound must not also fire
+      // whatever it is bound to already.
+      return;
+    }
+
+    if (!pressed && _swallowRelease == id) {
+      _swallowRelease = null;
+      return;
+    }
+
+    _dispatch(id, pressed);
   }
 
   /// The most recent remote button the platform passed up, for diagnosis.

@@ -96,3 +96,23 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // The barcode model, inside the app instead of fetched from Play Services.
+    //
+    // mobile_scanner defaults to the unbundled ML Kit variant, which downloads
+    // its model on demand. On a phone where that module has never been fetched
+    // the detector comes back null, and the plugin reports it as
+    //
+    //   MobileScannerErrorCode.genericError
+    //
+    // with nothing attached — while the camera itself opens perfectly, which is
+    // why every other camera app on the device works and this one did not. The
+    // real error was only visible in logcat, as a NullPointerException inside
+    // obfuscated Play Services classes.
+    //
+    // Bundling costs a couple of megabytes in the APK and removes the
+    // dependency on a download that a modest, storage-constrained phone may
+    // never have made — which is precisely the phone this feature is for.
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+}

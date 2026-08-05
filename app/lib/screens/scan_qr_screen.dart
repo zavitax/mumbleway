@@ -23,12 +23,70 @@ class ScanQrScreen extends StatefulWidget {
 }
 
 class _ScanQrScreenState extends State<ScanQrScreen> {
-  final MobileScannerController _controller = MobileScannerController(
+  /// Which configuration is being tried.
+  ///
+  /// Modest Android hardware routinely refuses the preview and analysis pair
+  /// CameraX asks for by default, and reports it as a bare "genericError" with
+  /// nothing attached — while the stock camera app opens perfectly, because it
+  /// asks for something simpler. So there is a simpler one to fall back to
+  /// rather than one configuration and a dead end.
+  int _attempt = 0;
+
+  /// Resolutions to try, in order. The first is the plugin's own default;
+  /// the second is a size every Android camera has been able to produce since
+  /// the platform existed, and is far more than a QR code needs.
+  /// Tried in order, largest first, until one opens. The last is smaller than
+  /// any camera made this century and still several times what a QR code
+  /// needs, so if none of these bind, the camera is not the problem.
+  static const List<Size?> _resolutions = [
+    null,
+    Size(1280, 720),
+    Size(640, 480),
+    Size(320, 240),
+  ];
+
+  late MobileScannerController _controller = _build();
+
+  MobileScannerController _build() => MobileScannerController(
     // Only QR. A scanner that also reads the barcode on a jacket label spends
     // its time on formats nobody here is pointing it at.
     formats: const [BarcodeFormat.qrCode],
     detectionSpeed: DetectionSpeed.noDuplicates,
+    cameraResolution: _resolutions[_attempt],
   );
+
+  /// Whether anything is left to try after the current attempt.
+  bool get _canRetry => _attempt + 1 < _resolutions.length;
+
+  /// Guards against asking for the next configuration more than once per
+  /// failure: the error builder runs on every rebuild, not once per error.
+  bool _advancing = false;
+
+  /// Steps down to the next configuration by itself.
+  ///
+  /// Automatic rather than a button. Which resolutions a given camera will
+  /// bind is not something a rider can be expected to know, and being handed
+  /// "try a simpler mode" is being handed the developer's problem — so the
+  /// screen works through them and only says anything if they all fail.
+  void _advanceLater() {
+    if (_advancing || !_canRetry) return;
+    _advancing = true;
+    // After this frame: the error builder runs during build, where setState
+    // is not allowed.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final old = _controller;
+      setState(() {
+        _attempt++;
+        _handled = false;
+        _advancing = false;
+        _controller = _build();
+      });
+      // Disposed after the replacement is in place, so the widget is never
+      // left pointing at a controller that has been torn down.
+      old.dispose();
+    });
+  }
 
   /// Guards against the detector firing again between the first hit and the
   /// route actually leaving the stack, which would pop twice.
@@ -88,24 +146,37 @@ class _ScanQrScreenState extends State<ScanQrScreen> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
-            errorBuilder: (context, error, _) => _CameraTrouble(
-              // A refused camera is the common failure and the only one the
-              // rider can do anything about, so it gets said in words.
-              message: error.errorCode == MobileScannerErrorCode.permissionDenied
-                  ? l.qrCameraDenied
-                  : l.qrCameraFailed,
-              // The code alone says nothing — "genericError" is what a phone
-              // reports when the camera stack refused a configuration it does
-              // not support, which happens on modest hardware that every other
-              // app opens perfectly. The detail underneath it is the part that
-              // names the cause, so it is shown rather than swallowed.
-              detail: [
-                error.errorDetails?.message,
-                error.errorDetails?.code?.toString(),
-                '${error.errorCode}',
-              ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
-              onPickImage: () => _pickImage(context),
-            ),
+            errorBuilder: (context, error, _) {
+              // Anything but a refusal is worth another configuration before
+              // it is worth a message.
+              if (error.errorCode != MobileScannerErrorCode.permissionDenied &&
+                  _canRetry) {
+                _advanceLater();
+                return ColoredBox(
+                  color: Theme.of(context).colorScheme.surface,
+                  child: const Center(child: CircularProgressIndicator()),
+                );
+              }
+              return _CameraTrouble(
+                // A refused camera is the common failure and the only one the
+                // rider can do anything about, so it gets said in words.
+                message:
+                    error.errorCode == MobileScannerErrorCode.permissionDenied
+                    ? l.qrCameraDenied
+                    : l.qrCameraFailed,
+                // The code alone says nothing — "genericError" is what a phone
+                // reports when the camera stack refused a configuration it does
+                // not support, which happens on modest hardware that every other
+                // app opens perfectly. The detail underneath it is the part that
+                // names the cause, so it is shown rather than swallowed.
+                detail: [
+                  error.errorDetails?.message,
+                  error.errorDetails?.code?.toString(),
+                  '${error.errorCode}',
+                ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+                onPickImage: () => _pickImage(context),
+              );
+            },
           ),
           // A frame to aim with. The scanner reads the whole picture, so this
           // is guidance rather than a crop — but a camera view with nothing in

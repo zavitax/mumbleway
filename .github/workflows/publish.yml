@@ -83,6 +83,30 @@ jobs:
           # of the three arrives as something else, and is reported as wrong
           # when it was right everywhere anybody typed it.
 
+      # Named, before nine minutes of Rust build ends in a null pointer.
+      # bundletool reports a missing alias or password as
+      # "java.lang.NullPointerException (no error message)", which says
+      # nothing about which of the three it wanted.
+      - name: Check the signing secrets are all present
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=
+          for name in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            eval "value=\${$name}"
+            [ -n "$value" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Signing secrets not set:$missing"
+            exit 1
+          fi
+          # The alias has to exist in the keystore as well as in the secrets.
+          keytool -list -keystore app/android/upload-keystore.jks             -storepass "$ANDROID_KEYSTORE_PASSWORD"             -alias "$ANDROID_KEY_ALIAS" > /dev/null             || { echo "::error::ANDROID_KEY_ALIAS names no key in the keystore. Aliases it does hold:";                  keytool -list -keystore app/android/upload-keystore.jks                    -storepass "$ANDROID_KEYSTORE_PASSWORD" | grep -i "alias name" || true;                  exit 1; }
+          echo "signing secrets present, alias found"
+
       - name: Build App Bundle
         env:
           ANDROID_KEYSTORE_PATH: upload-keystore.jks

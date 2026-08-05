@@ -38,15 +38,35 @@ class AppBarTitle extends StatelessWidget {
   ///
   /// Weight 600, not bold: at this size full bold closes up the counters in
   /// the doubled 'm' and 'b', and "MumbleWay" is mostly those.
-  static TextStyle wordmarkOf(BuildContext context) =>
-      DefaultTextStyle.of(context).style.copyWith(
-        fontFamily: 'Exo2',
-        fontVariations: const [FontVariation('wght', 600)],
-        // The face sets a little wide; this returns the name to roughly the
-        // width it occupied in the platform font, so nothing else on the bar
-        // has to move to accommodate it.
-        letterSpacing: -0.2,
-      );
+  /// How much smaller the wordmark sets than the surrounding bar text.
+  ///
+  /// It is a mark rather than a heading: it says which app this is and is then
+  /// never read again, while everything else on the bar is a control somebody
+  /// is looking for. Set at full title size it was the loudest thing on a
+  /// screen whose actual subject is the server list below it.
+  static const double _scale = 0.75;
+
+  /// Tracking, as a fraction of the size rather than a fixed number of pixels.
+  ///
+  /// Proportional so the letters keep the same relationship to each other at
+  /// any text-scale setting; a fixed value tightens a large rendering and
+  /// loosens a small one. Negative because the face sets wide, and more
+  /// negative than it needs to be for width alone — a wordmark reads as one
+  /// object rather than nine letters, and the tighter fit is what does that.
+  static const double _tracking = -0.03;
+
+  static TextStyle wordmarkOf(BuildContext context) {
+    final base = DefaultTextStyle.of(context).style;
+    // The fallback matches Material's titleLarge, which is what an AppBar
+    // hands down when nothing else has been set.
+    final size = (base.fontSize ?? 22) * _scale;
+    return base.copyWith(
+      fontFamily: 'Exo2',
+      fontVariations: const [FontVariation('wght', 600)],
+      fontSize: size,
+      letterSpacing: size * _tracking,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

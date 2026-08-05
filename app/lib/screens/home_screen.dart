@@ -461,6 +461,25 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Scrollable, and centred only when there is room to centre it.
+    //
+    // Found on a 2018 phone with a short screen: the column is taller than the
+    // space it was given, so it overflowed, and the talk panel below drew over
+    // the bottom of it — taking the "Add server" button with it, along with
+    // every touch aimed at the button. A new rider on that handset could not
+    // add a server at all, which is the only thing this screen exists to ask
+    // them to do.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: _content(context),
+        ),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

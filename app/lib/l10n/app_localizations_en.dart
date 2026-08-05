@@ -734,6 +734,10 @@ class LEn extends L {
   String get qrNotAnInvite => 'That code is not a MumbleWay invitation.';
 
   @override
+  String get qrCameraFailed =>
+      'MumbleWay could not start the camera. Another app may be using it, or this device may not support the preview MumbleWay asks for. You can import a picture of the code instead.';
+
+  @override
   String get qrCameraDenied =>
       'MumbleWay needs the camera to scan a code. Grant it in system settings and try again.';
 

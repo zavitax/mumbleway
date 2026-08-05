@@ -1429,6 +1429,12 @@ abstract class L {
   /// **'That code is not a MumbleWay invitation.'**
   String get qrNotAnInvite;
 
+  /// No description provided for @qrCameraFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'MumbleWay could not start the camera. Another app may be using it, or this device may not support the preview MumbleWay asks for. You can import a picture of the code instead.'**
+  String get qrCameraFailed;
+
   /// No description provided for @qrCameraDenied.
   ///
   /// In en, this message translates to:

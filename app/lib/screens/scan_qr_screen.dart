@@ -1,7 +1,9 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/qr_codec.dart';
 import '../widgets/app_bar_title.dart';
 
 /// Points the camera at a QR code and returns whatever text is in it.
@@ -49,6 +51,32 @@ class _ScanQrScreenState extends State<ScanQrScreen> {
     }
   }
 
+  /// Falls back to reading the code out of a picture.
+  ///
+  /// A camera that will not open is not the end of the feature. The decoder is
+  /// pure Dart and has no idea where its pixels came from, so a phone whose
+  /// camera stack refuses a preview can still take a screenshot of the code,
+  /// or be sent one, and get exactly the same result.
+  Future<void> _pickImage(BuildContext context) async {
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final l = L.of(context);
+
+    final file = await openFile(
+      acceptedTypeGroups: [
+        XTypeGroup(label: 'Images', extensions: QrCodec.imageExtensions),
+      ],
+    );
+    if (file == null) return;
+
+    final text = QrCodec.decodeImage(await file.readAsBytes());
+    if (text == null) {
+      messenger.showSnackBar(SnackBar(content: Text(l.qrNoCodeFound)));
+      return;
+    }
+    navigator.pop(text);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
@@ -60,19 +88,23 @@ class _ScanQrScreenState extends State<ScanQrScreen> {
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
-            errorBuilder: (context, error, _) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  // A refused camera is the common failure and the only one
-                  // the rider can do anything about, so it gets said in words
-                  // rather than as a platform error code.
-                  error.errorCode == MobileScannerErrorCode.permissionDenied
-                      ? l.qrCameraDenied
-                      : '${error.errorCode}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            errorBuilder: (context, error, _) => _CameraTrouble(
+              // A refused camera is the common failure and the only one the
+              // rider can do anything about, so it gets said in words.
+              message: error.errorCode == MobileScannerErrorCode.permissionDenied
+                  ? l.qrCameraDenied
+                  : l.qrCameraFailed,
+              // The code alone says nothing — "genericError" is what a phone
+              // reports when the camera stack refused a configuration it does
+              // not support, which happens on modest hardware that every other
+              // app opens perfectly. The detail underneath it is the part that
+              // names the cause, so it is shown rather than swallowed.
+              detail: [
+                error.errorDetails?.message,
+                error.errorDetails?.code?.toString(),
+                '${error.errorCode}',
+              ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+              onPickImage: () => _pickImage(context),
             ),
           ),
           // A frame to aim with. The scanner reads the whole picture, so this
@@ -112,6 +144,64 @@ class _ScanQrScreenState extends State<ScanQrScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown in place of the preview when the camera will not start.
+///
+/// Says what happened in words, offers the way round it, and keeps the
+/// platform's own explanation visible underneath — small, but selectable, so
+/// it can be copied into a bug report. "genericError" on its own has cost one
+/// round of guessing already.
+class _CameraTrouble extends StatelessWidget {
+  const _CameraTrouble({
+    required this.message,
+    required this.detail,
+    required this.onPickImage,
+  });
+
+  final String message;
+  final String detail;
+  final VoidCallback onPickImage;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      color: scheme.surface,
+      alignment: Alignment.center,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.videocam_off, size: 40, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 14),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onPickImage,
+              icon: const Icon(Icons.image_outlined),
+              label: Text(l.importQrImage),
+            ),
+            if (detail.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              SelectableText(
+                detail,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

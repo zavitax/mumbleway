@@ -468,9 +468,16 @@ jobs:
           # Automatic signing on a runner goes looking for a development
           # profile it can ask Apple to create, which needs a signed-in account
           # the runner has not got.
+          # CODE_SIGN_IDENTITY = "-" goes with them, and leaving it behind was
+          # the whole of the next failure. It means ad-hoc: the app is signed
+          # by nobody, so no provisioning profile is embedded and the
+          # entitlements file is not applied. App Store Connect then rejects
+          # the upload for having no sandbox — which reads as a missing
+          # entitlement and is really a missing signature.
           sed -i '' \
             -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
             -e 's/PROVISIONING_PROFILE_SPECIFIER = "";//g' \
+            -e 's/CODE_SIGN_IDENTITY = "-";//g' \
             app/macos/Runner.xcodeproj/project.pbxproj
 
           echo "signing with profile $uuid"

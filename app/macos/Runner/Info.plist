@@ -14,6 +14,12 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
+	<!-- Required for the Mac App Store, which rejects an upload without it.
+	     Social networking is the closest of Apple's fixed list to a group
+	     voice channel; there is no "communication" category on macOS. This is
+	     the shelf the app is listed on, so it is worth a second opinion. -->
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.social-networking</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -13,7 +13,23 @@ val keystoreProperties = Properties().apply {
     val f = rootProject.file("key.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val hasReleaseKey = keystoreProperties.getProperty("storeFile") != null
+/// A signing value, from the environment first and key.properties second.
+///
+/// The environment is how a build server should pass a password. A properties
+/// file cannot carry one safely: it has to be written by a shell, where an
+/// unquoted heredoc expands `$` and backticks, and it is then read by Java's
+/// Properties parser, where `\` is an escape character. A password containing
+/// any of those three arrives as something else, and the failure — "Get Key
+/// failed: Given final block not properly padded" — names neither the shell
+/// nor the parser, so it reads as a wrong password that is in fact correct
+/// everywhere it was typed.
+///
+/// key.properties still works, for a developer signing a local release.
+fun signingValue(variable: String, property: String): String? =
+    System.getenv(variable)?.takeIf { it.isNotEmpty() }
+        ?: keystoreProperties.getProperty(property)
+
+val hasReleaseKey = signingValue("ANDROID_KEYSTORE_PATH", "storeFile") != null
 
 android {
     namespace = "com.mumbleway.mumbleway"
@@ -47,10 +63,11 @@ android {
                 // instead — android/app rather than android — and the build
                 // then fails looking for the keystore one directory deeper
                 // than anyone put it.
-                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile =
+                    rootProject.file(signingValue("ANDROID_KEYSTORE_PATH", "storeFile")!!)
+                storePassword = signingValue("ANDROID_KEYSTORE_PASSWORD", "storePassword")
+                keyAlias = signingValue("ANDROID_KEY_ALIAS", "keyAlias")
+                keyPassword = signingValue("ANDROID_KEY_PASSWORD", "keyPassword")
             }
         }
     }

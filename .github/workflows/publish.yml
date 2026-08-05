@@ -75,14 +75,20 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         run: |
           echo "$ANDROID_KEYSTORE" | base64 -d > app/android/upload-keystore.jks
-          cat > app/android/key.properties <<EOF
-          storeFile=upload-keystore.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
+
+          # The keystore is a file; the passwords are not written down at all.
+          # They reach Gradle through the environment on the build step below,
+          # because a heredoc expands `$` and a backtick, and a .properties
+          # file then treats `\` as an escape — so a password containing any
+          # of the three arrives as something else, and is reported as wrong
+          # when it was right everywhere anybody typed it.
 
       - name: Build App Bundle
+        env:
+          ANDROID_KEYSTORE_PATH: upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         if: steps.gate.outputs.ready == 'true'
         working-directory: app
         run: |

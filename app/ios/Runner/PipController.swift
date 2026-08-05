@@ -225,6 +225,14 @@ final class PipController: NSObject {
       // the app, not by pressing anything.
       controller.canStartPictureInPictureAutomaticallyFromInline = true
 
+      // No skip-back and skip-forward arrows. The window is a live
+      // conversation, and there is nothing behind the play head to seek to —
+      // controls that cannot do anything still invite the thumb that is
+      // reaching for the talk button beside them.
+      controller.requiresLinearPlayback = true
+
+      applyControlsStyle()
+
       displayLayer = layer
       pipController = controller
 
@@ -321,9 +329,35 @@ final class PipController: NSObject {
     pixelBufferPool = nil
   }
 
+  /// Strips the transport controls when there is nothing for them to do.
+  ///
+  /// In the hands-free modes nobody presses anything to talk: voice activation
+  /// or an always-open microphone decides, and the play/pause button in the
+  /// window would be a control that looks like the talk button and is not one.
+  /// In push-to-talk it stays, because there it *is* the talk button — that is
+  /// how the window keys the microphone without bringing the app forward.
+  ///
+  /// `controlsStyle` is not API. It is set by key because AVKit offers no
+  /// supported way to ask for a bare window, and it is wrapped in
+  /// `responds(to:)` so that a release which drops the key leaves a window
+  /// with its ordinary controls rather than an app that will not start one.
+  private func applyControlsStyle() {
+    guard let pipController else { return }
+    let bare = snapshot.micMode != 0
+    let key = "controlsStyle"
+    guard pipController.responds(to: NSSelectorFromString(key)) else { return }
+    pipController.setValue(bare ? 1 : 0, forKey: key)
+  }
+
   func update(_ next: CallSnapshot) {
     let wasTransmitting = snapshot.transmitting
+    let previousMode = snapshot.micMode
     snapshot = next
+    // The mode is a setting, so this changes a handful of times in a ride
+    // rather than with the ten-a-second level updates this also carries.
+    if next.micMode != previousMode {
+      applyControlsStyle()
+    }
     // The system caches whether playback is paused and only asks again when
     // told to. Every way of starting or stopping transmission ends up here —
     // the window's own button, the talk button in the app, a bound Bluetooth

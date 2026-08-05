@@ -428,14 +428,25 @@ class _MicIdleNotice extends StatelessWidget {
                       : l.micIdleMeterOnly,
                   style: TextStyle(fontSize: 13, color: muted),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  l.micIdleWhy,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: muted.withValues(alpha: 0.75),
+                // The reason why is dropped when the screen is wider than it
+                // is tall. It is reassurance — that nothing is being recorded
+                // and the headset keeps its sound quality — which is worth
+                // reading once and never again, and in landscape those three
+                // extra lines came out of the server list, where the cards are
+                // the thing the rider actually came to this screen for. The
+                // line above it, which says what will appear here and when,
+                // stays in both.
+                if (MediaQuery.sizeOf(context).height >=
+                    _TalkPanel._shortViewport) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    l.micIdleWhy,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: muted.withValues(alpha: 0.75),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

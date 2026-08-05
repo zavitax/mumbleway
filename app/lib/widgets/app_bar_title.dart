@@ -74,11 +74,11 @@ class AppBarTitle extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Either the whole name or none of it. A truncated product name reads
-        // as a rendering fault rather than as a name — "MumbleW…" looks like
-        // something went wrong — while the icon alone is deliberate, and on a
-        // narrow bar the space is better spent on the controls anyway.
-        final fits = _fits(context, constraints.maxWidth);
+        // Set to whatever size the room allows, rather than dropped the moment
+        // it does not fit at full size. A truncated product name still reads
+        // as a rendering fault — "MumbleW…" looks like something went wrong —
+        // but a smaller one does not, and the name is worth keeping.
+        final style = _styleFor(context, constraints.maxWidth);
 
         final icon = Image.asset(
           'assets/icon/mumbleway.png',
@@ -91,7 +91,7 @@ class AppBarTitle extends StatelessWidget {
 
         // The name still has to reach anyone using a screen reader, which is
         // the one audience for whom dropping it would be a real loss.
-        if (!fits) return Semantics(label: title, child: icon);
+        if (style == null) return Semantics(label: title, child: icon);
 
         return Row(
           mainAxisSize: MainAxisSize.min,
@@ -101,7 +101,9 @@ class AppBarTitle extends StatelessWidget {
             Flexible(
               child: Text(
                 title,
-                style: wordmarkOf(context),
+                style: style,
+                maxLines: 1,
+                softWrap: false,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -111,22 +113,50 @@ class AppBarTitle extends StatelessWidget {
     );
   }
 
-  /// Whether the icon and the full name fit the width on offer.
-  bool _fits(BuildContext context, double available) {
-    // An unbounded bar cannot be too narrow for anything.
-    if (!available.isFinite) return true;
+  /// The smallest the wordmark may be set, as a fraction of its normal size.
+  ///
+  /// Past this it stops being a name and becomes a smudge beside the icon, and
+  /// the icon alone — which is deliberate, and which every rider already
+  /// recognises from the launcher — says more than an illegible word does.
+  static const double _minFit = 0.6;
 
-    // The same style the name is drawn in, not the ambient one. Measuring in
-    // a different face than the one rendered is how a title that fits gets
-    // hidden, or one that does not gets clipped.
+  /// The style the name will actually fit in, or null if it cannot fit legibly.
+  TextStyle? _styleFor(BuildContext context, double available) {
+    final full = wordmarkOf(context);
+
+    // An unbounded bar cannot be too narrow for anything.
+    if (!available.isFinite) return full;
+
+    final room = available - _iconSize - _gap;
+    if (room <= 0) return null;
+
+    final width = _widthOf(context, full);
+    if (width <= 0 || width <= room) return full;
+
+    // Linear, because everything the measurement depends on is: the glyph
+    // advances, the tracking — which is itself a fraction of the size — and
+    // the reader's text scale all move together with the font size.
+    final factor = room / width;
+    if (factor < _minFit) return null;
+
+    final size = (full.fontSize ?? 22) * factor;
+    return full.copyWith(fontSize: size, letterSpacing: size * _tracking);
+  }
+
+  /// Width of the name in [style], measured rather than estimated.
+  ///
+  /// In the style it is drawn in, not the ambient one: measuring in a
+  /// different face than the one rendered is how a title that fits gets
+  /// hidden, or one that does not gets clipped.
+  double _widthOf(BuildContext context, TextStyle style) {
     final painter = TextPainter(
-      text: TextSpan(text: title, style: wordmarkOf(context)),
+      text: TextSpan(text: title, style: style),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
       maxLines: 1,
     )..layout();
-    final needed = _iconSize + _gap + painter.width;
+    final width = painter.width;
     painter.dispose();
-    return needed <= available;
+    return width;
   }
 }

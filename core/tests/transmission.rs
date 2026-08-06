@@ -26,6 +26,8 @@
 //! So the model is Gilbert–Elliott: a good state that rarely drops, a bad state
 //! that mostly drops, and a small chance of moving between them each packet.
 
+use std::collections::HashSet;
+
 use mumbleway_core::audio::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use mumbleway_core::audio::quality::intelligibility;
 use mumbleway_core::audio::testsig::{self, Rng};
@@ -45,6 +47,34 @@ struct Network {
     bad_loss: f32,
     /// How many packets a delivery may be delayed by.
     jitter_packets: usize,
+    /// A fixed impairment instead of the random one, when set.
+    pattern: Option<Pattern>,
+    /// Packets offered so far, which the pattern counts against.
+    offered: usize,
+}
+
+/// A deterministic impairment, for comparisons that must differ in exactly one
+/// way.
+///
+/// The random model answers "how bad is a 15% link". It cannot answer "is a
+/// late packet worth more than a lost one", because two draws from it differ
+/// in *which* packets were hit as well as in what happened to them, and the
+/// answer that comes back is a mixture of the effect and the luck. Here the
+/// same packets are hit both times and only their fate changes.
+#[derive(Clone, Copy)]
+struct Pattern {
+    /// Packets between the start of one impairment and the next.
+    period: usize,
+    /// Consecutive packets impaired at the start of each period.
+    ///
+    /// Three, in practice, rather than one. A single missing frame is the case
+    /// Opus FEC was built for and recovers almost perfectly, so losing one in
+    /// every seven barely differs from losing none — the contrast this is
+    /// meant to draw only appears once the gap is wider than the buffer will
+    /// conceal.
+    span: usize,
+    /// How late the impaired packets are, or `None` if they never arrive.
+    delay: Option<usize>,
 }
 
 impl Network {
@@ -71,11 +101,34 @@ impl Network {
             good_loss,
             bad_loss,
             jitter_packets,
+            pattern: None,
+            offered: 0,
         }
+    }
+
+    /// A link that impairs the same packets every time, and only those.
+    fn patterned(period: usize, span: usize, delay: Option<usize>) -> Self {
+        let mut net = Self::new(0, 0.0, 0);
+        net.pattern = Some(Pattern {
+            period,
+            span,
+            delay,
+        });
+        net
     }
 
     /// Whether this packet is lost, and how many packets late it arrives.
     fn deliver(&mut self) -> Option<usize> {
+        if let Some(p) = self.pattern {
+            let i = self.offered;
+            self.offered += 1;
+            return if i % p.period < p.span {
+                p.delay
+            } else {
+                Some(0)
+            };
+        }
+
         self.in_bad = if self.in_bad {
             self.rng.unit() >= self.bad_to_good
         } else {
@@ -98,22 +151,99 @@ impl Network {
     }
 }
 
-/// Encodes `pcm`, sends it across `net`, and returns what the far end played.
+/// What the far end heard, next to what it should have heard.
+///
+/// # Alignment is recorded, not recovered
+///
+/// The obvious way to line the two recordings up is to cross-correlate them
+/// and take the best offset, and that was the first attempt. It cannot work,
+/// and the reason is worth keeping: there is no single offset. The buffer
+/// gives up on a gap it cannot plausibly conceal and jumps to whatever it is
+/// holding, so a burst of loss *skips slots* — after it, output frame n is no
+/// longer stream slot n, and the lag has changed partway through the
+/// recording. A search over a signal that also has silence in its holes then
+/// locks on to the wrong lag and reports near-total unintelligibility for a
+/// link that was merely poor. That is what produced scores of 0.99, 0.65,
+/// 0.04, 0.38 for steadily worsening loss.
+///
+/// So the buffer is asked instead. It reports the slot each frame it hands out
+/// belongs to, and the reference is assembled frame by frame from the source
+/// audio that should have been playing at that moment. The two recordings are
+/// aligned by construction and there is nothing left to search for.
+struct Outcome {
+    /// What should have been heard, in the order it was heard.
+    reference: Vec<f32>,
+    /// What was heard.
+    played: Vec<f32>,
+    /// Frames the sender encoded.
+    sent_frames: usize,
+    /// Source frames the play head reached at all, however they were filled.
+    ///
+    /// The interesting members of this set are the ones missing from it.
+    /// Concealment fills a slot; an underrun fills it with silence; both are
+    /// still moments the listener spent on that part of the sentence, and the
+    /// clarity score judges how well. What is *not* here is the slots the
+    /// buffer gave up on and jumped over — audio that did not merely arrive
+    /// badly but never happened, taking its share of the timeline with it.
+    covered: HashSet<u64>,
+}
+
+impl Outcome {
+    /// How much of what was said arrived at all, 0..1.
+    ///
+    /// Deliberately not the buffer's decoded-frame count, which would invert
+    /// the result this file exists to demonstrate. Opus reconstructs an
+    /// isolated loss from the FEC copy carried in the following packet, and
+    /// what comes out is real audio by any standard a listener would apply —
+    /// but the buffer files it under concealment, because from its side that
+    /// is what happened. Score by decode count and scattered loss, where FEC
+    /// works, is punished harder than bursty loss, where it does not.
+    fn delivered(&self) -> f32 {
+        if self.sent_frames == 0 {
+            return 0.0;
+        }
+        (self.covered.len() as f32 / self.sent_frames as f32).min(1.0)
+    }
+
+    /// How clearly the audio that did arrive came through.
+    fn clarity(&self) -> f32 {
+        intelligibility(&self.reference, &self.played)
+    }
+
+    /// Both together, which is the thing a listener actually experiences.
+    ///
+    /// They have to be measured separately and then combined, because either
+    /// alone is high on a call nobody could hold. Clarity is scored against
+    /// the audio the play head actually reached, so a link that skipped a
+    /// third of the words scores well on it — the two thirds that arrived were
+    /// perfect. Delivery counts how much of the sentence was reached without
+    /// caring whether it was audible. A link is only good when both are.
+    fn score(&self) -> f32 {
+        self.clarity() * self.delivered()
+    }
+}
+
+/// Encodes `pcm`, sends it across `net`, and reports what the far end played.
 ///
 /// Reordering falls out of the delay rather than being modelled separately: a
 /// packet delayed by two arrives after packets that were sent later, which is
 /// what reordering is.
-fn across(pcm: &[f32], net: &mut Network) -> Vec<f32> {
+fn across(pcm: &[f32], net: &mut Network) -> Outcome {
     let mut encoder = VoiceEncoder::new(Quality::Balanced).expect("encoder");
     let mut buffer = SpeakerBuffer::new().expect("buffer");
-    let mut out = Vec::with_capacity(pcm.len());
     let mut scratch = Vec::new();
-    let silence = vec![0.0f32; FRAME_SAMPLES];
-
-    // Packets waiting to be delivered, as (arrive_at_index, sequence, payload).
-    let mut in_flight: Vec<(usize, u64, Vec<u8>)> = Vec::new();
 
     let frames = pcm.len() / FRAME_SAMPLES;
+    let mut out = Outcome {
+        reference: Vec::with_capacity(pcm.len()),
+        played: Vec::with_capacity(pcm.len()),
+        sent_frames: frames,
+        covered: HashSet::new(),
+    };
+    // The slot the listener's clock says is due next, which keeps moving
+    // whether or not the buffer has anything for it.
+    let mut due: Option<u64> = None;
+
     let mut encoded: Vec<(u64, Vec<u8>)> = Vec::with_capacity(frames);
     for f in 0..frames {
         let start = f * FRAME_SAMPLES;
@@ -122,6 +252,9 @@ fn across(pcm: &[f32], net: &mut Network) -> Vec<f32> {
             .expect("encode");
         encoded.push((f as u64 * SEQ_UNITS_PER_FRAME, opus));
     }
+
+    // Packets waiting to be delivered, as (arrive_at_index, sequence, payload).
+    let mut in_flight: Vec<(usize, u64, Vec<u8>)> = Vec::new();
 
     // Two things have to be right here, and each was wrong once.
     //
@@ -146,8 +279,8 @@ fn across(pcm: &[f32], net: &mut Network) -> Vec<f32> {
         }
 
         // Hand over everything that has come due.
-        in_flight.retain(|(due, seq, payload)| {
-            if *due <= f {
+        in_flight.retain(|(arrives, seq, payload)| {
+            if *arrives <= f {
                 buffer.push(*seq, payload.clone(), false);
                 false
             } else {
@@ -158,78 +291,107 @@ fn across(pcm: &[f32], net: &mut Network) -> Vec<f32> {
         if f < PRIME_FRAMES {
             continue;
         }
-        match buffer.pop(&mut scratch) {
-            Some(_) => out.extend_from_slice(&scratch),
-            None => out.extend_from_slice(&silence),
-        }
+        device_period(&mut buffer, &mut scratch, pcm, &mut out, &mut due, true);
+    }
+
+    // Whatever is still in the air arrives. The sender running out of things
+    // to say is not the network dropping the last few packets.
+    for (_, seq, payload) in in_flight.drain(..) {
+        buffer.push(seq, payload, false);
     }
 
     // Drain what the buffer is still holding, so the tail is scored rather
     // than truncated.
     let mut idle = 0;
     while idle < 60 {
-        match buffer.pop(&mut scratch) {
-            Some(_) => {
-                out.extend_from_slice(&scratch);
-                idle = 0;
-            }
-            None => idle += 1,
+        if device_period(&mut buffer, &mut scratch, pcm, &mut out, &mut due, false) {
+            idle = 0;
+        } else {
+            idle += 1;
         }
     }
+
     out
+}
+
+/// One period of the output device: play whatever is ready, or silence.
+///
+/// Returns whether a frame was played, which is how the drain loop knows the
+/// buffer has finished. `record_silence` is off during the drain, where an
+/// empty buffer means the call ended rather than that the listener is sitting
+/// through a hole.
+fn device_period(
+    buffer: &mut SpeakerBuffer,
+    scratch: &mut Vec<f32>,
+    pcm: &[f32],
+    out: &mut Outcome,
+    due: &mut Option<u64>,
+    record_silence: bool,
+) -> bool {
+    // Through `ready` rather than straight to `pop`, because that is how the
+    // mixer asks: a buffer that has run dry rebuilds a cushion before starting
+    // again instead of stuttering along one frame at a time, and a harness
+    // that skipped the gate would not see the rebuild at all.
+    let played = if buffer.ready() {
+        buffer.pop(scratch)
+    } else {
+        if buffer.buffered() > 0 {
+            buffer.note_waiting();
+        }
+        None
+    };
+
+    match played {
+        Some(n) => {
+            let slot = buffer.play_slot().expect("a frame was played but no slot");
+            push_reference(out, pcm, slot, n);
+            out.played.extend_from_slice(&scratch[..n]);
+            *due = Some(slot + SEQ_UNITS_PER_FRAME);
+            true
+        }
+        None => {
+            // The device asked and got nothing, so it plays silence — and time
+            // moves on regardless, so the next slot falls due whether the
+            // buffer is ready for it or not. Recording that against the audio
+            // that should have been there is what makes an underrun cost
+            // something instead of quietly shortening both recordings by the
+            // same amount, which would score as no damage at all.
+            if record_silence {
+                if let Some(slot) = *due {
+                    push_reference(out, pcm, slot, FRAME_SAMPLES);
+                    let len = out.played.len();
+                    out.played.resize(len + FRAME_SAMPLES, 0.0);
+                    *due = Some(slot + SEQ_UNITS_PER_FRAME);
+                }
+            }
+            false
+        }
+    }
+}
+
+/// Appends the source audio belonging to one sequence slot, and records that
+/// the listener's timeline reached it.
+///
+/// Past the end is silence rather than a panic, and is not counted as reached:
+/// the play head can run beyond the last frame sent while the buffer conceals
+/// its way to a stop, and those slots are not part of what was said.
+fn push_reference(out: &mut Outcome, pcm: &[f32], slot: u64, n: usize) {
+    let start = (slot / SEQ_UNITS_PER_FRAME) as usize * FRAME_SAMPLES;
+    match pcm.get(start..start + n) {
+        Some(frame) => {
+            out.covered.insert(slot);
+            out.reference.extend_from_slice(frame);
+        }
+        None => {
+            let len = out.reference.len();
+            out.reference.resize(len + n, 0.0);
+        }
+    }
 }
 
 /// Periods queued before the output device starts, so the buffer is not asked
 /// for audio it has not been given yet.
 const PRIME_FRAMES: usize = 20;
-
-/// Lines the played audio up with what was sent.
-///
-/// The jitter buffer deliberately delays by its target backlog, so the output
-/// starts later than the input. Scoring without removing that offset measures
-/// the delay rather than the damage.
-fn aligned(sent: &[f32], played: &[f32]) -> (Vec<f32>, Vec<f32>) {
-    // Enough overlap left after the offset to be worth scoring. Without this
-    // floor the search can pick an offset near the end of the played audio, and
-    // the measure then sees a fragment too short to analyse and returns zero —
-    // which reads as total unintelligibility and is really a harness bug. It
-    // showed up as 5% loss scoring 0.0 while 30% scored 0.85.
-    // Enough for the measure to work with, not half the recording: a lossy
-    // link legitimately plays back less than was sent, and demanding half of it
-    // rejected exactly the cases worth scoring.
-    let want = (FRAME_SAMPLES * 60).min(sent.len() / 4);
-    if played.len() < want {
-        return (Vec::new(), Vec::new());
-    }
-    let max_offset = (played.len() - want).min(FRAME_SAMPLES * 30);
-
-    // Normalised, not a raw dot product. Unnormalised, a loud syllable landing
-    // under the window wins regardless of whether anything lines up, so the
-    // offset chosen is the loudest rather than the most aligned.
-    let window = FRAME_SAMPLES * 20;
-    let mut best = (0usize, f32::MIN);
-    for offset in 0..=max_offset {
-        let n = window.min(sent.len()).min(played.len() - offset);
-        let mut dot = 0.0f32;
-        let mut energy = 0.0f32;
-        for i in 0..n {
-            dot += sent[i] * played[offset + i];
-            energy += played[offset + i] * played[offset + i];
-        }
-        let score = if energy > 1e-9 {
-            dot / energy.sqrt()
-        } else {
-            0.0
-        };
-        if score > best.1 {
-            best = (offset, score);
-        }
-    }
-
-    let offset = best.0;
-    let n = (played.len() - offset).min(sent.len());
-    (sent[..n].to_vec(), played[offset..offset + n].to_vec())
-}
 
 /// Mean score over several links with the same character but different draws.
 ///
@@ -241,9 +403,7 @@ fn score_over_seeds(sent: &[f32], loss: f32, jitter: usize, seeds: &[u64]) -> f3
     let mut total = 0.0;
     for &seed in seeds {
         let mut net = Network::new(seed, loss, jitter);
-        let played = across(sent, &mut net);
-        let (a, b) = aligned(sent, &played);
-        total += intelligibility(&a, &b);
+        total += across(sent, &mut net).score();
     }
     total / seeds.len() as f32
 }
@@ -259,35 +419,35 @@ fn a_clean_link_delivers_the_voice_intact() {
     // harness.
     let sent = speech_sample(3);
     let mut net = Network::new(1, 0.0, 0);
-    let played = across(&sent, &mut net);
+    let heard = across(&sent, &mut net);
 
-    assert!(!played.is_empty(), "nothing came out of a perfect link");
-    let (a, b) = aligned(&sent, &played);
-    let score = intelligibility(&a, &b);
+    assert!(
+        !heard.played.is_empty(),
+        "nothing came out of a perfect link"
+    );
+    assert!(
+        heard.delivered() > 0.99,
+        "a perfect link delivered only {:.3} of what was sent",
+        heard.delivered()
+    );
+    let score = heard.clarity();
     assert!(score > 0.85, "a perfect link scored {score}");
 }
 
 #[test]
-#[ignore = "alignment is unsteady when the played audio has gaps — see the comment"]
 fn intelligibility_falls_as_the_link_gets_worse() {
-    // UNFINISHED. Ignored rather than deleted or weakened, because the
-    // assertion is right and the measurement under it is not steady enough yet.
+    // The assertion every other test in this file leans on: if the measure is
+    // not ordered, nothing built on it means anything.
     //
-    // The consumer clock and the backlog are fixed — that was the first cause,
-    // and the numbers went from "exactly zero at middling loss" to plausible.
-    // What is left is variance: averaged over four seeds the scores run 0.99,
-    // 0.65, 0.04, 0.38, which is neither monotonic nor credible at 15%.
+    // It was parked for a while, and the two causes are both worth naming
+    // because they were both harness bugs wearing the costume of a result.
+    // First the consumer waited on the buffer instead of running to its own
+    // clock, which made middling loss score exactly zero and severe loss score
+    // well. Then `aligned` searched for one offset when there is no one offset
+    // to find — the buffer skips slots after a burst it cannot conceal — and
+    // gave 0.99, 0.65, 0.04, 0.38 for steadily worsening loss.
     //
-    // The remaining suspect is `aligned`. With loss the harness now fills gaps
-    // with silence, so the played audio has holes in it, and a cross-correlation
-    // offset search over a signal with holes can lock on to the wrong lag —
-    // after which the measure compares speech against the wrong part of itself
-    // and reports near-zero. Every other test here avoids the problem because it
-    // compares two links scored the same way, so a bad offset hurts both.
-    //
-    // The fix is to stop searching: the harness knows exactly how late the
-    // device starts, so the offset is PRIME_FRAMES worth of samples and should
-    // be passed in rather than recovered. That is the next thing to do.
+    // Neither was a property of the audio. Both looked like one.
     let sent = speech_sample(3);
     const SEEDS: [u64; 4] = [7, 31, 104, 512];
 
@@ -323,21 +483,13 @@ fn a_burst_loses_more_than_the_same_loss_spread_out() {
     let sent = speech_sample(3);
 
     let mut bursty = Network::new(11, 0.15, 0);
-    let burst_score = {
-        let played = across(&sent, &mut bursty);
-        let (a, b) = aligned(&sent, &played);
-        intelligibility(&a, &b)
-    };
+    let burst_score = across(&sent, &mut bursty).score();
 
     // Same average loss, scattered: no bad state to get stuck in.
     let mut even = Network::new(11, 0.15, 0);
     even.good_to_bad = 0.0;
     even.good_loss = 0.15;
-    let even_score = {
-        let played = across(&sent, &mut even);
-        let (a, b) = aligned(&sent, &played);
-        intelligibility(&a, &b)
-    };
+    let even_score = across(&sent, &mut even).score();
 
     assert!(
         burst_score <= even_score + 0.02,
@@ -350,12 +502,13 @@ fn late_packets_are_waited_for_rather_than_lost() {
     // What the jitter buffer is for. Packets arriving a few frames late and out
     // of order should cost far less than losing them would, because the buffer
     // holds a backlog precisely so they can be put back in place.
+    //
+    // The same fifteen percent of packets in all three runs, so the only thing
+    // that differs is what became of them.
     let sent = speech_sample(3);
-    const SEEDS: [u64; 3] = [3, 77, 401];
-
-    let steady = score_over_seeds(&sent, 0.0, 0, &SEEDS);
-    let jittery = score_over_seeds(&sent, 0.0, 4, &SEEDS);
-    let lost = score_over_seeds(&sent, 0.15, 0, &SEEDS);
+    let steady = across(&sent, &mut Network::patterned(20, 3, Some(0))).score();
+    let jittery = across(&sent, &mut Network::patterned(20, 3, Some(4))).score();
+    let lost = across(&sent, &mut Network::patterned(20, 3, None)).score();
 
     // Reordering inside the backlog costs nothing, and that is the correct
     // result rather than a weak one: a four-frame spread against a twenty-frame

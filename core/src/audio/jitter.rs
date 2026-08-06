@@ -138,6 +138,15 @@ pub struct SpeakerBuffer {
     /// server never says who is talking — that is only knowable from the audio
     /// actually arriving.
     level_db: f32,
+    /// The sequence slot the last [`Self::pop`] filled, real or concealed.
+    ///
+    /// Not the same as counting frames handed out. The buffer gives up on a
+    /// gap it cannot plausibly conceal and jumps to whatever it is holding, so
+    /// the play head moves further than the output does — after a burst, frame
+    /// number n of the output is no longer slot n of the stream. Anything
+    /// asking *when* a frame belongs, rather than how many there have been,
+    /// has to read it from here.
+    played_slot: Option<u64>,
 }
 
 impl SpeakerBuffer {
@@ -161,6 +170,7 @@ impl SpeakerBuffer {
             loss_events: 0,
             stalled_rounds: 0,
             level_db: SILENT_DB,
+            played_slot: None,
         })
     }
 
@@ -211,6 +221,14 @@ impl SpeakerBuffer {
         self.target
     }
 
+    /// Sequence slot the last frame handed out belongs to.
+    ///
+    /// `None` before anything has played. Unchanged when [`Self::pop`] returns
+    /// nothing, so a caller can tell how long the head has been stuck.
+    pub fn play_slot(&self) -> Option<u64> {
+        self.played_slot
+    }
+
     pub fn buffered(&self) -> usize {
         self.pending.len()
     }
@@ -247,6 +265,7 @@ impl SpeakerBuffer {
                     self.recent_losses = 0;
                     self.concealed_run = 0;
                     self.clean_run = 0;
+                    self.played_slot = None;
                 } else {
                     // Too late to be useful; its slot has already been played.
                     return;
@@ -364,6 +383,7 @@ impl SpeakerBuffer {
             && self.concealed_run < MAX_CONSECUTIVE_CONCEALS;
 
         if conceal {
+            self.played_slot = Some(next);
             self.next_seq = Some(next + self.step());
             self.clean_run = 0;
             // One run of concealment is one event, however many frames it
@@ -396,6 +416,7 @@ impl SpeakerBuffer {
         // packet on every non-concealing call is what guarantees progress.
         let packet = self.pending.remove(&available)?;
         self.observe_stride(&packet);
+        self.played_slot = Some(available);
         self.next_seq = Some(available + self.step());
         self.concealed_run = 0;
         self.decoded_total += 1;
@@ -440,6 +461,7 @@ impl SpeakerBuffer {
         self.recent_losses = 0;
         self.concealed_run = 0;
         self.clean_run = 0;
+        self.played_slot = None;
         self.normalizer.reset();
         let _ = self.decoder.reset();
     }

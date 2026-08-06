@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import '../widgets/app_bar_title.dart';
 import '../widgets/diagnostics_panel.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/server_card.dart';
 import '../widgets/server_detail_pane.dart';
+import '../widgets/wordmark.dart';
 import 'add_server_screen.dart';
 import 'settings_screen.dart';
 
@@ -30,7 +30,17 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: AppBarTitle(l.appTitle),
+        // The lockup rather than the single-line title. It is a fixed shape
+        // rather than text that reflows, so it is allowed to shrink on a bar
+        // too narrow for it — which beats the alternatives of clipping the
+        // name or letting it overflow into the buttons. It never grows: a
+        // wordmark that swelled to fill a tablet's app bar would be the
+        // loudest thing on a screen whose subject is the server list.
+        title: const FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Wordmark(),
+        ),
         actions: [
           const LanguageButton(),
           IconButton(

@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../services/engine_log.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'spectrum_view.dart';
 
 /// Live diagnostics, shown over the bottom of whatever is on screen.
 ///
@@ -256,6 +257,16 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                       ],
                     ),
                     const SizedBox(height: 16),
+                    // Built only while the panel is genuinely on screen, and
+                    // that `if` is load-bearing rather than tidiness. Asking
+                    // the engine for a frame is what makes it compute one, so
+                    // a widget that is never built costs nothing in the audio
+                    // worker either — and this panel is never disposed, only
+                    // slid out of sight, so nothing else would ever stop it.
+                    if (AppStateScope.of(context).diagnosticsOpen) ...[
+                      const SpectrumView(),
+                      const SizedBox(height: 16),
+                    ],
                     // Last of all: the graphs say when something went wrong,
                     // and this says what the engine thought it was doing at
                     // the time.

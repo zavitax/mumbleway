@@ -2082,6 +2082,96 @@ abstract class L {
   /// In en, this message translates to:
   /// **'No warnings or errors.'**
   String get diagLogNoProblems;
+
+  /// No description provided for @diagSpectrum.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice chain'**
+  String get diagSpectrum;
+
+  /// No description provided for @diagSpectrumWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for audio'**
+  String get diagSpectrumWaiting;
+
+  /// No description provided for @diagSpectrumStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'The audio engine has stopped'**
+  String get diagSpectrumStalled;
+
+  /// No description provided for @diagTraceRaw.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone'**
+  String get diagTraceRaw;
+
+  /// No description provided for @diagTracePreGate.
+  ///
+  /// In en, this message translates to:
+  /// **'After suppression'**
+  String get diagTracePreGate;
+
+  /// No description provided for @diagTraceSentLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending'**
+  String get diagTraceSentLive;
+
+  /// No description provided for @diagTraceSentIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sending'**
+  String get diagTraceSentIdle;
+
+  /// No description provided for @diagStageEcho.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo'**
+  String get diagStageEcho;
+
+  /// No description provided for @diagStageSuppressor.
+  ///
+  /// In en, this message translates to:
+  /// **'Suppressor'**
+  String get diagStageSuppressor;
+
+  /// No description provided for @diagStageVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice detected'**
+  String get diagStageVoice;
+
+  /// No description provided for @diagStageGate.
+  ///
+  /// In en, this message translates to:
+  /// **'Gate'**
+  String get diagStageGate;
+
+  /// No description provided for @diagStageLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Levelling'**
+  String get diagStageLevel;
+
+  /// No description provided for @diagStageHiss.
+  ///
+  /// In en, this message translates to:
+  /// **'Hiss'**
+  String get diagStageHiss;
+
+  /// No description provided for @diagStageFeedback.
+  ///
+  /// In en, this message translates to:
+  /// **'Feedback'**
+  String get diagStageFeedback;
+
+  /// No description provided for @diagStageTransmit.
+  ///
+  /// In en, this message translates to:
+  /// **'To the server'**
+  String get diagStageTransmit;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

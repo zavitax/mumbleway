@@ -1,6 +1,5 @@
 {
   "@@locale": "en",
-
   "appTitle": "MumbleWay",
   "cancel": "Cancel",
   "save": "Save",
@@ -8,37 +7,48 @@
   "remove": "Remove",
   "settings": "Settings",
   "language": "Language",
-
   "deafen": "Deafen",
   "undeafen": "Undeafen",
   "muteMicrophone": "Mute microphone",
   "unmuteMicrophone": "Unmute microphone",
   "exportServers": "Export servers…",
   "importFromFile": "Import from file…",
-
   "noServersTitle": "No servers yet",
   "noServersBody": "Add a Mumble server to start talking. You can stay connected to two at once.",
   "addServer": "Add server",
   "addAnotherServer": "Add another server",
   "maxServersNote": "Up to {count} servers can be connected at once; the rest stay saved.",
-  "@maxServersNote": { "placeholders": { "count": { "type": "int" } } },
-
+  "@maxServersNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "allSlotsInUse": "Already talking on {count} servers. Leave one first.",
-  "@allSlotsInUse": { "placeholders": { "count": { "type": "int" } } },
-
+  "@allSlotsInUse": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "micIdleWithTalkButton": "The talk button and microphone meter appear here once you connect to a server.",
   "micIdleMeterOnly": "The microphone meter appears here once you connect to a server.",
   "micIdleWhy": "The microphone stays closed until then, so nothing is recorded and your headset keeps its sound quality for other apps.",
   "micUnavailable": "The microphone could not be opened. Another app may be using it.",
-
   "notConnectedAny": "Not connected to any server",
   "talkingOnOne": "Talking on 1 server",
   "talkingOnMany": "Talking on {count} servers simultaneously",
-  "@talkingOnMany": { "placeholders": { "count": { "type": "int" } } },
-
+  "@talkingOnMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "audioFailedTitle": "Audio could not start",
   "audioFailedBody": "MumbleWay needs a microphone. Check that one is connected and that permission is granted, then restart the app.",
-
   "statusConnected": "Connected",
   "statusConnecting": "Connecting",
   "statusAuthenticating": "Authenticating",
@@ -46,51 +56,79 @@
   "statusError": "Error",
   "statusDisconnected": "Disconnected",
   "statusNotConnected": "Not connected",
-
   "pttHoldToTalk": "HOLD TO TALK",
   "pttTransmitting": "TRANSMITTING",
   "pttMicrophoneMuted": "MICROPHONE MUTED",
   "pttVoiceActivated": "VOICE ACTIVATED",
   "pttOpenMic": "OPEN MIC",
-
   "probeChecking": "Checking…",
   "probeNotResponding": "Not responding",
   "connect": "Connect",
   "disconnect": "Disconnect",
   "joining": "joining…",
-
   "shareInviteLink": "Share invite link",
   "shareProfileFile": "Share profile file",
   "duplicate": "Duplicate",
   "removeServerTitle": "Remove server?",
   "removeServerBody": "{name} will be removed from your list.",
-  "@removeServerBody": { "placeholders": { "name": { "type": "String" } } },
-
+  "@removeServerBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "includePasswordTitle": "Include the password?",
   "includePasswordBody": "Anyone who receives this can join without being asked for a password. It stays valid for as long as the password does, wherever the message ends up.",
   "withoutPassword": "Without password",
   "includeIt": "Include it",
-
   "certChangedTitle": "Server certificate changed",
   "certChangedBody": "This can mean the server was reinstalled — or that someone is impersonating it. Only continue if you expected this.",
   "trustNewCertificate": "Trust the new certificate",
-
   "reconnectingIn": "Connection lost. Retrying in {seconds}s (attempt {attempt}).",
-  "@reconnectingIn": { "placeholders": { "seconds": { "type": "int" }, "attempt": { "type": "int" } } },
+  "@reconnectingIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
   "connectionLost": "Connection lost.",
   "retryingInSeconds": "Retrying in {seconds}s (attempt {attempt}).",
-  "@retryingInSeconds": { "placeholders": { "seconds": { "type": "int" }, "attempt": { "type": "int" } } },
+  "@retryingInSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
   "retryingNow": "Retrying now (attempt {attempt})…",
-  "@retryingNow": { "placeholders": { "attempt": { "type": "int" } } },
-
+  "@retryingNow": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
   "switchToLanguage": "Tap to switch to {name}",
-  "@switchToLanguage": { "placeholders": { "name": { "type": "String" } } },
+  "@switchToLanguage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "more": "More",
   "edit": "Edit",
   "editServer": "Edit server",
   "saveChanges": "Save changes",
   "savingChanges": "Saving…",
-
   "displayName": "Display name",
   "displayNameHint": "Sunday ride",
   "displayNameMissing": "Give it a name",
@@ -107,18 +145,15 @@
   "quickerWays": "Quicker ways to add a server",
   "browsePublic": "Browse public",
   "importLabel": "Import",
-
   "publicServers": "Public servers",
   "search": "Search",
   "reload": "Reload",
   "addToMyServers": "Add to my servers",
   "noServersMatchSearch": "No servers match that search.",
-
   "importServers": "Import servers",
   "addFromText": "Add from text",
   "profileFileFormat": "Profile file format",
   "serversAdded": "Servers added",
-
   "audioDevices": "Audio devices",
   "levels": "Levels",
   "network": "Network",
@@ -163,7 +198,6 @@
   "buttonActionToggleDeafen": "Toggle deafen",
   "floatingWindow": "Show floating call window",
   "identityFingerprint": "Your certificate fingerprint",
-
   "reverb": "Room tone",
   "reverbBody": "Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.",
   "echoCancellation": "Echo cancellation",
@@ -194,21 +228,37 @@
   "levelsHint": "Aim for the meter to peak around three quarters while speaking normally.",
   "noButtonsBound": "No buttons bound yet.",
   "boundButton": "Bound {name}",
-  "@boundButton": { "placeholders": { "name": { "type": "String" } } },
+  "@boundButton": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "learn": "Learn",
   "pressButtonNow": "Press the button on your remote now…",
   "proxyOffDirect": "Off — connecting directly",
   "certificateFingerprint": "Certificate fingerprint",
-
   "inThisChannel": "In this channel ({count})",
-  "@inThisChannel": { "placeholders": { "count": { "type": "int" } } },
+  "@inThisChannel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "channelsHeading": "Channels ({count})",
-  "@channelsHeading": { "placeholders": { "count": { "type": "int" } } },
+  "@channelsHeading": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noChannelsYet": "No channels yet.",
   "nobodyElseHere": "Nobody else is in this channel.",
   "joinAutomatically": "Join this channel automatically",
   "stopJoiningAutomatically": "Stop joining this channel automatically",
-
   "muteForMe": "Mute for me",
   "unmuteForMe": "Unmute for me",
   "muteOnServer": "Mute on server (for everyone)",
@@ -217,33 +267,41 @@
   "undeafenOnServer": "Undeafen on server",
   "kickFromServer": "Kick from server…",
   "kickTitle": "Kick {name}?",
-  "@kickTitle": { "placeholders": { "name": { "type": "String" } } },
+  "@kickTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "kickBody": "They will be disconnected from the server. This is not a ban — they can reconnect straight away.",
   "kickReasonLabel": "Reason (optional)",
   "kickReasonHint": "Shown to them as they are removed",
   "kick": "Kick",
   "kickSent": "Kick sent. If nothing happens, you lack the Kick permission.",
-
   "userStatusTalking": "talking",
   "userStatusSilent": "silent",
   "userStatusMuted": "muted",
   "userStatusDeafened": "deafened",
   "userStatusMutedForYou": "muted for you",
-
   "noServerSelected": "No server selected",
   "noServerSelectedBody": "Add a server to see its channels and who is on it.",
   "connectToSeeChannels": "Connect to see the channel list and who is here.",
   "welcomeMessage": "Welcome message",
   "messages": "Messages",
-
   "syncTitle": "Sync",
   "syncServers": "Sync servers and settings across devices",
   "syncBodyICloud": "Your server list and your settings travel through iCloud to every device signed in to your Apple Account. Passwords go separately, through iCloud Keychain, which is end-to-end encrypted.",
   "syncSignedOut": "Sign in to iCloud on this device to use this.",
   "syncNow": "Sync now",
   "syncFailed": "Last sync failed: {error}",
-  "@syncFailed": { "placeholders": { "error": { "type": "String" } } },
-
+  "@syncFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "transmissionIndicator": "Transmission indicator",
   "diagnostics": "Diagnostics",
   "fingerprintCopied": "Fingerprint copied",
@@ -259,7 +317,11 @@
   "joinMeOn": "Join me on {name}",
   "@joinMeOn": {
     "description": "Subject line when sharing an invite.",
-    "placeholders": { "name": { "type": "String" } }
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   },
   "scanQrCode": "Scan a QR code",
   "importQrImage": "Import a QR code image",
@@ -273,7 +335,11 @@
   "milliseconds": "{ms} ms",
   "@milliseconds": {
     "description": "A duration in milliseconds, shown beside a slider.",
-    "placeholders": { "ms": { "type": "int" } }
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
   },
   "notAvailableHere": "Not available on this platform.",
   "pasteLinkOrProfile": "Paste a link or profile",
@@ -299,7 +365,6 @@
   "diagMicrophoneDropped": "Microphone dropped",
   "diagMicrophoneLevel": "Microphone level",
   "diagReconnectAttempts": "Reconnect attempts",
-
   "diagReset": "Reset",
   "diagClose": "Close",
   "diagDecoded": "Decoded",
@@ -317,7 +382,6 @@
   "diagPing": "Ping",
   "diagInChannel": "In channel",
   "diagParticipants": "Participants",
-
   "levelsHelp": "Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.",
   "floatingAndroidBody": "Talk, mute, deafen and hang up over other apps. Needs the \"display over other apps\" permission.",
   "floatingIosBody": "Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).",
@@ -325,14 +389,17 @@
   "actionPushToTalkToggle": "Push to talk (toggle)",
   "actionToggleMute": "Mute / unmute",
   "actionToggleDeafen": "Deafen / undeafen",
-
   "buttonsIosNote": "A Bluetooth remote reports its media buttons as a tap, never as a hold, so push-to-talk (hold) cannot work from one. Use the toggle action instead. While a media button is bound, the remote controls MumbleWay rather than your music app.",
-
   "remoteListening": "Listening for a remote",
   "remoteNothingYet": "no button received yet",
   "remoteLastButton": "last button: {name}",
-  "@remoteLastButton": {"placeholders": {"name": {"type": "String"}}},
-
+  "@remoteLastButton": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "pipOnAir": "ON AIR",
   "pipTalking": "Talking",
   "pipDeafened": "Deafened",
@@ -356,11 +423,37 @@
   "pipMoreSpeakers": "+{count} more",
   "pipOthersOnline": "{count, plural, =1{1 other person online} other{{count} other people online}}",
   "pipNobodyElse": "Nobody else is here now",
-  "@pipOthersOnline": {"placeholders": {"count": {"type": "int"}}},
-  "@pipConnectedCount": {"placeholders": {"count": {"type": "int"}}},
-  "@pipUpAndReconnecting": {"placeholders": {"up": {"type": "int"}, "count": {"type": "int"}}},
-  "@pipMoreSpeakers": {"placeholders": {"count": {"type": "int"}}},
-
+  "@pipOthersOnline": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@pipConnectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@pipUpAndReconnecting": {
+    "placeholders": {
+      "up": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "@pipMoreSpeakers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "feedbackGuard": "Feedback suppression",
   "feedbackGuardBody": "For when the speaker is heard by the microphone. Echo cancellation removes what it can predict; these handle what is left, and they work in quite different ways.",
   "feedbackOff": "No feedback suppression",
@@ -371,7 +464,6 @@
   "feedbackHowlBody": "Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed.",
   "feedbackResidual": "Suppress whatever echo cancellation missed",
   "feedbackResidualBody": "Attenuates in proportion to how much of the sound looks like the far end rather than you. The gentlest on a real conversation, and the weakest against a genuine howl.",
-
   "dehiss": "Hiss removal",
   "dehissBody": "For the steady hiss a microphone adds under everything. Separate from noise suppression, which handles the road and the wind: those are loud and change with speed, while hiss is quiet, high and unvarying.",
   "dehissOff": "No hiss removal",
@@ -380,10 +472,8 @@
   "dehissExpanderBody": "Attenuates in proportion to how far below the noise floor the sound sits, so speech is untouched and the gaps between words go quiet. Cannot make a voice sound processed; can make the background breathe.",
   "dehissSpectral": "Learn the hiss and subtract it",
   "dehissSpectralBody": "Measures the noise while nobody is talking and removes it frequency by frequency, so hiss goes from under speech as well as from the gaps. The strongest option, and the one that can leave a faint flicker behind it.",
-
   "serverBusyChange": "Disconnect from this server before changing or removing it.",
   "disconnectFirst": "Disconnect first",
-
   "diagLog": "Engine log",
   "diagLogProblems": "Problems only",
   "diagLogAll": "Show all",
@@ -391,5 +481,20 @@
   "diagLogCopied": "Log copied to the clipboard.",
   "diagLogClear": "Clear the log",
   "diagLogEmpty": "Nothing logged yet.",
-  "diagLogNoProblems": "No warnings or errors."
+  "diagLogNoProblems": "No warnings or errors.",
+  "diagSpectrum": "Voice chain",
+  "diagSpectrumWaiting": "Waiting for audio",
+  "diagSpectrumStalled": "The audio engine has stopped",
+  "diagTraceRaw": "Microphone",
+  "diagTracePreGate": "After suppression",
+  "diagTraceSentLive": "Sending",
+  "diagTraceSentIdle": "Not sending",
+  "diagStageEcho": "Echo",
+  "diagStageSuppressor": "Suppressor",
+  "diagStageVoice": "Voice detected",
+  "diagStageGate": "Gate",
+  "diagStageLevel": "Levelling",
+  "diagStageHiss": "Hiss",
+  "diagStageFeedback": "Feedback",
+  "diagStageTransmit": "To the server"
 }

@@ -1,6 +1,5 @@
 {
   "@@locale": "ru",
-
   "appTitle": "MumbleWay",
   "cancel": "Отмена",
   "save": "Сохранить",
@@ -8,37 +7,48 @@
   "remove": "Удалить",
   "settings": "Настройки",
   "language": "Язык",
-
   "deafen": "Выключить звук",
   "undeafen": "Включить звук",
   "muteMicrophone": "Выключить микрофон",
   "unmuteMicrophone": "Включить микрофон",
   "exportServers": "Экспорт серверов…",
   "importFromFile": "Импорт из файла…",
-
   "noServersTitle": "Серверов пока нет",
   "noServersBody": "Добавьте сервер Mumble, чтобы начать разговор. Можно оставаться подключённым к двум одновременно.",
   "addServer": "Добавить сервер",
   "addAnotherServer": "Добавить ещё сервер",
   "maxServersNote": "Одновременно можно подключить до {count} серверов; остальные останутся сохранёнными.",
-  "@maxServersNote": { "placeholders": { "count": { "type": "int" } } },
-
+  "@maxServersNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "allSlotsInUse": "Уже идёт разговор на {count} серверах. Сначала покиньте один из них.",
-  "@allSlotsInUse": { "placeholders": { "count": { "type": "int" } } },
-
+  "@allSlotsInUse": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "micIdleWithTalkButton": "Кнопка разговора и индикатор микрофона появятся здесь после подключения к серверу.",
   "micIdleMeterOnly": "Индикатор микрофона появится здесь после подключения к серверу.",
   "micIdleWhy": "До этого микрофон остаётся выключенным: запись не ведётся, а гарнитура сохраняет качество звука для других приложений.",
   "micUnavailable": "Не удалось включить микрофон. Возможно, его использует другое приложение.",
-
   "notConnectedAny": "Нет подключения ни к одному серверу",
   "talkingOnOne": "Разговор на 1 сервере",
   "talkingOnMany": "Разговор одновременно на {count} серверах",
-  "@talkingOnMany": { "placeholders": { "count": { "type": "int" } } },
-
+  "@talkingOnMany": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "audioFailedTitle": "Не удалось запустить звук",
   "audioFailedBody": "MumbleWay нужен микрофон. Проверьте, что он подключён и разрешение выдано, затем перезапустите приложение.",
-
   "statusConnected": "Подключено",
   "statusConnecting": "Подключение",
   "statusAuthenticating": "Аутентификация",
@@ -46,51 +56,79 @@
   "statusError": "Ошибка",
   "statusDisconnected": "Отключено",
   "statusNotConnected": "Не подключено",
-
   "pttHoldToTalk": "УДЕРЖИВАЙТЕ",
   "pttTransmitting": "ПЕРЕДАЧА",
   "pttMicrophoneMuted": "МИКРОФОН ВЫКЛЮЧЕН",
   "pttVoiceActivated": "ПО ГОЛОСУ",
   "pttOpenMic": "МИКРОФОН ОТКРЫТ",
-
   "probeChecking": "Проверка…",
   "probeNotResponding": "Не отвечает",
   "connect": "Подключиться",
   "disconnect": "Отключиться",
   "joining": "вход…",
-
   "shareInviteLink": "Поделиться ссылкой",
   "shareProfileFile": "Поделиться файлом профиля",
   "duplicate": "Дублировать",
   "removeServerTitle": "Удалить сервер?",
   "removeServerBody": "{name} будет удалён из вашего списка.",
-  "@removeServerBody": { "placeholders": { "name": { "type": "String" } } },
-
+  "@removeServerBody": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "includePasswordTitle": "Включить пароль?",
   "includePasswordBody": "Любой, кто получит это, сможет подключиться без запроса пароля. Ссылка останется действительной, пока действует пароль, — где бы сообщение ни оказалось.",
   "withoutPassword": "Без пароля",
   "includeIt": "Включить",
-
   "certChangedTitle": "Сертификат сервера изменился",
   "certChangedBody": "Это может означать, что сервер переустановили — или что кто-то выдаёт себя за него. Продолжайте, только если вы этого ожидали.",
   "trustNewCertificate": "Доверять новому сертификату",
-
   "reconnectingIn": "Связь потеряна. Повтор через {seconds} с (попытка {attempt}).",
-  "@reconnectingIn": { "placeholders": { "seconds": { "type": "int" }, "attempt": { "type": "int" } } },
+  "@reconnectingIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
   "connectionLost": "Связь потеряна.",
   "retryingInSeconds": "Повтор через {seconds} с (попытка {attempt}).",
-  "@retryingInSeconds": { "placeholders": { "seconds": { "type": "int" }, "attempt": { "type": "int" } } },
+  "@retryingInSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
   "retryingNow": "Повторяем сейчас (попытка {attempt})…",
-  "@retryingNow": { "placeholders": { "attempt": { "type": "int" } } },
-
+  "@retryingNow": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
   "switchToLanguage": "Нажмите, чтобы переключиться на {name}",
-  "@switchToLanguage": { "placeholders": { "name": { "type": "String" } } },
+  "@switchToLanguage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "more": "Ещё",
   "edit": "Изменить",
   "editServer": "Изменить сервер",
   "saveChanges": "Сохранить изменения",
   "savingChanges": "Сохранение…",
-
   "displayName": "Название",
   "displayNameHint": "Воскресный выезд",
   "displayNameMissing": "Введите название",
@@ -107,18 +145,15 @@
   "quickerWays": "Быстрые способы добавить сервер",
   "browsePublic": "Публичные серверы",
   "importLabel": "Импорт",
-
   "publicServers": "Публичные серверы",
   "search": "Поиск",
   "reload": "Обновить",
   "addToMyServers": "Добавить к моим серверам",
   "noServersMatchSearch": "Ничего не найдено по этому запросу.",
-
   "importServers": "Импорт серверов",
   "addFromText": "Добавить из текста",
   "profileFileFormat": "Формат файла профиля",
   "serversAdded": "Серверы добавлены",
-
   "audioDevices": "Аудиоустройства",
   "levels": "Уровни",
   "network": "Сеть",
@@ -163,7 +198,6 @@
   "buttonActionToggleDeafen": "Переключать звук",
   "floatingWindow": "Показывать плавающее окно вызова",
   "identityFingerprint": "Отпечаток вашего сертификата",
-
   "reverb": "Эффект помещения",
   "reverbBody": "Добавляет короткий хвост к голосам собеседников, чтобы речь, обрезанная активацией по голосу, не обрывалась на полуслове.",
   "echoCancellation": "Подавление эха",
@@ -194,21 +228,37 @@
   "levelsHint": "При обычной речи индикатор должен доходить примерно до трёх четвертей.",
   "noButtonsBound": "Кнопки ещё не привязаны.",
   "boundButton": "Привязана {name}",
-  "@boundButton": { "placeholders": { "name": { "type": "String" } } },
+  "@boundButton": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "learn": "Обучить",
   "pressButtonNow": "Нажмите кнопку на пульте…",
   "proxyOffDirect": "Выключено — прямое подключение",
   "certificateFingerprint": "Отпечаток сертификата",
-
   "inThisChannel": "В этом канале ({count})",
-  "@inThisChannel": { "placeholders": { "count": { "type": "int" } } },
+  "@inThisChannel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "channelsHeading": "Каналы ({count})",
-  "@channelsHeading": { "placeholders": { "count": { "type": "int" } } },
+  "@channelsHeading": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noChannelsYet": "Каналов пока нет.",
   "nobodyElseHere": "В этом канале больше никого нет.",
   "joinAutomatically": "Входить в этот канал автоматически",
   "stopJoiningAutomatically": "Не входить в этот канал автоматически",
-
   "muteForMe": "Заглушить для меня",
   "unmuteForMe": "Включить для меня",
   "muteOnServer": "Заглушить на сервере (для всех)",
@@ -217,32 +267,34 @@
   "undeafenOnServer": "Включить звук на сервере",
   "kickFromServer": "Отключить от сервера…",
   "kickTitle": "Отключить {name}?",
-  "@kickTitle": { "placeholders": { "name": { "type": "String" } } },
+  "@kickTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "kickBody": "Пользователь будет отключён от сервера. Это не бан — он сможет сразу подключиться снова.",
   "kickReasonLabel": "Причина (необязательно)",
   "kickReasonHint": "Будет показана при отключении",
   "kick": "Отключить",
   "kickSent": "Команда отправлена. Если ничего не произошло, у вас нет права Kick.",
-
   "userStatusTalking": "говорит",
   "userStatusSilent": "молчит",
   "userStatusMuted": "заглушён",
   "userStatusDeafened": "без звука",
   "userStatusMutedForYou": "заглушён для вас",
-
   "noServerSelected": "Сервер не выбран",
   "noServerSelectedBody": "Добавьте сервер, чтобы увидеть его каналы и участников.",
   "connectToSeeChannels": "Подключитесь, чтобы увидеть список каналов и участников.",
   "welcomeMessage": "Приветствие сервера",
   "messages": "Сообщения",
-
   "syncTitle": "Синхронизация",
   "syncServers": "Синхронизировать серверы и настройки между устройствами",
   "syncBodyICloud": "Список серверов и настройки передаются через iCloud на все устройства, где выполнен вход в вашу учётную запись Apple. Пароли идут отдельно, через «Связку ключей iCloud», со сквозным шифрованием.",
   "syncSignedOut": "Войдите в iCloud на этом устройстве, чтобы включить синхронизацию.",
   "syncNow": "Синхронизировать сейчас",
   "syncFailed": "Последняя синхронизация не удалась: {error}",
-
   "transmissionIndicator": "Индикатор передачи",
   "diagnostics": "Диагностика",
   "fingerprintCopied": "Отпечаток скопирован",
@@ -258,7 +310,11 @@
   "joinMeOn": "Подключайтесь: {name}",
   "@joinMeOn": {
     "description": "Subject line when sharing an invite.",
-    "placeholders": { "name": { "type": "String" } }
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
   },
   "scanQrCode": "Сканировать QR-код",
   "importQrImage": "Загрузить изображение с QR-кодом",
@@ -272,7 +328,11 @@
   "milliseconds": "{ms} мс",
   "@milliseconds": {
     "description": "A duration in milliseconds, shown beside a slider.",
-    "placeholders": { "ms": { "type": "int" } }
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
   },
   "notAvailableHere": "Недоступно на этой платформе.",
   "pasteLinkOrProfile": "Вставьте ссылку или профиль",
@@ -298,7 +358,6 @@
   "diagMicrophoneDropped": "Потеряно с микрофона",
   "diagMicrophoneLevel": "Уровень микрофона",
   "diagReconnectAttempts": "Попыток переподключения",
-
   "diagReset": "Сбросить",
   "diagClose": "Закрыть",
   "diagDecoded": "Декодировано",
@@ -316,7 +375,6 @@
   "diagPing": "Задержка",
   "diagInChannel": "В канале",
   "diagParticipants": "Участников",
-
   "levelsHelp": "Стремитесь к тому, чтобы при обычной речи индикатор доходил примерно до трёх четвертей. Избыточное усиление поднимает шум двигателя вместе с голосом.",
   "floatingAndroidBody": "Говорить, отключать микрофон и звук, завершать вызов поверх других приложений. Требуется разрешение «поверх других приложений».",
   "floatingIosBody": "Картинка в картинке — появляется, когда вы выходите из приложения. Система даёт три кнопки: воспроизведение/пауза говорит, назад отключает микрофон, вперёд завершает вызов (дважды для подтверждения).",
@@ -324,13 +382,10 @@
   "actionPushToTalkToggle": "Рация (переключатель)",
   "actionToggleMute": "Выключить / включить микрофон",
   "actionToggleDeafen": "Выключить / включить звук",
-
   "buttonsIosNote": "Bluetooth-пульт сообщает о нажатии мультимедийных кнопок, но не об удержании, поэтому рация с удержанием с него не работает. Используйте действие-переключатель. Пока мультимедийная кнопка назначена, пульт управляет MumbleWay, а не музыкальным приложением.",
-
   "remoteListening": "Ожидание пульта",
   "remoteNothingYet": "кнопок пока не получено",
   "remoteLastButton": "последняя кнопка: {name}",
-
   "pipOnAir": "В ЭФИРЕ",
   "pipTalking": "Говорите",
   "pipDeafened": "Звук выключен",
@@ -354,7 +409,6 @@
   "pipMoreSpeakers": "+{count} ещё",
   "pipOthersOnline": "{count, plural, one{ещё {count} человек в сети} few{ещё {count} человека в сети} many{ещё {count} человек в сети} other{ещё {count} человека в сети}}",
   "pipNobodyElse": "Больше здесь никого нет",
-
   "feedbackGuard": "Подавление обратной связи",
   "feedbackGuardBody": "На случай, когда микрофон слышит динамик. Эхоподавление убирает то, что может предсказать; эти режимы работают с остатком, и работают они по-разному.",
   "feedbackOff": "Без подавления обратной связи",
@@ -365,7 +419,6 @@
   "feedbackHowlBody": "Совсем не трогает обычный разговор и резко обрывает звук, как только тон начинает нарастать. С лёгкими наводками не борется.",
   "feedbackResidual": "Подавлять остаток после эхоподавления",
   "feedbackResidualBody": "Ослабляет тем сильнее, чем больше звук похож на дальнюю сторону, а не на вас. Самый мягкий для живого разговора и самый слабый против настоящего воя.",
-
   "dehiss": "Подавление шипения",
   "dehissBody": "Для ровного шипения, которое микрофон добавляет ко всему. Это не то же самое, что шумоподавление, отвечающее за дорогу и ветер: те громкие и меняются со скоростью, а шипение тихое, высокое и неизменное.",
   "dehissOff": "Без подавления шипения",
@@ -374,10 +427,8 @@
   "dehissExpanderBody": "Ослабляет тем сильнее, чем ниже уровня шума оказался звук: речь остаётся нетронутой, а паузы между словами затихают. Голос не станет искусственным, но фон будет «дышать».",
   "dehissSpectral": "Выучить шипение и вычесть его",
   "dehissSpectralBody": "Измеряет шум, пока никто не говорит, и убирает его по частотам — шипение уходит и из-под речи, и из пауз. Самый сильный вариант; после него может оставаться лёгкое мерцание.",
-
   "serverBusyChange": "Отключитесь от этого сервера, прежде чем изменять или удалять его.",
   "disconnectFirst": "Сначала отключитесь",
-
   "diagLog": "Журнал движка",
   "diagLogProblems": "Только проблемы",
   "diagLogAll": "Показать все",
@@ -385,5 +436,20 @@
   "diagLogCopied": "Журнал скопирован в буфер обмена.",
   "diagLogClear": "Очистить журнал",
   "diagLogEmpty": "Пока ничего не записано.",
-  "diagLogNoProblems": "Предупреждений и ошибок нет."
+  "diagLogNoProblems": "Предупреждений и ошибок нет.",
+  "diagSpectrum": "Тракт голоса",
+  "diagSpectrumWaiting": "Ожидание звука",
+  "diagSpectrumStalled": "Звуковой движок остановлен",
+  "diagTraceRaw": "Микрофон",
+  "diagTracePreGate": "После подавления",
+  "diagTraceSentLive": "Передаётся",
+  "diagTraceSentIdle": "Не передаётся",
+  "diagStageEcho": "Эхо",
+  "diagStageSuppressor": "Подавление шума",
+  "diagStageVoice": "Голос распознан",
+  "diagStageGate": "Шумовые ворота",
+  "diagStageLevel": "Выравнивание",
+  "diagStageHiss": "Шипение",
+  "diagStageFeedback": "Обратная связь",
+  "diagStageTransmit": "На сервер"
 }

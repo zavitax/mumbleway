@@ -1096,4 +1096,49 @@ class LEn extends L {
 
   @override
   String get diagLogNoProblems => 'No warnings or errors.';
+
+  @override
+  String get diagSpectrum => 'Voice chain';
+
+  @override
+  String get diagSpectrumWaiting => 'Waiting for audio';
+
+  @override
+  String get diagSpectrumStalled => 'The audio engine has stopped';
+
+  @override
+  String get diagTraceRaw => 'Microphone';
+
+  @override
+  String get diagTracePreGate => 'After suppression';
+
+  @override
+  String get diagTraceSentLive => 'Sending';
+
+  @override
+  String get diagTraceSentIdle => 'Not sending';
+
+  @override
+  String get diagStageEcho => 'Echo';
+
+  @override
+  String get diagStageSuppressor => 'Suppressor';
+
+  @override
+  String get diagStageVoice => 'Voice detected';
+
+  @override
+  String get diagStageGate => 'Gate';
+
+  @override
+  String get diagStageLevel => 'Levelling';
+
+  @override
+  String get diagStageHiss => 'Hiss';
+
+  @override
+  String get diagStageFeedback => 'Feedback';
+
+  @override
+  String get diagStageTransmit => 'To the server';
 }

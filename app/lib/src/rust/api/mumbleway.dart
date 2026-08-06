@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -162,6 +162,28 @@ UiDiagnostics audioDiagnostics() =>
 
 void resetAudioGlitches() =>
     RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
+
+/// The latest analyser frame, and an ask for the next one.
+///
+/// **Calling this is what makes the engine do the work.** The analyser is the
+/// most expensive thing in the capture chain and worth nothing when nobody is
+/// looking, so it runs only while it is being asked for, and the ask expires
+/// after half a second. There is deliberately no matching "stop": every
+/// explicit stop has a path that misses it — the diagnostics panel is never
+/// disposed, the app can be backgrounded, the engine can be restarted — and a
+/// missed stop leaves three transforms per block running in a rider's pocket.
+///
+/// So: poll it while the panel is open, stop when it closes, and the cost stops
+/// with it. `None` means no frame has been produced yet.
+UiSpectrum? audioSpectrum() =>
+    RustLib.instance.api.crateApiMumblewayAudioSpectrum();
+
+/// Where each stage of the capture chain stands.
+///
+/// Free, and always current: the chain publishes this as it runs whether or not
+/// anybody is reading. Unlike [`audio_spectrum`] it arms nothing.
+UiChainStatus audioChainStatus() =>
+    RustLib.instance.api.crateApiMumblewayAudioChainStatus();
 
 /// Everything the engine has logged so far.
 ///
@@ -522,6 +544,21 @@ class ServerConfig {
           defaultChannel == other.defaultChannel;
 }
 
+/// How a stage of the chain is doing.
+enum StageState {
+  /// Switched off, so it has no opinion.
+  off,
+
+  /// Working, and passing audio on.
+  good,
+
+  /// Working, but holding something back.
+  warn,
+
+  /// Stopping audio here.
+  bad,
+}
+
 /// Startup options.
 class StartupOptions {
   /// Writable directory for the client identity certificate.
@@ -588,6 +625,59 @@ class StatusUpdate {
           detail == other.detail &&
           attempt == other.attempt &&
           retryInMs == other.retryInMs;
+}
+
+/// The capture chain, stage by stage, as of the last block.
+class UiChainStatus {
+  /// In order, from the microphone to the wire.
+  final List<UiStage> stages;
+
+  /// Whether voice activation would open right now, whatever mode is set.
+  final bool wouldPassVoiceActivated;
+
+  /// Whether audio actually went out on the last block.
+  final bool transmitting;
+
+  /// Still starting up; nothing above should be believed yet.
+  final bool warmingUp;
+
+  /// Level, the floor under it, and the level needed to open. All dBFS.
+  final double levelDb;
+  final double noiseFloorDb;
+  final double activationThresholdDb;
+
+  const UiChainStatus({
+    required this.stages,
+    required this.wouldPassVoiceActivated,
+    required this.transmitting,
+    required this.warmingUp,
+    required this.levelDb,
+    required this.noiseFloorDb,
+    required this.activationThresholdDb,
+  });
+
+  @override
+  int get hashCode =>
+      stages.hashCode ^
+      wouldPassVoiceActivated.hashCode ^
+      transmitting.hashCode ^
+      warmingUp.hashCode ^
+      levelDb.hashCode ^
+      noiseFloorDb.hashCode ^
+      activationThresholdDb.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiChainStatus &&
+          runtimeType == other.runtimeType &&
+          stages == other.stages &&
+          wouldPassVoiceActivated == other.wouldPassVoiceActivated &&
+          transmitting == other.transmitting &&
+          warmingUp == other.warmingUp &&
+          levelDb == other.levelDb &&
+          noiseFloorDb == other.noiseFloorDb &&
+          activationThresholdDb == other.activationThresholdDb;
 }
 
 class UiChannel {
@@ -830,6 +920,106 @@ class UiSpeakerLevel {
           serverId == other.serverId &&
           session == other.session &&
           levelDb == other.levelDb;
+}
+
+/// One frame of the capture-chain analyser.
+///
+/// Band levels are dBFS, floored, one entry per band, and the three traces are
+/// always the same length as `centres_hz`.
+class UiSpectrum {
+  /// Centre frequency of each band. Sent every frame rather than fetched
+  /// once, so the axis and the data can never disagree about how many bands
+  /// there are.
+  final Float32List centresHz;
+
+  /// The microphone, before any processing.
+  final Float32List rawDb;
+
+  /// What the noise gate was about to judge.
+  final Float32List preGateDb;
+
+  /// What reached the encoder. Drawn whether or not it was transmitted;
+  /// `transmitting` is what says which.
+  final Float32List sentDb;
+
+  /// Quietest level in the data, for scaling the axis.
+  final double floorDb;
+
+  /// How tonal the pre-gate signal is, 0..1.
+  final double harmonicity;
+
+  /// Whether the block this frame describes actually went out.
+  final bool transmitting;
+
+  /// Frame counter. If this stops moving the worker has stopped, which on
+  /// screen is indistinguishable from silence unless the reader checks.
+  final BigInt seq;
+
+  const UiSpectrum({
+    required this.centresHz,
+    required this.rawDb,
+    required this.preGateDb,
+    required this.sentDb,
+    required this.floorDb,
+    required this.harmonicity,
+    required this.transmitting,
+    required this.seq,
+  });
+
+  @override
+  int get hashCode =>
+      centresHz.hashCode ^
+      rawDb.hashCode ^
+      preGateDb.hashCode ^
+      sentDb.hashCode ^
+      floorDb.hashCode ^
+      harmonicity.hashCode ^
+      transmitting.hashCode ^
+      seq.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiSpectrum &&
+          runtimeType == other.runtimeType &&
+          centresHz == other.centresHz &&
+          rawDb == other.rawDb &&
+          preGateDb == other.preGateDb &&
+          sentDb == other.sentDb &&
+          floorDb == other.floorDb &&
+          harmonicity == other.harmonicity &&
+          transmitting == other.transmitting &&
+          seq == other.seq;
+}
+
+/// One stage of the capture chain.
+///
+/// Carries no prose. The panel is fully localised, and a message composed in
+/// Rust would be the one string in it that no translator can reach — so Dart
+/// builds the label from `id`, `state` and `value`.
+class UiStage {
+  /// Stable identifier: `aec`, `rnnoise`, `gate`, `vad`, `harmonicity`,
+  /// `agc`, `dehiss`, `feedback`, `profile`, `transmit`.
+  final String id;
+  final StageState state;
+
+  /// The one number that stage is about, in whatever unit suits it — dB for
+  /// the AEC and the AGC, 0..1 for harmonicity, unused elsewhere.
+  final double value;
+
+  const UiStage({required this.id, required this.state, required this.value});
+
+  @override
+  int get hashCode => id.hashCode ^ state.hashCode ^ value.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiStage &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          state == other.state &&
+          value == other.value;
 }
 
 class UiStats {

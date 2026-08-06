@@ -1182,6 +1182,231 @@ pub fn reset_audio_glitches() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// One frame of the capture-chain analyser.
+///
+/// Band levels are dBFS, floored, one entry per band, and the three traces are
+/// always the same length as `centres_hz`.
+#[derive(Debug, Clone)]
+pub struct UiSpectrum {
+    /// Centre frequency of each band. Sent every frame rather than fetched
+    /// once, so the axis and the data can never disagree about how many bands
+    /// there are.
+    pub centres_hz: Vec<f32>,
+    /// The microphone, before any processing.
+    pub raw_db: Vec<f32>,
+    /// What the noise gate was about to judge.
+    pub pre_gate_db: Vec<f32>,
+    /// What reached the encoder. Drawn whether or not it was transmitted;
+    /// `transmitting` is what says which.
+    pub sent_db: Vec<f32>,
+    /// Quietest level in the data, for scaling the axis.
+    pub floor_db: f32,
+    /// How tonal the pre-gate signal is, 0..1.
+    pub harmonicity: f32,
+    /// Whether the block this frame describes actually went out.
+    pub transmitting: bool,
+    /// Frame counter. If this stops moving the worker has stopped, which on
+    /// screen is indistinguishable from silence unless the reader checks.
+    pub seq: u64,
+}
+
+/// How a stage of the chain is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StageState {
+    /// Switched off, so it has no opinion.
+    Off,
+    /// Working, and passing audio on.
+    Good,
+    /// Working, but holding something back.
+    Warn,
+    /// Stopping audio here.
+    Bad,
+}
+
+/// One stage of the capture chain.
+///
+/// Carries no prose. The panel is fully localised, and a message composed in
+/// Rust would be the one string in it that no translator can reach — so Dart
+/// builds the label from `id`, `state` and `value`.
+#[derive(Debug, Clone)]
+pub struct UiStage {
+    /// Stable identifier: `aec`, `rnnoise`, `gate`, `vad`, `harmonicity`,
+    /// `agc`, `dehiss`, `feedback`, `profile`, `transmit`.
+    pub id: String,
+    pub state: StageState,
+    /// The one number that stage is about, in whatever unit suits it — dB for
+    /// the AEC and the AGC, 0..1 for harmonicity, unused elsewhere.
+    pub value: f32,
+}
+
+/// The capture chain, stage by stage, as of the last block.
+#[derive(Debug, Clone)]
+pub struct UiChainStatus {
+    /// In order, from the microphone to the wire.
+    pub stages: Vec<UiStage>,
+    /// Whether voice activation would open right now, whatever mode is set.
+    pub would_pass_voice_activated: bool,
+    /// Whether audio actually went out on the last block.
+    pub transmitting: bool,
+    /// Still starting up; nothing above should be believed yet.
+    pub warming_up: bool,
+    /// Level, the floor under it, and the level needed to open. All dBFS.
+    pub level_db: f32,
+    pub noise_floor_db: f32,
+    pub activation_threshold_db: f32,
+}
+
+/// The latest analyser frame, and an ask for the next one.
+///
+/// **Calling this is what makes the engine do the work.** The analyser is the
+/// most expensive thing in the capture chain and worth nothing when nobody is
+/// looking, so it runs only while it is being asked for, and the ask expires
+/// after half a second. There is deliberately no matching "stop": every
+/// explicit stop has a path that misses it — the diagnostics panel is never
+/// disposed, the app can be backgrounded, the engine can be restarted — and a
+/// missed stop leaves three transforms per block running in a rider's pocket.
+///
+/// So: poll it while the panel is open, stop when it closes, and the cost stops
+/// with it. `None` means no frame has been produced yet.
+#[frb(sync)]
+pub fn audio_spectrum() -> anyhow::Result<Option<UiSpectrum>> {
+    use mumbleway_core::audio::spectrum::{
+        SpectrumAnalyser, FLOOR_DB, TAP_PRE_GATE, TAP_RAW, TAP_SENT,
+    };
+
+    let shared = &app()?.shared;
+    let Some(frame) = shared.take_spectrum() else {
+        return Ok(None);
+    };
+
+    Ok(Some(UiSpectrum {
+        centres_hz: SpectrumAnalyser::band_centres().to_vec(),
+        raw_db: frame.bands[TAP_RAW].to_vec(),
+        pre_gate_db: frame.bands[TAP_PRE_GATE].to_vec(),
+        sent_db: frame.bands[TAP_SENT].to_vec(),
+        floor_db: FLOOR_DB,
+        harmonicity: frame.harmonicity,
+        transmitting: frame.transmitting,
+        seq: frame.seq,
+    }))
+}
+
+/// Where each stage of the capture chain stands.
+///
+/// Free, and always current: the chain publishes this as it runs whether or not
+/// anybody is reading. Unlike [`audio_spectrum`] it arms nothing.
+#[frb(sync)]
+pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
+    let shared = &app()?.shared;
+    let c = shared.chain_status();
+
+    // Thresholds live here rather than in Dart because they are judgements
+    // about the audio, not about the display, and they belong beside the values
+    // they judge.
+    let aec = if !shared.echo_cancellation_enabled() {
+        StageState::Off
+    } else if c.erle_db < 0.0 {
+        StageState::Bad
+    } else if c.erle_db < 6.0 {
+        StageState::Warn
+    } else {
+        StageState::Good
+    };
+
+    let stages = vec![
+        UiStage {
+            id: "aec".into(),
+            state: aec,
+            value: c.erle_db,
+        },
+        UiStage {
+            id: "rnnoise".into(),
+            state: if c.profile == 0 {
+                StageState::Off
+            } else if c.warming_up {
+                StageState::Warn
+            } else {
+                StageState::Good
+            },
+            value: 0.0,
+        },
+        UiStage {
+            id: "vad".into(),
+            // Which half failed is the whole point: both agreeing is speech,
+            // one agreeing is the interesting middle, neither is silence.
+            state: match (c.vad_says_speech, c.snr_says_speech) {
+                (true, true) => StageState::Good,
+                (false, false) => StageState::Bad,
+                _ => StageState::Warn,
+            },
+            value: c.level_db - c.noise_floor_db,
+        },
+        UiStage {
+            id: "gate".into(),
+            state: if c.gate_open {
+                StageState::Good
+            } else {
+                StageState::Bad
+            },
+            value: c.activation_threshold_db,
+        },
+        UiStage {
+            id: "agc".into(),
+            state: if c.profile == 0 {
+                StageState::Off
+            } else if c.agc_gain_db.abs() >= 6.0 {
+                StageState::Warn
+            } else {
+                StageState::Good
+            },
+            value: c.agc_gain_db,
+        },
+        UiStage {
+            id: "dehiss".into(),
+            state: if c.dehiss_mode == 0 {
+                StageState::Off
+            } else {
+                StageState::Good
+            },
+            value: 0.0,
+        },
+        UiStage {
+            id: "feedback".into(),
+            state: if c.feedback_mode == 0 {
+                StageState::Off
+            } else {
+                StageState::Good
+            },
+            value: 0.0,
+        },
+        UiStage {
+            id: "transmit".into(),
+            state: if c.muted {
+                StageState::Off
+            } else if c.transmitting {
+                StageState::Good
+            } else if c.would_pass_voice_activated {
+                // Speech got all the way here and the mode stopped it — the
+                // rider is on push-to-talk and is not pressing, most likely.
+                StageState::Warn
+            } else {
+                StageState::Bad
+            },
+            value: 0.0,
+        },
+    ];
+
+    Ok(UiChainStatus {
+        stages,
+        would_pass_voice_activated: c.would_pass_voice_activated,
+        transmitting: c.transmitting,
+        warming_up: c.warming_up,
+        level_db: c.level_db,
+        noise_floor_db: c.noise_floor_db,
+        activation_threshold_db: c.activation_threshold_db,
+    })
+}
+
 /// Everything the engine has logged so far.
 ///
 /// The stream only carries lines recorded after the UI attached to it, and the

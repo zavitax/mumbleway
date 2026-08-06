@@ -49,6 +49,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
+  UiSpectrum dco_decode_box_autoadd_ui_spectrum(dynamic raw);
+
+  @protected
   UiStats dco_decode_box_autoadd_ui_stats(dynamic raw);
 
   @protected
@@ -91,6 +94,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiSpeakerLevel> dco_decode_list_ui_speaker_level(dynamic raw);
 
   @protected
+  List<UiStage> dco_decode_list_ui_stage(dynamic raw);
+
+  @protected
   List<UiUser> dco_decode_list_ui_user(dynamic raw);
 
   @protected
@@ -109,6 +115,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
+  UiSpectrum? dco_decode_opt_box_autoadd_ui_spectrum(dynamic raw);
+
+  @protected
   (String?, String?) dco_decode_record_opt_string_opt_string(dynamic raw);
 
   @protected
@@ -116,6 +125,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ServerConfig dco_decode_server_config(dynamic raw);
+
+  @protected
+  StageState dco_decode_stage_state(dynamic raw);
 
   @protected
   StartupOptions dco_decode_startup_options(dynamic raw);
@@ -136,6 +148,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_u_8(dynamic raw);
 
   @protected
+  UiChainStatus dco_decode_ui_chain_status(dynamic raw);
+
+  @protected
   UiChannel dco_decode_ui_channel(dynamic raw);
 
   @protected
@@ -149,6 +164,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiSpeakerLevel dco_decode_ui_speaker_level(dynamic raw);
+
+  @protected
+  UiSpectrum dco_decode_ui_spectrum(dynamic raw);
+
+  @protected
+  UiStage dco_decode_ui_stage(dynamic raw);
 
   @protected
   UiStats dco_decode_ui_stats(dynamic raw);
@@ -196,6 +217,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  UiSpectrum sse_decode_box_autoadd_ui_spectrum(SseDeserializer deserializer);
 
   @protected
   UiStats sse_decode_box_autoadd_ui_stats(SseDeserializer deserializer);
@@ -246,6 +270,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<UiStage> sse_decode_list_ui_stage(SseDeserializer deserializer);
+
+  @protected
   List<UiUser> sse_decode_list_ui_user(SseDeserializer deserializer);
 
   @protected
@@ -264,6 +291,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  UiSpectrum? sse_decode_opt_box_autoadd_ui_spectrum(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   (String?, String?) sse_decode_record_opt_string_opt_string(
     SseDeserializer deserializer,
   );
@@ -275,6 +307,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ServerConfig sse_decode_server_config(SseDeserializer deserializer);
+
+  @protected
+  StageState sse_decode_stage_state(SseDeserializer deserializer);
 
   @protected
   StartupOptions sse_decode_startup_options(SseDeserializer deserializer);
@@ -295,6 +330,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int sse_decode_u_8(SseDeserializer deserializer);
 
   @protected
+  UiChainStatus sse_decode_ui_chain_status(SseDeserializer deserializer);
+
+  @protected
   UiChannel sse_decode_ui_channel(SseDeserializer deserializer);
 
   @protected
@@ -308,6 +346,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiSpeakerLevel sse_decode_ui_speaker_level(SseDeserializer deserializer);
+
+  @protected
+  UiSpectrum sse_decode_ui_spectrum(SseDeserializer deserializer);
+
+  @protected
+  UiStage sse_decode_ui_stage(SseDeserializer deserializer);
 
   @protected
   UiStats sse_decode_ui_stats(SseDeserializer deserializer);
@@ -362,6 +406,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_spectrum(
+    UiSpectrum self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_ui_stats(UiStats self, SseSerializer serializer);
@@ -427,6 +477,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_ui_stage(List<UiStage> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_ui_user(List<UiUser> self, SseSerializer serializer);
 
   @protected
@@ -445,6 +498,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_ui_spectrum(
+    UiSpectrum? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_record_opt_string_opt_string(
     (String?, String?) self,
     SseSerializer serializer,
@@ -458,6 +517,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_server_config(ServerConfig self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_stage_state(StageState self, SseSerializer serializer);
 
   @protected
   void sse_encode_startup_options(
@@ -481,6 +543,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
+  void sse_encode_ui_chain_status(UiChainStatus self, SseSerializer serializer);
+
+  @protected
   void sse_encode_ui_channel(UiChannel self, SseSerializer serializer);
 
   @protected
@@ -500,6 +565,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     UiSpeakerLevel self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_ui_spectrum(UiSpectrum self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_stage(UiStage self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_stats(UiStats self, SseSerializer serializer);

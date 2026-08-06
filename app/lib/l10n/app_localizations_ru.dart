@@ -1106,4 +1106,49 @@ class LRu extends L {
 
   @override
   String get diagLogNoProblems => 'Предупреждений и ошибок нет.';
+
+  @override
+  String get diagSpectrum => 'Тракт голоса';
+
+  @override
+  String get diagSpectrumWaiting => 'Ожидание звука';
+
+  @override
+  String get diagSpectrumStalled => 'Звуковой движок остановлен';
+
+  @override
+  String get diagTraceRaw => 'Микрофон';
+
+  @override
+  String get diagTracePreGate => 'После подавления';
+
+  @override
+  String get diagTraceSentLive => 'Передаётся';
+
+  @override
+  String get diagTraceSentIdle => 'Не передаётся';
+
+  @override
+  String get diagStageEcho => 'Эхо';
+
+  @override
+  String get diagStageSuppressor => 'Подавление шума';
+
+  @override
+  String get diagStageVoice => 'Голос распознан';
+
+  @override
+  String get diagStageGate => 'Шумовые ворота';
+
+  @override
+  String get diagStageLevel => 'Выравнивание';
+
+  @override
+  String get diagStageHiss => 'Шипение';
+
+  @override
+  String get diagStageFeedback => 'Обратная связь';
+
+  @override
+  String get diagStageTransmit => 'На сервер';
 }

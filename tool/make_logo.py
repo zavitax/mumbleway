@@ -60,7 +60,7 @@ WEIGHT = 600
 LEADING = 0.82      # second line's baseline offset, as a fraction of font size
 OVERHANG = 0.10     # how far "Way" reaches past the end of "Mumble"
 LEAN = 0.12         # forward shear, tan(angle)
-GAP_RATIO = 0.24    # helmet-to-"Way" gap, as a fraction of the helmet
+GAP_EM = 0.04       # helmet-to-"W" gap, in ems — a letter gap, not a margin
 TRACKING = -0.03    # letter spacing, as a fraction of font size
 # -----------------------------------------------------------------------------
 
@@ -176,10 +176,18 @@ def main() -> None:
     # Starting it any higher puts its tile through the bottom of "Mumble".
     helmet_size = HEIGHT - ascent
 
+    # The helmet stands where a letter would, one letter-gap in front of the
+    # "W" — so the gap is measured in ems off the font size, the same unit the
+    # spacing between "W" and "a" is measured in. A fraction of the helmet's
+    # own width, which is what it was, is a margin around an icon; it left a
+    # panel of air between the helmet and the word it belongs to, and the two
+    # read as two things.
+    gap = GAP_EM * font_size
+
     # "Way" starts wherever both demands are met: far enough right to overhang
-    # "Mumble", and far enough right to leave the helmet a square of its own.
+    # "Mumble", and far enough right to leave the helmet room to stand in.
     indent = max(
-        helmet_size * (1 + GAP_RATIO),
+        helmet_size + gap,
         first_w * (1 + OVERHANG) - second_w,
     )
     total_w = max(first_w, indent + second_w) + HEIGHT * LEAN
@@ -195,7 +203,7 @@ def main() -> None:
     # Measured at the helmet's own middle, which is where the eye judges the gap.
     helmet_mid = ascent + helmet_size / 2
     way_left = indent + LEAN * (HEIGHT - helmet_mid)
-    helmet_x = max(0.0, way_left - helmet_size * (1 + GAP_RATIO))
+    helmet_x = max(0.0, way_left - helmet_size - gap)
 
     # The lean is applied about the bottom of the block, so the mark is thrown
     # forward rather than slid sideways.

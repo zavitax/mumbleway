@@ -29,7 +29,7 @@
   </defs>
 
   <!-- Helmet: hung from the first line's baseline, tucked in front of "Way". -->
-  <g transform="translate(102.07,126.61) scale(0.126361)">
+  <g transform="translate(128.06,126.61) scale(0.126361)">
     <path xmlns="http://www.w3.org/2000/svg" d="M 356 236            C 500 236 622 350 622 492            L 622 606            C 622 664 574 706 516 706            L 316 706            C 190 706 108 606 108 480            C 108 344 216 236 356 236 Z" fill="#F4F8FC" />
 
   

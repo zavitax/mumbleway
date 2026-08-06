@@ -78,6 +78,20 @@ impl VoiceEncoder {
             .map_err(|e| CoreError::Codec(format!("setting bitrate: {e}")))
     }
 
+    /// Tells the encoder how much loss to protect against, 0..=100.
+    ///
+    /// It is a real trade and not a free dial. The FEC copy is carved out of
+    /// the same bitrate as the audio, so protecting against 30% loss on a link
+    /// that is losing nothing makes every packet worse for a benefit nobody
+    /// collects. Leaving it at a fixed 10 makes the opposite mistake in the
+    /// place it hurts most: under a bridge, where 10% of protection is spent
+    /// against 40% of loss and the words are gone anyway.
+    pub fn set_packet_loss_perc(&mut self, percent: u8) -> Result<()> {
+        self.enc
+            .set_packet_loss_perc(percent.min(100) as i32)
+            .map_err(|e| CoreError::Codec(format!("setting loss percentage: {e}")))
+    }
+
     /// Encodes exactly [`FRAME_SAMPLES`] samples.
     pub fn encode(&mut self, pcm: &[f32]) -> Result<Vec<u8>> {
         if pcm.len() != FRAME_SAMPLES {

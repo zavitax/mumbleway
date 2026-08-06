@@ -194,6 +194,32 @@ const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 100 / 1000;
 /// continuous have no threshold to be late for and are not delayed at all.
 const ONSET_LOOKAHEAD_SAMPLES: usize = SAMPLE_RATE as usize * 80 / 1000;
 
+/// Frames of incoming audio a loss measurement is taken over.
+///
+/// 100 frames is two seconds. Short enough to react while a rider is still in
+/// the dead spot, long enough that the answer is a rate rather than a coin
+/// flip — a single frame either arrived or it did not, and averaging those one
+/// at a time measures nothing.
+const LOSS_WINDOW_FRAMES: u64 = 100;
+
+/// Protection is set in steps of this many percent.
+const PROTECTION_STEP: u8 = 5;
+
+/// Never protect less than this, however clean the link looks.
+///
+/// A mobile link that is losing nothing this second is not a link that will
+/// keep losing nothing, and the cheapest moment to have bought protection is
+/// before it was needed — the FEC copy travels in the *next* packet, so a
+/// setting made after the loss starts protects nothing that was already lost.
+const MIN_PROTECTION_PCT: u8 = 5;
+
+/// And never more than this.
+///
+/// Past here the FEC copy is taking so many bits from the audio that the
+/// frames which do arrive are worse than the ones being recovered. A link
+/// losing 40% is not going to be rescued by spending more of it on redundancy.
+const MAX_PROTECTION_PCT: u8 = 40;
+
 /// Holds the audio back so the transmit decision can be made with hindsight.
 ///
 /// See [`ONSET_LOOKAHEAD_SAMPLES`]. Split out from the worker so the claim it
@@ -370,6 +396,24 @@ pub struct AudioShared {
     /// packets. Reported so a hiss can be attributed rather than argued about.
     concealed_frames: AtomicU64,
     decoded_frames: AtomicU64,
+    /// Loss the receive side is currently seeing, in percent, smoothed.
+    ///
+    /// Fed to the *encoder*, which is a substitution that has to be stated
+    /// rather than buried: this measures what is arriving here and spends bits
+    /// protecting what is leaving. They are different directions of a
+    /// different path, and nothing on the wire reports the one that matters —
+    /// Mumble carries no receiver report, so a sender is never told what the
+    /// far end failed to get.
+    ///
+    /// It is a good proxy for the reason it exists. The links that motivate
+    /// adaptive protection are a rider in a dead spot, a cell handover, a
+    /// congested tower — conditions of the *path*, which both directions
+    /// share. It is a poor proxy for one-sided congestion, and there is no
+    /// signal available that would be better.
+    inbound_loss_pct: AtomicU32,
+    /// Counter values at the last loss measurement, so a rate can be taken
+    /// from totals that only ever climb.
+    loss_mark: Mutex<(u64, u64)>,
     /// Whether incoming speakers are levelled towards a common loudness.
     normalise_levels: AtomicBool,
     /// Whether a short room tail is added to incoming voices.
@@ -648,6 +692,8 @@ impl AudioShared {
             reverb: Mutex::new(Reverb::new(REVERB_DECAY_SECS, REVERB_WET)),
             concealed_frames: AtomicU64::new(0),
             decoded_frames: AtomicU64::new(0),
+            inbound_loss_pct: AtomicU32::new(0),
+            loss_mark: Mutex::new((0, 0)),
             underrun_samples: AtomicU64::new(0),
             capture_dropped_samples: AtomicU64::new(0),
             active_speakers: AtomicU32::new(0),
@@ -731,6 +777,53 @@ impl AudioShared {
             .max()
             .unwrap_or(0);
         (losses, depth)
+    }
+
+    /// Updates the inbound loss estimate from the cumulative frame counters.
+    ///
+    /// Deliberately not every mixer round. A round hands out one frame, so the
+    /// instantaneous rate is 0% or 100% and an average of those is a coin-flip
+    /// estimate that would have the encoder reconfiguring itself constantly.
+    /// Nothing is measured until a window's worth of frames has gone by.
+    fn note_inbound_loss(&self, invented: u64, decoded: u64) {
+        let mut mark = self.loss_mark.lock();
+        let dropped = invented.saturating_sub(mark.0);
+        let played = decoded.saturating_sub(mark.1);
+        let total = dropped + played;
+        if total < LOSS_WINDOW_FRAMES {
+            return;
+        }
+        *mark = (invented, decoded);
+        drop(mark);
+
+        let observed = dropped as f32 / total as f32 * 100.0;
+        let previous = self.inbound_loss_pct.load(Ordering::Relaxed) as f32;
+        // Rises quickly and falls slowly. Under-protecting the moment a link
+        // goes bad costs words; over-protecting for a few seconds after it
+        // recovers costs a little quality nobody notices.
+        let glide = if observed > previous { 0.5 } else { 0.15 };
+        let next = previous + (observed - previous) * glide;
+        self.inbound_loss_pct
+            .store(next.round().clamp(0.0, 100.0) as u32, Ordering::Relaxed);
+    }
+
+    /// Loss the receive side is currently seeing, in percent.
+    pub fn inbound_loss_percent(&self) -> u8 {
+        self.inbound_loss_pct.load(Ordering::Relaxed).min(100) as u8
+    }
+
+    /// How much loss the encoder should be spending bits to protect against.
+    ///
+    /// Quantised, and with a floor. Quantised because a wobbling estimate
+    /// would otherwise reconfigure the encoder every block for a difference of
+    /// one percent. Floored because a mobile link that is losing nothing this
+    /// second is not a link that will keep losing nothing, and the cheapest
+    /// moment to have bought protection is before it was needed.
+    pub fn protection_percent(&self) -> u8 {
+        let loss = self.inbound_loss_percent();
+        let stepped = (loss.saturating_add(PROTECTION_STEP / 2) / PROTECTION_STEP)
+            .saturating_mul(PROTECTION_STEP);
+        stepped.clamp(MIN_PROTECTION_PCT, MAX_PROTECTION_PCT)
     }
 
     /// `(invented, decoded)` frames of incoming audio.
@@ -1225,6 +1318,11 @@ impl AudioShared {
         self.monitor_queue.lock().clear();
         self.echo_reference.lock().clear();
         self.speakers.lock().clear();
+        // Clearing the speakers resets their frame counters to nothing, so a
+        // mark taken against the old ones would make the next window's counts
+        // go backwards and read as a link that had suddenly become perfect.
+        *self.loss_mark.lock() = (0, 0);
+        self.inbound_loss_pct.store(0, Ordering::Relaxed);
         self.active_speakers.store(0, Ordering::Relaxed);
         self.playing_speakers.store(0, Ordering::Relaxed);
         self.speech_detected.store(false, Ordering::Relaxed);
@@ -1313,6 +1411,7 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
         .fold((0u64, 0u64), |(a, c), (x, y)| (a + x, c + y));
     shared.concealed_frames.store(invented, Ordering::Relaxed);
     shared.decoded_frames.store(decoded, Ordering::Relaxed);
+    shared.note_inbound_loss(invented, decoded);
     drop(speakers);
 
     shared
@@ -1870,6 +1969,11 @@ where
         }
     };
 
+    // What the encoder was last told to protect against; see the poll below.
+    // Starts at the value VoiceEncoder::new sets, so the first poll only calls
+    // through if the link has already said something different.
+    let mut protection: u8 = 10;
+
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
@@ -2107,6 +2211,20 @@ where
 
             frame.extend_from_slice(&block);
             if frame.len() >= FRAME_SAMPLES {
+                // Match the encoder's protection to what the link is doing.
+                //
+                // It was set to 10% once, at construction, and never touched
+                // again — which is the wrong number twice over. On a clean
+                // link it spends bits on a recovery nobody collects, making
+                // every packet slightly worse for nothing; under a bridge it
+                // spends 10% of protection against 40% of loss, which is not
+                // enough to matter. See `protection_percent` for what the
+                // number means and `inbound_loss_pct` for the substitution it
+                // rests on.
+                let want = shared.protection_percent();
+                if want != protection && encoder.set_packet_loss_perc(want).is_ok() {
+                    protection = want;
+                }
                 if allowed {
                     if let Ok(packet) = encoder.encode(&frame[..FRAME_SAMPLES]) {
                         on_frame(sequence, packet, false);
@@ -2174,6 +2292,96 @@ mod tests {
                 enc.encode(&pcm).unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn protection_follows_the_loss_the_link_is_actually_showing() {
+        let shared = AudioShared::new();
+        // A clean link still buys the floor: the FEC copy rides in the *next*
+        // packet, so protection bought after the loss starts protects nothing
+        // that was already lost.
+        shared.note_inbound_loss(0, LOSS_WINDOW_FRAMES);
+        assert_eq!(shared.protection_percent(), MIN_PROTECTION_PCT);
+
+        // Now a bad stretch. Several windows, because the estimate glides.
+        let mut invented = 0u64;
+        let mut decoded = LOSS_WINDOW_FRAMES;
+        for _ in 0..10 {
+            invented += LOSS_WINDOW_FRAMES / 3;
+            decoded += LOSS_WINDOW_FRAMES * 2 / 3;
+            shared.note_inbound_loss(invented, decoded);
+        }
+        let bad = shared.protection_percent();
+        assert!(
+            bad >= 25,
+            "a third of the frames concealed and protection only reached {bad}%"
+        );
+
+        // And it comes back down once the link does, or every call after a
+        // bad minute pays for a link that recovered.
+        for _ in 0..40 {
+            decoded += LOSS_WINDOW_FRAMES;
+            shared.note_inbound_loss(invented, decoded);
+        }
+        assert_eq!(shared.protection_percent(), MIN_PROTECTION_PCT);
+    }
+
+    #[test]
+    fn protection_is_bounded_at_both_ends() {
+        let shared = AudioShared::new();
+        // A link losing nearly everything: past the ceiling the FEC copy takes
+        // so many bits from the audio that the frames which do arrive are
+        // worse than the ones being recovered.
+        let mut invented = 0u64;
+        for _ in 0..20 {
+            invented += LOSS_WINDOW_FRAMES;
+            shared.note_inbound_loss(invented, 0);
+        }
+        assert_eq!(shared.protection_percent(), MAX_PROTECTION_PCT);
+    }
+
+    #[test]
+    fn a_single_frame_does_not_move_the_estimate() {
+        // One frame either arrived or it did not, so measured alone it reads
+        // as 0% or 100% loss. The mixer hands out one frame per round, so
+        // without a window the encoder would be reconfigured on a coin flip
+        // fifty times a second.
+        let shared = AudioShared::new();
+        for i in 1..LOSS_WINDOW_FRAMES {
+            shared.note_inbound_loss(i, 0);
+            assert_eq!(
+                shared.inbound_loss_percent(),
+                0,
+                "the estimate moved after only {i} frames"
+            );
+        }
+    }
+
+    #[test]
+    fn a_reconnect_does_not_read_as_a_perfect_link() {
+        // discard_in_flight drops the speakers, and their counters with them.
+        // A mark left over from the old ones makes the next window's deltas
+        // saturate to zero, which reads as a link that suddenly stopped losing
+        // anything at the exact moment it was re-established.
+        let shared = AudioShared::new();
+        let mut invented = 0u64;
+        let mut decoded = 0u64;
+        for _ in 0..10 {
+            invented += LOSS_WINDOW_FRAMES / 2;
+            decoded += LOSS_WINDOW_FRAMES / 2;
+            shared.note_inbound_loss(invented, decoded);
+        }
+        assert!(shared.inbound_loss_percent() > 20);
+
+        shared.discard_in_flight();
+        assert_eq!(shared.inbound_loss_percent(), 0);
+        // And the very next window is measured against zero, not against the
+        // totals from before the reconnect.
+        shared.note_inbound_loss(LOSS_WINDOW_FRAMES / 2, LOSS_WINDOW_FRAMES / 2);
+        assert!(
+            shared.inbound_loss_percent() > 0,
+            "the first window after a reconnect was swallowed"
+        );
     }
 
     #[test]

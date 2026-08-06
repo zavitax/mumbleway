@@ -217,9 +217,13 @@ class _SpectrumPainter extends CustomPainter {
   /// spoke, and those are opposite diagnoses — so live is a pale green and idle
   /// is grey, and the difference is visible at a glance without reading a
   /// label.
+  /// Half transparent so the two thin traces stay readable *through* the bars
+  /// rather than being buried by them. The bars are the body of the display and
+  /// the lines are what it was made from; at full opacity the body wins and the
+  /// comparison — which is the entire point — is lost.
   static Color sentColour(bool transmitting) => transmitting
-      ? const Color(0xFF9BE8B4)
-      : const Color(0xFF8A93A0);
+      ? StatusColors.connected.withValues(alpha: 0.5)
+      : const Color(0xFF8A93A0).withValues(alpha: 0.5);
 
   @override
   void paint(Canvas canvas, Size size) {

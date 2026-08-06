@@ -144,6 +144,20 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
                   children: [
+                    // First, because it is the only thing here that shows the
+                    // fault as it happens. The counters below say what went
+                    // wrong afterwards and are read second, if at all.
+                    //
+                    // Built only under this `if`, and it is load-bearing rather
+                    // than tidiness: asking the engine for a frame is what makes
+                    // it compute one, so a widget that is never built costs
+                    // nothing in the audio worker either. This panel is never
+                    // disposed — only slid out of sight — so nothing else would
+                    // ever stop it.
+                    if (AppStateScope.of(context).diagnosticsOpen) ...[
+                      const SpectrumView(),
+                      const SizedBox(height: 16),
+                    ],
                     // Counter groups follow the graphs' layout rule, so the
                     // panel reflows as one thing rather than half of it going
                     // wide while the other half stays in a column.
@@ -263,10 +277,6 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                     // a widget that is never built costs nothing in the audio
                     // worker either — and this panel is never disposed, only
                     // slid out of sight, so nothing else would ever stop it.
-                    if (AppStateScope.of(context).diagnosticsOpen) ...[
-                      const SpectrumView(),
-                      const SizedBox(height: 16),
-                    ],
                     // Last of all: the graphs say when something went wrong,
                     // and this says what the engine thought it was doing at
                     // the time.
@@ -327,6 +337,15 @@ class _LogViewState extends State<_LogView> {
   void initState() {
     super.initState();
     _log.addListener(_onLines);
+    // Open at the tail, not the top. The log has usually been running for the
+    // whole session by the time anybody looks at it, so starting at the oldest
+    // line means the newest — the reason the panel was opened — is several
+    // screens away. After this the follow rule in [_onLines] takes over.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
   }
 
   void _onLines() {

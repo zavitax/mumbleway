@@ -8,6 +8,7 @@ pub mod dsp;
 pub mod engine;
 pub mod feedback;
 pub mod jitter;
+pub mod pitch;
 pub mod quality;
 pub mod resample;
 pub mod spectrum;

@@ -229,6 +229,47 @@ fn speech_survives_the_noise_it_is_buried_in() {
 }
 
 #[test]
+fn how_much_speech_gets_through_over_wind() {
+    // A recorded curve, not a claim about the margin relief.
+    //
+    // It was written as one — named for periodicity buying back the speech the
+    // wind was taking — and the A/B says it does no such thing here. With the
+    // Helmet relief at 6 dB the curve is 97.7 / 97.7 / 97.3 / 97.5; with it at
+    // zero it is 97.5 / 97.5 / 96.9 / 96.9. Two tenths of a percent is not an
+    // effect, and a test named for one would have asserted something false
+    // every time it passed.
+    //
+    // Why it cannot see the effect is the useful part. `testsig::mix` scales
+    // the wind against the whole utterance, silences included, so during the
+    // speech itself the voice sits comfortably above the wind and the tracked
+    // floor never climbs over it. The condition the relief exists for — the
+    // floor lifted above the rider's own voice for a whole sentence — is not
+    // what this signal contains, at any SNR the mix can be asked for.
+    //
+    // So this stands as a baseline: a change that takes any of it away fails
+    // here rather than on a motorway.
+    let speech = testsig::speech(RATE * 5, 130.0, 0.5);
+    let mut curve = Vec::new();
+    for snr_db in [12.0f32, 8.0, 5.0, 2.0] {
+        let noisy = testsig::mix(&speech, &testsig::wind(speech.len(), 1.0, 21), snr_db);
+        let share = transmitted_share(NoiseProfile::Helmet, &noisy);
+        curve.push((snr_db, share));
+        println!(
+            "{snr_db:>5} dB over wind -> {:.1}% transmitted",
+            share * 100.0
+        );
+    }
+
+    for (snr_db, share) in &curve {
+        assert!(
+            *share > 0.90,
+            "at {snr_db} dB over wind only {:.1}% got through: {curve:?}",
+            share * 100.0
+        );
+    }
+}
+
+#[test]
 fn a_whisper_is_not_thrown_away() {
     // The case a harmonicity gate is most likely to lose, recorded here
     // *before* that gate exists so it cannot be introduced as a regression

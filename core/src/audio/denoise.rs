@@ -14,6 +14,7 @@ use nnnoiseless::DenoiseState;
 
 use super::aec::{EchoCanceller, DEFAULT_TAPS};
 use super::dsp::{rms, to_dbfs, Agc, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter};
+use super::pitch::PitchTracker;
 
 /// RNNoise works on fixed 10 ms blocks at 48 kHz.
 pub const FRAME_SIZE: usize = DenoiseState::FRAME_SIZE;
@@ -104,6 +105,72 @@ impl NoiseProfile {
             NoiseProfile::Helmet => 10.0,
         }
     }
+
+    /// Periodicity at which a block counts as unambiguously a voice.
+    ///
+    /// High, because what it buys is a relaxed SNR margin and a lifting of
+    /// suppression, and both should happen only where there is no real doubt.
+    /// Nothing [`super::pitch`] measures gets here by accident: wind, engines
+    /// and traffic all sit below 0.5 in its tests, and clean speech above 0.85.
+    fn voiced_threshold(self) -> f32 {
+        match self {
+            // Never used: with suppression off, level decides alone.
+            NoiseProfile::Off => 2.0,
+            NoiseProfile::Light => 0.80,
+            NoiseProfile::Standard => 0.78,
+            NoiseProfile::Helmet => 0.75,
+        }
+    }
+
+    /// Periodicity below which a block may not *start* a transmission.
+    ///
+    /// Deliberately far below [`Self::voiced_threshold`], and it is a veto on
+    /// opening rather than on continuing. Unvoiced speech is genuinely
+    /// aperiodic — "s", "f", "sh" and a whisper all score near zero — so this
+    /// must never be able to close a transmission that is already open, and
+    /// must be low enough that a voiced syllable a moment earlier is what
+    /// opened it.
+    fn aperiodic_threshold(self) -> f32 {
+        match self {
+            NoiseProfile::Off => -1.0,
+            NoiseProfile::Light => 0.20,
+            NoiseProfile::Standard => 0.25,
+            NoiseProfile::Helmet => 0.30,
+        }
+    }
+
+    /// How many dB of SNR margin a strongly voiced block is forgiven.
+    ///
+    /// The margin exists because RNNoise's VAD fires on tonal backgrounds, and
+    /// it is what a helmet at speed defeats: the wind raises the tracked floor
+    /// until a rider's own voice cannot clear it. Periodicity at a human pitch
+    /// is evidence of a voice that the level tests cannot see, so it is worth
+    /// a few dB — not the whole margin, or a drone gets in. Bounded so that
+    /// even at full relief the remaining margin is above zero.
+    fn voiced_margin_relief(self) -> f32 {
+        match self {
+            NoiseProfile::Off => 0.0,
+            NoiseProfile::Light => 3.0,
+            NoiseProfile::Standard => 4.0,
+            NoiseProfile::Helmet => 6.0,
+        }
+    }
+
+    /// How much of the suppression to lift on a strongly voiced block.
+    ///
+    /// A rider complaining their voice sounds watery and gated is describing
+    /// suppression applied at full strength to the speech as well as to the
+    /// wind. On a block that is unambiguously a voice, less of it is needed:
+    /// the voice is loud enough to be masking the noise on its own, which is
+    /// what makes this free rather than a trade.
+    fn voiced_relief(self) -> f32 {
+        match self {
+            NoiseProfile::Off => 0.0,
+            NoiseProfile::Light => 0.15,
+            NoiseProfile::Standard => 0.20,
+            NoiseProfile::Helmet => 0.25,
+        }
+    }
 }
 
 /// Result of processing one 10 ms block.
@@ -138,6 +205,16 @@ pub struct BlockAnalysis {
     pub vad_says_speech: bool,
     /// Whether the block cleared the SNR margin above the noise floor.
     pub snr_says_speech: bool,
+    /// How periodic the block is at a human pitch, 0..1.
+    ///
+    /// See [`super::pitch`]. Low is "no evidence of voicing", which is the
+    /// honest reading of a whisper as well as of wind — it is not evidence of
+    /// no voice, and nothing downstream treats it as such.
+    pub harmonicity: f32,
+    /// The pitch that produced it, in Hz, or 0.
+    pub f0_hz: f32,
+    /// Whether the block was periodic enough to open a transmission by itself.
+    pub pitch_says_speech: bool,
     /// Whether the noise gate is passing audio.
     ///
     /// Distinct from [`speaking`](Self::speaking): the gate ramps its gain, so
@@ -166,6 +243,9 @@ pub struct CaptureProcessor {
     denoised: Vec<f32>,
     /// The block as the gate saw it, kept for the diagnostics analyser.
     pre_gate: Vec<f32>,
+    /// Whether the block is periodic at a human pitch — the one thing in this
+    /// chain that is not a measure of level.
+    pitch: PitchTracker,
     /// Consecutive speech blocks, used to avoid clipping word onsets.
     hangover: u32,
     /// Blocks remaining before the chain is trusted; see [`WARMUP_BLOCKS`].
@@ -199,6 +279,7 @@ impl CaptureProcessor {
             denoised: vec![0.0; FRAME_SIZE],
             // Capacity now so the copy in `process` never reallocates.
             pre_gate: Vec::with_capacity(FRAME_SIZE),
+            pitch: PitchTracker::new(),
             hangover: 0,
         }
     }
@@ -286,8 +367,34 @@ impl CaptureProcessor {
             vad
         };
 
-        // 3. Blend, so lighter profiles keep some natural room tone.
-        let mix = self.profile.denoise_mix();
+        // 3. Ask whether this is periodic at a human pitch.
+        //
+        // On the denoised signal rather than the raw one: periodicity is what
+        // is being measured, and leaving the wind in masks the very thing the
+        // search is looking for. RNNoise has already removed most of it, and
+        // it removes it *without* knowing whether a voice was there, so this
+        // is not circular.
+        let voice = self.pitch.analyse(&self.denoised);
+        let pitch_says_speech = voice.harmonicity >= self.profile.voiced_threshold();
+
+        // 4. Blend, so lighter profiles keep some natural room tone — and lift
+        // some of the suppression back off on a block that is unambiguously a
+        // voice. Full-strength suppression applied to speech is what "I sound
+        // watery and gated" is a description of, and on a voiced block the
+        // voice is masking the background anyway.
+        // Only where the pitch search is *certain*, not scaled by whatever it
+        // happened to measure. Lifting suppression in proportion to a middling
+        // score means lifting it a little on everything, and "a little of the
+        // raw signal on every block" is exactly the rumble this profile exists
+        // to remove — `helmet_profile_crushes_engine_rumble` caught it doing
+        // precisely that. The relief is for blocks that are unambiguously
+        // speech or it is for nothing.
+        let relief = if pitch_says_speech {
+            self.profile.voiced_relief() * voice.harmonicity.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let mix = (self.profile.denoise_mix() * (1.0 - relief)).clamp(0.0, 1.0);
         for (dst, wet) in block.iter_mut().zip(self.denoised.iter()) {
             *dst = *dst * (1.0 - mix) + *wet * mix;
         }
@@ -314,7 +421,52 @@ impl CaptureProcessor {
         let snr_db = level_db - noise_floor_db;
 
         let vad_says_speech = vad >= self.profile.vad_threshold();
-        let snr_says_speech = snr_db >= self.profile.snr_margin_db();
+
+        // The SNR margin, relaxed when the block is unambiguously periodic at
+        // a human pitch.
+        //
+        // Relaxed rather than bypassed, and that distinction was found the
+        // hard way. An arm that let strong periodicity override the level
+        // tests outright let a 55 Hz engine drone straight through: the Helmet
+        // profile's 180 Hz high-pass strips the fundamental and what is left
+        // is a clean 110 Hz tone, which is a perfectly good male pitch by
+        // every measure in [`super::pitch`] — and RNNoise calls it speech with
+        // high confidence too, exactly as the comment above warns.
+        //
+        // The thing that knows it is a machine is the noise floor tracker. A
+        // drone is *steady*, so the floor climbs to meet it and the SNR never
+        // clears however loud it gets. Keeping the margin in the decision
+        // keeps that knowledge; removing it threw the one signal away that
+        // could tell the difference.
+        //
+        // What the relief buys is the case it was added for. A rider at speed
+        // does clear the wind — their voice adds energy on top of it — but by
+        // less than the margin a helmet needs against a background that is
+        // both loud and tonal. Today that costs them the whole sentence, and
+        // no threshold on level can recover it because the wind moved the
+        // threshold. Periodicity is evidence the level tests cannot see, so it
+        // buys a few dB of margin and nothing more.
+        let margin_db = self.profile.snr_margin_db()
+            - if pitch_says_speech {
+                self.profile.voiced_margin_relief()
+            } else {
+                0.0
+            };
+        let snr_says_speech = snr_db >= margin_db;
+        // The decision, and the shape of it is the point.
+        //
+        // It used to be `vad && snr`, and a chain built on those two alone
+        // must fail in *both* directions at once — which is what riders
+        // reported. Both tests are measures of level, and level cannot
+        // separate a rider talking quietly inside a helmet at speed from the
+        // wind they are talking through: the two overlap. Tighten it and the
+        // rider is cut off; loosen it and the weather goes out on the channel.
+        // There is no setting that does both, so no amount of tuning was ever
+        // going to fix it.
+        //
+        // Periodicity is a different axis, and adding it lets the decision be
+        // *looser* about level and *stricter* about voice-likeness at the same
+        // time. Three arms, deliberately asymmetric:
         let speech_now = if warming_up {
             false
         } else if self.profile == NoiseProfile::Off {
@@ -326,8 +478,27 @@ impl CaptureProcessor {
             // RNNoise is not running to be asked, so the level against the
             // tracked floor decides on its own.
             snr_says_speech
-        } else {
+        } else if self.hangover > 0 {
+            // Mid-sentence, inside the 200 ms hangover. Far less evidence is
+            // needed to *keep* going than to start, because the quiet parts of
+            // speech are genuinely quiet and genuinely aperiodic — an unvoiced
+            // consonant has no pitch at all, and demanding one here would clip
+            // every "s" and "f".
+            //
+            // Not loosened beyond that, and the reason is worth keeping: an
+            // arm here that accepted the VAD alone kept a transmission open
+            // for ever on an engine drone, because RNNoise never stops calling
+            // it speech. Anything that can refresh the hangover indefinitely
+            // has to be something a machine cannot supply.
             vad_says_speech && snr_says_speech
+        } else {
+            // Opening. Everything that was required before, and additionally
+            // not clearly aperiodic — which is what a gust is, and what an
+            // engine is, and what no voiced sound is. This is the arm that
+            // stops the weather starting a transmission.
+            vad_says_speech
+                && snr_says_speech
+                && voice.harmonicity >= self.profile.aperiodic_threshold()
         };
 
         if speech_now {
@@ -371,11 +542,17 @@ impl CaptureProcessor {
             level_db,
             noise_floor_db,
             snr_db,
-            activation_threshold_db: noise_floor_db + self.profile.snr_margin_db(),
+            // The margin actually in force, relief included, so the panel
+            // shows the threshold the block was really judged against rather
+            // than a nominal one it never used.
+            activation_threshold_db: noise_floor_db + margin_db,
             speaking,
             erle_db,
             vad_says_speech,
             snr_says_speech,
+            harmonicity: voice.harmonicity,
+            f0_hz: voice.f0_hz,
+            pitch_says_speech,
             gate_open,
             agc_gain_db: self.agc.gain_db(),
             warming_up,

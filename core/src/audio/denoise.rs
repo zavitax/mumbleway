@@ -127,6 +127,26 @@ pub struct BlockAnalysis {
     pub speaking: bool,
     /// Echo removed on this block, in dB.
     pub erle_db: f32,
+
+    // --- what the decision was made of ------------------------------------
+    //
+    // The chain already computes all of this and then throws it away, which is
+    // why "it cut me off" has never had an answer. Carried out so the
+    // diagnostics panel can show which of the two conditions failed, rather
+    // than only that the result was silence.
+    /// Whether RNNoise thought this block was speech.
+    pub vad_says_speech: bool,
+    /// Whether the block cleared the SNR margin above the noise floor.
+    pub snr_says_speech: bool,
+    /// Whether the noise gate is passing audio.
+    ///
+    /// Distinct from [`speaking`](Self::speaking): the gate ramps its gain, so
+    /// it can still be open on a block the chain has decided is not speech.
+    pub gate_open: bool,
+    /// Gain the AGC is currently applying, in dB.
+    pub agc_gain_db: f32,
+    /// Whether the chain is still in its start-up hold and not to be trusted.
+    pub warming_up: bool,
 }
 
 /// The full microphone chain.
@@ -144,6 +164,8 @@ pub struct CaptureProcessor {
     /// Scratch buffers, reused so the real-time path never allocates.
     scaled: Vec<f32>,
     denoised: Vec<f32>,
+    /// The block as the gate saw it, kept for the diagnostics analyser.
+    pre_gate: Vec<f32>,
     /// Consecutive speech blocks, used to avoid clipping word onsets.
     hangover: u32,
     /// Blocks remaining before the chain is trusted; see [`WARMUP_BLOCKS`].
@@ -175,6 +197,8 @@ impl CaptureProcessor {
             warmup: WARMUP_BLOCKS,
             scaled: vec![0.0; FRAME_SIZE],
             denoised: vec![0.0; FRAME_SIZE],
+            // Capacity now so the copy in `process` never reallocates.
+            pre_gate: Vec::with_capacity(FRAME_SIZE),
             hangover: 0,
         }
     }
@@ -324,6 +348,17 @@ impl CaptureProcessor {
         } else {
             -120.0
         };
+        // Kept for the diagnostics analyser: this is the signal the gate is
+        // about to judge, and the distance between it and the raw microphone is
+        // everything the suppressor did.
+        //
+        // Copied unconditionally rather than behind a flag. A 480-sample memcpy
+        // is a few hundred nanoseconds against a 10 ms budget, and a branch that
+        // can be wrong — leaving the panel drawing a stale trace with no hint
+        // that it has stopped updating — costs more than it saves.
+        self.pre_gate.clear();
+        self.pre_gate.extend_from_slice(block);
+
         let gate_open = self.gate.process(block, gate_level);
 
         // 6. Level the result, then catch transients.
@@ -339,7 +374,20 @@ impl CaptureProcessor {
             activation_threshold_db: noise_floor_db + self.profile.snr_margin_db(),
             speaking,
             erle_db,
+            vad_says_speech,
+            snr_says_speech,
+            gate_open,
+            agc_gain_db: self.agc.gain_db(),
+            warming_up,
         }
+    }
+
+    /// The signal as the noise gate saw it, from the most recent block.
+    ///
+    /// One of the three taps the diagnostics analyser draws. Empty until the
+    /// first block has been processed.
+    pub fn pre_gate(&self) -> &[f32] {
+        &self.pre_gate
     }
 }
 
@@ -586,5 +634,55 @@ mod tests {
     fn frame_size_matches_a_10ms_block_at_48k() {
         assert_eq!(FRAME_SIZE, 480);
         assert_eq!(SAMPLE_RATE, 48_000);
+    }
+
+    #[test]
+    fn the_pre_gate_tap_is_what_the_gate_saw_and_not_what_came_out() {
+        // The point of the tap. If it returned the post-gate block instead, the
+        // analyser would draw two identical traces and the gate would look like
+        // it was doing nothing — the exact opposite of what it is there to show.
+        let mut p = CaptureProcessor::new(NoiseProfile::Standard);
+
+        // Well past warm-up, and far below any plausible threshold, so the gate
+        // is firmly shut and its output is near silence.
+        let mut analysis = None;
+        for i in 0..60 {
+            let mut block = white_noise(FRAME_SIZE, 0.0005, 90 + i as u32);
+            analysis = Some(p.process(&mut block));
+        }
+        let analysis = analysis.unwrap();
+
+        assert!(!analysis.warming_up, "still warming up after 60 blocks");
+        assert_eq!(p.pre_gate().len(), FRAME_SIZE);
+
+        // Something was there before the gate.
+        let before = rms(p.pre_gate());
+        assert!(before > 0.0, "the tap captured nothing at all");
+        assert!(before.is_finite());
+    }
+
+    #[test]
+    fn the_analysis_says_which_of_the_two_conditions_failed() {
+        // "It cut me off" is answerable only if the two halves of the decision
+        // are reported separately. Steady noise must fail the SNR test — it
+        // raises the floor with itself — and that must be visible as such.
+        let mut p = CaptureProcessor::new(NoiseProfile::Standard);
+        let mut last = None;
+        for i in 0..80 {
+            let mut block = white_noise(FRAME_SIZE, 0.02, 200 + i as u32);
+            last = Some(p.process(&mut block));
+        }
+        let a = last.unwrap();
+
+        assert!(!a.warming_up);
+        assert!(
+            !a.snr_says_speech,
+            "steady noise cleared the SNR margin at {} dB over the floor",
+            a.snr_db
+        );
+        assert!(!a.speaking, "steady noise was transmitted");
+        // And the composite still agrees with its parts.
+        assert!(!(a.vad_says_speech && a.snr_says_speech));
+        assert!(a.agc_gain_db.is_finite());
     }
 }

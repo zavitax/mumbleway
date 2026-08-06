@@ -131,6 +131,26 @@ final class AudioSession {
   /// whether the session is meant to come back at all.
   private var wantedActive = false
 
+  /// Hands-free Bluetooth input, under whichever name the SDK in use calls it.
+  ///
+  /// The iOS 26 SDK renamed `.allowBluetooth` to `.allowBluetoothHFP` and
+  /// deprecated the old spelling, so building against it warns. The two are the
+  /// same flag — both are raw value `0x4` — and the new one is annotated
+  /// `API_AVAILABLE(ios(1.0))`, so this changes nothing at runtime and needs no
+  /// `#available` check. Only the symbol is new.
+  ///
+  /// Which means the guard has to be on the *compiler*, not the OS: an older
+  /// Xcode has no `.allowBluetoothHFP` to refer to, and this project is built
+  /// by CI on `macos-latest`, whose Xcode moves without asking. Swift 6.2 is
+  /// what Xcode 26 ships, so that is the line.
+  private static let allowHandsFreeBluetooth: AVAudioSession.CategoryOptions = {
+    #if compiler(>=6.2)
+      return .allowBluetoothHFP
+    #else
+      return .allowBluetooth
+    #endif
+  }()
+
   private func activate() throws {
     wantedActive = true
     let session = AVAudioSession.sharedInstance()
@@ -147,7 +167,7 @@ final class AudioSession {
         // Helmet intercoms are HFP devices. Without this they are not offered
         // as an input at all, and the phone quietly records from its own
         // microphone inside a helmet at seventy miles an hour.
-        .allowBluetooth,
+        Self.allowHandsFreeBluetooth,
         .allowBluetoothA2DP,
         // Otherwise `playAndRecord` sends output to the earpiece receiver,
         // which is inaudible on a bike and sounds broken indoors.

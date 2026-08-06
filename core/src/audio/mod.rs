@@ -8,8 +8,10 @@ pub mod dsp;
 pub mod engine;
 pub mod feedback;
 pub mod jitter;
+pub mod quality;
 pub mod resample;
 pub mod spectrum;
+pub mod testsig;
 
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};
 pub use denoise::{CaptureProcessor, NoiseProfile};

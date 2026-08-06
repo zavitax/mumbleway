@@ -580,9 +580,89 @@ impl Reverb {
 /// Sample rate the delay lengths above are chosen for.
 const SAMPLE_RATE_HZ: f32 = 48_000.0;
 
+/// In-place radix-2 FFT.
+///
+/// Written out rather than pulled in: the only transform this crate needs is a
+/// power-of-two of one fixed size, and a dependency for that would be more
+/// code to audit than the twenty lines it replaces.
+///
+/// It lives here rather than beside its first caller because it now has two:
+/// the spectral de-hisser, which subtracts a learned noise floor, and the
+/// diagnostics analyser, which draws what the chain is doing. One transform in
+/// the crate is easier to reason about than two that drift apart.
+pub(crate) fn fft(re: &mut [f32], im: &mut [f32], inverse: bool) {
+    use std::f32::consts::PI;
+
+    let n = re.len();
+    debug_assert!(n.is_power_of_two());
+    debug_assert_eq!(n, im.len());
+
+    // Bit-reversal permutation.
+    let mut j = 0usize;
+    for i in 1..n {
+        let mut bit = n >> 1;
+        while j & bit != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j |= bit;
+        if i < j {
+            re.swap(i, j);
+            im.swap(i, j);
+        }
+    }
+
+    let sign = if inverse { 1.0 } else { -1.0 };
+    let mut len = 2;
+    while len <= n {
+        let angle = sign * 2.0 * PI / len as f32;
+        let (wr, wi) = (angle.cos(), angle.sin());
+        for start in (0..n).step_by(len) {
+            let (mut cr, mut ci) = (1.0f32, 0.0f32);
+            for k in 0..len / 2 {
+                let (ar, ai) = (re[start + k], im[start + k]);
+                let (br, bi) = (re[start + k + len / 2], im[start + k + len / 2]);
+                let (tr, ti) = (br * cr - bi * ci, br * ci + bi * cr);
+                re[start + k] = ar + tr;
+                im[start + k] = ai + ti;
+                re[start + k + len / 2] = ar - tr;
+                im[start + k + len / 2] = ai - ti;
+                let next = (cr * wr - ci * wi, cr * wi + ci * wr);
+                cr = next.0;
+                ci = next.1;
+            }
+        }
+        len <<= 1;
+    }
+
+    if inverse {
+        let scale = 1.0 / n as f32;
+        for i in 0..n {
+            re[i] *= scale;
+            im[i] *= scale;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fft_round_trips() {
+        // Forward then inverse must return what went in. Everything built on
+        // the transform — the de-hisser's noise subtraction, the diagnostics
+        // analyser's bands — is wrong in a way that is hard to see if this is
+        // wrong, so it is checked directly.
+        let mut re = tone(1000.0, 512, 0.5);
+        let original = re.clone();
+        let mut im = vec![0.0; 512];
+        fft(&mut re, &mut im, false);
+        fft(&mut re, &mut im, true);
+        for (a, b) in original.iter().zip(re.iter()) {
+            assert!((a - b).abs() < 1e-3, "{a} vs {b}");
+        }
+    }
 
     #[test]
     fn reverb_leaves_the_dry_voice_at_full_level() {

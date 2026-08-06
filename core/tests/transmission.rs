@@ -108,20 +108,41 @@ fn across(pcm: &[f32], net: &mut Network) -> Vec<f32> {
     let mut buffer = SpeakerBuffer::new().expect("buffer");
     let mut out = Vec::with_capacity(pcm.len());
     let mut scratch = Vec::new();
+    let silence = vec![0.0f32; FRAME_SAMPLES];
 
     // Packets waiting to be delivered, as (arrive_at_index, sequence, payload).
     let mut in_flight: Vec<(usize, u64, Vec<u8>)> = Vec::new();
 
     let frames = pcm.len() / FRAME_SAMPLES;
+    let mut encoded: Vec<(u64, Vec<u8>)> = Vec::with_capacity(frames);
     for f in 0..frames {
         let start = f * FRAME_SAMPLES;
         let opus = encoder
             .encode(&pcm[start..start + FRAME_SAMPLES])
             .expect("encode");
-        let sequence = f as u64 * SEQ_UNITS_PER_FRAME;
+        encoded.push((f as u64 * SEQ_UNITS_PER_FRAME, opus));
+    }
 
+    // Two things have to be right here, and each was wrong once.
+    //
+    // The output device is the clock, and it does not wait. It asks for a
+    // period every period, and plays silence when the buffer has nothing ready.
+    // Letting the consumer wait for the buffer instead hid a real effect and
+    // invented one: SpeakerBuffer raises its target backlog under loss, as it
+    // should, and once the target exceeded what the harness could sustain, pop
+    // returned None for ever and the recording stopped — so middling loss
+    // scored worse than severe loss.
+    //
+    // And the device starts late; that lateness *is* the backlog. Queuing
+    // frames up front while still popping from the first iteration consumes the
+    // queue before the first real packet arrives, leaving the run one-in-one-out
+    // with nothing in hand. A buffer with no backlog absorbs nothing, so every
+    // reordered packet underran and reordering measured as several times worse
+    // than losing the same packets outright — the opposite of what a jitter
+    // buffer is for.
+    for (f, (seq, payload)) in encoded.iter().enumerate() {
         if let Some(delay) = net.deliver() {
-            in_flight.push((f + delay, sequence, opus));
+            in_flight.push((f + delay, *seq, payload.clone()));
         }
 
         // Hand over everything that has come due.
@@ -134,31 +155,33 @@ fn across(pcm: &[f32], net: &mut Network) -> Vec<f32> {
             }
         });
 
-        // Take whatever the buffer will give, which is nothing until it has
-        // built its target backlog — the delay a jitter buffer exists to add.
-        if buffer.pop(&mut scratch).is_some() {
-            out.extend_from_slice(&scratch);
+        if f < PRIME_FRAMES {
+            continue;
+        }
+        match buffer.pop(&mut scratch) {
+            Some(_) => out.extend_from_slice(&scratch),
+            None => out.extend_from_slice(&silence),
         }
     }
 
-    // Drain until it is genuinely empty. The buffer grows its target backlog
-    // when it sees loss — that is the whole point of it — so under a bad link
-    // it is still holding a great deal when the last packet has been sent. An
-    // earlier version drained a fixed forty times, which was plenty on a clean
-    // link and left most of the speech inside the buffer on a lossy one; the
-    // result was a *shorter* recording at moderate loss than at severe loss,
-    // and a score of exactly zero because there was not enough left to measure.
+    // Drain what the buffer is still holding, so the tail is scored rather
+    // than truncated.
     let mut idle = 0;
-    while idle < 50 {
-        if buffer.pop(&mut scratch).is_some() {
-            out.extend_from_slice(&scratch);
-            idle = 0;
-        } else {
-            idle += 1;
+    while idle < 60 {
+        match buffer.pop(&mut scratch) {
+            Some(_) => {
+                out.extend_from_slice(&scratch);
+                idle = 0;
+            }
+            None => idle += 1,
         }
     }
     out
 }
+
+/// Periods queued before the output device starts, so the buffer is not asked
+/// for audio it has not been given yet.
+const PRIME_FRAMES: usize = 20;
 
 /// Lines the played audio up with what was sent.
 ///
@@ -208,6 +231,23 @@ fn aligned(sent: &[f32], played: &[f32]) -> (Vec<f32>, Vec<f32>) {
     (sent[..n].to_vec(), played[offset..offset + n].to_vec())
 }
 
+/// Mean score over several links with the same character but different draws.
+///
+/// One seed is one sample, and a burst model is high-variance by construction —
+/// whether a burst lands on a vowel or on a gap between words changes the score
+/// more than a few percent of loss does. Averaging a handful of draws measures
+/// the link rather than the luck.
+fn score_over_seeds(sent: &[f32], loss: f32, jitter: usize, seeds: &[u64]) -> f32 {
+    let mut total = 0.0;
+    for &seed in seeds {
+        let mut net = Network::new(seed, loss, jitter);
+        let played = across(sent, &mut net);
+        let (a, b) = aligned(sent, &played);
+        total += intelligibility(&a, &b);
+    }
+    total / seeds.len() as f32
+}
+
 fn speech_sample(seconds: usize) -> Vec<f32> {
     testsig::speech(48_000 * seconds, 130.0, 0.5)
 }
@@ -228,47 +268,36 @@ fn a_clean_link_delivers_the_voice_intact() {
 }
 
 #[test]
-#[ignore = "harness models the consumer's clock too crudely — see the comment"]
+#[ignore = "alignment is unsteady when the played audio has gaps — see the comment"]
 fn intelligibility_falls_as_the_link_gets_worse() {
-    // UNFINISHED, and ignored rather than deleted or weakened, because the
-    // assertion is the right one and the harness underneath it is not ready.
+    // UNFINISHED. Ignored rather than deleted or weakened, because the
+    // assertion is right and the measurement under it is not steady enough yet.
     //
-    // What happens: 5% and 15% loss score exactly 0.0 while 0% scores 0.99 and
-    // 30% scores 0.78. Exactly zero, and not monotonic, is a harness fault
-    // rather than a quality result.
+    // The consumer clock and the backlog are fixed — that was the first cause,
+    // and the numbers went from "exactly zero at middling loss" to plausible.
+    // What is left is variance: averaged over four seeds the scores run 0.99,
+    // 0.65, 0.04, 0.38, which is neither monotonic nor credible at 15%.
     //
-    // The cause, as far as it has been traced: this harness pushes one packet
-    // and pops one frame per iteration, so the buffer's backlog never grows
-    // beyond what it starts with. `SpeakerBuffer` responds to loss by raising
-    // its target backlog — that is its whole job — and once the target exceeds
-    // the backlog this harness can sustain, `pop` returns None from then on and
-    // the recording simply stops. At 30% the buffer takes a different path
-    // through concealment and keeps producing, which is why the worst link
-    // scores better than the middling ones.
+    // The remaining suspect is `aligned`. With loss the harness now fills gaps
+    // with silence, so the played audio has holes in it, and a cross-correlation
+    // offset search over a signal with holes can lock on to the wrong lag —
+    // after which the measure compares speech against the wrong part of itself
+    // and reports near-zero. Every other test here avoids the problem because it
+    // compares two links scored the same way, so a bad offset hurts both.
     //
-    // Fixing it properly means giving the harness a real consumer clock: pop at
-    // a steady rate whether or not the buffer is ready, and prime the backlog
-    // before the comparison starts, the way an output device does. That is a
-    // rewrite of `across`, not a tweak, and it is the next thing to do here.
-    //
-    // The five tests around this one pass and are not affected: they compare
-    // links against each other through the same harness, so the fault cancels.
-    // Monotonicity across loss. Not absolute floors, which would be a guess
-    // dressed as a requirement — the useful assertion is the ordering, because
-    // it is the ordering that tells us whether a change to the codec settings
-    // helped or hurt.
+    // The fix is to stop searching: the harness knows exactly how late the
+    // device starts, so the offset is PRIME_FRAMES worth of samples and should
+    // be passed in rather than recovered. That is the next thing to do.
     let sent = speech_sample(3);
+    const SEEDS: [u64; 4] = [7, 31, 104, 512];
+
     let mut previous = 1.0f32;
     let mut scores = Vec::new();
-
     for loss in [0.0f32, 0.05, 0.15, 0.30] {
-        let mut net = Network::new(7, loss, 0);
-        let played = across(&sent, &mut net);
-        let (a, b) = aligned(&sent, &played);
-        let score = intelligibility(&a, &b);
+        let score = score_over_seeds(&sent, loss, 0, &SEEDS);
         scores.push((loss, score));
         assert!(
-            score <= previous + 0.05,
+            score <= previous + 0.03,
             "{:.0}% loss scored {score}, above the {previous} before it — {scores:?}",
             loss * 100.0
         );
@@ -278,7 +307,7 @@ fn intelligibility_falls_as_the_link_gets_worse() {
     let worst = scores.last().unwrap().1;
     let best = scores.first().unwrap().1;
     assert!(
-        best - worst > 0.05,
+        best - worst > 0.1,
         "30% loss cost only {:.3} against a clean link — the model is not biting: {scores:?}",
         best - worst
     );
@@ -318,29 +347,32 @@ fn a_burst_loses_more_than_the_same_loss_spread_out() {
 
 #[test]
 fn late_packets_are_waited_for_rather_than_lost() {
-    // What the jitter buffer is for. Packets arriving out of order and a few
-    // frames late should cost almost nothing, because the buffer holds a
-    // backlog precisely so that they can still be put back in place.
+    // What the jitter buffer is for. Packets arriving a few frames late and out
+    // of order should cost far less than losing them would, because the buffer
+    // holds a backlog precisely so they can be put back in place.
     let sent = speech_sample(3);
+    const SEEDS: [u64; 3] = [3, 77, 401];
 
-    let mut steady = Network::new(3, 0.0, 0);
-    let steady_score = {
-        let played = across(&sent, &mut steady);
-        let (a, b) = aligned(&sent, &played);
-        intelligibility(&a, &b)
-    };
+    let steady = score_over_seeds(&sent, 0.0, 0, &SEEDS);
+    let jittery = score_over_seeds(&sent, 0.0, 4, &SEEDS);
+    let lost = score_over_seeds(&sent, 0.15, 0, &SEEDS);
 
-    let mut jittery = Network::new(3, 0.0, 4);
-    let jitter_score = {
-        let played = across(&sent, &mut jittery);
-        let (a, b) = aligned(&sent, &played);
-        intelligibility(&a, &b)
-    };
-
+    // Reordering inside the backlog costs nothing, and that is the correct
+    // result rather than a weak one: a four-frame spread against a twenty-frame
+    // backlog is exactly the case a jitter buffer exists to absorb, and if it
+    // cost anything the buffer would not be doing its job.
+    //
+    // An earlier version of this test asserted the opposite — that jitter must
+    // show a cost — and it "passed" only because the harness had no backlog at
+    // all. The assertion was measuring the harness's bug.
     assert!(
-        jitter_score > steady_score - 0.15,
-        "jitter cost {:.3}: {steady_score} to {jitter_score}",
-        steady_score - jitter_score
+        (jittery - steady).abs() < 0.05,
+        "reordering within the backlog cost {:.3}: {steady} to {jittery}",
+        steady - jittery
+    );
+    assert!(
+        jittery > lost + 0.1,
+        "reordering ({jittery}) was no better than losing outright ({lost})"
     );
 }
 

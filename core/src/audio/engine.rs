@@ -36,6 +36,79 @@ use super::jitter::{
 };
 use super::resample::Resampler;
 use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
+
+/// Where every stage of the capture chain stands, as of the last block.
+///
+/// Written on every block whether or not anybody is reading, unlike the
+/// spectrum: it is a few dozen bytes behind an uncontended lock, and paying
+/// that always is cheaper than the bug where the dots are stale because the
+/// analyser happened to be disarmed. Only the transforms are worth gating.
+///
+/// Every field here is something the chain already worked out in order to
+/// decide whether to open the microphone. None of it is computed for the
+/// display's benefit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ChainStatus {
+    /// Still in the start-up hold; nothing below should be believed yet.
+    pub warming_up: bool,
+    /// RNNoise thought the last block was speech.
+    pub vad_says_speech: bool,
+    /// The last block cleared the SNR margin over the noise floor.
+    pub snr_says_speech: bool,
+    /// The noise gate is passing audio.
+    pub gate_open: bool,
+    /// Whether voice activation *would* open, whatever mode is actually set.
+    ///
+    /// Reported in every mode on purpose. A rider on push-to-talk who cannot
+    /// be heard wants to know whether voice activation would have opened, and
+    /// a rider on voice activation who is being cut off wants to see the moment
+    /// it decides against them. This is the instantaneous decision, without the
+    /// hold and fade envelope, which only runs in voice-activated mode.
+    pub would_pass_voice_activated: bool,
+    /// Audio actually went to the encoder on the last block.
+    pub transmitting: bool,
+    /// The microphone is muted, which overrules everything above.
+    pub muted: bool,
+    /// Echo removed on the last block, in dB.
+    pub erle_db: f32,
+    /// Gain the AGC is applying, in dB.
+    pub agc_gain_db: f32,
+    /// Post-suppression level, the noise floor under it, and the level a block
+    /// has to reach to count as speech. All dBFS.
+    pub level_db: f32,
+    pub noise_floor_db: f32,
+    pub activation_threshold_db: f32,
+    /// Which suppression profile is in force, as its index.
+    pub profile: u8,
+    /// Which transmit mode is set, as its index.
+    pub transmit_mode: u8,
+    /// De-hiss and feedback-guard modes, as their indices.
+    pub dehiss_mode: u8,
+    pub feedback_mode: u8,
+}
+
+impl Default for ChainStatus {
+    fn default() -> Self {
+        Self {
+            warming_up: true,
+            vad_says_speech: false,
+            snr_says_speech: false,
+            gate_open: false,
+            would_pass_voice_activated: false,
+            transmitting: false,
+            muted: false,
+            erle_db: 0.0,
+            agc_gain_db: 0.0,
+            level_db: -120.0,
+            noise_floor_db: -100.0,
+            activation_threshold_db: -100.0,
+            profile: 0,
+            transmit_mode: 0,
+            dehiss_mode: 0,
+            feedback_mode: 0,
+        }
+    }
+}
 use crate::error::{CoreError, Result};
 use crate::net::audio_packet::VoicePacket;
 
@@ -283,6 +356,8 @@ pub struct AudioShared {
     spectrum_until: AtomicU64,
     /// The most recent analysis, if any has been produced.
     spectrum: Mutex<Option<SpectrumFrame>>,
+    /// Where every stage of the capture chain stands, as of the last block.
+    chain: Mutex<ChainStatus>,
     /// Pre-rendered notification tones waiting to reach the output device.
     ///
     /// Rendering up front rather than synthesising in the worker keeps the cue
@@ -504,6 +579,7 @@ impl AudioShared {
             blocks_processed: AtomicU64::new(0),
             spectrum_until: AtomicU64::new(0),
             spectrum: Mutex::new(None),
+            chain: Mutex::new(ChainStatus::default()),
             normalise_levels: AtomicBool::new(true),
             reverb_enabled: AtomicBool::new(true),
             reverb: Mutex::new(Reverb::new(REVERB_DECAY_SECS, REVERB_WET)),
@@ -693,6 +769,21 @@ impl AudioShared {
     /// be processed.
     pub fn next_block_index(&self) -> u64 {
         self.blocks_processed.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Where the capture chain stood as of the last block.
+    ///
+    /// Free to ask for, and always current: unlike the spectrum this is written
+    /// every block whether or not anybody is looking.
+    pub fn chain_status(&self) -> ChainStatus {
+        self.chain.try_lock().map(|c| *c).unwrap_or_default()
+    }
+
+    /// Publishes where the chain stands. Called once per block by the worker.
+    pub fn publish_chain_status(&self, status: ChainStatus) {
+        if let Some(mut slot) = self.chain.try_lock() {
+            *slot = status;
+        }
     }
 
     pub fn set_noise_profile(&self, profile: NoiseProfile) {
@@ -1877,6 +1968,32 @@ where
                 open
             };
 
+            // Everything the chain worked out on the way to that decision,
+            // published so the diagnostics panel can say which stage stopped
+            // the rider being heard rather than only that they were not.
+            //
+            // Unconditional. It is a few dozen bytes behind an uncontended
+            // lock, and paying it always is cheaper than the class of bug where
+            // the dots are stale because the analyser happened to be disarmed.
+            shared.publish_chain_status(ChainStatus {
+                warming_up: analysis.warming_up,
+                vad_says_speech: analysis.vad_says_speech,
+                snr_says_speech: analysis.snr_says_speech,
+                gate_open: analysis.gate_open,
+                would_pass_voice_activated: analysis.speaking,
+                transmitting: allowed,
+                muted: shared.is_muted(),
+                erle_db: analysis.erle_db,
+                agc_gain_db: analysis.agc_gain_db,
+                level_db: analysis.level_db,
+                noise_floor_db: analysis.noise_floor_db,
+                activation_threshold_db: analysis.activation_threshold_db,
+                profile: shared.noise_profile() as u8,
+                transmit_mode: mode as u8,
+                dehiss_mode: shared.dehiss_mode(),
+                feedback_mode: shared.feedback_mode() as u8,
+            });
+
             // Loopback monitoring: hear exactly what would be transmitted.
             //
             // Below the gate rather than above it, so the release envelope is
@@ -1987,6 +2104,41 @@ mod tests {
             terminator: term,
             position: None,
         }
+    }
+
+    #[test]
+    fn the_chain_status_is_free_to_ask_for_and_starts_out_untrusted() {
+        // Unlike the spectrum, this costs nothing and is always current, so
+        // reading it must never arm anything.
+        let shared = AudioShared::new();
+        let before = shared.chain_status();
+
+        // Nothing has been processed, so it must say so rather than claim a
+        // confident "not speaking" that a reader would draw as a red dot.
+        assert!(before.warming_up);
+        assert!(!before.transmitting);
+        assert!(
+            !shared.spectrum_wanted(0),
+            "asking for the chain status armed the analyser"
+        );
+
+        let published = ChainStatus {
+            warming_up: false,
+            would_pass_voice_activated: true,
+            transmitting: false,
+            level_db: -22.0,
+            ..ChainStatus::default()
+        };
+        shared.publish_chain_status(published);
+
+        let got = shared.chain_status();
+        // The case worth being able to see: voice activation would have opened,
+        // and the rider still was not transmitted — so the mode is what stopped
+        // them, not the noise.
+        assert!(got.would_pass_voice_activated);
+        assert!(!got.transmitting);
+        assert!(!got.warming_up);
+        assert_eq!(got, published);
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub mod spectrum;
 
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};
 pub use denoise::{CaptureProcessor, NoiseProfile};
-pub use engine::{AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode};
+pub use engine::{AudioConfig, AudioCue, AudioEngine, AudioShared, ChainStatus, TransmitMode};
 pub use jitter::{SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES};
 pub use resample::Resampler;
 pub use spectrum::{SpectrumAnalyser, SpectrumFrame, BANDS, TAPS, TAP_PRE_GATE, TAP_RAW, TAP_SENT};

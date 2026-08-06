@@ -35,6 +35,7 @@ use super::jitter::{
     SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES, SILENT_DB,
 };
 use super::resample::Resampler;
+use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
 use crate::error::{CoreError, Result};
 use crate::net::audio_packet::VoicePacket;
 
@@ -260,6 +261,28 @@ pub struct AudioShared {
     /// until the app was restarted.
     transmit_mode: AtomicU8,
     noise_profile: AtomicU8,
+
+    /// Capture blocks the worker has processed, ever.
+    ///
+    /// Counted rather than timed, for the same reason the capture watchdog
+    /// counts: a clock can jump — a phone sleeping, a time zone changing, NTP
+    /// stepping — and a block count cannot.
+    blocks_processed: AtomicU64,
+    /// The block index up to which somebody wants a spectrum.
+    ///
+    /// The diagnostics analyser is the most expensive thing in the capture
+    /// chain and it is worth nothing when nobody is looking, so it is armed by
+    /// being *asked* rather than by being switched on.
+    ///
+    /// There is deliberately no matching "off". Every explicit off has a path
+    /// that misses it — the diagnostics panel is never disposed, only slid off
+    /// screen; the app can be backgrounded; the engine can be restarted
+    /// underneath the interface — and a missed off leaves three transforms per
+    /// block running in a rider's pocket for the rest of the session. Asking
+    /// extends the arming by half a second; stop asking, and it lapses.
+    spectrum_until: AtomicU64,
+    /// The most recent analysis, if any has been produced.
+    spectrum: Mutex<Option<SpectrumFrame>>,
     /// Pre-rendered notification tones waiting to reach the output device.
     ///
     /// Rendering up front rather than synthesising in the worker keeps the cue
@@ -478,6 +501,9 @@ impl AudioShared {
             dehiss_mode: AtomicU8::new(0),
             transmit_mode: AtomicU8::new(0),
             noise_profile: AtomicU8::new(0),
+            blocks_processed: AtomicU64::new(0),
+            spectrum_until: AtomicU64::new(0),
+            spectrum: Mutex::new(None),
             normalise_levels: AtomicBool::new(true),
             reverb_enabled: AtomicBool::new(true),
             reverb: Mutex::new(Reverb::new(REVERB_DECAY_SECS, REVERB_WET)),
@@ -627,6 +653,46 @@ impl AudioShared {
             2 => TransmitMode::Continuous,
             _ => TransmitMode::VoiceActivity,
         }
+    }
+
+    /// How long an ask keeps the analyser running, in capture blocks.
+    ///
+    /// 50 blocks is half a second. Long enough that a caller polling at any
+    /// sane rate never sees a gap, short enough that a caller which stops —
+    /// for any reason, including ones nobody thought of — is not paid for.
+    pub const SPECTRUM_ARM_BLOCKS: u64 = 50;
+
+    /// Asks for the analyser to keep running, and returns the latest frame.
+    ///
+    /// The ask and the read are one call on purpose. Two calls would let a
+    /// caller read without asking, and a spectrum that is being read but not
+    /// armed goes stale silently — on screen, indistinguishable from silence.
+    pub fn take_spectrum(&self) -> Option<SpectrumFrame> {
+        let now = self.blocks_processed.load(Ordering::Relaxed);
+        self.spectrum_until
+            .store(now + Self::SPECTRUM_ARM_BLOCKS, Ordering::Relaxed);
+        // Never blocks the caller: this runs on whatever thread the interface
+        // asked from, and the worker must not be able to stall it.
+        self.spectrum.try_lock().and_then(|f| *f)
+    }
+
+    /// Whether the analyser should run for the block at `index`.
+    pub fn spectrum_wanted(&self, index: u64) -> bool {
+        self.spectrum_until.load(Ordering::Relaxed) > index
+    }
+
+    /// Publishes a frame. Silently drops it if the reader holds the lock,
+    /// which costs one frame at 33 Hz and never costs the worker a wait.
+    pub fn publish_spectrum(&self, frame: SpectrumFrame) {
+        if let Some(mut slot) = self.spectrum.try_lock() {
+            *slot = Some(frame);
+        }
+    }
+
+    /// Advances the block counter and returns the index of the block about to
+    /// be processed.
+    pub fn next_block_index(&self) -> u64 {
+        self.blocks_processed.fetch_add(1, Ordering::Relaxed)
     }
 
     pub fn set_noise_profile(&self, profile: NoiseProfile) {
@@ -1638,6 +1704,10 @@ where
     // costs nothing and neither has to learn from scratch on every change.
     let mut expander = Expander::standard();
     let mut subtractor = SpectralSubtractor::new();
+    // Allocated once, like everything else this thread touches. It does no work
+    // at all unless the diagnostics panel is asking for frames.
+    let mut analyser = SpectrumAnalyser::new();
+    let mut spectrum = SpectrumFrame::default();
     let mut encoder = match VoiceEncoder::new(config.quality) {
         Ok(e) => e,
         Err(e) => {
@@ -1683,6 +1753,15 @@ where
                 }
             }
 
+            // One index per block, taken before any of the work, so the
+            // analyser's arming and its cadence are decided from the same
+            // number the rest of this iteration uses.
+            let block_index = shared.next_block_index();
+            let analysing = shared.spectrum_wanted(block_index);
+            if analysing {
+                analyser.push(TAP_RAW, &block);
+            }
+
             // Take the matching stretch of what was played, so the canceller
             // has a reference for this block. Short-fill with silence rather
             // than stalling: a missing reference simply means nothing to cancel.
@@ -1711,6 +1790,9 @@ where
             }
 
             let analysis = processor.process_with_reference(&mut block, &echo_ref);
+            if analysing {
+                analyser.push(TAP_PRE_GATE, processor.pre_gate());
+            }
 
             // After the canceller, on whatever survived it, and with the same
             // reference: the guard's whole job is the part that could not be
@@ -1808,6 +1890,23 @@ where
                 }
             }
 
+            // The last tap, and the only one that has to be taken whether or
+            // not this block is going anywhere. A flat sent trace beside two
+            // moving ones is the single most useful thing this display shows —
+            // it is the gate closing, visible — and taking the tap only when
+            // transmitting would draw the last thing that *was* sent instead,
+            // frozen, which looks like the analyser has hung.
+            //
+            // Pre-Opus: this is what the encoder is handed, not what comes out
+            // of it.
+            if analysing {
+                analyser.push(TAP_SENT, &block);
+                if analyser.due(block_index) {
+                    analyser.analyse(&mut spectrum);
+                    shared.publish_spectrum(spectrum);
+                }
+            }
+
             frame.extend_from_slice(&block);
             if frame.len() >= FRAME_SAMPLES {
                 if allowed {
@@ -1888,6 +1987,74 @@ mod tests {
             terminator: term,
             position: None,
         }
+    }
+
+    #[test]
+    fn asking_for_a_spectrum_arms_it_and_not_asking_disarms_it() {
+        // The whole design of this feature. The diagnostics panel is never
+        // disposed — it is only slid off screen — so there is no reliable
+        // moment at which to switch the analyser off. It is armed by being
+        // asked, and lapses on its own.
+        let shared = AudioShared::new();
+
+        // Nobody has asked: the worker must not do the work.
+        assert!(!shared.spectrum_wanted(0));
+
+        shared.take_spectrum();
+        assert!(shared.spectrum_wanted(0), "asking did not arm it");
+        assert!(
+            shared.spectrum_wanted(AudioShared::SPECTRUM_ARM_BLOCKS - 1),
+            "it lapsed before the half second was up"
+        );
+        assert!(
+            !shared.spectrum_wanted(AudioShared::SPECTRUM_ARM_BLOCKS),
+            "it did not lapse — a caller that stops asking would be paid for ever"
+        );
+    }
+
+    #[test]
+    fn the_arming_window_moves_with_the_blocks_already_processed() {
+        // Arming is relative to now, not to zero. Getting this wrong would give
+        // a long-running session an ask that had already expired before it was
+        // made, and the panel would show nothing with no way to tell why.
+        let shared = AudioShared::new();
+        for _ in 0..1_000 {
+            shared.next_block_index();
+        }
+        let now = shared.next_block_index() + 1;
+
+        shared.take_spectrum();
+        assert!(shared.spectrum_wanted(now));
+        assert!(!shared.spectrum_wanted(now + AudioShared::SPECTRUM_ARM_BLOCKS));
+    }
+
+    #[test]
+    fn block_indices_are_handed_out_once_each() {
+        let shared = AudioShared::new();
+        let a = shared.next_block_index();
+        let b = shared.next_block_index();
+        let c = shared.next_block_index();
+        assert_eq!((a, b, c), (0, 1, 2));
+    }
+
+    #[test]
+    fn a_published_frame_is_what_comes_back() {
+        let shared = AudioShared::new();
+        assert!(
+            shared.take_spectrum().is_none(),
+            "a frame appeared from nowhere"
+        );
+
+        let frame = SpectrumFrame {
+            seq: 42,
+            harmonicity: 0.75,
+            ..SpectrumFrame::default()
+        };
+        shared.publish_spectrum(frame);
+
+        let got = shared.take_spectrum().expect("nothing published");
+        assert_eq!(got.seq, 42);
+        assert!((got.harmonicity - 0.75).abs() < 1e-6);
     }
 
     #[test]

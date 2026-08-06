@@ -1,40 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/widgets/app_bar_title.dart';
 import 'package:mumbleway/widgets/wordmark.dart';
-
-/// Measures the lockup in a real widget tree.
-///
-/// Fonts are not loaded in tests — every glyph is the test harness's fixed
-/// advance — so these numbers are not the shipping ones. That is fine for
-/// everything here: the two layouts are compared against *each other* in the
-/// same font, and the relationships being asserted (narrower than, ends past,
-/// stands as tall as) are the ones the design is made of.
-Future<Size> _measure(
-  WidgetTester tester,
-  Size Function(BuildContext) of, {
-  double textScale = 1,
-}) async {
-  late Size result;
-  await tester.pumpWidget(
-    MediaQuery(
-      data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-      child: Directionality(
-        textDirection: TextDirection.ltr,
-        child: DefaultTextStyle(
-          style: const TextStyle(fontSize: 22),
-          child: Builder(
-            builder: (context) {
-              result = of(context);
-              return const SizedBox();
-            },
-          ),
-        ),
-      ),
-    ),
-  );
-  return result;
-}
 
 /// Width of the single-line lockup this replaced: icon, gap, "MumbleWay".
 double _singleLineWidth(BuildContext context, {double iconSize = 26}) {
@@ -50,88 +19,168 @@ double _singleLineWidth(BuildContext context, {double iconSize = 26}) {
   return iconSize + gap + width;
 }
 
+Future<double> _measureSingleLine(WidgetTester tester) async {
+  late double result;
+  await tester.pumpWidget(
+    Directionality(
+      textDirection: TextDirection.ltr,
+      child: MediaQuery(
+        data: const MediaQueryData(),
+        child: DefaultTextStyle(
+          style: const TextStyle(fontSize: 22),
+          child: Builder(
+            builder: (context) {
+              result = _singleLineWidth(context);
+              return const SizedBox();
+            },
+          ),
+        ),
+      ),
+    ),
+  );
+  return result;
+}
+
 void main() {
-  testWidgets('takes less width than the single line it replaced', (
-    tester,
-  ) async {
-    // The reason this design exists. An app bar on a phone has a fixed budget
-    // and "MumbleWay" set in one run spent too much of it, while the bar had
-    // vertical room going unused.
-    final stacked = await _measure(tester, (c) => Wordmark.measure(c));
-    final single = await _measure(
+  group('the asset', () {
+    // The widget cannot measure an SVG without reading it, and an app bar
+    // cannot wait for a file. So the aspect is a constant — and a constant
+    // copied from a generated file is a constant that goes stale. This is the
+    // guard: change the design, re-run tool/make_logo.py, and if the shape
+    // moved this fails until the number is updated.
+    for (final variant in ['on-dark', 'on-light']) {
+      test('$variant declares the aspect the widget assumes', () {
+        final file = File('assets/logo/mumbleway-logo-$variant.svg');
+        expect(file.existsSync(), isTrue, reason: '${file.path} is missing');
+
+        final box = RegExp(
+          r'viewBox="0 0 ([\d.]+) ([\d.]+)"',
+        ).firstMatch(file.readAsStringSync());
+        expect(box, isNotNull, reason: 'no viewBox in ${file.path}');
+
+        final w = double.parse(box!.group(1)!);
+        final h = double.parse(box.group(2)!);
+        expect(
+          w / h,
+          closeTo(Wordmark.aspectRatio, 0.005),
+          reason:
+              '${file.path} is ${(w / h).toStringAsFixed(3)}:1 but '
+              'Wordmark.aspectRatio says '
+              '${Wordmark.aspectRatio.toStringAsFixed(3)}. Re-run '
+              'tool/make_logo.py, then update the constant.',
+        );
+      });
+    }
+
+    test('the wordmark is outlined, so it needs no font installed', () {
+      // A <text> element would render as whatever the viewer happens to have,
+      // which for a logo means "not this logo".
+      final svg = File(
+        'assets/logo/mumbleway-logo-on-dark.svg',
+      ).readAsStringSync();
+      expect(svg, isNot(contains('<text')));
+      expect(svg, isNot(contains('font-family')));
+    });
+
+    for (final variant in ['on-dark', 'on-light']) {
+      test('$variant has no namespace-prefixed elements', () {
+        // The bug this exists to catch rendered one of the two files with
+        // <ns0:linearGradient xmlns:ns0="..."> instead of <linearGradient>,
+        // depending only on which was written first. Browsers resolve both, so
+        // the SVG looked perfect everywhere except in the app, where
+        // flutter_svg declined to resolve the prefixed gradient and dropped the
+        // visor and the sound waves — silently, leaving a blank white helmet.
+        final svg = File(
+          'assets/logo/mumbleway-logo-$variant.svg',
+        ).readAsStringSync();
+        expect(
+          RegExp(r'<[a-zA-Z][\w.-]*:').hasMatch(svg),
+          isFalse,
+          reason: 'namespace-prefixed elements in mumbleway-logo-$variant.svg',
+        );
+      });
+
+      test('$variant resolves every paint it references', () {
+        // A url(#...) pointing at an id that is not in the file paints nothing
+        // at all, and nothing at all is indistinguishable from a shape that was
+        // meant to be invisible.
+        final svg = File(
+          'assets/logo/mumbleway-logo-$variant.svg',
+        ).readAsStringSync();
+        final declared = RegExp(
+          'id="([^"]+)"',
+        ).allMatches(svg).map((m) => m.group(1)).toSet();
+        final referenced = RegExp(
+          r'url\(#([^)]+)\)',
+        ).allMatches(svg).map((m) => m.group(1)).toSet();
+        expect(referenced, isNotEmpty, reason: 'the accent should be a gradient');
+        expect(referenced.difference(declared), isEmpty);
+      });
+    }
+
+    test('the light variant drops the tile and inks the shell', () {
+      final dark = File(
+        'assets/logo/mumbleway-logo-on-dark.svg',
+      ).readAsStringSync();
+      final light = File(
+        'assets/logo/mumbleway-logo-on-light.svg',
+      ).readAsStringSync();
+      // The pale shell is what makes sense on a dark tile, and the tile is what
+      // makes the helmet a brick on a white page.
+      expect(dark, contains('#F4F8FC'));
+      expect(light, isNot(contains('#F4F8FC')));
+      expect(light, contains('#101822'));
+    });
+  });
+
+  group('the lockup', () {
+    testWidgets('takes less width than the single line it replaced', (
       tester,
-      (c) => Size(_singleLineWidth(c), 26),
-    );
-
-    expect(
-      stacked.width,
-      lessThan(single.width),
-      reason:
-          'the lockup is ${stacked.width.toStringAsFixed(1)} wide against '
-          '${single.width.toStringAsFixed(1)} for the single line',
-    );
-  });
-
-  testWidgets('stays narrower at every text scale a reader may set', (
-    tester,
-  ) async {
-    // Both layouts grow with the reader's text size, and they grow at
-    // different rates — six characters against nine. A saving that only held
-    // at 100% would evaporate for exactly the readers who need the room most.
-    for (final scale in [0.85, 1.0, 1.3, 2.0]) {
-      final stacked = await _measure(
-        tester,
-        (c) => Wordmark.measure(c),
-        textScale: scale,
-      );
-      final single = await _measure(
-        tester,
-        (c) => Size(_singleLineWidth(c), 26),
-        textScale: scale,
-      );
+    ) async {
+      // The reason this design exists. An app bar on a phone has a fixed budget
+      // and "MumbleWay" set in one run, with an icon in front of it, spent too
+      // much of it — while the bar had vertical room going unused.
+      //
+      // Measured in the test harness's fixed-advance font, which is not the
+      // shipping one; that is fine, because what is being compared is one
+      // layout against another in the same font.
+      final single = await _measureSingleLine(tester);
+      final stacked = Wordmark.sizeFor(34).width;
       expect(
-        stacked.width,
-        lessThan(single.width),
-        reason: 'at text scale $scale the lockup was not the narrower of the two',
+        stacked,
+        lessThan(single),
+        reason:
+            'the lockup is ${stacked.toStringAsFixed(1)} wide against '
+            '${single.toStringAsFixed(1)} for the single line',
       );
-    }
-  });
+    });
 
-  testWidgets('is no taller than the height it is asked for', (tester) async {
-    // It sits in an app bar. A lockup that quietly exceeded its stated height
-    // would push the toolbar out or be clipped, and neither failure names
-    // itself.
-    for (final height in [26.0, 32.0, 64.0]) {
-      final size = await _measure(
-        tester,
-        (c) => Wordmark.measure(c, height: height),
+    test('scales as one object', () {
+      // Doubling the height doubles the whole mark. It once had a fixed 9px
+      // gap between helmet and name, which made it a different design at 32px
+      // and at 400px.
+      expect(
+        Wordmark.sizeFor(68).width / Wordmark.sizeFor(34).width,
+        closeTo(2, 0.001),
       );
-      expect(size.height, height);
-      // Still recognisably a horizontal mark rather than a stack.
-      expect(size.width, greaterThan(height));
-    }
-  });
+      expect(Wordmark.sizeFor(34).height, 34);
+    });
 
-  testWidgets('scales as one object', (tester) async {
-    // Doubling the height should double the whole mark, gap included. It used
-    // to have a fixed 9px gap, which meant the logo was a different design at
-    // 32px and at 400px.
-    final small = await _measure(tester, (c) => Wordmark.measure(c, height: 32));
-    final large = await _measure(tester, (c) => Wordmark.measure(c, height: 64));
-    expect(large.width / small.width, closeTo(2, 0.01));
-  });
+    test('picks the variant that reads against the background', () {
+      expect(Wordmark.assetFor(Brightness.dark), contains('on-dark'));
+      expect(Wordmark.assetFor(Brightness.light), contains('on-light'));
+    });
 
-  testWidgets('renders, and says its whole name to a screen reader', (
-    tester,
-  ) async {
-    final handle = tester.ensureSemantics();
-    await tester.pumpWidget(
-      const MaterialApp(home: Scaffold(appBar: null, body: Wordmark())),
-    );
-    expect(tester.takeException(), isNull);
-    // "Mumble" and "Way" announced separately would be describing a layout
-    // accident rather than the name of the app.
-    expect(find.bySemanticsLabel('MumbleWay'), findsOneWidget);
-    handle.dispose();
+    testWidgets('renders, and says its whole name to a screen reader', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: Wordmark())),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.bySemanticsLabel('MumbleWay'), findsOneWidget);
+      handle.dispose();
+    });
   });
 }

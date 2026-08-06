@@ -90,6 +90,14 @@ pub struct SpectrumFrame {
     /// strongly tonal. See the pitch-constrained measure in `denoise` for the
     /// one that decides whether to open the microphone.
     pub harmonicity: f32,
+    /// Whether this block actually went to the encoder.
+    ///
+    /// Carried with the frame rather than read separately, because it is what
+    /// colours the sent trace and the two must describe the same block. Reading
+    /// it from elsewhere a moment later would tint a trace by a decision that
+    /// had already moved on, and the one moment worth watching — the frame the
+    /// gate closes on — is exactly when the two would disagree.
+    pub transmitting: bool,
     /// Increments once per frame. A frame whose `seq` has stopped moving is a
     /// stopped worker, which on screen looks exactly like silence.
     pub seq: u64,
@@ -100,6 +108,7 @@ impl Default for SpectrumFrame {
         Self {
             bands: [[FLOOR_DB; BANDS]; TAPS],
             harmonicity: 0.0,
+            transmitting: false,
             seq: 0,
         }
     }
@@ -170,10 +179,15 @@ impl SpectrumAnalyser {
 
     /// Transforms all three taps and writes the result into `out`.
     ///
+    /// `transmitting` is whether the block just tapped actually reached the
+    /// encoder; it is passed in rather than inferred because the sent trace is
+    /// drawn either way and only its colour says which.
+    ///
     /// Never allocates.
-    pub fn analyse(&mut self, out: &mut SpectrumFrame) {
+    pub fn analyse(&mut self, out: &mut SpectrumFrame, transmitting: bool) {
         self.seq = self.seq.wrapping_add(1);
         out.seq = self.seq;
+        out.transmitting = transmitting;
 
         for tap in 0..TAPS {
             self.transform(tap);
@@ -336,7 +350,7 @@ mod tests {
         let mut frame = SpectrumFrame::default();
         for chunk in signal.chunks(480) {
             analyser.push(tap, chunk);
-            analyser.analyse(&mut frame);
+            analyser.analyse(&mut frame, false);
         }
         frame
     }
@@ -430,7 +444,7 @@ mod tests {
             a.push(TAP_RAW, &loud);
             a.push(TAP_PRE_GATE, &loud);
             a.push(TAP_SENT, &quiet);
-            a.analyse(&mut frame);
+            a.analyse(&mut frame, false);
         }
 
         let raw = frame.bands[TAP_RAW][loudest_band(&frame.bands[TAP_RAW])];
@@ -451,14 +465,14 @@ mod tests {
 
         for _ in 0..200 {
             a.push(TAP_RAW, &loud);
-            a.analyse(&mut frame);
+            a.analyse(&mut frame, false);
         }
         let peak = loudest_band(&frame.bands[TAP_RAW]);
         let steady = frame.bands[TAP_RAW][peak];
 
         // One frame of silence should barely dent it.
         a.push(TAP_RAW, &vec![0.0f32; 480]);
-        a.analyse(&mut frame);
+        a.analyse(&mut frame, false);
         let after_one = frame.bands[TAP_RAW][peak];
         assert!(
             steady - after_one < 25.0,
@@ -468,12 +482,30 @@ mod tests {
     }
 
     #[test]
+    fn a_frame_says_whether_its_block_was_actually_sent() {
+        // The sent trace is drawn whether or not anything was transmitted —
+        // that is the point of it — so the only thing separating "the gate is
+        // shut" from "nobody is speaking" is this flag, and the colour the
+        // panel picks from it.
+        let mut a = SpectrumAnalyser::new();
+        let mut frame = SpectrumFrame::default();
+
+        a.push(TAP_SENT, &tone(1000.0, 480, 0.5));
+        a.analyse(&mut frame, true);
+        assert!(frame.transmitting);
+
+        a.push(TAP_SENT, &vec![0.0f32; 480]);
+        a.analyse(&mut frame, false);
+        assert!(!frame.transmitting);
+    }
+
+    #[test]
     fn frames_are_numbered_so_a_stopped_worker_is_visible() {
         let mut a = SpectrumAnalyser::new();
         let mut frame = SpectrumFrame::default();
-        a.analyse(&mut frame);
+        a.analyse(&mut frame, false);
         let first = frame.seq;
-        a.analyse(&mut frame);
+        a.analyse(&mut frame, false);
         assert_eq!(frame.seq, first + 1);
     }
 

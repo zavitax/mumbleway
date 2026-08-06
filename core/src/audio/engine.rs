@@ -1902,7 +1902,7 @@ where
             if analysing {
                 analyser.push(TAP_SENT, &block);
                 if analyser.due(block_index) {
-                    analyser.analyse(&mut spectrum);
+                    analyser.analyse(&mut spectrum, allowed);
                     shared.publish_spectrum(spectrum);
                 }
             }

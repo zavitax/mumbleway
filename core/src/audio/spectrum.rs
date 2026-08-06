@@ -140,8 +140,7 @@ impl SpectrumAnalyser {
         for (i, w) in window.iter_mut().enumerate() {
             // Periodic rather than symmetric — the same form the spectral
             // de-hisser uses, and the right one when successive frames overlap.
-            *w = 0.5
-                - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos();
+            *w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / FFT_SIZE as f32).cos();
         }
 
         Self {
@@ -306,10 +305,9 @@ fn band_edges() -> [(usize, usize); BANDS] {
 
     let mut edges = [(0usize, 0usize); BANDS];
     for (band, edge) in edges.iter_mut().enumerate() {
-        let lower = BAND_LOW_HZ
-            * (BAND_HIGH_HZ / BAND_LOW_HZ).powf(band as f32 / BANDS as f32);
-        let upper = BAND_LOW_HZ
-            * (BAND_HIGH_HZ / BAND_LOW_HZ).powf((band + 1) as f32 / BANDS as f32);
+        let lower = BAND_LOW_HZ * (BAND_HIGH_HZ / BAND_LOW_HZ).powf(band as f32 / BANDS as f32);
+        let upper =
+            BAND_LOW_HZ * (BAND_HIGH_HZ / BAND_LOW_HZ).powf((band + 1) as f32 / BANDS as f32);
 
         let first = ((lower / BIN_HZ).floor() as usize).clamp(1, max_bin);
         let last = ((upper / BIN_HZ).ceil() as usize).clamp(first, max_bin);
@@ -392,7 +390,11 @@ mod tests {
         let bands = &frame.bands[TAP_RAW][6..];
         let hi = bands.iter().cloned().fold(f32::MIN, f32::max);
         let lo = bands.iter().cloned().fold(f32::MAX, f32::min);
-        assert!(hi - lo < 12.0, "noise spanned {:.1} dB across bands", hi - lo);
+        assert!(
+            hi - lo < 12.0,
+            "noise spanned {:.1} dB across bands",
+            hi - lo
+        );
     }
 
     #[test]

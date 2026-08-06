@@ -37,11 +37,18 @@ pub struct Rng(u64);
 impl Rng {
     pub fn new(seed: u64) -> Self {
         // Any odd constant will do; this one is a well-known multiplier.
-        Self(seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407))
+        Self(
+            seed.wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407),
+        )
     }
 
     /// Uniform in 0..1.
-    pub fn next(&mut self) -> f32 {
+    ///
+    /// Named `unit` rather than `next` so it cannot be mistaken for an
+    /// iterator: a type with a `next` that is not `Iterator::next` reads as one
+    /// at every call site.
+    pub fn unit(&mut self) -> f32 {
         self.0 = self
             .0
             .wrapping_mul(6364136223846793005)
@@ -51,12 +58,12 @@ impl Rng {
 
     /// Uniform in -1..1.
     pub fn bipolar(&mut self) -> f32 {
-        self.next() * 2.0 - 1.0
+        self.unit() * 2.0 - 1.0
     }
 
     /// Uniform in `lo..hi`.
     pub fn range(&mut self, lo: f32, hi: f32) -> f32 {
-        lo + self.next() * (hi - lo)
+        lo + self.unit() * (hi - lo)
     }
 }
 
@@ -316,7 +323,10 @@ mod tests {
             ("unknown", unknown(48_000, 0.5, 7)),
         ];
         for (name, signal) in cases {
-            assert!(signal.iter().all(|v| v.is_finite()), "{name} produced a NaN");
+            assert!(
+                signal.iter().all(|v| v.is_finite()),
+                "{name} produced a NaN"
+            );
             assert!(
                 signal.iter().all(|v| v.abs() < 8.0),
                 "{name} ran away to {}",

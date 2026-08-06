@@ -5,6 +5,7 @@ class MainFlutterWindow: NSWindow {
   private var callPanel: FloatingPanel?
   private var cloud: CloudStore?
   private var logSink: EngineLogSink?
+  private var identity: DeviceIdentity?
 
   /// Held for exactly as long as there is a conversation.
   ///
@@ -34,6 +35,7 @@ class MainFlutterWindow: NSWindow {
     registerPowerChannel(with: flutterViewController.engine.binaryMessenger)
     cloud = CloudStore(messenger: flutterViewController.engine.binaryMessenger)
     logSink = EngineLogSink(messenger: flutterViewController.engine.binaryMessenger)
+    identity = DeviceIdentity(messenger: flutterViewController.engine.binaryMessenger)
 
     super.awakeFromNib()
   }

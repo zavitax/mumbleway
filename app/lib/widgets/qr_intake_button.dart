@@ -62,7 +62,7 @@ class _QrIntakeButtonState extends State<QrIntakeButton> {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final l = L.of(context);
-    final fallback = state.suggestedUsername;
+    final fallback = await state.suggestedUsername();
 
     setState(() => _busy = true);
     try {

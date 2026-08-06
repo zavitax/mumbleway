@@ -79,7 +79,10 @@ class _MumbleWayAppState extends State<MumbleWayApp> {
     final navigator = await _readyNavigator();
     if (navigator == null) return;
 
-    final result = await QrReader.fromText(url, _state.suggestedUsername);
+    final result = await QrReader.fromText(
+      url,
+      await _state.suggestedUsername(),
+    );
     if (result case QrInvitation(:final server)) {
       await navigator.push(
         MaterialPageRoute(builder: (_) => AddServerScreen(prefill: server)),

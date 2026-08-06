@@ -13,6 +13,7 @@ import '../l10n/app_localizations.dart';
 import '../services/audio_session.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
+import '../services/device_identity.dart';
 import '../services/engine_log.dart';
 import '../services/overlay.dart';
 import '../services/power.dart';
@@ -354,6 +355,7 @@ class AppState extends ChangeNotifier {
   static const _prefsCloudSync = 'mumbleway.cloudSync';
   static const _prefsFloatingWindow = 'mumbleway.floatingWindow';
   static const _prefsDeleted = 'mumbleway.deletedServers';
+  static const _prefsSuggestedName = 'mumbleway.suggestedName';
 
   /// Languages the interface is available in.
   static const supportedLocales = [Locale('en'), Locale('ru')];
@@ -902,7 +904,7 @@ class AppState extends ChangeNotifier {
     try {
       final configs = await importServers(
         text: text,
-        fallbackUsername: fallbackUsername ?? _suggestUsername(),
+        fallbackUsername: fallbackUsername ?? await suggestedUsername(),
       );
       var added = 0;
       for (final c in configs) {
@@ -939,13 +941,25 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  String _suggestUsername() =>
-      servers.isNotEmpty ? servers.first.username : 'rider';
+  /// The name to use when an invitation carries none — which is now all of
+  /// them, since a shared code no longer names the rider who shared it.
+  ///
+  /// A name already in use on this device wins, so a second server joins under
+  /// the same name as the first and the rider is one person everywhere. Only a
+  /// device with no servers at all asks the platform, and the answer is kept:
+  /// when it falls through to a random pair, "amber-otter" must still be
+  /// "amber-otter" tomorrow.
+  Future<String> suggestedUsername() async {
+    if (servers.isNotEmpty) return servers.first.username;
 
-  /// The name to use when an invitation carries none, which most public ones
-  /// do not. Exposed so a scanned code fills the form the same way a pasted
-  /// link does.
-  String get suggestedUsername => _suggestUsername();
+    final prefs = await SharedPreferences.getInstance();
+    final kept = prefs.getString(_prefsSuggestedName);
+    if (kept != null && kept.isNotEmpty) return kept;
+
+    final suggestion = await DeviceIdentity.instance.suggest();
+    await prefs.setString(_prefsSuggestedName, suggestion);
+    return suggestion;
+  }
 
   /// Picks an unused local id for a new entry.
   String _uniqueId(String host, int port) {

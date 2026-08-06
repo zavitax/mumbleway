@@ -139,6 +139,19 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // A name to connect under, taken from the device rather than from
+        // whoever's QR code was scanned. See DeviceIdentity on the Dart side
+        // for why an invitation no longer carries one.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/identity",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "suggestedName" -> result.success(deviceOwnerName())
+                else -> result.notImplemented()
+            }
+        }
+
         // Whether there is a conversation to keep the processor awake for.
         //
         // Its own channel rather than the overlay's, even though the wake lock
@@ -321,6 +334,40 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /**
+     * The closest thing Android will tell an ordinary app about who owns the
+     * device.
+     *
+     * Not the Google account. `AccountManager` has returned only accounts the
+     * calling app itself owns since Android 8 unless it holds `GET_ACCOUNTS`,
+     * which is a contacts-class runtime permission — a prompt reading "allow
+     * MumbleWay to access your contacts" in order to pre-fill a nickname would
+     * be a worse trade than any name is worth, and most riders would refuse it
+     * and be right to.
+     *
+     * What is left needs no permission:
+     *
+     *  - `Settings.Global.DEVICE_NAME`, which is what the owner typed when the
+     *    phone asked what to call it, and is usually a person's name.
+     *  - `UserManager.getUserName()`, the profile name, which is "Owner" on a
+     *    single-user phone and something better on a multi-user one.
+     *
+     * Either can be absent or useless; the Dart side rejects the generic
+     * answers and falls through to a word pair, so returning junk is safe.
+     */
+    private fun deviceOwnerName(): String? {
+        runCatching {
+            Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)
+        }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+
+        runCatching {
+            (getSystemService(android.content.Context.USER_SERVICE) as? android.os.UserManager)
+                ?.userName
+        }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+
+        return null
     }
 
     private fun canDrawOverlays(): Boolean =

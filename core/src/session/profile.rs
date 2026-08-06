@@ -196,15 +196,25 @@ fn percent_encode(s: &str) -> String {
 pub fn build_url(profile: &ServerProfile, channel: Option<&str>, include_password: bool) -> String {
     let mut url = String::from("mumble://");
 
-    if !profile.username.trim().is_empty() {
-        url.push_str(&percent_encode(&profile.username));
-        if include_password {
-            if let Some(p) = profile.password.as_ref().filter(|p| !p.is_empty()) {
-                url.push(':');
-                url.push_str(&percent_encode(p));
-            }
+    // Deliberately no username.
+    //
+    // An invitation says where to go, not who is going. The name belonged to
+    // whoever generated the code, and every rider who scanned it arrived under
+    // that same name — which a Mumble server answers by refusing the second
+    // connection or by quietly appending a digit. Neither is what the person
+    // sharing the code meant to hand out. The scanning device supplies its own;
+    // see DeviceIdentity on the Dart side.
+    //
+    // The password stays, and rides in the userinfo field with the username
+    // left empty — `mumble://:secret@host`, which is ordinary URI syntax. It is
+    // the *server's* password, the same one for everybody, so unlike the name
+    // it is genuinely part of the invitation.
+    if include_password {
+        if let Some(p) = profile.password.as_ref().filter(|p| !p.is_empty()) {
+            url.push(':');
+            url.push_str(&percent_encode(p));
+            url.push('@');
         }
-        url.push('@');
     }
 
     url.push_str(&profile.host);
@@ -233,7 +243,10 @@ pub fn build_json(
         host: profile.host.clone(),
         name: Some(profile.name.clone()),
         port: Some(profile.port),
-        username: Some(profile.username.clone()),
+        // None, for the reason given in build_url: a name identifies the rider
+        // holding the device, and is the one field in a profile that must not
+        // travel with it.
+        username: None,
         password: if include_password {
             profile.password.clone()
         } else {
@@ -368,14 +381,54 @@ mod tests {
         p.password = Some("s3cret pass".into());
 
         let url = build_url(&p, Some("Riders Lounge"), true);
-        let back = parse_url(&url, "unused").unwrap();
+        let back = parse_url(&url, "the-scanning-device").unwrap();
 
         assert_eq!(back.host, "voice.example.com");
         assert_eq!(back.port, 64744);
-        assert_eq!(back.username, "alice");
+        // Not "alice". The link carries no name, so the scanning device's own
+        // is what fills in — which is the whole point of leaving it out.
+        assert_eq!(back.username, "the-scanning-device");
         assert_eq!(back.password.as_deref(), Some("s3cret pass"));
         assert_eq!(back.auto_join_channel.as_deref(), Some("Riders Lounge"));
         assert_eq!(back.name, "Sunday Ride");
+    }
+
+    #[test]
+    fn shared_links_never_name_the_rider_who_shared_them() {
+        let mut p = ServerProfile::new("Sunday Ride", "voice.example.com", 64744, "alice");
+        p.password = Some("hunter2".into());
+
+        for include_password in [true, false] {
+            let url = build_url(&p, Some("Riders Lounge"), include_password);
+            assert!(
+                !url.contains("alice"),
+                "the sharer's name leaked into a link: {url}"
+            );
+            let json = build_json(&p, Some("Riders Lounge"), include_password).unwrap();
+            assert!(
+                !json.contains("alice"),
+                "the sharer's name leaked into a profile file: {json}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_password_survives_without_a_username_beside_it() {
+        // `mumble://:secret@host` — empty userinfo user, which is ordinary URI
+        // syntax but the one shape this format had never produced before the
+        // username was dropped. If a parser mishandled it the password would
+        // arrive as part of the host, and the link would be silently useless.
+        let mut p = ServerProfile::new("S", "h.example", DEFAULT_PORT, "alice");
+        p.password = Some("s3cret pass".into());
+
+        let url = build_url(&p, None, true);
+        assert!(url.starts_with("mumble://:"), "unexpected shape: {url}");
+
+        let back = parse_url(&url, "fallback").unwrap();
+        assert_eq!(back.host, "h.example");
+        assert_eq!(back.port, DEFAULT_PORT);
+        assert_eq!(back.password.as_deref(), Some("s3cret pass"));
+        assert_eq!(back.username, "fallback");
     }
 
     #[test]
@@ -388,7 +441,7 @@ mod tests {
         let url = build_url(&p, Some("Étage 2"), true);
         let back = parse_url(&url, "x").unwrap();
 
-        assert_eq!(back.username, "two words");
+        assert_eq!(back.username, "x");
         assert_eq!(back.password.as_deref(), Some("a:b@c/d"));
         assert_eq!(back.auto_join_channel.as_deref(), Some("Étage 2"));
         assert_eq!(back.name, "Café / Bar");
@@ -434,7 +487,8 @@ mod tests {
         assert_eq!(back.len(), 1);
         assert_eq!(back[0].host, "h.example");
         assert_eq!(back[0].port, 4242);
-        assert_eq!(back[0].username, "bob");
+        // The fallback, not "bob" — a profile file names a server, not a rider.
+        assert_eq!(back[0].username, "x");
         assert_eq!(back[0].password.as_deref(), Some("pw"));
         assert_eq!(back[0].auto_join_channel.as_deref(), Some("Ops"));
     }

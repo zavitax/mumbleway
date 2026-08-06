@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -51,6 +53,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
     final source = widget.existing ?? widget.prefill;
     if (source == null) {
       _port.text = defaultPort().toString();
+      // A name to connect under, so the field is not simply blank and in the
+      // way. Derived from the device rather than shared or invented, and only
+      // a suggestion — it is an ordinary editable field.
+      unawaited(_suggestUsername());
       return;
     }
     _name.text = source.name;
@@ -58,6 +64,17 @@ class _AddServerScreenState extends State<AddServerScreen> {
     _port.text = source.port.toString();
     _user.text = source.username;
     _password.text = source.password ?? '';
+  }
+
+  /// Fills the username field with the device's own suggestion.
+  ///
+  /// Asynchronous because the answer comes from the platform, so the field is
+  /// briefly empty. Only filled if it still is: a rider who types faster than
+  /// a method channel answers should not have their name replaced.
+  Future<void> _suggestUsername() async {
+    final name = await AppStateScope.of(context).suggestedUsername();
+    if (!mounted || _user.text.isNotEmpty) return;
+    _user.text = name;
   }
 
   @override

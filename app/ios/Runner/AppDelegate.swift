@@ -10,6 +10,7 @@ import UIKit
   private var audioSession: AudioSession?
   private var remoteCommands: RemoteCommands?
   private var logSink: EngineLogSink?
+  private var identity: DeviceIdentity?
 
   override func application(
     _ application: UIApplication,
@@ -38,6 +39,9 @@ import UIKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayLog") {
       logSink = EngineLogSink(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayIdentity") {
+      identity = DeviceIdentity(messenger: registrar.messenger())
     }
     // Invitation links. The scene delegate receives them; this end is only
     // where the channel is opened, and it may well happen after a link has

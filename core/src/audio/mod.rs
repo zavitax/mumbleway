@@ -11,6 +11,7 @@ pub mod jitter;
 pub mod quality;
 pub mod resample;
 pub mod spectrum;
+pub mod stretch;
 pub mod testsig;
 
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};

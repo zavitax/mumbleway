@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 
 use super::codec::{VoiceDecoder, FRAME_SAMPLES, SAMPLE_RATE};
 use super::dsp::LevelNormalizer;
+use super::stretch::TimeCompressor;
 use crate::error::Result;
 
 /// Loudness every speaker is brought towards, in dBFS.
@@ -30,11 +31,60 @@ pub const DEFAULT_TARGET_FRAMES: usize = 10;
 /// short of useless rather than at zero.
 pub const MIN_TARGET_FRAMES: usize = 2;
 
-/// Never buffer more than this; beyond it we are adding delay, not resilience.
+/// Never *aim* for more than this; beyond it we are adding delay, not
+/// resilience.
+///
+/// Distinct from how much the buffer may end up holding, which is
+/// [`MAX_BUFFERED_MS`] and far larger. This is the cushion the buffer builds
+/// on purpose and pays for in mouth-to-ear delay on every word; that is the
+/// backlog it will tolerate having been handed all at once, and gets rid of.
 pub const MAX_TARGET_FRAMES: usize = 25;
 
-/// Drop the whole buffer if it somehow exceeds this (a stuck or hostile sender).
-const HARD_CAP_FRAMES: usize = 60;
+/// The most audio the buffer will hold, however it got there.
+///
+/// Ten seconds, and it used to be 1.2 — beyond which the whole buffer was
+/// thrown away as a stuck or hostile sender. That is the right reflex for a
+/// sender numbering its packets nonsensically and the wrong one for the case
+/// it actually fired on: a rider goes under a bridge, the link stalls, and
+/// every packet held up somewhere in the network arrives at once. Discarding
+/// them loses the words. Holding them and playing them off quickly does not —
+/// see [`Self::playout_speed`].
+///
+/// Ten seconds is where holding stops being worth it: a reply to something
+/// said ten seconds ago has missed its moment whatever it says.
+const MAX_BUFFERED_MS: u64 = 10_000;
+
+/// Backlog above the target that is tolerated before playback speeds up.
+///
+/// Ordinary jitter puts a few frames extra in hand and takes them out again;
+/// speeding up for that would mean the pitch-period cutter running almost all
+/// the time for no gain the listener could name.
+const CATCH_UP_MARGIN_MS: u64 = 120;
+
+/// Excess backlog at which playback reaches [`MAX_PLAYOUT_SPEED`].
+///
+/// A second of unwanted delay is worth clearing at full speed. Between the
+/// margin and here the speed is proportional, so a small overshoot is taken
+/// out gently and a large one urgently.
+const CATCH_UP_RANGE_MS: u64 = 1_000;
+
+/// Fastest the backlog is ever played off.
+///
+/// Two. Speech stays comfortably intelligible at twice its rate — faster than
+/// anyone talks, but the same voice saying the same words — and past that it
+/// stops being listening and starts being work.
+pub const MAX_PLAYOUT_SPEED: f32 = 2.0;
+
+/// How quickly the speed moves towards where the backlog says it should be,
+/// per frame played.
+///
+/// Separate rates, and slow ones. A step change in speed is heard as a lurch,
+/// and the way to get one is to let the speed track the backlog exactly: the
+/// backlog is what the speed is changing, so the two chase each other. Rising
+/// a little faster than falling settles it, and 0.10 over 20 ms frames is
+/// about a third of a second to take up a change.
+const SPEED_ATTACK: f32 = 0.10;
+const SPEED_RELEASE: f32 = 0.05;
 
 /// How far out of step a packet must be before it counts as a new stream
 /// rather than a late or reordered one.
@@ -147,6 +197,11 @@ pub struct SpeakerBuffer {
     /// asking *when* a frame belongs, rather than how many there have been,
     /// has to read it from here.
     played_slot: Option<u64>,
+    /// Removes pitch periods so a backlog can be played off faster than it
+    /// arrived without the voice changing pitch.
+    compressor: TimeCompressor,
+    /// The rate the backlog is currently being played off at, 1.0 upwards.
+    speed: f32,
 }
 
 impl SpeakerBuffer {
@@ -171,6 +226,8 @@ impl SpeakerBuffer {
             stalled_rounds: 0,
             level_db: SILENT_DB,
             played_slot: None,
+            compressor: TimeCompressor::new(),
+            speed: 1.0,
         })
     }
 
@@ -266,6 +323,8 @@ impl SpeakerBuffer {
                     self.concealed_run = 0;
                     self.clean_run = 0;
                     self.played_slot = None;
+                    self.compressor.reset();
+                    self.speed = 1.0;
                 } else {
                     // Too late to be useful; its slot has already been played.
                     return;
@@ -275,10 +334,93 @@ impl SpeakerBuffer {
         self.stalled_rounds = 0;
         self.pending.insert(sequence, opus);
 
-        if self.pending.len() > HARD_CAP_FRAMES {
-            // Something is badly wrong; resynchronise rather than grow forever.
-            self.pending.clear();
-            self.next_seq = None;
+        // Past the ceiling, give up the *oldest* audio rather than all of it.
+        //
+        // Which end matters. Clearing the buffer discards a talker's whole
+        // sentence for the crime of arriving in one lump, and losing the newest
+        // would mean holding ten seconds of stale speech while ignoring what is
+        // being said now. Dropping from the front is the only end that leaves
+        // the listener with the most recent thing that was said.
+        //
+        // No resynchronisation is needed afterwards. The play head is now far
+        // behind what is held, which `pop` already recognises as a gap too wide
+        // to conceal, and it jumps to what is there.
+        let cap = self.max_buffered_frames();
+        while self.pending.len() > cap {
+            let Some(oldest) = self.pending.keys().next().copied() else {
+                break;
+            };
+            self.pending.remove(&oldest);
+        }
+    }
+
+    /// The most frames this buffer will hold, from the sender's frame length.
+    ///
+    /// Counted in time rather than packets, because frame length is the
+    /// sender's choice and Opus allows 10 through 60 ms: a fixed packet count
+    /// is six times as much audio from one client as from another.
+    fn max_buffered_frames(&self) -> usize {
+        // Sequence counts 10 ms units, so the step *is* the frame length in
+        // hundredths of a second.
+        let frame_ms = self.step() * 10;
+        (MAX_BUFFERED_MS / frame_ms).max(1) as usize
+    }
+
+    /// How much audio is held, in milliseconds.
+    pub fn buffered_ms(&self) -> u64 {
+        self.pending.len() as u64 * self.step() * 10
+    }
+
+    /// The rate the backlog is currently being played off at.
+    ///
+    /// 1.0 unless the buffer is holding materially more than it means to.
+    pub fn playout_speed(&self) -> f32 {
+        self.speed
+    }
+
+    /// Moves the playout speed towards what the backlog calls for.
+    ///
+    /// Proportional, not a switch. A buffer two frames past the margin has
+    /// nothing wrong with it and should be nudged; one holding four seconds
+    /// should be emptied as fast as the listener can follow. Anything in
+    /// between gets something in between, and the smoothing keeps the change
+    /// itself from being the audible part.
+    fn advance_speed(&mut self) {
+        let excess = self
+            .buffered_ms()
+            .saturating_sub(self.target as u64 * self.step() * 10)
+            .saturating_sub(CATCH_UP_MARGIN_MS);
+        let reach = (excess as f32 / CATCH_UP_RANGE_MS as f32).clamp(0.0, 1.0);
+        let want = 1.0 + reach * (MAX_PLAYOUT_SPEED - 1.0);
+
+        let glide = if want > self.speed {
+            SPEED_ATTACK
+        } else {
+            SPEED_RELEASE
+        };
+        self.speed += (want - self.speed) * glide;
+        self.settle_speed();
+    }
+
+    /// Lets the catch-up rate fall back while nothing is being played.
+    ///
+    /// Time passes whether or not the buffer has anything to hand over, and a
+    /// rate left standing from the last catch-up would be spent on the opening
+    /// of the next utterance — frames that arrived on time and do not need
+    /// hurrying. Without this the only thing that brings the speed down is
+    /// playing, which is precisely what a drained buffer is not doing.
+    fn relax_speed(&mut self) {
+        self.speed += (1.0 - self.speed) * SPEED_RELEASE;
+        self.settle_speed();
+    }
+
+    /// Snaps to exactly 1.0 near the bottom, and forgets any debt when it gets
+    /// there — a fraction of a period owed from a catch-up that is over would
+    /// be paid by cutting the first word of the next one.
+    fn settle_speed(&mut self) {
+        if (self.speed - 1.0).abs() < 0.01 {
+            self.speed = 1.0;
+            self.compressor.reset();
         }
     }
 
@@ -333,6 +475,7 @@ impl SpeakerBuffer {
     /// visible as time passing with nothing new turning up.
     pub fn note_waiting(&mut self) {
         self.stalled_rounds = self.stalled_rounds.saturating_add(1);
+        self.relax_speed();
         self.decay_level();
     }
 
@@ -366,11 +509,15 @@ impl SpeakerBuffer {
                 // Genuinely run dry: refill to the target before starting
                 // again, rather than stuttering along one frame at a time.
                 self.playing = false;
+                self.relax_speed();
                 return None;
             }
         };
         self.playing = true;
         self.stalled_rounds = 0;
+        // Read the backlog before this call spends any of it, so the speed is
+        // set by what is actually in hand.
+        self.advance_speed();
         let next = self.next_seq.unwrap_or(available);
 
         // Conceal only for a packet or two that plausibly went missing in
@@ -409,7 +556,7 @@ impl SpeakerBuffer {
             if self.normalise {
                 self.normalizer.process(&mut out[..n]);
             }
-            return Some(n);
+            return Some(self.compressor.process(out, n, self.speed));
         }
 
         // Otherwise play what is actually held, wherever it sits. Removing a
@@ -438,6 +585,12 @@ impl SpeakerBuffer {
         if self.normalise {
             self.normalizer.process(&mut out[..n]);
         }
+        // Shorten the frame if the backlog is deeper than it should be. The
+        // mixer is paced by the playback queue, so handing it less audio for
+        // the same packet is exactly what makes the buffer drain faster than
+        // real time — there is no clock to tell, only how much is produced.
+        let n = self.compressor.process(out, n, self.speed);
+
         // Rises immediately and falls gradually, so a meter tracks speech
         // rather than flickering on every syllable boundary.
         let level = super::dsp::to_dbfs(super::dsp::rms(&out[..n]));
@@ -462,6 +615,8 @@ impl SpeakerBuffer {
         self.concealed_run = 0;
         self.clean_run = 0;
         self.played_slot = None;
+        self.compressor.reset();
+        self.speed = 1.0;
         self.normalizer.reset();
         let _ = self.decoder.reset();
     }
@@ -991,13 +1146,197 @@ mod tests {
     fn survives_a_runaway_sender_without_growing_without_bound() {
         let mut b = SpeakerBuffer::new().unwrap();
         let f = frames(1);
-        for i in 0..500u64 {
-            b.push(i, f[0].clone(), false);
+        for i in 0..5_000u64 {
+            b.push(i * 2, f[0].clone(), false);
         }
         assert!(
-            b.buffered() <= HARD_CAP_FRAMES,
-            "buffer grew to {} frames",
-            b.buffered()
+            b.buffered_ms() <= MAX_BUFFERED_MS,
+            "buffer grew to {} ms",
+            b.buffered_ms()
+        );
+    }
+
+    #[test]
+    fn the_ceiling_keeps_the_newest_audio_and_not_the_oldest() {
+        // Which end is given up is the whole of it. Clearing the buffer — what
+        // this used to do — throws away a talker's sentence for arriving in one
+        // lump, and dropping the newest would leave the listener ten seconds
+        // behind for the rest of the call.
+        let mut b = SpeakerBuffer::new().unwrap();
+        let f = frames(1);
+        let count = 2_000u64;
+        for i in 0..count {
+            b.push(i * 2, f[0].clone(), false);
+        }
+        assert!(b.buffered() > 0, "everything was thrown away");
+
+        let mut out = Vec::new();
+        b.pop(&mut out).expect("should have audio to play");
+        let played = b.play_slot().expect("a frame was played");
+        let newest = (count - 1) * 2;
+        assert!(
+            newest - played <= MAX_BUFFERED_MS * 2 / 10,
+            "playing slot {played} when the newest sent was {newest}"
+        );
+    }
+
+    #[test]
+    fn a_backlog_is_played_off_faster_than_it_arrived() {
+        // The point of the whole mechanism. A stall that ends with everything
+        // arriving at once must not leave the rider permanently that far
+        // behind the conversation.
+        let mut b = SpeakerBuffer::new().unwrap();
+        // Four seconds, well past the target and past the margin.
+        let packets = frames(200);
+        for (i, p) in packets.iter().enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+
+        let mut out = Vec::new();
+        let mut produced = 0usize;
+        let mut consumed = 0usize;
+        for _ in 0..100 {
+            match b.pop(&mut out) {
+                Some(n) => {
+                    produced += n;
+                    consumed += FRAME_SAMPLES;
+                }
+                None => break,
+            }
+        }
+
+        assert!(
+            b.playout_speed() > 1.5,
+            "four seconds in hand and the speed only reached {}",
+            b.playout_speed()
+        );
+        let rate = consumed as f32 / produced as f32;
+        assert!(
+            rate > 1.3,
+            "played {consumed} samples of audio as {produced}: only {rate:.2}x"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_backlog_is_played_at_normal_speed() {
+        // The margin earns its place here. Every burst puts a few frames extra
+        // in hand and takes them out again; speeding up for that would mean
+        // the cutter running almost all the time, on every call, for a delay
+        // no listener could have named.
+        let mut b = SpeakerBuffer::new().unwrap();
+        let packets = frames(DEFAULT_TARGET_FRAMES + 4);
+        for (i, p) in packets.iter().enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+
+        let mut out = Vec::new();
+        for _ in 0..packets.len() {
+            let Some(n) = b.pop(&mut out) else { break };
+            assert_eq!(n, FRAME_SAMPLES, "an ordinary backlog was compressed");
+        }
+        assert_eq!(b.playout_speed(), 1.0);
+    }
+
+    #[test]
+    fn the_speed_returns_to_normal_once_the_backlog_is_gone() {
+        // Catching up has to end by itself. A speed that stayed up would keep
+        // the buffer empty and then race through every word that followed.
+        let mut b = SpeakerBuffer::new().unwrap();
+        let packets = frames(200);
+        for (i, p) in packets.iter().enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+
+        let mut out = Vec::new();
+        while b.pop(&mut out).is_some() {}
+        assert!(
+            b.playout_speed() > 1.0,
+            "the catch-up should still be winding down the moment it runs out"
+        );
+
+        // Two seconds of the mixer asking and being told there is nothing,
+        // which is what a pause between sentences looks like from here.
+        for _ in 0..100 {
+            b.note_waiting();
+        }
+        assert_eq!(
+            b.playout_speed(),
+            1.0,
+            "still catching up after a pause with an empty buffer"
+        );
+    }
+
+    #[test]
+    fn the_speed_climbs_and_falls_rather_than_switching() {
+        // A step change in rate is heard as a lurch. What makes it gradual is
+        // the glide, and what makes the glide necessary is that the speed and
+        // the backlog each move the other — left to track exactly, they chase.
+        let mut b = SpeakerBuffer::new().unwrap();
+        let packets = frames(200);
+        for (i, p) in packets.iter().enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+
+        let mut out = Vec::new();
+        let mut previous = 1.0f32;
+        let mut biggest_step = 0.0f32;
+        while b.pop(&mut out).is_some() {
+            let now = b.playout_speed();
+            biggest_step = biggest_step.max((now - previous).abs());
+            previous = now;
+        }
+        assert!(
+            biggest_step < 0.15,
+            "the speed jumped by {biggest_step} in one frame"
+        );
+    }
+
+    #[test]
+    fn catching_up_does_not_raise_the_pitch() {
+        // The reason this is a period cutter and not a resampler. Reading the
+        // samples out faster would shorten the backlog just as well and make
+        // everyone sound like a chipmunk doing it.
+        let mut enc = VoiceEncoder::new(Quality::Balanced).unwrap();
+        let hz = 200.0f32;
+        let packets: Vec<Vec<u8>> = (0..200)
+            .map(|i| {
+                let pcm: Vec<f32> = (0..FRAME_SAMPLES)
+                    .map(|s| {
+                        let t = (i * FRAME_SAMPLES + s) as f32 / 48_000.0;
+                        (2.0 * std::f32::consts::PI * hz * t).sin() * 0.4
+                    })
+                    .collect();
+                enc.encode(&pcm).unwrap()
+            })
+            .collect();
+
+        let mut b = SpeakerBuffer::new().unwrap();
+        b.set_normalisation(false);
+        for (i, p) in packets.iter().enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+
+        let mut out = Vec::new();
+        let mut played = Vec::new();
+        // Skip the first few frames: the speed is still gliding up, and the
+        // decoder is still settling.
+        let mut frames_seen = 0;
+        while let Some(n) = b.pop(&mut out) {
+            frames_seen += 1;
+            if frames_seen > 20 {
+                played.extend_from_slice(&out[..n]);
+            }
+        }
+        assert!(b.playout_speed() > 1.0 || !played.is_empty());
+
+        let crossings = played
+            .windows(2)
+            .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+            .count();
+        let measured = crossings as f32 * 48_000.0 / played.len() as f32;
+        assert!(
+            (measured - hz).abs() < 20.0,
+            "a {hz} Hz tone came back at {measured} Hz after catching up"
         );
     }
 

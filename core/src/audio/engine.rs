@@ -2095,6 +2095,59 @@ mod tests {
             .collect()
     }
 
+    #[test]
+    fn a_deep_backlog_reaches_the_listener_faster_than_real_time() {
+        // The unit tests around SpeakerBuffer prove it hands out shorter
+        // frames when it is holding too much. That is only half the claim, and
+        // the other half lives here: nothing anywhere sets a playback *rate*.
+        // The mixer is paced by how empty the playback queue is, and the queue
+        // is drained by the output device at the speed of the world — so
+        // producing fewer samples from the same packet is the entire mechanism
+        // by which a backlog is caught up. If that link were ever broken the
+        // buffer would still shorten its frames and the listener would still
+        // be four seconds behind, with every unit test passing.
+        let shared = AudioShared::new();
+        // Four seconds arriving at once, as it does at the far side of a
+        // tunnel. Numbered in tens of milliseconds, which is Mumble's unit.
+        for (i, f) in encoded_frames(200).into_iter().enumerate() {
+            shared.push_incoming(0, &packet(1, i as u64 * 2, f, false));
+        }
+
+        let (mut scratch, mut mixed) = (Vec::new(), Vec::new());
+        let rounds = 100usize;
+        for _ in 0..rounds {
+            // The worker keeps mixing while the queue is short.
+            for _ in 0..16 {
+                if shared.playback_queue.lock().len() >= FRAME_SAMPLES * 3 {
+                    break;
+                }
+                mix_speakers(&shared, &mut scratch, &mut mixed);
+                if mixed.is_empty() {
+                    break;
+                }
+            }
+            // And the device takes one period, whatever is there.
+            let mut q = shared.playback_queue.lock();
+            for _ in 0..FRAME_SAMPLES {
+                if q.pop_front().is_none() {
+                    break;
+                }
+            }
+        }
+
+        let (invented, decoded) = shared
+            .speakers
+            .lock()
+            .values()
+            .map(|b| b.frame_counts())
+            .fold((0u64, 0u64), |(a, c), (x, y)| (a + x, c + y));
+        assert_eq!(invented, 0, "a complete stream should invent nothing");
+        assert!(
+            decoded as f32 > rounds as f32 * 1.3,
+            "{rounds} periods of real time played only {decoded} frames of a backlog"
+        );
+    }
+
     fn packet(session: u32, seq: u64, opus: Vec<u8>, term: bool) -> VoicePacket {
         VoicePacket {
             session: Some(session),

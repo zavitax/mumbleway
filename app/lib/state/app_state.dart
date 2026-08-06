@@ -1758,6 +1758,28 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Closes every live connection, for an app that is going away.
+  ///
+  /// Mumble has no goodbye message: a client leaves by closing its socket, and
+  /// the other riders find out because the server notices. Left to itself that
+  /// happens whenever the process finally dies, which on a phone can be minutes
+  /// after the rider thinks they have closed the app — and for all of those
+  /// minutes they are on everyone else's list, present and silent.
+  ///
+  /// Best effort by nature. It runs on the way out, when there may be very
+  /// little time left, so every connection is asked at once rather than in
+  /// turn and none of them is waited on for long.
+  Future<void> disconnectAll() async {
+    final ids = _registered.toList();
+    if (ids.isEmpty) return;
+    await Future.wait(ids.map(disconnect)).timeout(
+      const Duration(seconds: 2),
+      // A socket that will not close politely still closes when the process
+      // goes. Waiting longer for it only delays that.
+      onTimeout: () => const [],
+    );
+  }
+
   Future<void> trustChangedCertificate(String id) async {
     final rt = runtimeFor(id);
     final fp = rt.pendingFingerprint;

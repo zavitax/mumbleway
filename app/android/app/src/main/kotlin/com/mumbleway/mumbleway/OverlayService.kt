@@ -316,6 +316,38 @@ class OverlayService : Service() {
         removeOverlay()
         stopSelf()
         super.onTaskRemoved(rootIntent)
+        endProcess()
+    }
+
+    /**
+     * Ends the process, so the server finds out the rider has gone.
+     *
+     * Mumble has no goodbye message. A client leaves by closing its TCP
+     * connection, and everyone else learns of it because the server notices the
+     * socket close. So "disconnect cleanly" means, in the end, "let the socket
+     * close" — and nothing here was doing that.
+     *
+     * Stopping the service is not enough. The connections are held by the Rust
+     * core, on its own threads, in the process — not in the Dart isolate and
+     * not in this service. Swiping the app away destroys the activity and the
+     * engine with it, but Android keeps the emptied process cached for as long
+     * as it feels like, and those threads keep their sockets open the whole
+     * time. No close, no notification, so the rider sat on every other rider's
+     * list as present and silent until the server's own ping timeout gave up on
+     * them, minutes later.
+     *
+     * Killing the process closes every socket it owns, at once, and the server
+     * sees exactly what it would see from a rider who pressed Disconnect. It is
+     * a blunt instrument and it is the right one here: the task has been swiped
+     * away, there is no interface left to return to, and everything worth
+     * keeping was written to disk when it changed rather than on the way out.
+     *
+     * Only from onTaskRemoved. Backgrounding must never come through here — the
+     * whole point of the foreground service is that a call survives the rider
+     * looking at their map.
+     */
+    private fun endProcess() {
+        android.os.Process.killProcess(android.os.Process.myPid())
     }
 
     override fun onDestroy() {

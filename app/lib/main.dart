@@ -44,7 +44,8 @@ class MumbleWayApp extends StatefulWidget {
   State<MumbleWayApp> createState() => _MumbleWayAppState();
 }
 
-class _MumbleWayAppState extends State<MumbleWayApp> {
+class _MumbleWayAppState extends State<MumbleWayApp>
+    with WidgetsBindingObserver {
   final AppState _state = AppState();
 
   /// Lets a `mumble://` link open a screen from outside the widget tree.
@@ -58,9 +59,34 @@ class _MumbleWayAppState extends State<MumbleWayApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _state.start();
     _linkSub = DeepLinks.instance.links.listen(_openLink);
     unawaited(_startLinks());
+  }
+
+  /// Hangs up when the app is being taken away.
+  ///
+  /// `detached` means the process is on its way out with the interface already
+  /// gone. Mumble has no goodbye message — a client leaves by closing its
+  /// socket — so this is the last chance to close one deliberately rather than
+  /// leave it to whenever the operating system gets round to reaping the
+  /// process, which on a phone is long after the rider believes they have left.
+  ///
+  /// Deliberately not `paused` or `inactive`. Those are a rider glancing at
+  /// their map, or a notification sliding down, and dropping a call for either
+  /// would be far worse than the fault this fixes.
+  ///
+  /// Not to be relied on alone. Android does not promise to deliver `detached`
+  /// before it tears the engine down, and the connections outlive the isolate
+  /// because they are held by the Rust core in the process; OverlayService
+  /// closes that gap from the platform side. This is the polite path, taken
+  /// when there is still time to be polite.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      unawaited(_state.disconnectAll());
+    }
   }
 
   Future<void> _startLinks() async {
@@ -111,6 +137,7 @@ class _MumbleWayAppState extends State<MumbleWayApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _linkSub?.cancel();
     _state.dispose();
     super.dispose();

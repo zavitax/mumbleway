@@ -14,7 +14,7 @@ use nnnoiseless::DenoiseState;
 
 use super::aec::{EchoCanceller, DEFAULT_TAPS};
 use super::dsp::{
-    rms, to_dbfs, Agc, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
+    rms, to_dbfs, Agc, Biquad, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
 };
 use super::pitch::PitchTracker;
 
@@ -36,6 +36,22 @@ pub enum NoiseProfile {
     /// Motorcycle helmet at speed: steep rumble cut, full suppression,
     /// assertive gate and AGC.
     Helmet,
+    /// Chooses between the four above from what the microphone is hearing.
+    ///
+    /// A fifth option rather than a replacement, and never itself in force:
+    /// see [`CaptureProcessor::effective_profile`]. A rider who sets `Helmet`
+    /// and then stops for coffee is over-suppressed indoors; one who sets
+    /// `Light` at home and then rides is under-suppressed at 120 km/h, which
+    /// is the worse half — and neither notices until somebody tells them.
+    ///
+    /// `Off` is never chosen. It is a diagnostic setting, not a condition.
+    ///
+    /// It has no numbers of its own — it is a rule for choosing, not a
+    /// setting. Every parameter table below therefore shares `Standard`'s row
+    /// with it, which is a fallback that should never be reached:
+    /// [`CaptureProcessor`] resolves the choice once and keeps a profile that
+    /// is never `Auto` as the one actually in force.
+    Auto,
 }
 
 impl NoiseProfile {
@@ -45,7 +61,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => 60.0,
             NoiseProfile::Light => 90.0,
-            NoiseProfile::Standard => 120.0,
+            NoiseProfile::Standard | NoiseProfile::Auto => 120.0,
             NoiseProfile::Helmet => 180.0,
         }
     }
@@ -79,7 +95,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => None,
             NoiseProfile::Light => Some(12_000.0),
-            NoiseProfile::Standard => Some(10_000.0),
+            NoiseProfile::Standard | NoiseProfile::Auto => Some(10_000.0),
             NoiseProfile::Helmet => Some(6_500.0),
         }
     }
@@ -90,7 +106,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => 0.0,
             NoiseProfile::Light => 0.6,
-            NoiseProfile::Standard => 0.9,
+            NoiseProfile::Standard | NoiseProfile::Auto => 0.9,
             NoiseProfile::Helmet => 1.0,
         }
     }
@@ -100,7 +116,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => (-90.0, -95.0),
             NoiseProfile::Light => (-52.0, -60.0),
-            NoiseProfile::Standard => (-46.0, -54.0),
+            NoiseProfile::Standard | NoiseProfile::Auto => (-46.0, -54.0),
             NoiseProfile::Helmet => (-40.0, -48.0),
         }
     }
@@ -110,7 +126,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => 0.0,
             NoiseProfile::Light => 0.30,
-            NoiseProfile::Standard => 0.50,
+            NoiseProfile::Standard | NoiseProfile::Auto => 0.50,
             NoiseProfile::Helmet => 0.65,
         }
     }
@@ -119,7 +135,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => 0.0,
             NoiseProfile::Light => 12.0,
-            NoiseProfile::Standard => 18.0,
+            NoiseProfile::Standard | NoiseProfile::Auto => 18.0,
             NoiseProfile::Helmet => 24.0,
         }
     }
@@ -137,7 +153,7 @@ impl NoiseProfile {
             // everything, permanently.
             NoiseProfile::Off => 6.0,
             NoiseProfile::Light => 6.0,
-            NoiseProfile::Standard => 8.0,
+            NoiseProfile::Standard | NoiseProfile::Auto => 8.0,
             NoiseProfile::Helmet => 10.0,
         }
     }
@@ -153,7 +169,7 @@ impl NoiseProfile {
             // Never used: with suppression off, level decides alone.
             NoiseProfile::Off => 2.0,
             NoiseProfile::Light => 0.80,
-            NoiseProfile::Standard => 0.78,
+            NoiseProfile::Standard | NoiseProfile::Auto => 0.78,
             NoiseProfile::Helmet => 0.75,
         }
     }
@@ -170,7 +186,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => -1.0,
             NoiseProfile::Light => 0.20,
-            NoiseProfile::Standard => 0.25,
+            NoiseProfile::Standard | NoiseProfile::Auto => 0.25,
             NoiseProfile::Helmet => 0.30,
         }
     }
@@ -187,7 +203,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => 0.0,
             NoiseProfile::Light => 3.0,
-            NoiseProfile::Standard => 4.0,
+            NoiseProfile::Standard | NoiseProfile::Auto => 4.0,
             NoiseProfile::Helmet => 6.0,
         }
     }
@@ -203,7 +219,7 @@ impl NoiseProfile {
         match self {
             NoiseProfile::Off => 0.0,
             NoiseProfile::Light => 0.15,
-            NoiseProfile::Standard => 0.20,
+            NoiseProfile::Standard | NoiseProfile::Auto => 0.20,
             NoiseProfile::Helmet => 0.25,
         }
     }
@@ -260,11 +276,37 @@ pub struct BlockAnalysis {
     pub agc_gain_db: f32,
     /// Whether the chain is still in its start-up hold and not to be trusted.
     pub warming_up: bool,
+    /// The profile actually in force, which for [`NoiseProfile::Auto`] is
+    /// whichever of the other four it has settled on.
+    pub effective_profile: NoiseProfile,
 }
 
 /// The full microphone chain.
 pub struct CaptureProcessor {
+    /// What the rider asked for, which may be [`NoiseProfile::Auto`].
     profile: NoiseProfile,
+    /// What is actually in force. Never `Auto`.
+    effective: NoiseProfile,
+    /// Splits the block's energy at 300 Hz, for the `Auto` decision.
+    ///
+    /// Run on the signal *before* the rumble filter, which is the only place
+    /// the question can be asked: the rumble filter's own corner is 180 Hz in
+    /// a helmet, so measuring after it would be measuring the filter that the
+    /// answer chooses. The chooser would then see whatever it last decided.
+    tilt: Biquad,
+    /// Blocks since `Auto` last changed its mind.
+    auto_dwell: u32,
+    /// The background level *before* the chain touches it.
+    ///
+    /// Separate from [`Self::floor`], which tracks the signal after
+    /// suppression and is the right measure for the transmit decision and the
+    /// wrong one for this. Choosing a profile from the post-suppression floor
+    /// is a feedback loop pointing the wrong way: a helmet at speed with
+    /// `Helmet` in force is *quiet* by that measure precisely because the
+    /// profile is working, so Auto reads it as a quiet room and backs off,
+    /// which lets the noise back in. It settles somewhere too gentle, or
+    /// oscillates. Both showed up the first time this was run.
+    auto_floor: NoiseFloorTracker,
     rumble: RumbleFilter,
     /// Closes the top of the band. `None` with suppression off.
     band: Option<SpeechBand>,
@@ -297,13 +339,51 @@ pub struct CaptureProcessor {
 /// output. 15 blocks is 150 ms — imperceptible at connect time.
 const WARMUP_BLOCKS: u32 = 15;
 
+/// Where `Auto` splits the spectrum to ask "is this rumble or is it a room".
+///
+/// 300 Hz. Below it sits wind, engine and road; above it sits nearly all of
+/// the speech that carries a word. The *share* below is what distinguishes a
+/// quiet room from a helmet at speed far better than the level alone does — a
+/// loud living room and a motorway are similar in dBFS and nothing alike in
+/// where the energy is.
+const AUTO_TILT_HZ: f32 = 300.0;
+
+/// Blocks `Auto` must stay put before it may change its mind. 5 s.
+///
+/// Long, on purpose. The cost of switching is not the arithmetic, it is that
+/// the rumble filter, the band filter, the gate and the AGC are all rebuilt
+/// and each starts from nothing — audible as a moment of unevenness. A
+/// chooser that flapped at every junction would spend the ride doing that.
+const AUTO_DWELL_BLOCKS: u32 = 500;
+
+/// Hysteresis on the noise floor thresholds, in dB.
+///
+/// Without it a floor sitting exactly on a boundary switches back and forth
+/// every dwell period for as long as the rider stays there, which is precisely
+/// what a steady speed produces.
+const AUTO_HYSTERESIS_DB: f32 = 4.0;
+
 impl CaptureProcessor {
     pub fn new(profile: NoiseProfile) -> Self {
         let (open_db, close_db) = profile.gate_db();
+        // Auto starts at Standard rather than at either extreme: whichever way
+        // the first few seconds land, the distance to walk is one step.
+        let effective = if profile == NoiseProfile::Auto {
+            NoiseProfile::Standard
+        } else {
+            profile
+        };
         Self {
             profile,
-            rumble: RumbleFilter::new(SAMPLE_RATE as f32, profile.cutoff_hz()),
-            band: profile
+            effective,
+            tilt: Biquad::low_pass(SAMPLE_RATE as f32, AUTO_TILT_HZ, 0.707),
+            auto_dwell: 0,
+            // Slower than the transmit-side tracker. This one is deciding what
+            // kind of place the rider is in, which changes over minutes, not
+            // whether the current block is speech.
+            auto_floor: NoiseFloorTracker::new(100),
+            rumble: RumbleFilter::new(SAMPLE_RATE as f32, effective.cutoff_hz()),
+            band: effective
                 .low_cutoff_hz()
                 .map(|hz| SpeechBand::new(SAMPLE_RATE as f32, hz)),
             denoise: DenoiseState::new(),
@@ -329,19 +409,113 @@ impl CaptureProcessor {
         self.profile
     }
 
+    /// The profile actually in force, which for [`NoiseProfile::Auto`] is
+    /// whichever of the other four it has settled on.
+    ///
+    /// Published rather than kept private because a rider who cannot see where
+    /// Auto has landed has no way to tell a bad choice from a bad chain, and
+    /// the first thing they will do is turn Auto off and never turn it on
+    /// again.
+    pub fn effective_profile(&self) -> NoiseProfile {
+        self.effective
+    }
+
     /// Swaps the profile, rebuilding only what depends on it.
     pub fn set_profile(&mut self, profile: NoiseProfile) {
         if profile == self.profile {
             return;
         }
-        let (open_db, close_db) = profile.gate_db();
         self.profile = profile;
+        self.auto_dwell = 0;
+        let effective = if profile == NoiseProfile::Auto {
+            // Keep whatever is in force and let the chooser move from there.
+            // Snapping to a default would throw away a correct answer the
+            // moment a rider switched Auto on, which is the moment they are
+            // listening hardest.
+            self.effective
+        } else {
+            profile
+        };
+        self.apply_effective(effective);
+    }
+
+    /// Puts a resolved profile in force, rebuilding only what depends on it.
+    fn apply_effective(&mut self, profile: NoiseProfile) {
+        debug_assert_ne!(profile, NoiseProfile::Auto, "Auto is never in force");
+        if profile == self.effective {
+            return;
+        }
+        let (open_db, close_db) = profile.gate_db();
+        self.effective = profile;
         self.rumble = RumbleFilter::new(SAMPLE_RATE as f32, profile.cutoff_hz());
         self.band = profile
             .low_cutoff_hz()
             .map(|hz| SpeechBand::new(SAMPLE_RATE as f32, hz));
         self.gate = NoiseGate::new(open_db, close_db, 15);
         self.agc = Agc::new(-18.0, profile.agc_max_gain_db());
+    }
+
+    /// Share of the block's energy below [`AUTO_TILT_HZ`], 0..1.
+    fn low_share(&mut self, block: &[f32]) -> f32 {
+        if self.profile != NoiseProfile::Auto {
+            // Nothing reads it, and the filter would run on every block of
+            // every call for a number nobody asked for.
+            return 0.0;
+        }
+        let mut low = 0.0f32;
+        let mut total = 0.0f32;
+        for s in block {
+            let l = self.tilt.process(*s);
+            low += l * l;
+            total += *s * *s;
+        }
+        if total <= 1e-12 {
+            return 0.0;
+        }
+        (low / total).clamp(0.0, 1.0)
+    }
+
+    /// Lets `Auto` reconsider, at most once every [`AUTO_DWELL_BLOCKS`].
+    ///
+    /// `floor_db` is [`Self::auto_floor`] — the background *before* the chain
+    /// touches it — and passing the post-suppression floor here instead is the
+    /// bug this was written with. See that field.
+    ///
+    /// The thresholds are a starting point and are not yet measured against a
+    /// real bike. They say so here rather than only in a commit message,
+    /// because whoever finds them wrong will be reading this and not that.
+    fn reconsider(&mut self, floor_db: f32, low_share: f32) {
+        if self.profile != NoiseProfile::Auto {
+            return;
+        }
+        self.auto_dwell = self.auto_dwell.saturating_add(1);
+        if self.auto_dwell < AUTO_DWELL_BLOCKS {
+            return;
+        }
+
+        // Hysteresis applied in the direction that resists *leaving* whatever
+        // is in force, so a floor sitting on a boundary stays put instead of
+        // switching back and forth every five seconds for the whole ride.
+        let bias = |limit: f32, quieter: NoiseProfile| -> f32 {
+            if self.effective == quieter {
+                limit + AUTO_HYSTERESIS_DB
+            } else {
+                limit - AUTO_HYSTERESIS_DB
+            }
+        };
+
+        let want = if floor_db < bias(-55.0, NoiseProfile::Light) && low_share < 0.35 {
+            NoiseProfile::Light
+        } else if floor_db < bias(-40.0, NoiseProfile::Standard) {
+            NoiseProfile::Standard
+        } else {
+            NoiseProfile::Helmet
+        };
+
+        if want != self.effective {
+            self.auto_dwell = 0;
+            self.apply_effective(want);
+        }
     }
 
     pub fn reset(&mut self) {
@@ -354,6 +528,8 @@ impl CaptureProcessor {
         self.agc.reset();
         self.limiter.reset();
         self.floor.reset();
+        self.auto_floor.reset();
+        self.tilt.reset();
         self.hangover = 0;
         self.warmup = WARMUP_BLOCKS;
     }
@@ -395,6 +571,19 @@ impl CaptureProcessor {
             self.aec.process(block, reference)
         };
 
+        // 0b. Where the energy sits, measured before any filter shapes it.
+        //
+        // Has to be here. The rumble filter's corner is 180 Hz in a helmet, so
+        // a measurement taken after it would be measuring the filter that the
+        // measurement chooses — the chooser would see its own last decision
+        // and keep confirming it.
+        let low_share = self.low_share(block);
+        let raw_floor_db = if self.profile == NoiseProfile::Auto {
+            self.auto_floor.update(to_dbfs(rms(block)))
+        } else {
+            0.0
+        };
+
         // 1. Strip wind and engine rumble before anything else sees it, and
         // close the top of the band while we are here.
         //
@@ -411,7 +600,7 @@ impl CaptureProcessor {
         }
 
         // 2. RNNoise. It expects samples scaled to the i16 range, not -1..1.
-        let vad = if self.profile == NoiseProfile::Off {
+        let vad = if self.effective == NoiseProfile::Off {
             self.denoised.copy_from_slice(block);
             // Without the network we have no speech probability, so fall back to
             // a level-based guess and let the gate decide.
@@ -435,7 +624,7 @@ impl CaptureProcessor {
         // it removes it *without* knowing whether a voice was there, so this
         // is not circular.
         let voice = self.pitch.analyse(&self.denoised);
-        let pitch_says_speech = voice.harmonicity >= self.profile.voiced_threshold();
+        let pitch_says_speech = voice.harmonicity >= self.effective.voiced_threshold();
 
         // 4. Blend, so lighter profiles keep some natural room tone — and lift
         // some of the suppression back off on a block that is unambiguously a
@@ -450,11 +639,11 @@ impl CaptureProcessor {
         // precisely that. The relief is for blocks that are unambiguously
         // speech or it is for nothing.
         let relief = if pitch_says_speech {
-            self.profile.voiced_relief() * voice.harmonicity.clamp(0.0, 1.0)
+            self.effective.voiced_relief() * voice.harmonicity.clamp(0.0, 1.0)
         } else {
             0.0
         };
-        let mix = (self.profile.denoise_mix() * (1.0 - relief)).clamp(0.0, 1.0);
+        let mix = (self.effective.denoise_mix() * (1.0 - relief)).clamp(0.0, 1.0);
         for (dst, wet) in block.iter_mut().zip(self.denoised.iter()) {
             *dst = *dst * (1.0 - mix) + *wet * mix;
         }
@@ -480,7 +669,15 @@ impl CaptureProcessor {
         };
         let snr_db = level_db - noise_floor_db;
 
-        let vad_says_speech = vad >= self.profile.vad_threshold();
+        // Let Auto reconsider, from the level of the room rather than the
+        // level of what the chain left of it. After the warm-up only: RNNoise
+        // takes a moment to produce real output and a floor measured through
+        // that is tens of dB too low.
+        if !warming_up {
+            self.reconsider(raw_floor_db, low_share);
+        }
+
+        let vad_says_speech = vad >= self.effective.vad_threshold();
 
         // The SNR margin, relaxed when the block is unambiguously periodic at
         // a human pitch.
@@ -506,9 +703,9 @@ impl CaptureProcessor {
         // no threshold on level can recover it because the wind moved the
         // threshold. Periodicity is evidence the level tests cannot see, so it
         // buys a few dB of margin and nothing more.
-        let margin_db = self.profile.snr_margin_db()
+        let margin_db = self.effective.snr_margin_db()
             - if pitch_says_speech {
-                self.profile.voiced_margin_relief()
+                self.effective.voiced_margin_relief()
             } else {
                 0.0
             };
@@ -529,7 +726,7 @@ impl CaptureProcessor {
         // time. Three arms, deliberately asymmetric:
         let speech_now = if warming_up {
             false
-        } else if self.profile == NoiseProfile::Off {
+        } else if self.effective == NoiseProfile::Off {
             // How hard the audio is cleaned and whether anyone is talking are
             // separate questions. Answering "always" here meant turning
             // suppression off also turned voice activation off, and the far end
@@ -558,7 +755,7 @@ impl CaptureProcessor {
             // stops the weather starting a transmission.
             vad_says_speech
                 && snr_says_speech
-                && voice.harmonicity >= self.profile.aperiodic_threshold()
+                && voice.harmonicity >= self.effective.aperiodic_threshold()
         };
 
         if speech_now {
@@ -574,7 +771,7 @@ impl CaptureProcessor {
         // Except with suppression off, where the audio must come through
         // untouched. Deciding not to transmit is not a licence to alter what
         // is transmitted when we do.
-        let gate_level = if voice_active || self.profile == NoiseProfile::Off {
+        let gate_level = if voice_active || self.effective == NoiseProfile::Off {
             level_db
         } else {
             -120.0
@@ -616,6 +813,7 @@ impl CaptureProcessor {
             gate_open,
             agc_gain_db: self.agc.gain_db(),
             warming_up,
+            effective_profile: self.effective,
         }
     }
 
@@ -810,6 +1008,113 @@ mod tests {
         assert!(
             level < -50.0,
             "13 kHz hiss still reached the level meter at {level} dBFS"
+        );
+    }
+
+    /// Runs a signal through and reports where Auto settled.
+    fn auto_lands_on(signal: &[f32]) -> NoiseProfile {
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            let mut block = chunk.to_vec();
+            p.process(&mut block);
+        }
+        p.effective_profile()
+    }
+
+    #[test]
+    fn auto_is_never_itself_the_profile_in_force() {
+        // The invariant the whole design rests on. Auto has no numbers of its
+        // own — every parameter table shares Standard's row with it purely to
+        // stay exhaustive — so an Auto that reached the chain would be running
+        // on a fallback nobody chose.
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        assert_ne!(p.effective_profile(), NoiseProfile::Auto);
+
+        let noisy = crate::audio::testsig::wind(SAMPLE_RATE as usize * 12, 0.5, 3);
+        for chunk in noisy.chunks_exact(FRAME_SIZE) {
+            let mut block = chunk.to_vec();
+            p.process(&mut block);
+            assert_ne!(p.effective_profile(), NoiseProfile::Auto);
+        }
+    }
+
+    #[test]
+    fn auto_reaches_for_the_helmet_when_it_hears_one() {
+        // Loud and bottom-heavy: wind and engine, which is what a helmet at
+        // speed sounds like and nothing else does.
+        let len = SAMPLE_RATE as usize * 14;
+        let mut roar = crate::audio::testsig::wind(len, 0.7, 5);
+        for (r, e) in roar
+            .iter_mut()
+            .zip(crate::audio::testsig::engine(len, 45.0, 0.6, 6))
+        {
+            *r = (*r + e).clamp(-1.0, 1.0);
+        }
+        assert_eq!(auto_lands_on(&roar), NoiseProfile::Helmet);
+    }
+
+    #[test]
+    fn auto_stays_gentle_in_a_quiet_room() {
+        // Quiet, and with its energy where a room's is rather than where a
+        // motorway's is. Choosing Helmet here would put a 180 Hz high-pass and
+        // full suppression on somebody sitting at a desk.
+        let len = SAMPLE_RATE as usize * 14;
+        let quiet = crate::audio::testsig::white(len, 0.0015, 9);
+        assert_ne!(auto_lands_on(&quiet), NoiseProfile::Helmet);
+    }
+
+    #[test]
+    fn auto_does_not_flap() {
+        // Switching rebuilds the rumble filter, the band filter, the gate and
+        // the AGC, and each restarts from nothing — audible as a moment of
+        // unevenness. A chooser that changed its mind at every junction would
+        // spend the ride doing that, which is worse than any single wrong
+        // choice it might be avoiding.
+        //
+        // Driven at a level deliberately near a boundary, which is exactly
+        // where a chooser without hysteresis oscillates.
+        let len = SAMPLE_RATE as usize * 40;
+        let borderline = crate::audio::testsig::wind(len, 0.02, 11);
+
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut changes = 0;
+        let mut last = p.effective_profile();
+        for chunk in borderline.chunks_exact(FRAME_SIZE) {
+            let mut block = chunk.to_vec();
+            p.process(&mut block);
+            if p.effective_profile() != last {
+                changes += 1;
+                last = p.effective_profile();
+            }
+        }
+        assert!(
+            changes <= 2,
+            "Auto changed its mind {changes} times in 40 seconds"
+        );
+    }
+
+    #[test]
+    fn choosing_auto_keeps_what_was_already_in_force() {
+        // A rider switching Auto on is listening at that moment. Snapping to a
+        // default would throw away a correct answer precisely then.
+        let mut p = CaptureProcessor::new(NoiseProfile::Helmet);
+        assert_eq!(p.effective_profile(), NoiseProfile::Helmet);
+        p.set_profile(NoiseProfile::Auto);
+        assert_eq!(p.effective_profile(), NoiseProfile::Helmet);
+    }
+
+    #[test]
+    fn the_tilt_filter_does_not_run_unless_auto_is_selected() {
+        // It is a biquad over every sample of every block, for a number that
+        // only Auto reads.
+        let mut p = CaptureProcessor::new(NoiseProfile::Helmet);
+        let signal = tone(FRAME_SIZE, 100.0, 0.5);
+        assert_eq!(p.low_share(&signal), 0.0);
+
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        assert!(
+            p.low_share(&signal) > 0.5,
+            "a 100 Hz tone should be almost entirely below the 300 Hz split"
         );
     }
 

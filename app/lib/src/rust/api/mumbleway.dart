@@ -486,6 +486,12 @@ enum NoiseSetting {
 
   /// Aggressive profile for a motorcycle helmet.
   helmet,
+
+  /// Picks between the four above from what the microphone is hearing.
+  ///
+  /// Last in the list rather than first: it is an extra option, and putting
+  /// it at the top would renumber every setting a rider has already stored.
+  auto,
 }
 
 /// A server the user has configured.

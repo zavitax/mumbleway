@@ -394,6 +394,9 @@ class LRu extends L {
   String get noiseHelmet => 'Шлем / мотоцикл';
 
   @override
+  String get noiseAuto => 'Автоматически';
+
+  @override
   String get micMode => 'Режим микрофона';
 
   @override
@@ -503,6 +506,10 @@ class LRu extends L {
   @override
   String get noiseHelmetBody =>
       'Крутой фильтр шума ветра, полное подавление и жёсткий порог. Рассчитан на микрофон в шлеме на скорости.';
+
+  @override
+  String get noiseAutoBody =>
+      'Слушает фон и сам выбирает один из вариантов выше, переключаясь не чаще чем раз в несколько секунд. Пригодится, когда одна поездка охватывает и тихую парковку, и трассу.';
 
   @override
   String get micAlwaysOn => 'Всегда включён';

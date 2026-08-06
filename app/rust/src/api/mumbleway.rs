@@ -247,6 +247,11 @@ pub enum NoiseSetting {
     Standard,
     /// Aggressive profile for a motorcycle helmet.
     Helmet,
+    /// Picks between the four above from what the microphone is hearing.
+    ///
+    /// Last in the list rather than first: it is an extra option, and putting
+    /// it at the top would renumber every setting a rider has already stored.
+    Auto,
 }
 
 fn to_profile(v: NoiseSetting) -> NoiseProfile {
@@ -255,6 +260,7 @@ fn to_profile(v: NoiseSetting) -> NoiseProfile {
         NoiseSetting::Light => NoiseProfile::Light,
         NoiseSetting::Standard => NoiseProfile::Standard,
         NoiseSetting::Helmet => NoiseProfile::Helmet,
+        NoiseSetting::Auto => NoiseProfile::Auto,
     }
 }
 

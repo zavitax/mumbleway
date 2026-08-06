@@ -2513,6 +2513,7 @@ impl SseDecode for crate::api::mumbleway::NoiseSetting {
             1 => crate::api::mumbleway::NoiseSetting::Light,
             2 => crate::api::mumbleway::NoiseSetting::Standard,
             3 => crate::api::mumbleway::NoiseSetting::Helmet,
+            4 => crate::api::mumbleway::NoiseSetting::Auto,
             _ => unreachable!("Invalid variant for NoiseSetting: {}", inner),
         };
     }
@@ -3242,6 +3243,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::NoiseSetting {
             Self::Light => 1.into_dart(),
             Self::Standard => 2.into_dart(),
             Self::Helmet => 3.into_dart(),
+            Self::Auto => 4.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -3921,6 +3923,7 @@ impl SseEncode for crate::api::mumbleway::NoiseSetting {
                 crate::api::mumbleway::NoiseSetting::Light => 1,
                 crate::api::mumbleway::NoiseSetting::Standard => 2,
                 crate::api::mumbleway::NoiseSetting::Helmet => 3,
+                crate::api::mumbleway::NoiseSetting::Auto => 4,
                 _ => {
                     unimplemented!("");
                 }

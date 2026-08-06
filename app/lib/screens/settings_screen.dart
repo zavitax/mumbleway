@@ -216,6 +216,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     NoiseSetting.light => l.noiseLight,
     NoiseSetting.standard => l.noiseStandard,
     NoiseSetting.helmet => l.noiseHelmet,
+    NoiseSetting.auto => l.noiseAuto,
   };
 
   static String _noiseSubtitle(L l, NoiseSetting n) => switch (n) {
@@ -223,6 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     NoiseSetting.light => l.noiseLightBody,
     NoiseSetting.standard => l.noiseStandardBody,
     NoiseSetting.helmet => l.noiseHelmetBody,
+    NoiseSetting.auto => l.noiseAutoBody,
   };
 
   static String _feedbackTitle(L l, FeedbackGuardMode m) => switch (m) {

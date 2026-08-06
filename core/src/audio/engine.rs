@@ -949,6 +949,7 @@ impl AudioShared {
                 NoiseProfile::Light => 1,
                 NoiseProfile::Standard => 2,
                 NoiseProfile::Helmet => 3,
+                NoiseProfile::Auto => 4,
             },
             Ordering::Relaxed,
         );
@@ -959,6 +960,7 @@ impl AudioShared {
             1 => NoiseProfile::Light,
             2 => NoiseProfile::Standard,
             3 => NoiseProfile::Helmet,
+            4 => NoiseProfile::Auto,
             _ => NoiseProfile::Off,
         }
     }
@@ -2173,7 +2175,11 @@ where
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,
                 activation_threshold_db: analysis.activation_threshold_db,
-                profile: shared.noise_profile() as u8,
+                // What is in force, not what was asked for. With Auto selected
+                // the two differ, and the one worth showing is the one the
+                // audio actually went through — a rider who cannot see where
+                // Auto landed cannot tell a bad choice from a bad chain.
+                profile: analysis.effective_profile as u8,
                 transmit_mode: mode as u8,
                 dehiss_mode: shared.dehiss_mode(),
                 feedback_mode: shared.feedback_mode() as u8,

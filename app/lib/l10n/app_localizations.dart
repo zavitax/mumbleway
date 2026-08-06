@@ -817,6 +817,12 @@ abstract class L {
   /// **'Helmet / motorcycle'**
   String get noiseHelmet;
 
+  /// No description provided for @noiseAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic'**
+  String get noiseAuto;
+
   /// No description provided for @micMode.
   ///
   /// In en, this message translates to:
@@ -1014,6 +1020,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Steep wind-noise filter, full suppression and an assertive gate. Built for a microphone inside a helmet at speed.'**
   String get noiseHelmetBody;
+
+  /// No description provided for @noiseAutoBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Listens to the background and picks one of the settings above, changing at most every few seconds. Useful when one ride covers a quiet car park and a motorway.'**
+  String get noiseAutoBody;
 
   /// No description provided for @micAlwaysOn.
   ///

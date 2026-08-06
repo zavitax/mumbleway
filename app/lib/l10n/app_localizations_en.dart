@@ -394,6 +394,9 @@ class LEn extends L {
   String get noiseHelmet => 'Helmet / motorcycle';
 
   @override
+  String get noiseAuto => 'Automatic';
+
+  @override
   String get micMode => 'Microphone mode';
 
   @override
@@ -501,6 +504,10 @@ class LEn extends L {
   @override
   String get noiseHelmetBody =>
       'Steep wind-noise filter, full suppression and an assertive gate. Built for a microphone inside a helmet at speed.';
+
+  @override
+  String get noiseAutoBody =>
+      'Listens to the background and picks one of the settings above, changing at most every few seconds. Useful when one ride covers a quiet car park and a motorway.';
 
   @override
   String get micAlwaysOn => 'Always on';

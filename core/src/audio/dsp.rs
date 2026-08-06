@@ -52,6 +52,38 @@ impl Biquad {
         }
     }
 
+    /// Second-order Butterworth low-pass — the mirror of [`Self::high_pass`].
+    ///
+    /// Only the numerator differs, and only in the sign of the middle term and
+    /// which side of the cosine is taken. Worth writing out rather than
+    /// deriving from the high-pass at run time: the two are used in a cascade
+    /// together and a transcription error in one shows up as the other quietly
+    /// doing nothing.
+    pub fn low_pass(sample_rate: f32, cutoff_hz: f32, q: f32) -> Self {
+        let w0 = 2.0 * std::f32::consts::PI * cutoff_hz / sample_rate;
+        let (sin_w0, cos_w0) = w0.sin_cos();
+        let alpha = sin_w0 / (2.0 * q);
+
+        let b0 = (1.0 - cos_w0) / 2.0;
+        let b1 = 1.0 - cos_w0;
+        let b2 = (1.0 - cos_w0) / 2.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * cos_w0;
+        let a2 = 1.0 - alpha;
+
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+        }
+    }
+
     #[inline]
     pub fn process(&mut self, x: f32) -> f32 {
         let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
@@ -86,6 +118,55 @@ impl RumbleFilter {
             sections: vec![
                 Biquad::high_pass(sample_rate, cutoff_hz, 0.541_196),
                 Biquad::high_pass(sample_rate, cutoff_hz, 1.306_563),
+            ],
+        }
+    }
+
+    pub fn process(&mut self, buf: &mut [f32]) {
+        for s in buf.iter_mut() {
+            let mut v = *s;
+            for section in self.sections.iter_mut() {
+                v = section.process(v);
+            }
+            *s = v;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        for s in self.sections.iter_mut() {
+            s.reset();
+        }
+    }
+}
+
+/// Cascaded low-pass that closes the top of the band.
+///
+/// The chain has always had a high-pass and never a low-pass, which leaves
+/// everything above the voice in the signal: wind hiss, tyre roar, chain and
+/// sprocket noise, and the top octave of a helmet's own turbulence. None of it
+/// carries a word, and all of it is counted — by the level meter, by the noise
+/// floor tracker, by the gate that compares one against the other, and by the
+/// AGC deciding how much gain a "quiet" block needs.
+///
+/// So it is not only bandwidth spent on nothing. It is noise that moves the
+/// thresholds the transmit decision is made against, which is why this belongs
+/// *before* those measurements rather than on the way to the encoder.
+#[derive(Debug, Clone)]
+pub struct SpeechBand {
+    sections: Vec<Biquad>,
+}
+
+impl SpeechBand {
+    /// A 4th-order Butterworth low-pass (two cascaded biquads).
+    ///
+    /// Same order as [`RumbleFilter`], and for the same reason: a 2nd-order
+    /// skirt is still 6 dB down only an octave out, which at these corners
+    /// leaves most of what it was meant to remove.
+    pub fn new(sample_rate: f32, cutoff_hz: f32) -> Self {
+        Self {
+            sections: vec![
+                Biquad::low_pass(sample_rate, cutoff_hz, 0.541_196),
+                Biquad::low_pass(sample_rate, cutoff_hz, 1.306_563),
             ],
         }
     }

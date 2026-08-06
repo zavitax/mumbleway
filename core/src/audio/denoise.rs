@@ -13,7 +13,9 @@
 use nnnoiseless::DenoiseState;
 
 use super::aec::{EchoCanceller, DEFAULT_TAPS};
-use super::dsp::{rms, to_dbfs, Agc, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter};
+use super::dsp::{
+    rms, to_dbfs, Agc, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
+};
 use super::pitch::PitchTracker;
 
 /// RNNoise works on fixed 10 ms blocks at 48 kHz.
@@ -45,6 +47,40 @@ impl NoiseProfile {
             NoiseProfile::Light => 90.0,
             NoiseProfile::Standard => 120.0,
             NoiseProfile::Helmet => 180.0,
+        }
+    }
+
+    /// Low-pass corner, or `None` to leave the top of the band open.
+    ///
+    /// Consonants reach 6–7 kHz and carry a large share of intelligibility —
+    /// "s" against "f" is decided up there and nowhere else — so these do not
+    /// go lower than 6.5 even in a helmet. What is above them is not speech:
+    /// wind hiss, tyre roar, chain noise, and the top octave of a helmet's own
+    /// turbulence, all of which the level meter and the floor tracker were
+    /// otherwise counting as signal.
+    ///
+    /// `Off` keeps nothing at all, because `Off` means untouched.
+    ///
+    /// These started at 8.5 / 7.5 / 6.5 kHz, which is the textbook answer and
+    /// cost more than it was worth. `a_whisper_is_not_thrown_away` dropped
+    /// from passing to 13.2% the moment the filter went in, and switching it
+    /// off for `Standard` put it straight back — so the corner, not the
+    /// suppression, was removing the speech. A whisper is broadband
+    /// turbulence with real energy well above 8 kHz; low-passing it takes away
+    /// the signal, the level, and with it the rider.
+    ///
+    /// Against a measured cost, the benefit has to be measured too, and it is
+    /// not: `noise_alone_transmits_nothing` was already at zero before this
+    /// existed. So the two profiles that are not fighting a gale keep a much
+    /// gentler corner, and only `Helmet` — where the hiss above the voice is
+    /// genuinely loud and the rider has accepted a trade by choosing it —
+    /// keeps the aggressive one.
+    fn low_cutoff_hz(self) -> Option<f32> {
+        match self {
+            NoiseProfile::Off => None,
+            NoiseProfile::Light => Some(12_000.0),
+            NoiseProfile::Standard => Some(10_000.0),
+            NoiseProfile::Helmet => Some(6_500.0),
         }
     }
 
@@ -230,6 +266,8 @@ pub struct BlockAnalysis {
 pub struct CaptureProcessor {
     profile: NoiseProfile,
     rumble: RumbleFilter,
+    /// Closes the top of the band. `None` with suppression off.
+    band: Option<SpeechBand>,
     denoise: Box<DenoiseState<'static>>,
     /// Runs first: echo is speech, so neither the gate nor RNNoise will remove
     /// it, and everything downstream works better without it.
@@ -265,6 +303,9 @@ impl CaptureProcessor {
         Self {
             profile,
             rumble: RumbleFilter::new(SAMPLE_RATE as f32, profile.cutoff_hz()),
+            band: profile
+                .low_cutoff_hz()
+                .map(|hz| SpeechBand::new(SAMPLE_RATE as f32, hz)),
             denoise: DenoiseState::new(),
             aec: EchoCanceller::new(DEFAULT_TAPS),
             // Hold for ~15 blocks (150 ms) so short pauses inside a sentence do
@@ -296,12 +337,19 @@ impl CaptureProcessor {
         let (open_db, close_db) = profile.gate_db();
         self.profile = profile;
         self.rumble = RumbleFilter::new(SAMPLE_RATE as f32, profile.cutoff_hz());
+        self.band = profile
+            .low_cutoff_hz()
+            .map(|hz| SpeechBand::new(SAMPLE_RATE as f32, hz));
         self.gate = NoiseGate::new(open_db, close_db, 15);
         self.agc = Agc::new(-18.0, profile.agc_max_gain_db());
     }
 
     pub fn reset(&mut self) {
         self.rumble.reset();
+        if let Some(band) = self.band.as_mut() {
+            band.reset();
+        }
+        self.pitch.reset();
         self.gate.reset();
         self.agc.reset();
         self.limiter.reset();
@@ -347,8 +395,20 @@ impl CaptureProcessor {
             self.aec.process(block, reference)
         };
 
-        // 1. Strip wind and engine rumble before anything else sees it.
+        // 1. Strip wind and engine rumble before anything else sees it, and
+        // close the top of the band while we are here.
+        //
+        // Both before the measurements rather than on the way to the encoder,
+        // and that placement is the whole value. Filtering later would take
+        // the noise off the wire but leave it driving the level meter, the
+        // noise floor tracker, the gate that compares one against the other,
+        // and the AGC deciding how much a quiet block needs lifting. Hiss
+        // above the voice would go on moving the thresholds that decide
+        // whether the rider is heard.
         self.rumble.process(block);
+        if let Some(band) = self.band.as_mut() {
+            band.process(block);
+        }
 
         // 2. RNNoise. It expects samples scaled to the i16 range, not -1..1.
         let vad = if self.profile == NoiseProfile::Off {
@@ -646,6 +706,111 @@ mod tests {
                 (a + b) * amp
             })
             .collect()
+    }
+
+    /// A steady tone at `hz`, generated continuously.
+    fn tone(len: usize, hz: f32, amp: f32) -> Vec<f32> {
+        (0..len)
+            .map(|i| {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                (2.0 * std::f32::consts::PI * hz * t).sin() * amp
+            })
+            .collect()
+    }
+
+    /// What survives the band filter alone, as a fraction of what went in.
+    fn through_band(profile: NoiseProfile, hz: f32) -> f32 {
+        let Some(cutoff) = profile.low_cutoff_hz() else {
+            return 1.0;
+        };
+        let mut band = SpeechBand::new(SAMPLE_RATE as f32, cutoff);
+        let mut signal = tone(SAMPLE_RATE as usize / 4, hz, 0.5);
+        let before = rms(&signal);
+        band.process(&mut signal);
+        // Skip the filter's own start-up transient.
+        rms(&signal[2_000..]) / before
+    }
+
+    #[test]
+    fn the_band_filter_keeps_consonants_and_drops_what_is_above_them() {
+        // The corner is a compromise with a wrong answer on each side. Too
+        // high and the hiss it was meant to remove stays in, still counted by
+        // the level meter and the floor tracker and still moving the
+        // thresholds the transmit decision is made against. Too low and it
+        // takes the consonants with it: "s" against "f" is decided between 4
+        // and 7 kHz and nowhere else, so a filter that reaches down there does
+        // not muffle speech, it makes words genuinely ambiguous.
+        for profile in [
+            NoiseProfile::Light,
+            NoiseProfile::Standard,
+            NoiseProfile::Helmet,
+        ] {
+            let consonant = through_band(profile, 5_000.0);
+            assert!(
+                consonant > 0.7,
+                "{profile:?} took {:.0}% off a 5 kHz consonant",
+                (1.0 - consonant) * 100.0
+            );
+
+            // Measured against each profile's own corner rather than at one
+            // fixed frequency, because the corners deliberately differ by
+            // nearly an octave. A fixed frequency would be asserting where the
+            // corners are — a tuning decision, and one that has already moved
+            // once on evidence — instead of that the filter has the slope a
+            // 4th-order Butterworth has.
+            let corner = profile.low_cutoff_hz().unwrap();
+            let hiss = through_band(profile, corner * 1.8);
+            assert!(
+                hiss < 0.15,
+                "{profile:?} left {:.0}% of what sits an octave above its {corner} Hz corner",
+                hiss * 100.0
+            );
+        }
+    }
+
+    #[test]
+    fn suppression_off_leaves_the_top_of_the_band_alone() {
+        // Off means untouched. It is the setting a rider reaches for to find
+        // out whether the chain is what is wrong, and a filter that stayed in
+        // circuit would make that answer useless.
+        assert_eq!(NoiseProfile::Off.low_cutoff_hz(), None);
+        let mut p = CaptureProcessor::new(NoiseProfile::Off);
+        let signal = tone(FRAME_SIZE * 40, 12_000.0, 0.3);
+        let mut worst = 0.0f32;
+        for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
+            let mut block = chunk.to_vec();
+            p.process(&mut block);
+            if i > 20 {
+                worst = worst.max(rms(&block));
+            }
+        }
+        assert!(
+            worst > rms(&signal) * 0.5,
+            "12 kHz was filtered out with suppression off"
+        );
+    }
+
+    #[test]
+    fn the_band_filter_takes_hiss_out_of_the_level_the_gate_judges() {
+        // Why this sits before the measurements rather than on the way to the
+        // encoder. Hiss above the voice is not merely wasted bandwidth: it is
+        // counted by the level meter and by the noise floor tracker, so it
+        // moves the threshold the rider's voice then has to clear.
+        let hiss = tone(FRAME_SIZE * 60, 16_000.0, 0.35);
+
+        let mut p = CaptureProcessor::new(NoiseProfile::Helmet);
+        let mut level = -120.0f32;
+        for (i, chunk) in hiss.chunks_exact(FRAME_SIZE).enumerate() {
+            let mut block = chunk.to_vec();
+            let a = p.process(&mut block);
+            if i > 30 {
+                level = level.max(a.level_db);
+            }
+        }
+        assert!(
+            level < -50.0,
+            "13 kHz hiss still reached the level meter at {level} dBFS"
+        );
     }
 
     #[test]

@@ -174,6 +174,69 @@ const VAD_HOLD_SAMPLES: usize = SAMPLE_RATE as usize * 200 / 1000;
 /// than the truncation this is fixing.
 const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 100 / 1000;
 
+/// How far the transmit decision runs ahead of the audio it is applied to.
+///
+/// [`VAD_HOLD_SAMPLES`] and [`VAD_FADE_SAMPLES`] protect the *end* of a
+/// phrase. Nothing protected the beginning, and the beginning is the harder
+/// problem: a detector cannot decide a block is speech until it has the block,
+/// so by the time the gate opens the sound that opened it has already been
+/// discarded. What goes missing is precisely the quiet leading edge — a word
+/// starting on "s", "f" or "h" arrives with its first consonant sheared off,
+/// and "sixty" becomes "ixty".
+///
+/// No threshold fixes this, because the fault is not the threshold. It is that
+/// the decision is causal and the sound is not. So the audio is delayed and
+/// the decision is not: everything emitted is 80 ms old, and the gate opening
+/// now opens on audio captured 80 ms ago.
+///
+/// 80 ms is enough for a leading fricative, which runs 50–100 ms. It is paid
+/// as one-way latency and **only in voice-activated mode** — push-to-talk and
+/// continuous have no threshold to be late for and are not delayed at all.
+const ONSET_LOOKAHEAD_SAMPLES: usize = SAMPLE_RATE as usize * 80 / 1000;
+
+/// Holds the audio back so the transmit decision can be made with hindsight.
+///
+/// See [`ONSET_LOOKAHEAD_SAMPLES`]. Split out from the worker so the claim it
+/// makes is testable: the worker itself needs a sound card, and "the first
+/// consonant survives" is not something to find out on a motorway.
+#[derive(Default)]
+pub struct OnsetDelay {
+    ring: VecDeque<f32>,
+}
+
+impl OnsetDelay {
+    pub fn new() -> Self {
+        Self {
+            ring: VecDeque::with_capacity(ONSET_LOOKAHEAD_SAMPLES + 2048),
+        }
+    }
+
+    /// Replaces `block` with audio [`ONSET_LOOKAHEAD_SAMPLES`] older.
+    ///
+    /// Returns false while there is not yet anything old enough, in which case
+    /// `block` is left alone and the caller must send nothing — passing the
+    /// current block through instead would defeat the delay on exactly the
+    /// first word after the mode was chosen, which is the one a rider notices.
+    pub fn shift(&mut self, block: &mut [f32]) -> bool {
+        self.ring.extend(block.iter().copied());
+        if self.ring.len() < ONSET_LOOKAHEAD_SAMPLES + block.len() {
+            return false;
+        }
+        for s in block.iter_mut() {
+            *s = self.ring.pop_front().unwrap_or(0.0);
+        }
+        true
+    }
+
+    pub fn clear(&mut self) {
+        self.ring.clear();
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ring.is_empty()
+    }
+}
+
 /// Shared state between the callbacks, the worker and the API layer.
 pub struct AudioShared {
     /// Raw mono 48 kHz samples captured from the microphone.
@@ -1815,6 +1878,8 @@ where
     // Voice activation's release envelope; see where they are spent.
     let mut hold_left: usize = 0;
     let mut fade_left: usize = 0;
+    // Voice activation's *attack* protection; see [`ONSET_LOOKAHEAD_SAMPLES`].
+    let mut onset_delay = OnsetDelay::new();
 
     let mut mix_scratch = Vec::new();
     let mut mixed = Vec::new();
@@ -1923,7 +1988,23 @@ where
                 TransmitMode::VoiceActivity => analysis.speaking,
             };
 
-            let allowed = if shared.is_muted() {
+            // Hand the envelope below audio from 80 ms ago, so a gate opening
+            // on this block opens on the sound that led into it rather than on
+            // whatever is left by the time the detector has made up its mind.
+            //
+            // Only in voice-activated mode. The other two modes have no
+            // threshold to be late for, and delaying them would buy nothing
+            // and cost 80 ms of every conversation.
+            let mut priming = false;
+            if mode == TransmitMode::VoiceActivity {
+                priming = !onset_delay.shift(&mut block);
+            } else if !onset_delay.is_empty() {
+                onset_delay.clear();
+            }
+
+            let allowed = if priming {
+                false
+            } else if shared.is_muted() {
                 // Mute is immediate and absolute. Fading out of it would send
                 // the tail of whatever the rider muted themselves to stop
                 // sending, which is the one thing mute must never do.
@@ -2093,6 +2174,92 @@ mod tests {
                 enc.encode(&pcm).unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn the_look_ahead_hands_back_audio_from_before_the_decision() {
+        // The mechanism, stated as arithmetic: sample n out is sample
+        // n - ONSET_LOOKAHEAD_SAMPLES in. Everything else this does rests on
+        // that being exactly true, off by not even one sample — an off-by-one
+        // here would be inaudible and would quietly halve the protection.
+        let mut delay = OnsetDelay::new();
+        let mut produced: Vec<f32> = Vec::new();
+        let total = ONSET_LOOKAHEAD_SAMPLES * 3;
+        let source: Vec<f32> = (0..total).map(|i| i as f32).collect();
+
+        for chunk in source.chunks(FRAME_SIZE) {
+            let mut block = chunk.to_vec();
+            if delay.shift(&mut block) {
+                produced.extend_from_slice(&block);
+            }
+        }
+
+        assert!(!produced.is_empty(), "nothing came out at all");
+        for (i, s) in produced.iter().enumerate() {
+            assert_eq!(*s, i as f32, "sample {i} was not delayed by the look-ahead");
+        }
+        // And what it held back is the delay itself, not a rounding of it.
+        assert_eq!(
+            total - produced.len(),
+            ONSET_LOOKAHEAD_SAMPLES,
+            "held back the wrong amount"
+        );
+    }
+
+    #[test]
+    fn a_quiet_onset_survives_a_detector_that_only_hears_the_vowel() {
+        // The fault, reproduced. A word starting on "s" or "f" leads with
+        // 60 ms of quiet turbulence before the vowel arrives, and no detector
+        // can decide that turbulence is speech until it has heard it — by
+        // which time, without a delay, it has been discarded and the far end
+        // hears "ixty" for "sixty".
+        //
+        // Modelled with the smallest thing that shows it: a quiet lead-in, a
+        // loud body, and a detector that fires only on the loud part.
+        const LEAD: usize = FRAME_SIZE * 6; // 60 ms of leading consonant
+        let mut source = vec![0.0f32; FRAME_SIZE * 4]; // silence first
+        source.extend(std::iter::repeat_n(0.05f32, LEAD)); // the "s"
+        source.extend(std::iter::repeat_n(0.8f32, FRAME_SIZE * 20)); // the vowel
+
+        let mut delay = OnsetDelay::new();
+        let mut sent: Vec<f32> = Vec::new();
+        for chunk in source.chunks(FRAME_SIZE) {
+            // The decision is made on the block as captured, before the delay.
+            let loud = crate::audio::dsp::rms(chunk) > 0.5;
+            let mut block = chunk.to_vec();
+            if !delay.shift(&mut block) {
+                continue;
+            }
+            if loud {
+                sent.extend_from_slice(&block);
+            }
+        }
+
+        // Everything sent while the detector was firing, and the leading
+        // consonant has to be in there: 80 ms of look-ahead against 60 ms of
+        // lead-in means all of it, plus a little of the silence before.
+        let quiet_lead = sent.iter().filter(|s| (**s - 0.05).abs() < 1e-6).count();
+        assert!(
+            quiet_lead >= LEAD,
+            "only {quiet_lead} of {LEAD} samples of the leading consonant were sent"
+        );
+    }
+
+    #[test]
+    fn nothing_is_sent_while_the_look_ahead_is_still_filling() {
+        // Passing the current block through while the ring fills would defeat
+        // the delay on exactly the first word after voice activation is
+        // chosen, which is the one a rider is listening for when they test it.
+        let mut delay = OnsetDelay::new();
+        let mut block = vec![0.5f32; FRAME_SIZE];
+        let blocks_to_fill = ONSET_LOOKAHEAD_SAMPLES / FRAME_SIZE;
+        for i in 0..blocks_to_fill {
+            assert!(
+                !delay.shift(&mut block),
+                "block {i} should still be filling"
+            );
+        }
+        assert!(delay.shift(&mut block), "should be running by now");
     }
 
     #[test]

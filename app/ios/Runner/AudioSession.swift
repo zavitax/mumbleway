@@ -41,6 +41,12 @@ final class AudioSession {
       selector: #selector(interrupted(_:)),
       name: AVAudioSession.interruptionNotification,
       object: nil)
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(routeChanged(_:)),
+      name: AVAudioSession.routeChangeNotification,
+      object: nil)
   }
 
   deinit {
@@ -168,12 +174,102 @@ final class AudioSession {
         // as an input at all, and the phone quietly records from its own
         // microphone inside a helmet at seventy miles an hour.
         Self.allowHandsFreeBluetooth,
-        .allowBluetoothA2DP,
+        // `.allowBluetoothA2DP` is deliberately NOT here, and its absence is
+        // the whole of a bug that made the app unusable on a Cardo Edge Pro:
+        // recording worked until music started and then stopped, even
+        // mid-transmission.
+        //
+        // A2DP is an *output-only* profile. It has no microphone at all.
+        // Listing it tells the system it may route this session's output over
+        // A2DP, and when music starts the system takes that offer, because
+        // A2DP sounds better — and the input goes with it, because there is no
+        // input on that profile to keep. Nothing logs an error; the microphone
+        // simply stops producing samples.
+        //
+        // HFP alone forces the headset into the bidirectional hands-free
+        // profile and keeps it there, which is what every other voice app on
+        // the phone does and why they do not have this fault. The cost is that
+        // music plays at telephone bandwidth for the duration of a call, which
+        // for an intercom is the right trade and is what a rider expects.
+        // Outside a call the session is not active at all — see `prepare` —
+        // so nothing is degraded for as long as the app is merely open.
+        //
         // Otherwise `playAndRecord` sends output to the earpiece receiver,
         // which is inaudible on a bike and sounds broken indoors.
         .defaultToSpeaker,
       ])
     try session.setActive(true)
+    preferHandsFreeInput()
+  }
+
+  /// Points the session at the Bluetooth headset's microphone, if there is one.
+  ///
+  /// Belt and braces over the category options. Those say which routes are
+  /// *permitted*; this says which is wanted. Left to itself the system picks
+  /// by its own priority order, and it has been known to leave a connected
+  /// helmet unit as the output while recording from the phone lying in a
+  /// pocket — which sounds exactly like a headset with a broken microphone.
+  private func preferHandsFreeInput() {
+    let session = AVAudioSession.sharedInstance()
+    guard
+      let bluetooth = session.availableInputs?.first(where: {
+        $0.portType == .bluetoothHFP
+      })
+    else {
+      return
+    }
+    do {
+      try session.setPreferredInput(bluetooth)
+    } catch {
+      // Not fatal. The route the system chose may well be the right one, and
+      // refusing to start a call over a preference is worse than the
+      // preference being ignored.
+      NSLog("MumbleWay: could not prefer the Bluetooth input: \(error)")
+    }
+  }
+
+  /// Re-establishes the input after the system moves the route out from under
+  /// us.
+  ///
+  /// Bluetooth routes change for reasons that have nothing to do with this app:
+  /// a headset reconnecting, a second device pairing, the system taking a route
+  /// for a call of its own. The category options stop the commonest cause — see
+  /// `activate` — but they cannot stop all of them, and the failure mode is
+  /// always the same and always silent: output continues, input stops, and the
+  /// far end hears nothing while everything on screen looks correct.
+  ///
+  /// So when the route changes and there is a call in progress, ask again for
+  /// the microphone rather than trusting what is left.
+  @objc private func routeChanged(_ note: Notification) {
+    guard wantedActive else { return }
+    let reasonValue =
+      note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+      ?? AVAudioSession.RouteChangeReason.unknown.rawValue
+    let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) ?? .unknown
+
+    switch reason {
+    case .oldDeviceUnavailable, .newDeviceAvailable, .override, .categoryChange,
+      .routeConfigurationChange:
+      // Route-change notifications arrive on whatever thread the system feels
+      // like using, and a Flutter method channel may only be touched from the
+      // platform thread. Off it, the failure is not a crash at the call site
+      // but corruption that surfaces later somewhere unrelated.
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.wantedActive else { return }
+        let session = AVAudioSession.sharedInstance()
+        if session.inputNumberOfChannels == 0 {
+          // The input is gone rather than merely different. Re-activating is
+          // the only thing that brings it back; setting a preferred input on a
+          // session that has none does nothing at all.
+          try? self.activate()
+        } else {
+          self.preferHandsFreeInput()
+        }
+        self.channel.invokeMethod("routeChanged", arguments: nil)
+      }
+    default:
+      break
+    }
   }
 
   private func requestPermission(_ done: @escaping (Bool) -> Void) {

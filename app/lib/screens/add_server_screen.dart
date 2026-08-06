@@ -47,10 +47,20 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
   bool get _editing => widget.existing != null;
 
+  /// Where the form's contents came from.
+  ///
+  /// Kept because the entry carries things this form has no field for — the
+  /// default channel, the pinned certificate — and they have to survive a save.
+  /// It is not simply `widget.prefill`: a code scanned from the shortcuts row
+  /// refills the form in place, and the channel from *that* invitation is the
+  /// one that should be saved.
+  SavedServer? _source;
+
   @override
   void initState() {
     super.initState();
     final source = widget.existing ?? widget.prefill;
+    _source = source;
     if (source == null) {
       _port.text = defaultPort().toString();
       // A name to connect under, so the field is not simply blank and in the
@@ -75,6 +85,23 @@ class _AddServerScreenState extends State<AddServerScreen> {
     final name = await AppStateScope.of(context).suggestedUsername();
     if (!mounted || _user.text.isNotEmpty) return;
     _user.text = name;
+  }
+
+  /// Refills the form from a scanned invitation.
+  ///
+  /// In place rather than on a new screen. This form is where the scan was
+  /// started from, so a second copy of it stacked on top is one the rider has
+  /// to save and then back out of — and saving popped them onto the empty
+  /// first copy rather than onto their server list.
+  void _fillFrom(SavedServer server) {
+    setState(() {
+      _source = server;
+      _name.text = server.name;
+      _host.text = server.host;
+      _port.text = server.port.toString();
+      _user.text = server.username;
+      _password.text = server.password ?? '';
+    });
   }
 
   @override
@@ -103,7 +130,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
           children: [
             // Only useful when starting from nothing; while editing they would
             // navigate away from unsaved changes.
-            if (!_editing) ...[const _Shortcuts(), const SizedBox(height: 8)],
+            if (!_editing) ...[
+              _Shortcuts(onInvitation: _fillFrom),
+              const SizedBox(height: 8),
+            ],
             TextFormField(
               controller: _name,
               textInputAction: TextInputAction.next,
@@ -210,7 +240,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
       // The channel has no field on this form, so it rides along from wherever
       // the entry came from: the saved one when editing, and the link's own
       // when a code or an invitation filled the form in.
-      defaultChannel: existing?.defaultChannel ?? widget.prefill?.defaultChannel,
+      defaultChannel: existing?.defaultChannel ?? _source?.defaultChannel,
     );
 
     final error = existing == null
@@ -232,7 +262,11 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
 /// Faster routes than typing an address by hand.
 class _Shortcuts extends StatelessWidget {
-  const _Shortcuts();
+  const _Shortcuts({required this.onInvitation});
+
+  /// Called with the server a scanned code described, to fill the form this
+  /// row sits on.
+  final ValueChanged<SavedServer> onInvitation;
 
   @override
   Widget build(BuildContext context) {
@@ -286,7 +320,7 @@ class _Shortcuts extends StatelessWidget {
                   // Not Expanded: the other two carry words and need the room,
                   // and a third equal share would squeeze all three. This one
                   // is a glyph and asks for only what a glyph needs.
-                  const QrIntakeButton(),
+                  QrIntakeButton(onInvitation: onInvitation),
                 ],
               ),
             ),

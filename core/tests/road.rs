@@ -18,6 +18,33 @@
 //!
 //! Raw 32-bit float, mono, 48 kHz — the format the chain works in, so there is
 //! no decoder here to be wrong about.
+//!
+//! # Provenance is part of the measurement
+//!
+//! The first four recordings this was run against were captured on the
+//! **phone's own microphone**, not the headset's — a metre or more from the
+//! rider's mouth instead of a centimetre. That was discovered after every
+//! number below had been produced and reported.
+//!
+//! It is not a small discrepancy. The app records from a boom microphone
+//! inside the helmet; a phone in a pocket or on a mount hears mostly wind with
+//! a distant, largely unintelligible voice somewhere behind it. Those are
+//! different signals, and the figures taken from that audio —
+//! 57% recall, 54% precision, RNNoise's VAD firing on 38% of labelled speech,
+//! 25 dB of over-suppression — describe the chain's behaviour on the wrong
+//! one.
+//!
+//! What made it invisible was that nothing here asks. The harness takes a
+//! directory of raw audio and reports on it, and audio carries no record of
+//! what captured it. `docs/VOICE_MODEL.md` §5.3 says in writing that
+//! recordings must come through the real channel because the microphone
+//! response is part of the domain — and that requirement was applied to
+//! recordings not yet made while the ones already in hand went unquestioned
+//! for a whole investigation.
+//!
+//! **So: check how a clip was captured before trusting anything this prints.**
+//! Headset-recorded audio needs its own baseline; none of the numbers from the
+//! phone-mic set carry over.
 
 use std::fs;
 use std::path::PathBuf;

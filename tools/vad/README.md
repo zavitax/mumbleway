@@ -1,5 +1,36 @@
 # Evaluating a neural VAD on real helmet audio
 
+> ## Retraction: read this before anything below
+>
+> Every measurement in this file was made on four recordings captured by the
+> **phone's own microphone** — a metre or more from the rider's mouth — and not
+> by the headset boom microphone the app actually records from. That was
+> discovered afterwards.
+>
+> The two signals are not comparable. A phone in a pocket hears wind with a
+> distant, largely unintelligible voice behind it; a boom mic sits a centimetre
+> from the lips. Conclusions drawn from the first say nothing about the second,
+> and two conclusions below are **withdrawn**:
+>
+> **"TEN VAD is not worth integrating."** Withdrawn. It was rejected because
+> its recall/precision curve ran through the existing chain's operating point
+> rather than above it — measured on audio where the speech is barely
+> intelligible, which is a condition no detector does well in and in which the
+> chain's own 57%/54% is equally meaningless. Nothing here bears on how TEN
+> behaves on close-mic audio.
+>
+> **"Whisper hallucinates, do not retry it."** Withdrawn. Hallucinating
+> subtitle text on near-silence is precisely what Whisper does; it was
+> behaving correctly for audio that contained almost no intelligible speech.
+> On headset recordings it is likely to be the labelling oracle it was reached
+> for, and it should be tried again.
+>
+> What survives unchanged: the harness bugs and how they were found, the
+> control-first discipline, the preprocessing sweep, and the fact that both
+> models recovered the hand-labelled spans. The *numbers* do not survive.
+>
+> Re-baseline on headset audio before acting on any of it.
+
 RNNoise is currently both the suppressor and the speech detector in the capture
 chain, and on recordings made inside a helmet at speed it is failing at the
 second job: of blocks a rider hand-labelled as their own speech, its VAD fires

@@ -490,8 +490,15 @@ jobs:
   #
   # It has to build on an Arm machine -- `flutter build windows` has no
   # --target-platform and the architecture follows the host.
+  # BLOCKED UPSTREAM, and off until that changes: there is no Arm64 Flutter SDK
+  # for Windows and `flutter build windows` cannot cross-compile one, so no Arm
+  # binary can be produced by either route today. The full reasoning, and the
+  # measurements behind it, are on the windows-arm64 job in build.yml.
+  #
+  # Set the repository variable ENABLE_WINDOWS_ARM64 to "true" to run it.
   msix-arm64:
     name: Windows MSIX (ARM64)
+    if: vars.ENABLE_WINDOWS_ARM64 == 'true'
     runs-on: windows-11-arm
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}

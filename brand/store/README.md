@@ -24,7 +24,9 @@ Words — description, tagline, every field cut to its limit — are in
 | Google Play | `google-play/icon-512.png` | App icon |
 | Google Play | `google-play/feature-graphic-1024x500.png` | Feature graphic — **required**, the listing will not publish without it |
 | Microsoft Store | `microsoft-store/store-logo-300.png` | Store logo |
-| Microsoft Store | `microsoft-store/hero-1920x1080.png` | Optional promotional art |
+| Microsoft Store | `microsoft-store/hero-1920x1080.png` | Hero art (16:9) |
+| Microsoft Store | `microsoft-store/poster-1440x2160.png` | Poster art (2:3) |
+| Microsoft Store | `microsoft-store/box-art-2160x2160.png` | Box art (1:1) |
 | Anywhere else | `shared/` | README, release page, sticker |
 
 The Microsoft Store's *tile* images are not here: `msix:create` builds them from

@@ -203,6 +203,7 @@ SPECS = [
     ("microsoft-store/store-logo-300.png", 300, 300, None, False),
     ("microsoft-store/hero-1920x1080.png", 1920, 1080, None, True),
     ("microsoft-store/poster-1440x2160.png", 1440, 2160, None, True),
+    ("microsoft-store/box-art-2160x2160.png", 2160, 2160, None, True),
 ]
 
 
@@ -258,6 +259,7 @@ def main() -> int:
     write(icon(300, square=False), OUT / "microsoft-store" / "store-logo-300.png")
     write(banner(1920, 1080), OUT / "microsoft-store" / "hero-1920x1080.png")
     write(banner(1440, 2160), OUT / "microsoft-store" / "poster-1440x2160.png")
+    write(banner(2160, 2160), OUT / "microsoft-store" / "box-art-2160x2160.png")
 
     print("Shared — for a README, a release page or a sticker")
     write(icon(1024, square=False), OUT / "shared" / "icon-rounded-1024.png")

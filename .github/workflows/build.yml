@@ -212,9 +212,33 @@ jobs:
   # Kept out of `needs` for anything downstream on purpose. Arm is the newer,
   # less-travelled path here; if it breaks it should be visible without taking
   # the x64 release with it.
+  # ---------------------------------------------------------------------------
+  # BLOCKED UPSTREAM, and off until that changes. Set the repository variable
+  # ENABLE_WINDOWS_ARM64 to "true" to run it.
+  #
+  # Flutter cannot currently produce a Windows Arm64 binary at all, by either
+  # route, and both halves were measured rather than assumed:
+  #
+  #   * There is no Arm64 Flutter SDK for Windows. Every architecture-tagged
+  #     entry in releases_windows.json is x64 and none is arm64, so there is
+  #     nothing to install on an Arm runner. flutter-action fails with
+  #     "Unable to determine Flutter version for ... architecture: arm64".
+  #   * `flutter build windows` has no --target-platform, so an x64 host cannot
+  #     cross-compile one either. See flutter/flutter#62597 and #129808.
+  #
+  # Running the x64 SDK under emulation on an Arm runner is not a workaround: it
+  # detects an x64 host and builds an x64 app, which is what an Arm machine
+  # already gets from the x64 job. The "Confirm the output is arm64" step below
+  # exists to catch exactly that rather than ship a mislabelled binary.
+  #
+  # Everything else here does work and was proven on a real runner -- the Rust
+  # core compiles natively for aarch64, Ninja installs, and msvc-dev-cmd sets up
+  # the Arm64 toolchain. When Flutter ships the SDK this should need no more
+  # than flipping the variable.
   windows-arm64:
     name: Windows ARM64
     needs: test
+    if: vars.ENABLE_WINDOWS_ARM64 == 'true'
     runs-on: windows-11-arm
     env:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}

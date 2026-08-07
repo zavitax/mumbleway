@@ -485,6 +485,16 @@ class AppState extends ChangeNotifier {
   List<double> gainRange = const [-20, 30, -40, 10];
 
   bool get ready => _ready;
+
+  /// Marks the state as started up, without an engine behind it.
+  ///
+  /// Only the screenshot harness uses this. Every screen is behind
+  /// [ready] — a state that has not started shows a spinner and nothing else —
+  /// so without it a rendered screenshot is a picture of a loading indicator.
+  @visibleForTesting
+  void markReadyForTesting() {
+    _ready = true;
+  }
   String? get startupError => _startupError;
   bool get muted => _muted;
   bool get deafened => _deafened;

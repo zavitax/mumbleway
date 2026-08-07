@@ -89,6 +89,14 @@ dev_dependencies:
   # a code without needing a Flutter binding or a golden file.
   qr: ^3.0.2
 
+  # Both are already here transitively, under path_provider. Declared because
+  # the screenshot harness imports them directly, to stand a fake in for the
+  # real path provider: on Windows that plugin is Dart-and-FFI rather than a
+  # method channel, so it cannot be mocked at the channel and instead never
+  # answers under the test binding, hanging the run until it times out.
+  path_provider_platform_interface: ^2.1.2
+  plugin_platform_interface: ^2.1.8
+
   # flutter_rust_bridge generates freezed unions for data-carrying enums.
   freezed: ^3.0.0
   build_runner: ^2.4.0

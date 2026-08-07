@@ -11,6 +11,8 @@ import 'package:mumbleway/screens/home_screen.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/theme.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 /// Renders the real interface at each store's required size.
 ///
@@ -32,18 +34,16 @@ import 'package:mumbleway/theme.dart';
 /// flutter test test/store_screenshots_test.dart
 /// ```
 ///
-/// # Known not to work yet
+/// # The path provider has to be replaced, not mocked
 ///
-/// It hangs. `HomeScreen` builds the diagnostics panel, which builds
-/// [RecordingToggle], which asks `path_provider` where to write recordings --
-/// and that call never returns under the test binding, so the first pump waits
-/// for ever and the run dies on the ten-minute timeout.
+/// `HomeScreen` builds the diagnostics panel, which builds the recording
+/// toggle, which asks `path_provider` where a rider's recordings would go. On
+/// Windows that plugin is Dart-and-FFI rather than a method channel, so the
+/// usual trick of mocking the channel does not intercept it -- it simply never
+/// answers under the test binding, and the first pump waits until the run dies
+/// on its ten-minute timeout.
 ///
-/// Fixing it means giving the test a fake `PathProviderPlatform` rather than
-/// letting the real one run, since `path_provider_windows` is Dart-and-FFI and
-/// mocking the method channel does not intercept it. Left here, honestly
-/// broken, because the harness itself is right and the remaining work is one
-/// substitution -- not because it is finished.
+/// So the platform implementation itself is swapped out below.
 ///
 /// # Fonts have to be loaded by hand
 ///
@@ -63,33 +63,40 @@ void main() {
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
+    PathProviderPlatform.instance = _ScratchPaths(
+      Directory.systemTemp.createTempSync('mw-shots').path,
+    );
     await _loadFonts();
   });
 
   /// Every size a store asks for. Landscape entries get the desktop layout for
   /// free -- the app is responsive, so the same tree answers both.
+  // The pixel ratio is not decoration. The app is responsive, and it chooses
+  // its layout from *logical* width -- so a 1080-wide phone at ratio 1 looks
+  // 1080 points wide and gets the two-pane tablet layout, which is not what
+  // anybody's phone shows. At ratio 3 it is 360 points wide and gets the phone
+  // layout, which is the thing being photographed.
   const shots = <_Shot>[
     // Apple wants one set per device class it is listed on.
-    _Shot('app-store', 'iphone-6.9', 1320, 2868),
-    _Shot('app-store', 'iphone-6.5', 1242, 2688),
-    _Shot('app-store', 'ipad-12.9', 2048, 2732),
-    _Shot('mac-app-store', 'mac', 2880, 1800),
+    _Shot('app-store', 'iphone-6.9', 1320, 2868, 3),
+    _Shot('app-store', 'iphone-6.5', 1242, 2688, 3),
+    _Shot('app-store', 'ipad-12.9', 2048, 2732, 2),
+    _Shot('mac-app-store', 'mac', 2880, 1800, 2),
     // Play takes anything between 320 and 3840 on the short side, 16:9-ish.
-    _Shot('google-play', 'phone', 1080, 2400),
-    _Shot('google-play', 'tablet-10', 1600, 2560),
+    _Shot('google-play', 'phone', 1080, 2400, 3),
+    _Shot('google-play', 'tablet-10', 1600, 2560, 2),
     // Asked for explicitly; comfortably above the 1366x768 floor.
-    _Shot('microsoft-store', 'desktop', 3840, 2160),
+    _Shot('microsoft-store', 'desktop', 3840, 2160, 2),
   ];
 
   for (final shot in shots) {
     testWidgets('${shot.store} ${shot.name} ${shot.width}x${shot.height}', (
       tester,
     ) async {
-      // devicePixelRatio 1 so the surface size *is* the pixel size, and the
-      // file comes out at exactly what the store asked for rather than at some
-      // multiple of it.
+      // physicalSize is the file's pixel size; the ratio decides how many
+      // logical points that is, and therefore which layout the app picks.
       tester.view.physicalSize = Size(shot.width.toDouble(), shot.height.toDouble());
-      tester.view.devicePixelRatio = 1.0;
+      tester.view.devicePixelRatio = shot.ratio.toDouble();
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -108,24 +115,71 @@ void main() {
       final file = File(
         '${root.path}/${shot.store}/screenshots/${shot.name}-${shot.width}x${shot.height}.png',
       );
-      await _capture(key, file);
+
+      // Inside runAsync, and this is the whole reason the harness hung.
+      // A widget test runs in a zone where timers and futures are faked, but
+      // toImage and toByteData wait on the real rasterizer -- so awaited under
+      // fake async they deadlock, silently, until the ten-minute timeout. Only
+      // runAsync gives them a live event loop to complete on.
+      int? width;
+      int? height;
+      await tester.runAsync(() async {
+        await _capture(key, file, shot.ratio.toDouble());
+        // A file that decodes to the wrong size is the failure worth catching:
+        // it uploads, and the store refuses it after the form is filled in.
+        final decoded = await decodeImageFromList(file.readAsBytesSync());
+        width = decoded.width;
+        height = decoded.height;
+      });
 
       expect(file.existsSync(), isTrue);
-      // A file that decodes to the wrong size is the failure worth catching:
-      // it uploads, and the store refuses it after the form is filled in.
-      final decoded = await decodeImageFromList(file.readAsBytesSync());
-      expect(decoded.width, shot.width);
-      expect(decoded.height, shot.height);
+      expect(width, shot.width);
+      expect(height, shot.height);
     });
   }
 }
 
+/// Answers every "where do files go" question with one scratch directory.
+///
+/// `MockPlatformInterfaceMixin` rather than a plain subclass: `PlatformInterface`
+/// refuses an instance that does not carry its private token, and that check is
+/// the whole point of the base class -- this mixin is the sanctioned way past it
+/// for a test.
+class _ScratchPaths extends Fake
+    with MockPlatformInterfaceMixin
+    implements PathProviderPlatform {
+  _ScratchPaths(this.root);
+  final String root;
+
+  @override
+  Future<String?> getTemporaryPath() async => root;
+  @override
+  Future<String?> getApplicationSupportPath() async => root;
+  @override
+  Future<String?> getApplicationDocumentsPath() async => root;
+  @override
+  Future<String?> getApplicationCachePath() async => root;
+  @override
+  Future<String?> getDownloadsPath() async => root;
+  @override
+  Future<String?> getLibraryPath() async => root;
+  @override
+  Future<String?> getExternalStoragePath() async => root;
+  @override
+  Future<List<String>?> getExternalStoragePaths({StorageDirectory? type}) async => [root];
+  @override
+  Future<List<String>?> getExternalCachePaths() async => [root];
+}
+
 class _Shot {
-  const _Shot(this.store, this.name, this.width, this.height);
+  const _Shot(this.store, this.name, this.width, this.height, this.ratio);
   final String store;
   final String name;
   final int width;
   final int height;
+
+  /// Device pixel ratio, which decides the logical size and so the layout.
+  final int ratio;
 }
 
 Widget _app(AppState state) => AppStateScope(
@@ -149,7 +203,10 @@ Widget _app(AppState state) => AppStateScope(
 /// Names are drawn from nowhere in particular and no real rider. A screenshot
 /// showing a real person's handle is that person's business, not ours.
 AppState _connectedState() {
-  final state = AppState();
+  final state = AppState()
+    // Every screen is gated on this; without it the whole app is a spinner and
+    // the screenshot is a picture of one.
+    ..markReadyForTesting();
   final server = SavedServer(
     name: 'Sunday Run',
     host: 'mumble.example.org',
@@ -229,9 +286,9 @@ AppState _connectedState() {
   return state;
 }
 
-Future<void> _capture(GlobalKey key, File file) async {
+Future<void> _capture(GlobalKey key, File file, double ratio) async {
   final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  final image = await boundary.toImage(pixelRatio: 1.0);
+  final image = await boundary.toImage(pixelRatio: ratio);
   final data = await image.toByteData(format: ui.ImageByteFormat.png);
   file.parent.createSync(recursive: true);
   file.writeAsBytesSync(data!.buffer.asUint8List());
@@ -270,6 +327,10 @@ Future<void> _loadFonts() async {
       '$dir/roboto-medium.ttf',
       '$dir/roboto-bold.ttf',
     ]);
+    // Without this every icon in the interface draws as an empty square, which
+    // is not subtly wrong -- the mute, talk and connection glyphs are most of
+    // what a screenshot of this app is showing.
+    await family('MaterialIcons', ['$dir/MaterialIcons-Regular.otf']);
   }
 }
 

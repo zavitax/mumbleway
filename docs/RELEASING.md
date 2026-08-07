@@ -399,6 +399,38 @@ Download `mumbleway-windows-msix` from the publish run and upload the `.msix` in
 Partner Center → *Packages*. Then the listing: description, screenshots, age
 rating.
 
+**Upload the file from the run, not one off your own machine.** A local
+`dart run msix:create` produces a package with the *pubspec* identity in it, and
+Partner Center answers with:
+
+> The PublisherDisplayName element in the app manifest of mumbleway.msix is
+> MumbleWay, which doesn't match your publisher display name: …
+
+which reads like a broken workflow and is really the wrong file. Both used to be
+called `mumbleway.msix`; the CI ones are now named `mumbleway-store-<version>`
+and `mumbleway-sideload-<version>` so they cannot be mixed up, and the job
+prints the identity it built and fails if it is still the default.
+
+#### `runFullTrust` needs approval, and cannot be removed
+
+Partner Center will also warn:
+
+> The following restricted capabilities require approval before you can use them
+> in your app: runFullTrust
+
+That is expected and not a fault. `msix:create` adds `runFullTrust` to every
+packaged desktop app because a Win32 binary cannot run inside the sandbox a UWP
+app runs in — removing it would produce a package that installs and cannot
+start. It is a *warning* rather than an error, so it does not block the upload.
+
+What it does need is a justification during submission, under *Submission
+options* → restricted capabilities: this is a Flutter desktop application, not a
+UWP one, and it needs full trust to open audio devices through the operating
+system's own APIs. If the account is not authorised for it at all — a different
+message, saying the account "isn't authorized to submit apps that use the
+runFullTrust capability" — that is granted through Partner Center's developer
+support rather than from the submission form.
+
 **A privacy policy URL is required, and this app cannot skip it.** Store Policy
 10.5.1 requires one from any product that accesses or transmits personal
 information; a voice client that records a microphone and sends the audio to a

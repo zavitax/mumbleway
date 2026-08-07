@@ -415,12 +415,19 @@ jobs:
       #
       # --version overrides msix_version in pubspec.yaml, which stays at 1.0.0.0
       # as the default for a local build by hand.
+      # --output-name earns its place. Both of these used to be written as
+      # `mumbleway.msix`, which is also what a local `dart run msix:create`
+      # leaves in the same folder -- and a Store upload was rejected for a
+      # PublisherDisplayName of "MumbleWay" because the file picked up was a
+      # developer's local build, not this one. The two are now impossible to
+      # confuse in a downloads folder.
       - name: Package for the Store
         if: env.MSIX_PUBLISHER != ''
         working-directory: app
         run: >
           dart run msix:create --build-windows false --store
           --version "${{ env.MSIX_VERSION }}"
+          --output-name "mumbleway-store-${{ env.MSIX_VERSION }}"
           --publisher "${{ secrets.MSIX_PUBLISHER }}"
           --identity-name "${{ secrets.MSIX_IDENTITY_NAME }}"
           --publisher-display-name "${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}"
@@ -430,7 +437,41 @@ jobs:
         working-directory: app
         run: |
           echo "::notice::MSIX_PUBLISHER is not set - building a test-signed sideload package instead of a Store package."
-          dart run msix:create --build-windows false --install-certificate false --version "${{ env.MSIX_VERSION }}"
+          dart run msix:create --build-windows false --install-certificate false --version "${{ env.MSIX_VERSION }}" --output-name "mumbleway-sideload-${{ env.MSIX_VERSION }}"
+
+      # Names the identity that is actually inside the package, so a mismatch
+      # with Partner Center is a line in this log rather than a rejection after
+      # the upload. The publisher is a CN= GUID and the display name is a real
+      # person's name, so neither is printed -- only whether they are the
+      # defaults that would be wrong.
+      - name: Say what is in the package
+        if: always() && env.MSIX_PUBLISHER != ''
+        working-directory: app
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem build/windows/x64/runner/Release/*.msix | Select-Object -First 1
+          if (-not $msix) { Write-Output "::warning::no .msix was produced"; exit 0 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($msix.FullName)
+          try {
+            $entry = $zip.GetEntry('AppxManifest.xml')
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            $xml = [xml]$reader.ReadToEnd()
+          } finally { $zip.Dispose() }
+          $identity = $xml.Package.Identity
+          $props = $xml.Package.Properties
+          Write-Output "file    : $($msix.Name) ($([math]::Round($msix.Length/1MB,1)) MB)"
+          Write-Output "version : $($identity.Version)"
+          Write-Output "arch    : $($identity.ProcessorArchitecture)"
+          if ($props.PublisherDisplayName -eq 'MumbleWay') {
+            Write-Output "::error::PublisherDisplayName is still the pubspec default. Partner Center will reject this: it must match the publisher display name on the account."
+            exit 1
+          }
+          if ($identity.Publisher -like '*Msix Testing*') {
+            Write-Output "::error::Publisher is the msix test certificate default, not the one Partner Center reserved."
+            exit 1
+          }
+          Write-Output "publisher/display name: set from secrets, not the defaults"
 
       - uses: actions/upload-artifact@v4
         with:

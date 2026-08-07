@@ -14,17 +14,23 @@ import re
 import sys
 from pathlib import Path
 
-DOC = Path(__file__).resolve().parent.parent / "docs" / "STORE_LISTING.md"
+DOCS = Path(__file__).resolve().parent.parent / "docs"
+LISTING = DOCS / "STORE_LISTING.md"
+DESCRIPTION = DOCS / "STORE_DESCRIPTION.md"
 
-# Heading fragment -> (limit, which stores it has to satisfy)
+# The per-field variants live in one document and the two pieces of prose in
+# another, because the description is the thing people copy and it should not
+# have to be found among the field limits.
+#
+# heading fragment -> (source, limit, which stores it has to satisfy)
 LIMITS = [
-    ("## Name", 30, "all stores"),
-    ("## Subtitle", 30, "App Store, Mac App Store"),
-    ("## Short description - Google Play", 80, "Google Play"),
-    ("## Short description - Microsoft Store", 500, "Microsoft Store"),
-    ("## Promotional text", 170, "App Store"),
-    ("## Keywords", 100, "App Store"),
-    ("## Full description", 4000, "App Store, Play, Microsoft Store"),
+    ("## Name", LISTING, 30, "all stores"),
+    ("## Subtitle", LISTING, 30, "App Store, Mac App Store"),
+    ("## Short description - Google Play", LISTING, 80, "Google Play"),
+    ("## Short description - Microsoft Store", LISTING, 500, "Microsoft Store"),
+    ("## Promotional text", LISTING, 170, "App Store"),
+    ("## Keywords", LISTING, 100, "App Store"),
+    ("## Description", DESCRIPTION, 4000, "App Store, Play, Microsoft Store"),
 ]
 
 
@@ -56,26 +62,29 @@ def blocks(text: str):
 
 
 def main() -> int:
-    if not DOC.exists():
-        print(f"missing {DOC}", file=sys.stderr)
-        return 2
-    text = DOC.read_text(encoding="utf-8")
-    found = blocks(text)
+    for doc in (LISTING, DESCRIPTION):
+        if not doc.exists():
+            print(f"missing {doc}", file=sys.stderr)
+            return 2
+
+    texts = {doc: doc.read_text(encoding="utf-8") for doc in (LISTING, DESCRIPTION)}
+    parsed = {doc: blocks(text) for doc, text in texts.items()}
 
     failures = 0
     print(f"{'field':<42} {'chars':>6} {'limit':>6}  status")
     print("-" * 72)
-    for fragment, limit, stores in LIMITS:
+    for fragment, doc, limit, stores in LIMITS:
+        found = parsed[doc]
         match = next((h for h in found if h and h.startswith(fragment)), None)
         if match is None:
             # The Name row is a table rather than a fence.
             if fragment == "## Name":
-                m = re.search(r"\|\s*All\s*\|\s*30\s*\|\s*`([^`]+)`", text)
+                m = re.search(r"\|\s*All\s*\|\s*30\s*\|\s*`([^`]+)`", texts[doc])
                 value = m.group(1) if m else None
             else:
                 value = None
             if value is None:
-                print(f"{fragment:<42} {'-':>6} {limit:>6}  NO BLOCK FOUND")
+                print(f"{fragment:<42} {'-':>6} {limit:>6}  NO BLOCK FOUND in {doc.name}")
                 failures += 1
                 continue
         else:
@@ -91,7 +100,8 @@ def main() -> int:
 
     # Apple counts keywords including the separators; a trailing comma or a
     # stray space is wasted budget rather than an error, so it is only noted.
-    kw = next((found[h] for h in found if h and h.startswith("## Keywords")), "")
+    listing = parsed[LISTING]
+    kw = next((listing[h] for h in listing if h and h.startswith("## Keywords")), "")
     if kw:
         if " " in kw:
             print("\nnote: keywords contain a space; Apple counts it against the 100.")

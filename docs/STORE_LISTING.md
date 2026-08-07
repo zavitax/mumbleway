@@ -58,43 +58,12 @@ motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,comms,
 
 ## Full description (4000 — fits App Store, Play and Microsoft Store)
 
-```
-MumbleWay is a voice client for Mumble servers, built for talking from inside a motorcycle helmet at speed.
+**Lives in [STORE_DESCRIPTION.md](STORE_DESCRIPTION.md)**, with the tagline, and
+is measured from there by `tool/check_listing.py`.
 
-Wind is the hard part. At speed it is loud, broadband and relentless, and it defeats the noise suppression in ordinary voice apps because that was tuned for offices and cafes. MumbleWay's microphone chain is built for a different problem: a steep high-pass that strips wind and engine rumble before anything else sees it, a neural denoiser for the broadband roar, and a transmit decision that measures your voice against a noise floor which climbs with road speed. A steady engine drone raises that floor with it and never clears the margin, however loud it gets. Speech rises above it.
-
-YOU NEED A MUMBLE SERVER
-MumbleWay connects to any of them — a friend's box, one at the clubhouse, a public server from the built-in directory, or one you run yourself. It is a client, not a service: no account to create, no subscription, and nobody's servers in the middle.
-
-BUILT FOR A BIKE
-• Noise profiles from Light to Helmet, or Auto, which picks from what it hears and shows you where it landed.
-• Push to talk, voice activation, or open microphone.
-• Works over Bluetooth intercom headsets on the hands-free profile, which is where the boom microphone lives.
-• Pair a handlebar Bluetooth remote and it learns whatever your remote actually sends, rather than offering a list of keys that may not match it. Hold to talk, or tap to toggle for remotes that never send a release.
-• Walkie-talkie cues on key and unkey, so you know you are transmitting without looking down.
-
-FOR WHEN YOU ARE NOT LOOKING AT THE SCREEN
-• A floating window over your navigation app on Android, Picture in Picture on iPhone and iPad, a floating panel on Mac.
-• A falling two-tone when the connection drops and a rising one when it returns, so you learn about it from the headset rather than from silence.
-• Automatic reconnection on everything except a disconnect you asked for, at a steady ten seconds with the countdown on screen. When your phone reports signal is back it retries at once instead of waiting.
-• Audio keeps running with the screen locked and the phone in a pocket.
-
-TALKING TO PEOPLE
-• Channel tree and roster, with per-person mute and volume.
-• Two servers connected at once.
-• Live ping per server, and the app shows whether voice is going direct over UDP or tunnelled through TCP when a carrier will not pass it.
-• Join by QR code or a mumble:// link.
-
-PRIVATE BY DEFAULT
-Voice is encrypted with AES-128 and the control channel runs over TLS. Server certificates are pinned the first time you connect and a changed certificate is refused until you say otherwise. MumbleWay has no servers of its own, collects no analytics and shows no advertising.
-
-DIAGNOSTICS
-An optional panel shows the microphone chain working — the spectrum before and after suppression, and which stage stopped a sound reaching the far end. There is a diagnostic recorder in there too, off unless you switch it on, for capturing what your headset actually hears on a ride.
-
-Available in English and Russian.
-
-MumbleWay is free and open source. It is an independent client and is not affiliated with the Mumble project.
-```
+Deliberately not repeated here. Two copies of three thousand characters drift,
+and the copy that ends up pasted into a store is never reliably the one that was
+edited.
 
 ---
 

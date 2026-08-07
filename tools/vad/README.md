@@ -81,11 +81,27 @@ found all three in the first recording from the raw audio — 4.3-5.2, 6.6-7.7,
 them. That is the strongest evidence available that the labels are sound and
 that the models are detecting a voice rather than a coincidence.
 
-Across everything, TEN VAD marks **82 seconds** of candidate speech where the
-rider labelled 3 and where the shipped chain would transmit a fraction. The
-clips are for judging by ear; nothing here is scored against them, because a
-score computed against labels known to be incomplete looks like an answer and
-is not one.
+Across everything, TEN VAD marked **82 seconds** of candidate speech at a
+threshold of 0.40, where the rider had labelled 3.
+
+**The rider listened to those and judged them not worth labelling.** So they are
+not speech, and the 82 seconds is a false-alarm figure rather than a discovery.
+That has to be said clearly here because the opposite was written first: the 82
+seconds was reported as consistent with the rider's own account that there was
+more speech in the recordings than had been labelled, and it was not evidence
+of that at all. Two things agreeing does not make either true.
+
+What survives is narrower and still worth having. At its default threshold of
+0.5, on the raw microphone, TEN recovered all three hand-labelled spans in the
+first recording — 4.3-5.2, 6.6-7.7, 10.3-11.4 against 4.2-5.2, 7.5-8.5,
+10.1-11.1 — without being shown them. That is good evidence it detects real
+speech at high precision. It is **not** evidence that it finds speech the
+current chain misses, which is a different claim and is now unsupported.
+
+Anything built on "TEN finds more speech" needs re-establishing first. The
+honest way to do that is not to hunt for speech in recordings that are mostly
+weather, but to record a session where the rider talks *deliberately* at known
+times — see below.
 
 ## Whisper as an oracle does not work here
 

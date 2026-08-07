@@ -4,7 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
@@ -39,6 +41,62 @@ class AudioRouting(private val context: Context) {
     private var previousMode: Int = AudioManager.MODE_NORMAL
     private var active = false
 
+    /** Held for as long as the route is, and given back with it. */
+    private var focusRequest: AudioFocusRequest? = null
+
+    /**
+     * Asks the system to duck music rather than stop it, and keeps holding the
+     * microphone when it will not.
+     *
+     * `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` is the whole choice here. Plain
+     * `AUDIOFOCUS_GAIN` would tell the other app to stop, which is not what a
+     * rider wants from an intercom: they are listening to something and would
+     * like to keep listening to it between sentences. This asks for it to be
+     * turned down instead, which is what the iOS side gets from `.duckOthers`.
+     *
+     * **Losing focus does not release the microphone.** That is deliberate and
+     * it is the Android half of a fault reported on iOS: something else
+     * starting audio must not end up silencing a rider mid-ride, with the only
+     * symptom being that nobody answers. A call outlives another app's music.
+     * The listener exists so the loss is recorded rather than acted on.
+     *
+     * Not fatal if refused. Another app can hold focus exclusively, and the
+     * right response is a call with music over the top of it, not no call.
+     */
+    private fun requestMusicFocus() {
+        if (focusRequest != null) return
+        val request =
+            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                // Nothing here waits for focus, so a delayed grant would arrive
+                // after the call it was for.
+                .setAcceptsDelayedFocusGain(false)
+                .setOnAudioFocusChangeListener { change ->
+                    Log.i(TAG, "audio focus changed: $change (the call keeps the microphone)")
+                }
+                .build()
+        focusRequest = request
+        val granted = audio.requestAudioFocus(request)
+        if (granted != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.i(TAG, "audio focus refused ($granted); carrying on without ducking")
+        }
+    }
+
+    private fun abandonMusicFocus() {
+        val request = focusRequest ?: return
+        focusRequest = null
+        try {
+            audio.abandonAudioFocusRequest(request)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not give back audio focus", e)
+        }
+    }
+
     /**
      * Takes the route for a call, reporting when the microphone is actually
      * reachable.
@@ -56,6 +114,9 @@ class AudioRouting(private val context: Context) {
             return
         }
         previousMode = audio.mode
+        // Before the mode change, so whatever is playing is already ducking by
+        // the time the route moves under it.
+        requestMusicFocus()
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
         active = true
 
@@ -107,6 +168,9 @@ class AudioRouting(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "could not restore the audio mode", e)
         }
+        // Last, so music comes back up to a phone that has already stopped
+        // being a telephone.
+        abandonMusicFocus()
     }
 
     /** Whether a hands-free microphone is what the route currently uses. */

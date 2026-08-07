@@ -9,6 +9,33 @@ numbers below are from that work and are the reason for every choice here.
 
 ---
 
+## 0. Where this stands
+
+**Built and working end to end**: noise corpus generation
+(`core/tests/corpus.rs`), dynamic mixing with exact labels, training
+(`tools/vad/train_vad.py`), and evaluation against hand-labelled real audio
+(`tools/vad/eval_model.py`). A 45k-parameter model trains in minutes on a
+laptop GPU and reaches 98% recall at 88% precision on its own distribution.
+
+**Blocked on data, and only on data.** That model calls 75-100% of real helmet
+audio speech — it collapses to answering "speech" to everything. It is not a
+bug: the same weights score clean speech at 100% and the synthetic engine noise
+they were trained on at 0.3%. Real helmet noise is simply outside their
+experience, and the model falls into the degenerate minimum the asymmetric loss
+in §4.1 makes attractive. **The synthetic generators are not a substitute for a
+noise-only ride**, which §9 listed as a risk and which is now measured.
+
+Two recording sessions unblock everything, §5.3 and §5.3b. When they exist,
+only the contents of two directories change and the same commands run.
+
+**Not worth doing meanwhile**: swapping the transmit decision onto TEN VAD was
+proposed and then measured against the hand labels. Its recall/precision curve
+runs through the current chain's operating point rather than above it, so the
+swap would move along a trade-off rather than improve it. See
+`tools/vad/README.md`.
+
+---
+
 ## 1. What the measurements say the problem is
 
 RNNoise is currently **both** the suppressor and the detector, and on audio
@@ -219,6 +246,35 @@ and deployed behind an HFP link will meet a distribution it has never seen.
 **Also record a small paired set** — the same rider, same script, quiet room and
 then on the bike. Not for training (alignment is impractical) but as an honest
 held-out test with real rather than synthesised mixing.
+
+### 5.3b Speech over noise, recorded on purpose
+
+The second recording session, and the one that closes the hole every
+measurement in this project has fallen into.
+
+Everything so far has been scored against **three seconds** of hand-labelled
+speech, recovered after the fact from recordings that are mostly weather. That
+was enough to disprove three hypotheses and never enough to establish one.
+Trying to find more of it afterwards has failed twice: an ASR oracle
+hallucinated subtitle text, and 82 seconds of neural-VAD candidates turned out
+on listening not to be speech at all.
+
+Hunting is the wrong approach. Speech recorded *deliberately*, at times written
+down, costs nothing and is exact:
+
+- Ride at each of the speeds in §5.3.
+- Talk at intervals — count aloud, read a sentence, say the time. Anything with
+  a clear start and stop.
+- **Note when.** A voice memo saying "now" before each, or a phone timer
+  photographed, or simply talking in a fixed rhythm — thirty seconds quiet,
+  ten talking — so the pattern itself is the label.
+- Ten to twenty minutes is plenty. This is an *evaluation* set, not training
+  data; training speech comes from LibriSpeech and the noise from §5.3.
+
+What this buys: real speech, in a real helmet, at the real SNR, through the
+real Bluetooth channel, with labels that are correct by construction rather
+than by anybody's ear. Every claim about recall in this repository is currently
+resting on three seconds, and nothing else on this list can fix that.
 
 ### 5.4 Synthetic noise (already built)
 

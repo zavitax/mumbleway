@@ -93,11 +93,28 @@ final class AudioSession {
     do {
       try activate()
       let session = AVAudioSession.sharedInstance()
+      // `inputNumberOfChannels` is not reliable this early. It reports the
+      // channels of a route that has *settled*, and immediately after
+      // `setActive(true)` the built-in microphone often has not — so it answers
+      // 0, Dart reads that as "no microphone", and nothing records.
+      //
+      // It only ever showed up without a Bluetooth headset, which made it look
+      // like a Bluetooth feature rather than a race: negotiating an SCO link
+      // takes long enough that by the time this line runs with a headset
+      // attached, the route has settled and the count is right.
+      //
+      // `isInputAvailable` is the question actually being asked -- is there any
+      // input hardware on this route -- and it is answered correctly straight
+      // away. A zero count with input available means "not known yet", which is
+      // what -1 means to the Dart side already; the Android half has always
+      // answered -1 for exactly this reason.
+      let channels = session.inputNumberOfChannels
+      let known = channels > 0 || !session.isInputAvailable
       result([
         "ok": true,
         // Reported so Dart can say "no input available" instead of letting the
         // engine fail with CoreAudio's wording about channel counts.
-        "inputChannels": session.inputNumberOfChannels,
+        "inputChannels": known ? channels : -1,
         "sampleRate": session.sampleRate,
       ])
     } catch {
@@ -197,6 +214,26 @@ final class AudioSession {
         // Otherwise `playAndRecord` sends output to the earpiece receiver,
         // which is inaudible on a bike and sounds broken indoors.
         .defaultToSpeaker,
+        // Lets music keep playing under a call, and — the half that is a bug
+        // rather than a preference — stops music *starting* from killing the
+        // microphone.
+        //
+        // Without this the session is exclusive in both directions. Activating
+        // it interrupts whatever was playing, and when the rider then starts
+        // music the system hands the session to that app and interrupts us:
+        // the microphone stops mid-ride, and the only sign is that nobody
+        // answers. Google Meet and Yandex Telemost do not behave that way on
+        // the same phone, and this option is the difference.
+        //
+        // It is not the same fault as the A2DP one above, though it presents
+        // almost identically. That one was the route being taken away; this is
+        // the *session* being taken away. Fixing one did nothing for the other,
+        // which is why it survived that fix.
+        .mixWithOthers,
+        // Music drops while somebody is talking and comes back afterwards.
+        // With .mixWithOthers alone a rider hears both at once at full level,
+        // and the voice is the half that matters.
+        .duckOthers,
       ])
     try session.setActive(true)
     preferHandsFreeInput()

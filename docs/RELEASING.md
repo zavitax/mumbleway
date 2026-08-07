@@ -408,30 +408,40 @@ the sort of thing discovered at the end of a long form.
 Expect to justify the `microphone` capability in the listing. It is declared in
 `msix_config` because the app cannot work without it.
 
-### 4e. The version has to be raised by hand
+### 4e. The version moves on its own
 
-Unlike iOS and Android, which take their build number from `github.run_number`
-and therefore always rise, the Windows package version is **pinned in
-`app/pubspec.yaml`**:
+Nothing to do here, but worth knowing what the Store will show.
 
-```yaml
-msix_config:
-  msix_version: 1.0.0.0
+Partner Center rejects a submission whose version is not higher than the last
+accepted one, and rejects it *after* the upload. MSIX also has no separate
+build-number field — the four-part version is the whole of it — and **the Store
+reserves the fourth part, which must be `0`**. That leaves three usable
+components, so the workflow builds:
+
+```
+<major>.<minor>.<github.run_number>.0        e.g. 1.0.59.0
 ```
 
-`msix:create` reads it from there and the workflow passes no override, so every
-Store build carries the same version. Partner Center rejects a submission whose
-version is not higher than the last one, so **the second submission fails unless
-this is edited first**. Two rules when editing it:
+Major and minor come from `version:` in `app/pubspec.yaml`, so a deliberate
+`1.0` → `1.1` still reads as one. The run number only ever goes up, so the
+package version only ever goes up, as long as major and minor never go *down*.
 
-- four components, and **the fourth must be `0`** — the revision field is
-  reserved for the Store and a non-zero value is rejected;
-- it must be strictly greater than the previous accepted submission.
+Two consequences:
 
-This is worth fixing rather than remembering: passing `--version` to
-`msix:create` from `github.run_number`, the way the other three platforms
-already do, would make it automatic. Left as it is for now so that the version
-in the Store cannot move without somebody deciding it should.
+- **The patch component is not carried across.** `1.0.7` and `1.0.9` both
+  package as `1.0.<run>.0`. With three usable fields and one of them owed to a
+  monotonic counter, something had to give, and the counter is the part the
+  Store actually requires.
+- **`msix_version` in `pubspec.yaml` no longer decides anything in CI.** It is
+  the default for a local `dart run msix:create` and nothing else; `--version`
+  overrides it. Raising it by hand will not affect a release.
+
+The workflow refuses to build rather than let Partner Center reject it later, in
+two cases it can see coming:
+
+- **a major version of `0`** — the first component of an MSIX version cannot be
+  zero, so any pre-1.0 `version:` in `pubspec.yaml` is a hard stop;
+- **any component above 65535**, which is the range the format allows.
 
 ### 4f. Automating submissions (not set up)
 
@@ -460,7 +470,7 @@ None of this is implemented in `publish.yml` and none of it has been tried here.
 
 | Store | Artifact | Notes |
 |---|---|---|
-| Microsoft Store | `.msix` | Partner Center re-signs it, so it is submitted unsigned; version raised by hand — see 4 |
+| Microsoft Store | `.msix` | Partner Center re-signs it, so it is submitted unsigned; uploaded by hand — see 4 |
 | Direct download | signed `.zip` | what CI publishes today; this is the one SignPath signs |
 | App Store | `.ipa` | uploaded to TestFlight first; review takes days |
 | Google Play | `.aab` | APKs are for direct install only; Play requires a bundle |

@@ -357,15 +357,70 @@ jobs:
           flutter pub get
           flutter build windows --release
 
+      # The version has to rise on its own, exactly as the build number does on
+      # the other three platforms. Partner Center rejects a submission whose
+      # version is not higher than the last accepted one, and it rejects it
+      # *after* the upload, so a package pinned to one version means every
+      # submission after the first fails for a reason that is nowhere in this
+      # repository.
+      #
+      # MSIX has no separate build-number field, so the four-part version is
+      # the whole of it, and the Store reserves the fourth part: it must be 0.
+      # That leaves three, and the run number takes the third. Major and minor
+      # come from pubspec.yaml so that a deliberate 1.0 -> 1.1 still reads as
+      # one, and the ordering survives it: run_number only ever goes up, so
+      # the version only ever goes up as long as major.minor never goes down.
+      #
+      # The patch component of the pubspec version is not carried across.
+      # Something had to give with only three usable fields, and a monotonic
+      # counter is the one the Store actually requires.
+      - name: Work out the package version
+        id: version
+        shell: pwsh
+        working-directory: app
+        run: |
+          $found = Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+)\.(\d+)\.' |
+                   Select-Object -First 1
+          if (-not $found) {
+            Write-Output "::error::No 'version:' line in app/pubspec.yaml to take major.minor from."
+            exit 1
+          }
+          $major = [int]$found.Matches[0].Groups[1].Value
+          $minor = [int]$found.Matches[0].Groups[2].Value
+          $build = [int]'${{ github.run_number }}'
+
+          # Checked here rather than discovered by Partner Center twenty minutes
+          # later, in the same spirit as the Android signing check above. The
+          # first of these is not hypothetical: any pre-1.0 version in
+          # pubspec.yaml produces a leading zero, and the Store refuses it.
+          if ($major -lt 1) {
+            Write-Output "::error::MSIX versions cannot start with 0, and app/pubspec.yaml is at $major.$minor. The Store needs a 1.0 or later."
+            exit 1
+          }
+          foreach ($part in @($minor, $build)) {
+            if ($part -gt 65535) {
+              Write-Output "::error::MSIX version components must be 0-65535; got $part."
+              exit 1
+            }
+          }
+
+          $version = "$major.$minor.$build.0"
+          "MSIX_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Output "packaging as $version"
+
       # Two different artifacts, and the difference matters. A store package is
       # unsigned here because Partner Center re-signs it, so it cannot be
       # installed locally; the sideload package is test-signed and can. Which
       # one gets built depends on whether the store identity is configured.
+      #
+      # --version overrides msix_version in pubspec.yaml, which stays at 1.0.0.0
+      # as the default for a local build by hand.
       - name: Package for the Store
         if: env.MSIX_PUBLISHER != ''
         working-directory: app
         run: >
           dart run msix:create --build-windows false --store
+          --version "${{ env.MSIX_VERSION }}"
           --publisher "${{ secrets.MSIX_PUBLISHER }}"
           --identity-name "${{ secrets.MSIX_IDENTITY_NAME }}"
           --publisher-display-name "${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}"
@@ -375,7 +430,7 @@ jobs:
         working-directory: app
         run: |
           echo "::notice::MSIX_PUBLISHER is not set - building a test-signed sideload package instead of a Store package."
-          dart run msix:create --build-windows false --install-certificate false
+          dart run msix:create --build-windows false --install-certificate false --version "${{ env.MSIX_VERSION }}"
 
       - uses: actions/upload-artifact@v4
         with:

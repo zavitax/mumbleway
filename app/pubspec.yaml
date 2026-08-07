@@ -113,6 +113,11 @@ msix_config:
   display_name: MumbleWay
   publisher_display_name: MumbleWay
   identity_name: com.mumbleway.mumbleway
+  # The default for a local build only. Every CI package overrides it with
+  # --version, deriving major.minor from `version:` above and taking the third
+  # component from the run number, because the Store rejects a submission whose
+  # version is not higher than the last one. Do not raise this by hand
+  # expecting it to affect a release; it will not. See docs/RELEASING.md.
   msix_version: 1.0.0.0
   logo_path: assets/icon/mumbleway.png
   capabilities: microphone, internetClient, internetClientServer, privateNetworkClientServer

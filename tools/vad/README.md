@@ -30,6 +30,13 @@
 > models recovered the hand-labelled spans. The *numbers* do not survive.
 >
 > Re-baseline on headset audio before acting on any of it.
+>
+> **The recording problem is now fixed at the source.** MumbleWay's diagnostics
+> panel records the capture chain's own input, so which microphone produced a
+> file is no longer something anyone has to get right — see `docs/RECORDING.md`.
+> Its files arrive as a `.s16` and a `.csv` with the same name; the CSV holds
+> what the chain decided on every 10 ms block, which is the one thing that
+> cannot be recovered from the audio afterwards.
 
 RNNoise is currently both the suppressor and the speech detector in the capture
 chain, and on recordings made inside a helmet at speed it is failing at the
@@ -47,6 +54,10 @@ matters rather than on a benchmark.
 ```bash
 pip install numpy onnxruntime ten-vad
 ffmpeg -i clip.m4a -ac 1 -ar 48000 -f f32le clip.raw     # per recording
+
+# from the app's own recorder, which is headerless and must be told what it is
+ffmpeg -f s16le -ar 48000 -ac 1 -i 20260807-1432-000.s16 \
+       -ac 1 -ar 48000 -f f32le clip.raw
 
 # what the chain hands the encoder, for testing a VAD where it would really sit
 MUMBLEWAY_ROAD_AUDIO=road MUMBLEWAY_ROAD_DUMP=denoised \

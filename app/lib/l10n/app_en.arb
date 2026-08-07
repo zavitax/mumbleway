@@ -384,6 +384,44 @@
   "diagPing": "Ping",
   "diagInChannel": "In channel",
   "diagParticipants": "Participants",
+  "diagRecording": "Record for diagnosis",
+  "diagRecordingBody": "Saves what your microphone hears, along with what the noise suppression decided about it, so a recording that cuts out can be looked at rather than guessed at. Off unless you turn it on, and it stays on until you turn it off.",
+  "diagRecordingActive": "Recording",
+  "diagRecordingStopped": "Recorded {count} files",
+  "@diagRecordingStopped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "diagRecordingDropped": "{count} blocks lost — storage could not keep up",
+  "@diagRecordingDropped": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "diagRecordingShare": "Share recordings",
+  "diagRecordingDiscard": "Delete recordings",
+  "diagRecordingNone": "Nothing recorded yet",
+  "diagRecordingSize": "{megabytes} MB on this device",
+  "@diagRecordingSize": {
+    "placeholders": {
+      "megabytes": {
+        "type": "String"
+      }
+    }
+  },
+  "diagRecordingFailed": "Could not start recording: {reason}",
+  "@diagRecordingFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "levelsHelp": "Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.",
   "floatingAndroidBody": "Talk, mute, deafen and hang up over other apps. Needs the \"display over other apps\" permission.",
   "floatingIosBody": "Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).",

@@ -897,6 +897,45 @@ class LRu extends L {
   String get diagParticipants => 'Участников';
 
   @override
+  String get diagRecording => 'Запись для диагностики';
+
+  @override
+  String get diagRecordingBody =>
+      'Сохраняет то, что слышит микрофон, вместе с решениями шумоподавления — чтобы обрыв записи можно было разобрать, а не угадывать. Выключено, пока вы сами не включите, и остаётся включённым до выключения.';
+
+  @override
+  String get diagRecordingActive => 'Идёт запись';
+
+  @override
+  String diagRecordingStopped(int count) {
+    return 'Записано файлов: $count';
+  }
+
+  @override
+  String diagRecordingDropped(int count) {
+    return 'Потеряно блоков: $count — накопитель не успевал';
+  }
+
+  @override
+  String get diagRecordingShare => 'Отправить записи';
+
+  @override
+  String get diagRecordingDiscard => 'Удалить записи';
+
+  @override
+  String get diagRecordingNone => 'Пока ничего не записано';
+
+  @override
+  String diagRecordingSize(String megabytes) {
+    return '$megabytes МБ на устройстве';
+  }
+
+  @override
+  String diagRecordingFailed(String reason) {
+    return 'Не удалось начать запись: $reason';
+  }
+
+  @override
   String get levelsHelp =>
       'Стремитесь к тому, чтобы при обычной речи индикатор доходил примерно до трёх четвертей. Избыточное усиление поднимает шум двигателя вместе с голосом.';
 

@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -465055467;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1222355212;
 
 // Section: executor
 
@@ -551,6 +551,36 @@ fn wire__crate__api__mumbleway__default_port_impl(
             deserializer.end();
             transform_result_sse::<_, ()>((move || {
                 let output_ok = Result::<_, ()>::Ok(crate::api::mumbleway::default_port())?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__mumbleway__diagnostic_recording_state_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "diagnostic_recording_state",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::api::mumbleway::diagnostic_recording_state())?;
                 Ok(output_ok)
             })())
         },
@@ -2099,6 +2129,40 @@ fn wire__crate__api__mumbleway__set_user_server_mute_impl(
         },
     )
 }
+fn wire__crate__api__mumbleway__start_diagnostic_recording_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_diagnostic_recording",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_directory = <String>::sse_decode(&mut deserializer);
+            let api_tag = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok =
+                        crate::api::mumbleway::start_diagnostic_recording(api_directory, api_tag)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 fn wire__crate__api__mumbleway__start_engine_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2132,6 +2196,37 @@ fn wire__crate__api__mumbleway__start_engine_impl(
                     })(),
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__mumbleway__stop_diagnostic_recording_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_diagnostic_recording",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::mumbleway::stop_diagnostic_recording()?;
+                    Ok(output_ok)
+                })(),
+            )
         },
     )
 }
@@ -2776,6 +2871,20 @@ impl SseDecode for crate::api::mumbleway::UiLogEntry {
     }
 }
 
+impl SseDecode for crate::api::mumbleway::UiRecordingState {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_active = <bool>::sse_decode(deserializer);
+        let mut var_droppedBlocks = <u64>::sse_decode(deserializer);
+        let mut var_directory = <String>::sse_decode(deserializer);
+        return crate::api::mumbleway::UiRecordingState {
+            active: var_active,
+            dropped_blocks: var_droppedBlocks,
+            directory: var_directory,
+        };
+    }
+}
+
 impl SseDecode for crate::api::mumbleway::UiServerStatus {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2933,41 +3042,41 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        16 => {
+        17 => {
             wire__crate__api__mumbleway__disconnect_server_impl(port, ptr, rust_vec_len, data_len)
         }
-        17 => wire__crate__api__mumbleway__export_servers_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__mumbleway__import_servers_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__mumbleway__init_app_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__mumbleway__join_channel_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__mumbleway__kick_user_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__mumbleway__ping_server_impl(port, ptr, rust_vec_len, data_len),
-        38 => wire__crate__api__mumbleway__remove_server_impl(port, ptr, rust_vec_len, data_len),
-        40 => wire__crate__api__mumbleway__send_text_impl(port, ptr, rust_vec_len, data_len),
-        41 => wire__crate__api__mumbleway__set_audio_active_impl(port, ptr, rust_vec_len, data_len),
-        42 => {
+        18 => wire__crate__api__mumbleway__export_servers_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__mumbleway__import_servers_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__mumbleway__init_app_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__mumbleway__join_channel_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__mumbleway__kick_user_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__mumbleway__ping_server_impl(port, ptr, rust_vec_len, data_len),
+        39 => wire__crate__api__mumbleway__remove_server_impl(port, ptr, rust_vec_len, data_len),
+        41 => wire__crate__api__mumbleway__send_text_impl(port, ptr, rust_vec_len, data_len),
+        42 => wire__crate__api__mumbleway__set_audio_active_impl(port, ptr, rust_vec_len, data_len),
+        43 => {
             wire__crate__api__mumbleway__set_audio_devices_impl(port, ptr, rust_vec_len, data_len)
         }
-        44 => {
+        45 => {
             wire__crate__api__mumbleway__set_default_channel_impl(port, ptr, rust_vec_len, data_len)
         }
-        57 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
-        59 => {
+        58 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
+        60 => {
             wire__crate__api__mumbleway__set_user_local_mute_impl(port, ptr, rust_vec_len, data_len)
         }
-        60 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
+        61 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        61 => wire__crate__api__mumbleway__set_user_server_mute_impl(
+        62 => wire__crate__api__mumbleway__set_user_server_mute_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        62 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
+        64 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2985,49 +3094,62 @@ fn pde_ffi_dispatcher_sync_impl(
         8 => wire__crate__api__mumbleway__audio_spectrum_impl(ptr, rust_vec_len, data_len),
         11 => wire__crate__api__mumbleway__clear_logs_impl(ptr, rust_vec_len, data_len),
         15 => wire__crate__api__mumbleway__default_port_impl(ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__mumbleway__gain_limits_impl(ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__mumbleway__input_gain_db_impl(ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__mumbleway__input_level_db_impl(ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__mumbleway__is_echo_cancellation_enabled_impl(
+        16 => wire__crate__api__mumbleway__diagnostic_recording_state_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        24 => wire__crate__api__mumbleway__is_level_normalisation_enabled_impl(
+        19 => wire__crate__api__mumbleway__gain_limits_impl(ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__mumbleway__input_gain_db_impl(ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__mumbleway__input_level_db_impl(ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__mumbleway__is_echo_cancellation_enabled_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        25 => wire__crate__api__mumbleway__is_monitoring_impl(ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__mumbleway__is_reverb_enabled_impl(ptr, rust_vec_len, data_len),
-        27 => {
+        25 => wire__crate__api__mumbleway__is_level_normalisation_enabled_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        26 => wire__crate__api__mumbleway__is_monitoring_impl(ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__mumbleway__is_reverb_enabled_impl(ptr, rust_vec_len, data_len),
+        28 => {
             wire__crate__api__mumbleway__jitter_buffer_bounds_ms_impl(ptr, rust_vec_len, data_len)
         }
-        28 => wire__crate__api__mumbleway__jitter_buffer_ms_impl(ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__mumbleway__max_concurrent_servers_impl(ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__mumbleway__output_level_db_impl(ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__mumbleway__output_volume_db_impl(ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__mumbleway__play_participant_cue_impl(ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__mumbleway__play_test_tone_impl(ptr, rust_vec_len, data_len),
-        37 => wire__crate__api__mumbleway__recent_logs_impl(ptr, rust_vec_len, data_len),
-        39 => wire__crate__api__mumbleway__reset_audio_glitches_impl(ptr, rust_vec_len, data_len),
-        43 => wire__crate__api__mumbleway__set_deafened_impl(ptr, rust_vec_len, data_len),
-        45 => wire__crate__api__mumbleway__set_dehiss_impl(ptr, rust_vec_len, data_len),
-        46 => wire__crate__api__mumbleway__set_echo_cancellation_impl(ptr, rust_vec_len, data_len),
-        47 => wire__crate__api__mumbleway__set_feedback_guard_impl(ptr, rust_vec_len, data_len),
-        48 => wire__crate__api__mumbleway__set_input_gain_db_impl(ptr, rust_vec_len, data_len),
-        49 => wire__crate__api__mumbleway__set_jitter_buffer_ms_impl(ptr, rust_vec_len, data_len),
-        50 => {
+        29 => wire__crate__api__mumbleway__jitter_buffer_ms_impl(ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__mumbleway__max_concurrent_servers_impl(ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__mumbleway__output_level_db_impl(ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__mumbleway__output_volume_db_impl(ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__mumbleway__play_participant_cue_impl(ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__mumbleway__play_test_tone_impl(ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__mumbleway__recent_logs_impl(ptr, rust_vec_len, data_len),
+        40 => wire__crate__api__mumbleway__reset_audio_glitches_impl(ptr, rust_vec_len, data_len),
+        44 => wire__crate__api__mumbleway__set_deafened_impl(ptr, rust_vec_len, data_len),
+        46 => wire__crate__api__mumbleway__set_dehiss_impl(ptr, rust_vec_len, data_len),
+        47 => wire__crate__api__mumbleway__set_echo_cancellation_impl(ptr, rust_vec_len, data_len),
+        48 => wire__crate__api__mumbleway__set_feedback_guard_impl(ptr, rust_vec_len, data_len),
+        49 => wire__crate__api__mumbleway__set_input_gain_db_impl(ptr, rust_vec_len, data_len),
+        50 => wire__crate__api__mumbleway__set_jitter_buffer_ms_impl(ptr, rust_vec_len, data_len),
+        51 => {
             wire__crate__api__mumbleway__set_level_normalisation_impl(ptr, rust_vec_len, data_len)
         }
-        51 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
-        52 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
-        53 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
-        54 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
-        55 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
-        56 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
-        58 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
-        63 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        52 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
+        53 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
+        54 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
+        55 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
+        56 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
+        57 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
+        59 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
+        63 => wire__crate__api__mumbleway__start_diagnostic_recording_impl(
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        65 => {
+            wire__crate__api__mumbleway__stop_diagnostic_recording_impl(ptr, rust_vec_len, data_len)
+        }
+        66 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -3459,6 +3581,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiLogEntry>
     for crate::api::mumbleway::UiLogEntry
 {
     fn into_into_dart(self) -> crate::api::mumbleway::UiLogEntry {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiRecordingState {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.active.into_into_dart().into_dart(),
+            self.dropped_blocks.into_into_dart().into_dart(),
+            self.directory.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::UiRecordingState
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiRecordingState>
+    for crate::api::mumbleway::UiRecordingState
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::UiRecordingState {
         self
     }
 }
@@ -4122,6 +4266,15 @@ impl SseEncode for crate::api::mumbleway::UiLogEntry {
         <u8>::sse_encode(self.level, serializer);
         <String>::sse_encode(self.target, serializer);
         <String>::sse_encode(self.message, serializer);
+    }
+}
+
+impl SseEncode for crate::api::mumbleway::UiRecordingState {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.active, serializer);
+        <u64>::sse_encode(self.dropped_blocks, serializer);
+        <String>::sse_encode(self.directory, serializer);
     }
 }
 

@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../services/engine_log.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'recording_toggle.dart';
 import 'spectrum_view.dart';
 
 /// Live diagnostics, shown over the bottom of whatever is on screen.
@@ -156,6 +157,12 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                     // ever stop it.
                     if (AppStateScope.of(context).diagnosticsOpen) ...[
                       const SpectrumView(),
+                      const SizedBox(height: 12),
+                      // Directly under the analyser, because it answers the
+                      // question the analyser raises: having watched the gate
+                      // shut on a word, the next thing anyone wants is that
+                      // moment on disk where it can be looked at properly.
+                      const RecordingToggle(),
                       const SizedBox(height: 16),
                     ],
                     // Counter groups follow the graphs' layout rule, so the

@@ -1413,6 +1413,70 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     })
 }
 
+/// Whether a diagnostic recording is running, and how it is doing.
+#[derive(Debug, Clone)]
+pub struct UiRecordingState {
+    pub active: bool,
+    /// Blocks storage could not keep up with. Shown rather than hidden: a
+    /// recording with gaps is still useful, and a recording with gaps nobody
+    /// knows about is a measurement waiting to be wrong.
+    pub dropped_blocks: u64,
+    /// Where the files are, so the panel can offer to share them.
+    pub directory: String,
+}
+
+/// Starts recording the microphone and what the chain decided about it.
+///
+/// **This writes the rider's microphone to storage.** It exists because every
+/// measurement in this project was invalidated at once by discovering the
+/// recordings behind it came from the phone's own microphone rather than the
+/// headset's, and no amount of care in the analysis could have caught that.
+/// Recording inside the app makes the audio the chain's own input by
+/// construction.
+///
+/// Off unless asked for, started only from the diagnostics panel, and the
+/// directory comes from the caller because only the Dart side knows where a
+/// given platform lets an app put files a person can later get at.
+#[frb(sync)]
+pub fn start_diagnostic_recording(directory: String, tag: String) -> anyhow::Result<()> {
+    app()?
+        .shared
+        .start_diagnostic_recording(std::path::Path::new(&directory), &tag)?;
+    Ok(())
+}
+
+/// Stops the recording and closes the files, returning the blocks that were
+/// dropped because storage could not keep up.
+///
+/// Waits for the writer to flush. That is a few milliseconds and it is not
+/// optional: the next thing that happens is a rider sharing the file, and a
+/// file still held open shares as a truncated one.
+#[frb(sync)]
+pub fn stop_diagnostic_recording() -> anyhow::Result<u64> {
+    Ok(app()?.shared.stop_diagnostic_recording())
+}
+
+/// Where the recording stands. Free to call, and safe before the engine is up.
+#[frb(sync)]
+pub fn diagnostic_recording_state() -> UiRecordingState {
+    // Deliberately not `app()?`: the panel asks this on every rebuild, and
+    // before the engine exists the honest answer is "not recording" rather than
+    // an error the interface has to render.
+    let Ok(app) = app() else {
+        return UiRecordingState {
+            active: false,
+            dropped_blocks: 0,
+            directory: String::new(),
+        };
+    };
+    let s = app.shared.diagnostic_recording_state();
+    UiRecordingState {
+        active: s.active,
+        dropped_blocks: s.dropped_blocks,
+        directory: s.directory,
+    }
+}
+
 /// Everything the engine has logged so far.
 ///
 /// The stream only carries lines recorded after the UI attached to it, and the

@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -185,6 +185,39 @@ UiSpectrum? audioSpectrum() =>
 UiChainStatus audioChainStatus() =>
     RustLib.instance.api.crateApiMumblewayAudioChainStatus();
 
+/// Starts recording the microphone and what the chain decided about it.
+///
+/// **This writes the rider's microphone to storage.** It exists because every
+/// measurement in this project was invalidated at once by discovering the
+/// recordings behind it came from the phone's own microphone rather than the
+/// headset's, and no amount of care in the analysis could have caught that.
+/// Recording inside the app makes the audio the chain's own input by
+/// construction.
+///
+/// Off unless asked for, started only from the diagnostics panel, and the
+/// directory comes from the caller because only the Dart side knows where a
+/// given platform lets an app put files a person can later get at.
+void startDiagnosticRecording({
+  required String directory,
+  required String tag,
+}) => RustLib.instance.api.crateApiMumblewayStartDiagnosticRecording(
+  directory: directory,
+  tag: tag,
+);
+
+/// Stops the recording and closes the files, returning the blocks that were
+/// dropped because storage could not keep up.
+///
+/// Waits for the writer to flush. That is a few milliseconds and it is not
+/// optional: the next thing that happens is a rider sharing the file, and a
+/// file still held open shares as a truncated one.
+BigInt stopDiagnosticRecording() =>
+    RustLib.instance.api.crateApiMumblewayStopDiagnosticRecording();
+
+/// Where the recording stands. Free to call, and safe before the engine is up.
+UiRecordingState diagnosticRecordingState() =>
+    RustLib.instance.api.crateApiMumblewayDiagnosticRecordingState();
+
 /// Everything the engine has logged so far.
 ///
 /// The stream only carries lines recorded after the UI attached to it, and the
@@ -201,7 +234,7 @@ void clearLogs() => RustLib.instance.api.crateApiMumblewayClearLogs();
 /// Sounds an arrival or a departure from the channel.
 ///
 /// Driven from the roster rather than the audio path, because someone joining
-/// makes no sound of their own вЂ” which is exactly why it needs a cue.
+/// makes no sound of their own — which is exactly why it needs a cue.
 void playParticipantCue({required bool joined}) =>
     RustLib.instance.api.crateApiMumblewayPlayParticipantCue(joined: joined);
 
@@ -314,7 +347,7 @@ Future<void> setDefaultChannel({required String serverId, String? channel}) =>
 /// Removes a user from the server. Requires the Kick permission; without it the
 /// server answers with a permission-denied message that arrives as text.
 ///
-/// This is a kick, not a ban вЂ” they may reconnect immediately.
+/// This is a kick, not a ban — they may reconnect immediately.
 Future<void> kickUser({
   required String serverId,
   required int session,
@@ -861,6 +894,38 @@ class UiLogEntry {
           message == other.message;
 }
 
+/// Whether a diagnostic recording is running, and how it is doing.
+class UiRecordingState {
+  final bool active;
+
+  /// Blocks storage could not keep up with. Shown rather than hidden: a
+  /// recording with gaps is still useful, and a recording with gaps nobody
+  /// knows about is a measurement waiting to be wrong.
+  final BigInt droppedBlocks;
+
+  /// Where the files are, so the panel can offer to share them.
+  final String directory;
+
+  const UiRecordingState({
+    required this.active,
+    required this.droppedBlocks,
+    required this.directory,
+  });
+
+  @override
+  int get hashCode =>
+      active.hashCode ^ droppedBlocks.hashCode ^ directory.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiRecordingState &&
+          runtimeType == other.runtimeType &&
+          active == other.active &&
+          droppedBlocks == other.droppedBlocks &&
+          directory == other.directory;
+}
+
 /// What an unauthenticated status probe reported about a server.
 class UiServerStatus {
   final String serverId;
@@ -1067,7 +1132,7 @@ class UiUser {
   final int channelId;
   final bool talking;
 
-  /// Muted server-side or by themselves вЂ” nobody hears them.
+  /// Muted server-side or by themselves — nobody hears them.
   final bool muted;
   final bool deafened;
 

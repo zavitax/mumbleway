@@ -32,6 +32,7 @@ Message the bot once and it will tell you your own id.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -62,9 +63,18 @@ def say(token, chat, text):
 
 
 def convert(src, dst):
-    """To the format everything here reads: mono, 48 kHz, 32-bit float."""
+    """To the format everything here reads: mono, 48 kHz, 32-bit float.
+
+    `.s16` files come from the app's own diagnostic recorder and are headerless
+    by design, so ffmpeg has to be told what they are. Guessing is not an option
+    it has: given no header it will refuse the file, and given the wrong flags
+    it will cheerfully produce noise at the wrong rate.
+    """
+    src_flags = []
+    if src.lower().endswith(".s16"):
+        src_flags = ["-f", "s16le", "-ar", "48000", "-ac", "1"]
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", src,
+        ["ffmpeg", "-y", "-loglevel", "error", *src_flags, "-i", src,
          "-ac", "1", "-ar", "48000", "-f", "f32le", dst],
         check=True,
     )
@@ -77,6 +87,18 @@ def pick_file(msg):
         if key in msg:
             return msg[key], key
     return None, None
+
+
+def app_stem(name):
+    """The recorder's own name for a file, if this came from the app.
+
+    Its files are named `YYYYMMDD-HHMM-NNN`, and the audio and the decision log
+    share that stem. Keeping it is what keeps the pair together: they arrive as
+    two separate messages, minutes apart, so a name built from the arrival time
+    would separate them permanently and the log would be attached to nothing.
+    """
+    m = re.match(r"^(\d{8}-\d{4}-\d{3})\.(s16|csv)$", os.path.basename(name or ""))
+    return m.group(1) if m else None
 
 
 def handle(token, roots, modes, msg):
@@ -92,7 +114,10 @@ def handle(token, roots, modes, msg):
             f"Your chat id is {chat}.\n\n"
             "Send audio with caption 'noise' or 'speech', or use /noise and "
             "/speech to set a mode. Files must be under 20 MB — Telegram will "
-            "not give a bot anything larger, so split long rides.")
+            "not give a bot anything larger, so split long rides.\n\n"
+            "Recordings from MumbleWay's own diagnostics panel come as pairs: "
+            "a .s16 and a .csv with the same name. Send both — the .csv is what "
+            "the noise gate decided, and nothing can work that out afterwards.")
         return
 
     payload, kind = pick_file(msg)
@@ -118,18 +143,38 @@ def handle(token, roots, modes, msg):
         path = info["result"]["file_path"]
         url = f"{API}/file/bot{token}/{path}"
 
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        # The name the phone sent, which for the app's own recordings carries
+        # the pairing. `file_path` is Telegram's storage path and does not.
+        sent_as = payload.get("file_name") or os.path.basename(path)
+        stem = app_stem(sent_as)
+        name = stem or f"{mode}_{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
         root = roots[mode]
         os.makedirs(root, exist_ok=True)
-        original = os.path.join(root, f"{mode}_{stamp}{os.path.splitext(path)[1] or '.bin'}")
+
+        original = os.path.join(root, f"{name}{os.path.splitext(sent_as)[1] or '.bin'}")
         with urllib.request.urlopen(url, timeout=300) as r, open(original, "wb") as f:
             f.write(r.read())
 
-        raw = os.path.join(root, f"{mode}_{stamp}.raw")
+        # A decision log is not audio and must not be handed to ffmpeg. It is
+        # the more valuable half of the pair — it is the only record of what the
+        # chain concluded, and nothing can reconstruct it from the audio.
+        if sent_as.lower().endswith(".csv"):
+            rows = sum(1 for line in open(original, encoding="utf-8", errors="replace")
+                       if line and not line.startswith("#"))
+            say(token, chat,
+                f"Kept the decision log for {stem or name} "
+                f"({max(rows - 1, 0)} blocks). Send the .s16 beside it.")
+            print(f"{mode}: log -> {original}")
+            return
+
+        raw = os.path.join(root, f"{name}.raw")
         seconds = convert(original, raw)
+        paired = stem and os.path.exists(os.path.join(root, f"{stem}.csv"))
         say(token, chat,
             f"Got {seconds / 60:.1f} min of {mode} ({kind}).\n"
-            f"Saved as {os.path.basename(raw)}.")
+            f"Saved as {os.path.basename(raw)}."
+            + ("\nPaired with its decision log." if paired
+               else "\nSend the .csv beside it if there is one." if stem else ""))
         print(f"{mode}: {seconds:.1f}s -> {raw}")
     except Exception as e:  # noqa: BLE001
         say(token, chat, f"That did not work: {e}")

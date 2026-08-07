@@ -19,11 +19,35 @@ measurement; C is the one that unlocks training.
 
 ## How to record
 
-**Through the headset, not the phone.** This is the whole reason the previous
-set was unusable. Record in a way that captures the Bluetooth hands-free route
-— a call in MumbleWay, or any recorder that takes the HFP input. If in doubt,
-play the file back afterwards: if the voice sounds close and the wind sounds
-distant, it is the boom mic. If the voice sounds far away, it is the phone.
+**Use the app.** Open the diagnostics panel, and under the analyser turn on
+*Record for diagnosis*. Everything below about which microphone is which stops
+being something to get right: the app records the audio its own capture chain
+received, so the route is correct by construction rather than by care.
+
+It writes two files at a time, rotating every 16 MB:
+
+- `<date>-<time>-NNN.s16` — the capture, 16-bit mono at 48 kHz, headerless.
+  Play it with `ffplay -f s16le -ar 48000 -ac 1 <file>`.
+- `<date>-<time>-NNN.csv` — one line per 10 ms block, holding what the chain
+  decided and what it decided it from. This is the part that cannot be
+  recovered afterwards: from the audio alone "the gate was shut here" is an
+  inference, and from this file it is a fact.
+
+Turn it **off** before sharing. The switch closes the last file; sharing while
+it is still being written sends a truncated one. The panel then offers *Share
+recordings*, which on Android and iOS opens the normal share sheet — the
+Telegram intake bot in `tools/vad` accepts them directly, one file at a time up
+to 20 MB, which is what the rotation size is chosen for.
+
+If the switch reports blocks lost, storage could not keep up and the recording
+has gaps in it. It is still usable; the gaps are just not silence.
+
+**If you record outside the app instead**, it has to be through the headset and
+not the phone — this is the whole reason the previous set was unusable. Record
+in a way that captures the Bluetooth hands-free route. If in doubt, play the
+file back afterwards: if the voice sounds close and the wind sounds distant, it
+is the boom mic. If the voice sounds far away, it is the phone. There is no way
+to tell from the file itself, which is why the in-app recorder exists.
 
 **Say the condition aloud at the start of every file.** "Cardo Edge Pro, ninety,
 visor closed." It costs two seconds, it labels the file better than a filename,

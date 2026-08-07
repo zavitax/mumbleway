@@ -48,3 +48,4 @@ key.properties
 .env.*
 *.token
 *_token.txt
+__pycache__/

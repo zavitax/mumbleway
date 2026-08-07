@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io' show File, Platform;
+import 'dart:io' show Directory, File, Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -605,6 +605,67 @@ void main() {
             k,
       ];
       expect(untranslated, isEmpty, reason: 'English left in the Russian file');
+    });
+  });
+
+  group('what the bundles have to declare', () {
+    // Both of these are declarations whose absence is silent. The code keeps
+    // working, the failure appears somewhere else entirely, and there is
+    // nothing in Dart to debug — which is exactly the shape of bug worth
+    // spending a test on.
+
+    /// `true` if `key` is present in `plist` with a `<true/>` value.
+    bool declaresTrue(String plist, String key) =>
+        RegExp('<key>$key</key>\\s*<true\\s*/>').hasMatch(plist);
+
+    test('iOS exposes the documents directory, or recordings are unreachable', () async {
+      final plist = await File('ios/Runner/Info.plist').readAsString();
+      // Diagnostic recordings are written here. Without these two keys they
+      // are written successfully and no rider can ever see them, which reads
+      // as the recorder being broken.
+      expect(
+        declaresTrue(plist, 'UIFileSharingEnabled'),
+        isTrue,
+        reason: 'the Files app cannot show the recordings without this',
+      );
+      expect(
+        declaresTrue(plist, 'LSSupportsOpeningDocumentsInPlace'),
+        isTrue,
+        reason: 'without this the Files app shows a copy, not the recordings',
+      );
+    });
+
+    test('every language the app speaks is declared to Apple', () async {
+      // iOS and macOS report an English locale for an undeclared language
+      // regardless of how the phone is set, so a complete translation simply
+      // never gets asked for.
+      //
+      // The languages are taken from the translation files rather than listed
+      // here, so that adding a third one fails this test until the bundles are
+      // told about it — which is the whole failure being guarded against.
+      final languages = Directory('lib/l10n')
+          .listSync()
+          .whereType<File>()
+          .map((f) => RegExp(r'app_(\w+)\.arb$').firstMatch(f.path)?.group(1))
+          .whereType<String>()
+          .toList();
+      expect(languages, contains('ru'), reason: 'the .arb files went missing');
+
+      for (final path in ['ios/Runner/Info.plist', 'macos/Runner/Info.plist']) {
+        final plist = await File(path).readAsString();
+        final block = RegExp(
+          r'<key>CFBundleLocalizations</key>\s*<array>(.*?)</array>',
+          dotAll: true,
+        ).firstMatch(plist);
+        expect(block, isNotNull, reason: '$path declares no languages at all');
+        for (final lang in languages) {
+          expect(
+            block!.group(1),
+            contains('<string>$lang</string>'),
+            reason: '$path does not declare $lang',
+          );
+        }
+      }
     });
   });
 

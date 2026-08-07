@@ -24,6 +24,7 @@ use std::sync::Arc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, VecDeque};
+use std::path::Path;
 use std::time::Duration;
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
@@ -34,6 +35,7 @@ use super::feedback::{FeedbackGuard, FeedbackMode};
 use super::jitter::{
     SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES, SILENT_DB,
 };
+use super::record::{DiagnosticRecorder, Recorded};
 use super::resample::Resampler;
 use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
 
@@ -109,6 +111,19 @@ impl Default for ChainStatus {
         }
     }
 }
+
+/// Whether a diagnostic recording is running, and how it is doing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordingState {
+    pub active: bool,
+    /// Blocks storage could not keep up with. Reported rather than hidden: a
+    /// recording with gaps in it is still useful, and a recording with gaps
+    /// nobody knows about is a measurement waiting to be wrong.
+    pub dropped_blocks: u64,
+    /// Where the files are being written, for the interface to offer to share.
+    pub directory: String,
+}
+
 use crate::error::{CoreError, Result};
 use crate::net::audio_packet::VoicePacket;
 
@@ -465,6 +480,23 @@ pub struct AudioShared {
     spectrum: Mutex<Option<SpectrumFrame>>,
     /// Where every stage of the capture chain stands, as of the last block.
     chain: Mutex<ChainStatus>,
+
+    /// Whether a diagnostic recording is running.
+    ///
+    /// Duplicated from `recorder.is_some()` on purpose. The worker asks this
+    /// question on every block and the answer is no almost always, so the
+    /// common path is one relaxed load; the lock is only taken by a block that
+    /// is actually going to be written. The two are kept in step by writing
+    /// this flag inside the same critical section that installs or removes the
+    /// recorder, so a stale `true` costs at most one wasted lock and a stale
+    /// `false` at most one missing block at the very start.
+    recording: AtomicBool,
+    /// The recording in progress, if any.
+    ///
+    /// Off by default and never started by anything but an explicit request:
+    /// this writes the rider's microphone to storage, and the only acceptable
+    /// default for that is off.
+    recorder: Mutex<Option<DiagnosticRecorder>>,
     /// Pre-rendered notification tones waiting to reach the output device.
     ///
     /// Rendering up front rather than synthesising in the worker keeps the cue
@@ -687,6 +719,8 @@ impl AudioShared {
             spectrum_until: AtomicU64::new(0),
             spectrum: Mutex::new(None),
             chain: Mutex::new(ChainStatus::default()),
+            recording: AtomicBool::new(false),
+            recorder: Mutex::new(None),
             normalise_levels: AtomicBool::new(true),
             reverb_enabled: AtomicBool::new(true),
             reverb: Mutex::new(Reverb::new(REVERB_DECAY_SECS, REVERB_WET)),
@@ -939,6 +973,78 @@ impl AudioShared {
     pub fn publish_chain_status(&self, status: ChainStatus) {
         if let Some(mut slot) = self.chain.try_lock() {
             *slot = status;
+        }
+    }
+
+    /// Starts writing capture and decisions into `dir`.
+    ///
+    /// Starting one while another runs stops the first, rather than refusing:
+    /// the rider's mental model is a switch, and a switch that silently does
+    /// nothing because of state they cannot see is worse than a restart.
+    pub fn start_diagnostic_recording(&self, dir: &Path, tag: &str) -> std::io::Result<()> {
+        let recorder = DiagnosticRecorder::start(dir, tag, SAMPLE_RATE)?;
+        let mut slot = self.recorder.lock();
+        // Dropping the old one here flushes and joins it, inside the lock, so
+        // two sessions can never be writing the same directory at once.
+        *slot = Some(recorder);
+        self.recording.store(true, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Stops the recording and waits for the last file to be closed.
+    ///
+    /// Returns how many blocks storage could not keep up with, which is the
+    /// only thing about the result that cannot be read off the files.
+    pub fn stop_diagnostic_recording(&self) -> u64 {
+        // Cleared first: the worker checks this without the lock, and clearing
+        // it first means the worst case is a block that finds no recorder,
+        // rather than one that blocks behind the flush below.
+        self.recording.store(false, Ordering::Relaxed);
+        let mut slot = self.recorder.lock();
+        match slot.take() {
+            Some(rec) => {
+                let dropped = rec.dropped_blocks();
+                drop(rec); // flushes and joins the writer thread
+                dropped
+            }
+            None => 0,
+        }
+    }
+
+    pub fn is_diagnostic_recording(&self) -> bool {
+        self.recording.load(Ordering::Relaxed)
+    }
+
+    /// Where the recording is and how it is doing, for the diagnostics panel.
+    pub fn diagnostic_recording_state(&self) -> RecordingState {
+        match self.recorder.try_lock() {
+            Some(slot) => match slot.as_ref() {
+                Some(rec) => RecordingState {
+                    active: true,
+                    dropped_blocks: rec.dropped_blocks(),
+                    directory: rec.directory().to_string_lossy().into_owned(),
+                },
+                None => RecordingState::default(),
+            },
+            // Contended only while a session is being started or stopped.
+            // Reporting the flag alone for one frame beats blocking the
+            // interface thread behind a file flush.
+            None => RecordingState {
+                active: self.is_diagnostic_recording(),
+                ..RecordingState::default()
+            },
+        }
+    }
+
+    /// Hands one block to the recorder, if one is running.
+    fn record_block(&self, block: Recorded) {
+        if !self.recording.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Some(slot) = self.recorder.try_lock() {
+            if let Some(rec) = slot.as_ref() {
+                rec.push(block);
+            }
         }
     }
 
@@ -2051,9 +2157,40 @@ where
                 processor.set_echo_cancellation(want_aec);
             }
 
+            // Taken *before* the chain touches it, and this ordering is the
+            // whole point of the feature. Recording the output would record
+            // what the suppression already decided, and the question being
+            // asked is whether those decisions are right — which cannot be
+            // answered from audio the decisions have already been applied to.
+            // Everything downstream can be reproduced from this block and the
+            // log line beside it; nothing can reproduce the block itself.
+            //
+            // The copy is only made while a rider has explicitly turned
+            // recording on, and this is the worker rather than the device
+            // callback, so an allocation here cannot miss a hardware deadline.
+            let raw = if shared.is_diagnostic_recording() {
+                Some(block.clone())
+            } else {
+                None
+            };
+
             let analysis = processor.process_with_reference(&mut block, &echo_ref);
             if analysing {
                 analyser.push(TAP_PRE_GATE, processor.pre_gate());
+            }
+
+            if let Some(samples) = raw {
+                shared.record_block(Recorded {
+                    samples,
+                    speaking: analysis.speaking,
+                    gate_open: analysis.gate_open,
+                    vad: analysis.vad,
+                    snr_db: analysis.snr_db,
+                    level_db: analysis.level_db,
+                    floor_db: analysis.noise_floor_db,
+                    harmonicity: analysis.harmonicity,
+                    modulation: analysis.modulation,
+                });
             }
 
             // After the canceller, on whatever survived it, and with the same
@@ -2298,6 +2435,81 @@ mod tests {
                 enc.encode(&pcm).unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn nothing_is_recorded_until_a_rider_asks_for_it() {
+        // The default matters more than the feature: this writes a microphone
+        // to storage, and it must be impossible to reach that state by
+        // omission. A fresh engine records nothing and names no directory.
+        let shared = AudioShared::new();
+        assert!(!shared.is_diagnostic_recording());
+        assert_eq!(
+            shared.diagnostic_recording_state(),
+            RecordingState::default()
+        );
+
+        // And a block handed over while off must not open anything, which is
+        // the failure that would otherwise only show up as a file appearing on
+        // a rider's phone.
+        shared.record_block(Recorded {
+            samples: vec![0.1; FRAME_SIZE],
+            speaking: true,
+            gate_open: true,
+            vad: 0.9,
+            snr_db: 10.0,
+            level_db: -20.0,
+            floor_db: -40.0,
+            harmonicity: 0.8,
+            modulation: 0.5,
+        });
+        assert!(!shared.is_diagnostic_recording());
+    }
+
+    #[test]
+    fn a_session_writes_what_it_was_given_and_closes_when_stopped() {
+        let dir = std::env::temp_dir().join(format!("mw-engine-rec-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let shared = AudioShared::new();
+        shared.start_diagnostic_recording(&dir, "ride").unwrap();
+        assert!(shared.is_diagnostic_recording());
+        let state = shared.diagnostic_recording_state();
+        assert!(state.active);
+        assert!(
+            !state.directory.is_empty(),
+            "the rider has to be able to find the files"
+        );
+
+        for i in 0..5 {
+            shared.record_block(Recorded {
+                samples: vec![0.25; FRAME_SIZE],
+                speaking: i % 2 == 0,
+                gate_open: i % 2 == 0,
+                vad: 0.7,
+                snr_db: 9.0,
+                level_db: -25.0,
+                floor_db: -45.0,
+                harmonicity: 0.6,
+                modulation: 0.4,
+            });
+        }
+
+        // Stopping has to flush and close, not merely stop appending: the next
+        // thing that happens is a rider sharing the file, and a file still
+        // held open by a writer thread shares as a truncated one.
+        shared.stop_diagnostic_recording();
+        assert!(!shared.is_diagnostic_recording());
+
+        let pcm = std::fs::read(dir.join("ride-000.s16")).unwrap();
+        assert_eq!(pcm.len(), 5 * FRAME_SIZE * 2);
+        let log = std::fs::read_to_string(dir.join("ride-000.csv")).unwrap();
+        let rows = log.lines().filter(|l| !l.starts_with('#')).count();
+        assert_eq!(rows, 6, "a header and one line per block");
+
+        // Stopping twice is what happens when the interface and a teardown
+        // path both do the tidy-up, and it must not panic.
+        shared.stop_diagnostic_recording();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -889,6 +889,45 @@ class LEn extends L {
   String get diagParticipants => 'Participants';
 
   @override
+  String get diagRecording => 'Record for diagnosis';
+
+  @override
+  String get diagRecordingBody =>
+      'Saves what your microphone hears, along with what the noise suppression decided about it, so a recording that cuts out can be looked at rather than guessed at. Off unless you turn it on, and it stays on until you turn it off.';
+
+  @override
+  String get diagRecordingActive => 'Recording';
+
+  @override
+  String diagRecordingStopped(int count) {
+    return 'Recorded $count files';
+  }
+
+  @override
+  String diagRecordingDropped(int count) {
+    return '$count blocks lost — storage could not keep up';
+  }
+
+  @override
+  String get diagRecordingShare => 'Share recordings';
+
+  @override
+  String get diagRecordingDiscard => 'Delete recordings';
+
+  @override
+  String get diagRecordingNone => 'Nothing recorded yet';
+
+  @override
+  String diagRecordingSize(String megabytes) {
+    return '$megabytes MB on this device';
+  }
+
+  @override
+  String diagRecordingFailed(String reason) {
+    return 'Could not start recording: $reason';
+  }
+
+  @override
   String get levelsHelp =>
       'Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.';
 

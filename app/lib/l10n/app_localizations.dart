@@ -1723,6 +1723,66 @@ abstract class L {
   /// **'Participants'**
   String get diagParticipants;
 
+  /// No description provided for @diagRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Record for diagnosis'**
+  String get diagRecording;
+
+  /// No description provided for @diagRecordingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Saves what your microphone hears, along with what the noise suppression decided about it, so a recording that cuts out can be looked at rather than guessed at. Off unless you turn it on, and it stays on until you turn it off.'**
+  String get diagRecordingBody;
+
+  /// No description provided for @diagRecordingActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording'**
+  String get diagRecordingActive;
+
+  /// No description provided for @diagRecordingStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Recorded {count} files'**
+  String diagRecordingStopped(int count);
+
+  /// No description provided for @diagRecordingDropped.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} blocks lost — storage could not keep up'**
+  String diagRecordingDropped(int count);
+
+  /// No description provided for @diagRecordingShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share recordings'**
+  String get diagRecordingShare;
+
+  /// No description provided for @diagRecordingDiscard.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete recordings'**
+  String get diagRecordingDiscard;
+
+  /// No description provided for @diagRecordingNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing recorded yet'**
+  String get diagRecordingNone;
+
+  /// No description provided for @diagRecordingSize.
+  ///
+  /// In en, this message translates to:
+  /// **'{megabytes} MB on this device'**
+  String diagRecordingSize(String megabytes);
+
+  /// No description provided for @diagRecordingFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start recording: {reason}'**
+  String diagRecordingFailed(String reason);
+
   /// No description provided for @levelsHelp.
   ///
   /// In en, this message translates to:

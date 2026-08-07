@@ -480,6 +480,122 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # Microsoft Store — the Arm64 package
+  # ---------------------------------------------------------------------------
+  # A second package rather than a second job doing the same thing: Partner
+  # Center accepts one submission carrying both architectures, and picks per
+  # machine at install time. Without this an Arm laptop installs the x64 build
+  # and runs it under emulation, which for an app doing per-block DSP on the
+  # audio thread is the difference between working and not.
+  #
+  # It has to build on an Arm machine -- `flutter build windows` has no
+  # --target-platform and the architecture follows the host.
+  msix-arm64:
+    name: Windows MSIX (ARM64)
+    runs-on: windows-11-arm
+    env:
+      MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: arm64
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      # Same version rule as the x64 package. The two architectures of one
+      # submission must carry the *same* version, so this is deliberately the
+      # identical computation rather than a second one that could drift.
+      - name: Work out the package version
+        shell: pwsh
+        working-directory: app
+        run: |
+          $found = Select-String -Path pubspec.yaml -Pattern '^version:\s*(\d+)\.(\d+)\.' |
+                   Select-Object -First 1
+          if (-not $found) {
+            Write-Output "::error::No 'version:' line in app/pubspec.yaml."
+            exit 1
+          }
+          $major = [int]$found.Matches[0].Groups[1].Value
+          $minor = [int]$found.Matches[0].Groups[2].Value
+          $build = [int]'${{ github.run_number }}'
+          if ($major -lt 1) {
+            Write-Output "::error::MSIX versions cannot start with 0."
+            exit 1
+          }
+          "MSIX_VERSION=$major.$minor.$build.0" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Output "packaging as $major.$minor.$build.0"
+
+      - name: Confirm the output is arm64
+        shell: pwsh
+        working-directory: app
+        run: |
+          if (-not (Test-Path build/windows/arm64/runner/Release)) {
+            $found = (Get-ChildItem build/windows -Directory -ErrorAction SilentlyContinue).Name -join ', '
+            Write-Output "::error::No arm64 build output; Flutter produced: $found."
+            exit 1
+          }
+
+      - name: Package for the Store
+        if: env.MSIX_PUBLISHER != ''
+        working-directory: app
+        run: >
+          dart run msix:create --build-windows false --store --architecture arm64
+          --version "${{ env.MSIX_VERSION }}"
+          --output-name "mumbleway-store-arm64-${{ env.MSIX_VERSION }}"
+          --publisher "${{ secrets.MSIX_PUBLISHER }}"
+          --identity-name "${{ secrets.MSIX_IDENTITY_NAME }}"
+          --publisher-display-name "${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}"
+
+      - name: Say what is in the package
+        if: env.MSIX_PUBLISHER != ''
+        working-directory: app
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem build/windows/arm64/runner/Release/*.msix | Select-Object -First 1
+          if (-not $msix) { Write-Output "::error::no .msix was produced"; exit 1 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($msix.FullName)
+          try {
+            $reader = New-Object System.IO.StreamReader($zip.GetEntry('AppxManifest.xml').Open())
+            $xml = [xml]$reader.ReadToEnd()
+          } finally { $zip.Dispose() }
+          $identity = $xml.Package.Identity
+          Write-Output "file    : $($msix.Name)"
+          Write-Output "version : $($identity.Version)"
+          Write-Output "arch    : $($identity.ProcessorArchitecture)"
+          if ($identity.ProcessorArchitecture -ne 'arm64') {
+            Write-Output "::error::Package declares $($identity.ProcessorArchitecture), not arm64."
+            exit 1
+          }
+          if ($xml.Package.Properties.PublisherDisplayName -eq 'MumbleWay') {
+            Write-Output "::error::PublisherDisplayName is still the pubspec default; Partner Center will reject this."
+            exit 1
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: env.MSIX_PUBLISHER != ''
+        with:
+          name: mumbleway-arm64-msix
+          path: app/build/windows/arm64/runner/Release/*.msix
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # Mac App Store — signed .pkg
   # ---------------------------------------------------------------------------
   # Shares nothing with the TestFlight job but the account. macOS wants two

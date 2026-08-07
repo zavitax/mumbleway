@@ -200,6 +200,140 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # Windows on Arm
+  # ---------------------------------------------------------------------------
+  # A separate job rather than a matrix over the one above, because it is *not*
+  # the same build. `flutter build windows` has no --target-platform: the
+  # architecture follows the host, so this has to run on an Arm machine, and
+  # cross-compiling from x64 is not supported upstream.
+  #
+  # windows-11-arm runners are free for public repositories, which this is.
+  #
+  # Kept out of `needs` for anything downstream on purpose. Arm is the newer,
+  # less-travelled path here; if it breaks it should be visible without taking
+  # the x64 release with it.
+  windows-arm64:
+    name: Windows ARM64
+    needs: test
+    runs-on: windows-11-arm
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'app/rust -> target'
+          # Its own cache. Sharing one with the x64 job would have each
+          # overwrite the other's artifacts for a different architecture.
+          key: arm64
+
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+
+      # arch: arm64 is the whole point. Left at its default this sets up an x64
+      # cl.exe and the native build produces x64 objects that fail to link
+      # against an arm64 Flutter runner, late and confusingly.
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: arm64
+
+      - name: Build engine
+        working-directory: app/rust
+        run: cargo build --release
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Everything above assumes it is on an Arm machine with an Arm toolchain,
+      # and each piece of that can be true or false independently. Checked here,
+      # before a twenty-minute build, because the failure this guards against is
+      # not a crash: it is an x64 binary in a file named arm64, which installs
+      # on the wrong machines and runs on none of them.
+      - name: Confirm this really is an Arm toolchain
+        shell: pwsh
+        run: |
+          $host_arch = $env:PROCESSOR_ARCHITECTURE
+          Write-Output "runner architecture : $host_arch"
+          Write-Output "rustc host          : $((rustc -vV | Select-String '^host:') -replace 'host:\s*','')"
+          Write-Output "dart                : $(dart --version 2>&1)"
+          if ($host_arch -ne 'ARM64') {
+            Write-Output "::error::Expected an ARM64 runner, got '$host_arch'. windows-11-arm may have changed."
+            exit 1
+          }
+
+      - name: Build
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      # Flutter writes into an architecture subdirectory, so the presence of
+      # build/windows/arm64 *is* the evidence that an arm64 build happened.
+      # An x64 SDK running under emulation would have produced build/windows/x64
+      # and this catches that rather than packaging it.
+      - name: Confirm the output is arm64
+        shell: pwsh
+        working-directory: app
+        run: |
+          if (-not (Test-Path build/windows/arm64/runner/Release)) {
+            $found = (Get-ChildItem build/windows -Directory -ErrorAction SilentlyContinue).Name -join ', '
+            Write-Output "::error::No arm64 build output. Flutter produced: $found. The SDK was probably x64 running under emulation."
+            exit 1
+          }
+          $exe = Get-Item build/windows/arm64/runner/Release/mumbleway.exe
+          Write-Output "built $($exe.Name), $([math]::Round($exe.Length/1MB,1)) MB"
+
+      - name: Package
+        working-directory: app/build/windows/arm64/runner/Release
+        run: 7z a -tzip ../../../../../../mumbleway-windows-arm64.zip .
+
+      - name: Upload unsigned build for signing
+        id: unsigned
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-arm64-unsigned
+          path: mumbleway-windows-arm64.zip
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        id: signpath
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'mumbleway' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'test-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Replace the package with the signed one
+        if: env.SIGNPATH_API_TOKEN != '' && steps.signpath.outcome == 'success'
+        shell: pwsh
+        run: |
+          $signed = Get-ChildItem signed -Filter *.zip -Recurse | Select-Object -First 1
+          if (-not $signed) { throw "SignPath returned no signed package" }
+          Move-Item $signed.FullName mumbleway-windows-arm64.zip -Force
+          Write-Host "Replaced package with signed build: $($signed.Name)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-arm64
+          path: mumbleway-windows-arm64.zip
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # macOS desktop
   # ---------------------------------------------------------------------------
   macos:

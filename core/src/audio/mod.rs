@@ -1,4 +1,4 @@
-//! Audio capture, processing, coding and playback.
+﻿//! Audio capture, processing, coding and playback.
 
 pub mod aec;
 pub mod codec;
@@ -11,6 +11,7 @@ pub mod jitter;
 pub mod modulation;
 pub mod pitch;
 pub mod quality;
+pub mod record;
 pub mod resample;
 pub mod spectrum;
 pub mod stretch;

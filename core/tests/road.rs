@@ -23,7 +23,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use mumbleway_core::audio::denoise::{CaptureProcessor, FRAME_SIZE};
-use mumbleway_core::audio::dsp::{rms, to_dbfs};
+use mumbleway_core::audio::dsp::{rms, to_dbfs, RumbleFilter, SpeechBand};
 use mumbleway_core::audio::pitch::PitchTracker;
 use mumbleway_core::audio::NoiseProfile;
 
@@ -186,6 +186,61 @@ fn split_by_label(scores: &[f32], spans: &[(f32, f32)]) -> (Vec<f32>, Vec<f32>) 
     (inside, outside)
 }
 
+/// Where the signal goes, stage by stage, in dB.
+///
+/// On real helmet audio the Helmet profile reports a level of -84.9 dBFS
+/// against -18.2 with suppression off — sixty-seven decibels, which is not
+/// suppression working but suppression removing the thing it was protecting.
+/// The reported level is measured after the filters and the network and before
+/// the gate, so the loss is attributable, and this attributes it: each stage is
+/// run alone on the same audio so the cost of each can be named rather than
+/// argued about.
+fn stage_levels(profile: NoiseProfile, signal: &[f32]) -> (f32, f32, f32, f32) {
+    let raw = to_dbfs(rms(signal));
+
+    // The high-pass alone.
+    let mut hp = signal.to_vec();
+    let mut rumble = RumbleFilter::new(
+        48_000.0,
+        match profile {
+            NoiseProfile::Off => 60.0,
+            NoiseProfile::Light => 90.0,
+            NoiseProfile::Helmet => 180.0,
+            _ => 120.0,
+        },
+    );
+    rumble.process(&mut hp);
+    let after_hp = to_dbfs(rms(&hp));
+
+    // And the band filter on top of it.
+    let corner = match profile {
+        NoiseProfile::Off => None,
+        NoiseProfile::Light => Some(12_000.0),
+        NoiseProfile::Helmet => Some(6_500.0),
+        _ => Some(10_000.0),
+    };
+    if let Some(hz) = corner {
+        let mut band = SpeechBand::new(48_000.0, hz);
+        band.process(&mut hp);
+    }
+    let after_band = to_dbfs(rms(&hp));
+
+    // Everything, which is what the chain reports.
+    let mut chain = CaptureProcessor::new(profile);
+    let mut blk = [0.0f32; FRAME_SIZE];
+    let (mut sum, mut n) = (0.0f64, 0usize);
+    for chunk in signal.chunks_exact(FRAME_SIZE) {
+        blk.copy_from_slice(chunk);
+        let a = chain.process(&mut blk);
+        if a.warming_up {
+            continue;
+        }
+        sum += a.level_db as f64;
+        n += 1;
+    }
+    (raw, after_hp, after_band, (sum / n.max(1) as f64) as f32)
+}
+
 /// How much a feature knows about whether the rider is talking, 0.5 to 1.0.
 ///
 /// The probability that a randomly chosen speech block scores higher than a
@@ -258,6 +313,39 @@ fn clips() -> Vec<(String, Vec<f32>)> {
             (name, samples)
         })
         .collect()
+}
+
+/// Writes what the chain hands the encoder, so another tool can look at it.
+///
+/// A neural VAD run on the raw microphone is answering a different question
+/// from one run where this app would put it, which is after the suppression.
+/// Whether denoising helps such a model or destroys what it needs is exactly
+/// the sort of thing that gets assumed; this makes it answerable.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO and MUMBLEWAY_ROAD_DUMP"]
+fn dump_the_suppressed_audio() {
+    let Ok(out_dir) = std::env::var("MUMBLEWAY_ROAD_DUMP") else {
+        panic!("set MUMBLEWAY_ROAD_DUMP to a directory to write into");
+    };
+    fs::create_dir_all(&out_dir).expect("creating the dump directory");
+
+    for (name, signal) in clips() {
+        for profile in [NoiseProfile::Light, NoiseProfile::Helmet] {
+            let mut chain = CaptureProcessor::new(profile);
+            let mut block = [0.0f32; FRAME_SIZE];
+            let mut out: Vec<u8> = Vec::with_capacity(signal.len() * 4);
+            for chunk in signal.chunks_exact(FRAME_SIZE) {
+                block.copy_from_slice(chunk);
+                chain.process(&mut block);
+                for s in &block {
+                    out.extend_from_slice(&s.to_le_bytes());
+                }
+            }
+            let path = PathBuf::from(&out_dir).join(format!("{name}__{profile:?}.raw"));
+            fs::write(&path, &out).expect("writing the dump");
+            println!("wrote {}", path.display());
+        }
+    }
 }
 
 #[test]
@@ -342,6 +430,19 @@ fn what_the_chain_does_with_real_helmet_audio() {
                     pct(snr_ok),
                     pct(gate_ok),
                     pct(sent)
+                );
+            }
+
+            println!("    WHERE THE SIGNAL GOES (dBFS):");
+            for profile in [
+                NoiseProfile::Off,
+                NoiseProfile::Standard,
+                NoiseProfile::Helmet,
+            ] {
+                let (raw, hp, band, chain) = stage_levels(profile, &signal);
+                println!(
+                    "        {:<9} raw {raw:>6.1} -> high-pass {hp:>6.1} -> band {band:>6.1} -> chain {chain:>6.1}",
+                    format!("{profile:?}")
                 );
             }
 

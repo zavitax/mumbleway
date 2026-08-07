@@ -117,7 +117,7 @@ use crate::net::audio_packet::VoicePacket;
 pub enum TransmitMode {
     /// Open the mic automatically when speech is detected.
     VoiceActivity,
-    /// Only while the user holds the key вЂ” the safest option on a bike, since
+    /// Only while the user holds the key — the safest option on a bike, since
     /// it cannot be tripped by a gust or a passing lorry.
     PushToTalk,
     /// Always on.
@@ -131,7 +131,7 @@ const MAX_QUEUED_OUTPUT_SAMPLES: usize = SAMPLE_RATE as usize / 2;
 /// How long the room tail takes to fall 60 dB.
 ///
 /// Short on purpose. Enough that a gated voice stops sounding like a switch
-/// being thrown, not so much that speech smears into itself вЂ” intelligibility
+/// being thrown, not so much that speech smears into itself — intelligibility
 /// matters more here than atmosphere.
 const REVERB_DECAY_SECS: f32 = 0.28;
 
@@ -275,7 +275,7 @@ pub struct AudioShared {
     /// that the reference is a far-end signal, uncorrelated with whoever is
     /// talking into the microphone. Monitoring makes the reference a copy of
     /// the near-end talker, so the filter converges on subtracting the user's
-    /// own voice вЂ” which is heard as the wanted signal vanishing and only the
+    /// own voice — which is heard as the wanted signal vanishing and only the
     /// residual howl remaining.
     monitor_queue: Mutex<VecDeque<f32>>,
     /// Per-speaker decode buffers.
@@ -389,7 +389,7 @@ pub struct AudioShared {
     /// How many speakers the mixer last found streaming.
     ///
     /// The underrun counter is gated on this. An empty playback queue is the
-    /// normal, correct state when nobody is talking вЂ” counting that as a
+    /// normal, correct state when nobody is talking — counting that as a
     /// dropout buries the real ones under hours of ordinary silence.
     active_speakers: AtomicU32,
     /// Frames of incoming audio invented by concealment, and decoded from real
@@ -419,7 +419,7 @@ pub struct AudioShared {
     /// Whether a short room tail is added to incoming voices.
     reverb_enabled: AtomicBool,
     /// The room itself. Applied to the mixed speakers only, so it never
-    /// touches a notification cue or the loopback monitor вЂ” a cue is a signal,
+    /// touches a notification cue or the loopback monitor — a cue is a signal,
     /// not something anyone is meant to hear across a room.
     reverb: Mutex<Reverb>,
     /// Whether the echo canceller is active.
@@ -496,9 +496,9 @@ pub struct AudioShared {
 /// gets missed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioCue {
-    /// Falling two-tone вЂ” the connection dropped.
+    /// Falling two-tone — the connection dropped.
     Disconnected,
-    /// Rising two-tone вЂ” the connection is back.
+    /// Rising two-tone — the connection is back.
     Reconnected,
     /// Repeated soft double-beep while a connection is being established.
     Dialing,
@@ -528,7 +528,7 @@ impl AudioCue {
     ///
     /// The vocabulary is consistent so it can be learned without a manual:
     /// falling means something was taken away, rising means it came back, and
-    /// the number of tones tells you how big a deal it is вЂ” two for the
+    /// the number of tones tells you how big a deal it is — two for the
     /// microphone, three for hearing, which matters more.
     fn segments(self) -> &'static [(f32, u32)] {
         match self {
@@ -565,7 +565,7 @@ impl AudioCue {
                 (659.25, 200),
             ],
 
-            // Keying a radio: one short, bright click. Brief on purpose вЂ” this
+            // Keying a radio: one short, bright click. Brief on purpose — this
             // plays before every transmission, so anything longer would be in
             // the way within a minute of use.
             AudioCue::TransmitStart => &[(1318.5, 40)],
@@ -605,7 +605,7 @@ pub fn render_cue(cue: AudioCue) -> Vec<f32> {
 /// Renders `(frequency_hz, milliseconds)` segments.
 ///
 /// Frequency `0` is silence and a *negative* frequency is a burst of noise,
-/// which is what gives the release cue its squelch tail вЂ” a pure tone alone
+/// which is what gives the release cue its squelch tail — a pure tone alone
 /// sounds like a doorbell rather than a radio.
 fn render_segments(segments: &[(f32, u32)], amplitude: f32) -> Vec<f32> {
     let mut out = Vec::new();
@@ -1396,7 +1396,7 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
 
     // Anyone still holding frames is audio we owe the listener, whether or not
     // it was played this round. Counting only what was played would leave the
-    // underrun meter blind to a buffer that is holding back вЂ” which is exactly
+    // underrun meter blind to a buffer that is holding back — which is exactly
     // the failure worth catching.
     let expecting = speakers.values().filter(|b| b.buffered() > 0).count();
     // Separately: how many are actually mid-stream, as against still filling.
@@ -1480,7 +1480,7 @@ impl Default for AudioConfig {
 ///
 /// Referencing the monitor would hand the canceller the near-end talker as its
 /// far-end signal, and an adaptive filter told that the person at the
-/// microphone is the echo will duly learn to remove them вЂ” heard as one's own
+/// microphone is the echo will duly learn to remove them — heard as one's own
 /// voice disappearing under a howl, which is the opposite of a microphone test.
 fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
     out.clear();
@@ -1500,7 +1500,7 @@ fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
     // over it: every cue pushes the voice already queued further into the
     // future, so latency grows by the length of each one and never comes back,
     // until the queue hits its cap and starts discarding audio. A cue that
-    // repeats вЂ” the dialing one does, every few seconds вЂ” turns that into a
+    // repeats — the dialing one does, every few seconds — turns that into a
     // steady climb, heard as speech breaking up for reasons that have nothing
     // to do with the network.
     mix_in(&shared.cue_queue, want, out);
@@ -1525,7 +1525,7 @@ fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
 }
 
 /// Mixes up to `want` samples from `queue` over `out`, extending it when the
-/// queue outruns it вЂ” a cue or the monitor has to be able to drive the output
+/// queue outruns it — a cue or the monitor has to be able to drive the output
 /// on its own when nothing else is playing.
 fn mix_in(queue: &Mutex<VecDeque<f32>>, want: usize, out: &mut Vec<f32>) {
     let mut queue = queue.lock();
@@ -2248,7 +2248,7 @@ where
                     // The counter keeps climbing for the life of the session.
                     // Restarting it at zero puts every later burst *behind*
                     // the receiver's play head, and a jitter buffer discards
-                    // what is behind its play head as arriving too late вЂ” so
+                    // what is behind its play head as arriving too late — so
                     // the opening of every utterance after the first is thrown
                     // away, and more of it the longer the session runs.
                     was_transmitting = false;

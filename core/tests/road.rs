@@ -38,21 +38,38 @@ struct Run {
     /// The profile actually in force at the end, which differs from the one
     /// asked for only under `Auto`.
     settled_on: NoiseProfile,
+    /// Share of labelled speech that was transmitted. Low is "it cut me off".
+    recall: f32,
+    /// Share of transmitted blocks that were labelled speech. Low is "they
+    /// hear my wind".
+    precision: f32,
+    /// Whether there were labels to score against at all.
+    labelled: bool,
 }
 
-fn run(profile: NoiseProfile, signal: &[f32]) -> Run {
+fn run(profile: NoiseProfile, signal: &[f32], spans: &[(f32, f32)]) -> Run {
     let mut chain = CaptureProcessor::new(profile);
     let mut block = [0.0f32; FRAME_SIZE];
     let (mut sent, mut counted) = (0usize, 0usize);
     let (mut level, mut floor) = (0.0f64, 0.0f64);
+    // The four cells of the only table that matters.
+    let (mut hit, mut miss, mut false_alarm) = (0usize, 0usize, 0usize);
 
-    for chunk in signal.chunks_exact(FRAME_SIZE) {
+    for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
         block.copy_from_slice(chunk);
         let a = chain.process(&mut block);
         if a.warming_up {
             continue;
         }
         counted += 1;
+        let at = i as f32 * FRAME_SIZE as f32 / 48_000.0;
+        let is_speech = spans.iter().any(|(s, e)| at >= *s && at <= *e);
+        match (a.speaking, is_speech) {
+            (true, true) => hit += 1,
+            (false, true) => miss += 1,
+            (true, false) => false_alarm += 1,
+            (false, false) => {}
+        }
         if a.speaking {
             sent += 1;
         }
@@ -66,6 +83,13 @@ fn run(profile: NoiseProfile, signal: &[f32]) -> Run {
         level_db: (level / n) as f32,
         floor_db: (floor / n) as f32,
         settled_on: chain.effective_profile(),
+        // How much of what was said went out, and how much of what went out
+        // was said. A transmitted *share* cannot distinguish a chain that
+        // sends the right quarter of a clip from one that sends the wrong
+        // quarter, and until now nothing here could tell them apart.
+        recall: hit as f32 / (hit + miss).max(1) as f32,
+        precision: hit as f32 / (hit + false_alarm).max(1) as f32,
+        labelled: hit + miss > 0,
     }
 }
 
@@ -262,14 +286,23 @@ fn what_the_chain_does_with_real_helmet_audio() {
             NoiseProfile::Helmet,
             NoiseProfile::Auto,
         ] {
-            let r = run(profile, &signal);
+            let r = run(profile, &signal, &spans);
             let settled = if profile == NoiseProfile::Auto {
                 format!(" -> {:?}", r.settled_on)
             } else {
                 String::new()
             };
+            let scored = if r.labelled {
+                format!(
+                    "  kept {:>5.1}% of speech, {:>5.1}% of what it sent was speech",
+                    r.recall * 100.0,
+                    r.precision * 100.0
+                )
+            } else {
+                String::new()
+            };
             println!(
-                "    {:<9}{:>7.1}% transmitted   level {:>6.1}  floor {:>6.1}{settled}",
+                "    {:<9}{:>7.1}% transmitted   level {:>6.1}  floor {:>6.1}{settled}{scored}",
                 format!("{profile:?}"),
                 r.transmitted * 100.0,
                 r.level_db,

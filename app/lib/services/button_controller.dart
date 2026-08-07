@@ -77,7 +77,7 @@ class ButtonBinding {
 ///
 /// A handlebar remote is the only practical way to key a microphone with
 /// gloves on at speed. Most present as a Bluetooth HID keyboard or a media
-/// controller, so they arrive as ordinary key events вЂ” which is why this
+/// controller, so they arrive as ordinary key events — which is why this
 /// listens for *any* key rather than a fixed list. Whatever the remote sends,
 /// the user can bind it.
 ///
@@ -249,7 +249,7 @@ class ButtonController {
   /// Handles a media button forwarded from the platform.
   ///
   /// Android key codes, not Flutter key ids, so they are mapped onto the same
-  /// binding space by offset вЂ” see [mediaKeyId].
+  /// binding space by offset — see [mediaKeyId].
   void handleMediaButton(int androidKeyCode, bool pressed) {
     final id = mediaKeyId(androidKeyCode);
 

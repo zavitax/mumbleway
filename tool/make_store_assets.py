@@ -119,11 +119,20 @@ def banner(width: int, height: int) -> Image.Image:
     """
     image = gradient((width, height), BG_TOP, BG_BOTTOM).convert("RGBA")
 
-    logo_h = int(height * 0.42)
-    logo = rsvg(LOGO_SVG.read_bytes(), int(logo_h * 537 / 256), logo_h)
-    # Left of centre and inside the middle 80%, so a store cropping the edges
-    # cannot take the name with it.
-    logo_x, logo_y = int(width * 0.07), (height - logo.height) // 2
+    # Fitted against both edges, not just height. The lockup is roughly 2.1:1,
+    # so sizing it from height alone works until the frame goes portrait and
+    # then puts a 1900 px logo on a 1440 px canvas.
+    #
+    # Landscape sizes are unchanged in layout but not always to the byte: this
+    # rounds once at the end where the old code rounded the height first, so
+    # 1920x1080 lands a single pixel wider and its antialiasing moves with it.
+    logo_w = min(width * 0.68, height * 0.42 * 537 / 256)
+    logo = rsvg(LOGO_SVG.read_bytes(), int(logo_w), int(logo_w * 256 / 537))
+
+    # Left of centre in landscape, where there is room to the right for the
+    # arcs to run into. A portrait frame has no such room, so it centres.
+    logo_x = int(width * 0.07) if width >= height else (width - logo.width) // 2
+    logo_y = (height - logo.height) // 2
 
     # The arcs start at the helmet inside the lockup, not at some point chosen
     # for the composition. That is the icon's whole idea -- a voice carrying
@@ -145,7 +154,11 @@ def banner(width: int, height: int) -> Image.Image:
     mask = Image.new("L", (width, height), 0)
     pen = ImageDraw.Draw(mask)
     stroke = max(2, int(height / 150))
-    span = max(width, height)
+    # Spaced against the width, because that is the direction they travel. Using
+    # the longer edge would space them by height in a portrait frame and leave
+    # three enormous arcs in it; every landscape size here is wider than it is
+    # tall, so this is the same number they were already getting.
+    span = width
     for i in range(1, 11):
         radius = int(logo.height * 0.34 + span * 0.115 * i)
         alpha = int(105 * (1 - (i - 1) / 11))
@@ -189,6 +202,7 @@ SPECS = [
     ("google-play/feature-graphic-1024x500.png", 1024, 500, None, True),
     ("microsoft-store/store-logo-300.png", 300, 300, None, False),
     ("microsoft-store/hero-1920x1080.png", 1920, 1080, None, True),
+    ("microsoft-store/poster-1440x2160.png", 1440, 2160, None, True),
 ]
 
 
@@ -243,6 +257,7 @@ def main() -> int:
     print("Microsoft Store — shown as-is, so it keeps its own corners")
     write(icon(300, square=False), OUT / "microsoft-store" / "store-logo-300.png")
     write(banner(1920, 1080), OUT / "microsoft-store" / "hero-1920x1080.png")
+    write(banner(1440, 2160), OUT / "microsoft-store" / "poster-1440x2160.png")
 
     print("Shared — for a README, a release page or a sticker")
     write(icon(1024, square=False), OUT / "shared" / "icon-rounded-1024.png")

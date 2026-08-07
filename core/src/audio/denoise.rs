@@ -173,56 +173,6 @@ impl NoiseProfile {
             NoiseProfile::Helmet => 0.75,
         }
     }
-
-    /// Periodicity below which a block may not *start* a transmission.
-    ///
-    /// Deliberately far below [`Self::voiced_threshold`], and it is a veto on
-    /// opening rather than on continuing. Unvoiced speech is genuinely
-    /// aperiodic — "s", "f", "sh" and a whisper all score near zero — so this
-    /// must never be able to close a transmission that is already open, and
-    /// must be low enough that a voiced syllable a moment earlier is what
-    /// opened it.
-    fn aperiodic_threshold(self) -> f32 {
-        match self {
-            NoiseProfile::Off => -1.0,
-            NoiseProfile::Light => 0.20,
-            NoiseProfile::Standard | NoiseProfile::Auto => 0.25,
-            NoiseProfile::Helmet => 0.30,
-        }
-    }
-
-    /// How many dB of SNR margin a strongly voiced block is forgiven.
-    ///
-    /// The margin exists because RNNoise's VAD fires on tonal backgrounds, and
-    /// it is what a helmet at speed defeats: the wind raises the tracked floor
-    /// until a rider's own voice cannot clear it. Periodicity at a human pitch
-    /// is evidence of a voice that the level tests cannot see, so it is worth
-    /// a few dB — not the whole margin, or a drone gets in. Bounded so that
-    /// even at full relief the remaining margin is above zero.
-    fn voiced_margin_relief(self) -> f32 {
-        match self {
-            NoiseProfile::Off => 0.0,
-            NoiseProfile::Light => 3.0,
-            NoiseProfile::Standard | NoiseProfile::Auto => 4.0,
-            NoiseProfile::Helmet => 6.0,
-        }
-    }
-
-    /// How much of the suppression to lift on a strongly voiced block.
-    ///
-    /// A rider complaining their voice sounds watery and gated is describing
-    /// suppression applied at full strength to the speech as well as to the
-    /// wind. On a block that is unambiguously a voice, less of it is needed:
-    /// the voice is loud enough to be masking the noise on its own, which is
-    /// what makes this free rather than a trade.
-    fn voiced_relief(self) -> f32 {
-        match self {
-            NoiseProfile::Off => 0.0,
-            NoiseProfile::Light => 0.15,
-            NoiseProfile::Standard | NoiseProfile::Auto => 0.20,
-            NoiseProfile::Helmet => 0.25,
-        }
-    }
 }
 
 /// Result of processing one 10 ms block.
@@ -638,12 +588,7 @@ impl CaptureProcessor {
         // to remove — `helmet_profile_crushes_engine_rumble` caught it doing
         // precisely that. The relief is for blocks that are unambiguously
         // speech or it is for nothing.
-        let relief = if pitch_says_speech {
-            self.effective.voiced_relief() * voice.harmonicity.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let mix = (self.effective.denoise_mix() * (1.0 - relief)).clamp(0.0, 1.0);
+        let mix = self.effective.denoise_mix();
         for (dst, wet) in block.iter_mut().zip(self.denoised.iter()) {
             *dst = *dst * (1.0 - mix) + *wet * mix;
         }
@@ -703,12 +648,13 @@ impl CaptureProcessor {
         // no threshold on level can recover it because the wind moved the
         // threshold. Periodicity is evidence the level tests cannot see, so it
         // buys a few dB of margin and nothing more.
-        let margin_db = self.effective.snr_margin_db()
-            - if pitch_says_speech {
-                self.effective.voiced_margin_relief()
-            } else {
-                0.0
-            };
+        // The relief is gone with it. It fired on 0.3% of labelled speech in
+        // real helmet audio — the bar it needed to clear is one almost no real
+        // block reaches — so it was doing nothing for a rider while looking, in
+        // the code and in every synthetic test, as though it were the fix for
+        // being cut off. Something that never fires is worse than nothing: it
+        // occupies the place where a fix should be.
+        let margin_db = self.effective.snr_margin_db();
         let snr_says_speech = snr_db >= margin_db;
         // The decision, and the shape of it is the point.
         //
@@ -749,13 +695,16 @@ impl CaptureProcessor {
             // has to be something a machine cannot supply.
             vad_says_speech && snr_says_speech
         } else {
-            // Opening. Everything that was required before, and additionally
-            // not clearly aperiodic — which is what a gust is, and what an
-            // engine is, and what no voiced sound is. This is the arm that
-            // stops the weather starting a transmission.
-            vad_says_speech
-                && snr_says_speech
-                && voice.harmonicity >= self.effective.aperiodic_threshold()
+            // Opening.
+            //
+            // This arm briefly also required the block not be clearly
+            // aperiodic, on the argument that a gust is aperiodic and a voice
+            // is not. Real helmet audio says otherwise and the veto has been
+            // taken out again — see the note on `pitch` below and the
+            // measurement in `core/tests/road.rs`. It was rejecting 42% of
+            // labelled speech against 47% of everything else, which is not a
+            // discriminator, it is a coin weighted slightly against the rider.
+            vad_says_speech && snr_says_speech
         };
 
         if speech_now {

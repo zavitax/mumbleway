@@ -21,6 +21,12 @@ class MainActivity : FlutterActivity() {
     private var buttonChannel: MethodChannel? = null
     private var logChannel: MethodChannel? = null
 
+    /// Puts the phone into a call and points it at the headset's microphone.
+    ///
+    /// Lazily built: it reaches for the audio service, and there is no need to
+    /// do that on an activity that never makes a call.
+    private val audioRouting by lazy { AudioRouting(applicationContext) }
+
     /// A `mumble://` link the app was launched with, held until Dart asks.
     ///
     /// A cold start delivers the intent long before the interface exists, so
@@ -126,15 +132,44 @@ class MainActivity : FlutterActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "prepare" -> requestMicrophone(result)
-                // Android has no session to take live: the permission is the
-                // whole of it, and the engine opens the device itself.
-                // Answered rather than left unimplemented so that the Dart side
-                // has one code path and iOS is not a special case at the call
-                // site as well as behind it.
-                "activate" -> result.success(
-                    mapOf("ok" to hasMicrophone(), "inputChannels" to -1, "sampleRate" to 0.0)
-                )
-                "deactivate" -> result.success(true)
+                // There IS a session to take live here, and the belief that
+                // there was not is a bug this comment used to assert.
+                //
+                // Android will not use a headset's microphone merely because a
+                // headset is connected. A2DP, the profile a paired headset
+                // arrives on, is output-only; the microphone lives on the
+                // hands-free profile, and that link is not established until an
+                // app declares it is in a call. An app that never declares it
+                // gets the phone's own microphone — which inside a helmet at
+                // speed records the inside of a helmet at speed, while the
+                // headset plays audio perfectly and nothing anywhere reports a
+                // fault.
+                "activate" -> {
+                    if (!hasMicrophone()) {
+                        result.success(
+                            mapOf("ok" to false, "inputChannels" to 0, "sampleRate" to 0.0)
+                        )
+                    } else {
+                        audioRouting.activate { ok ->
+                            result.success(
+                                mapOf(
+                                    "ok" to ok,
+                                    // Android does not offer a channel count
+                                    // before the device is open, and the engine
+                                    // opens it itself. Negative means "not
+                                    // known", which the Dart side already
+                                    // distinguishes from zero.
+                                    "inputChannels" to -1,
+                                    "sampleRate" to 0.0,
+                                )
+                            )
+                        }
+                    }
+                }
+                "deactivate" -> {
+                    audioRouting.deactivate()
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -384,6 +419,11 @@ class MainActivity : FlutterActivity() {
         if (isFinishing) {
             stopService(Intent(this, OverlayService::class.java))
         }
+        // Whatever way the app is leaving, give the route back. A phone left in
+        // MODE_IN_COMMUNICATION sends every other app's audio to the earpiece
+        // and holds the SCO link open, flattening a headset's battery — and the
+        // rider has no way to know that happened or which app to blame.
+        audioRouting.deactivate()
         OverlayService.onTransmit = null
         OverlayService.onMediaButton = null
         OverlayService.onToggleMute = null

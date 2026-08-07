@@ -118,6 +118,50 @@ fn most_voiced_moments(scores: &[f32], take: usize) -> Vec<(f32, f32)> {
     picked
 }
 
+/// Spans, in seconds, where somebody was actually talking.
+///
+/// Read from a `NAME.speech` sidecar next to the clip: one `start end` pair per
+/// line. Hand-written by the person who made the recording, which is the only
+/// authority there is — no measure here can be validated against a label that
+/// another measure produced, and using one would make the whole exercise
+/// circular.
+fn speech_spans(dir: &str, name: &str) -> Vec<(f32, f32)> {
+    let path = PathBuf::from(dir).join(format!("{name}.speech"));
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let mut it = line.split_whitespace();
+            let a: f32 = it.next()?.parse().ok()?;
+            let b: f32 = it.next()?.parse().ok()?;
+            Some((a, b))
+        })
+        .collect()
+}
+
+/// The distribution of a per-block measure inside the labelled speech and
+/// outside it.
+///
+/// This is the whole point of having labels. A threshold is a claim that two
+/// populations can be told apart, and until the populations are separated
+/// there is nothing to check the claim against — the earlier runs could say
+/// only "the peaks are 0.8" and not whether the peaks were the voice.
+fn split_by_label(scores: &[f32], spans: &[(f32, f32)]) -> (Vec<f32>, Vec<f32>) {
+    let (mut inside, mut outside) = (Vec::new(), Vec::new());
+    for (i, s) in scores.iter().enumerate() {
+        let at = i as f32 * FRAME_SIZE as f32 / 48_000.0;
+        if spans.iter().any(|(a, b)| at >= *a && at <= *b) {
+            inside.push(*s);
+        } else {
+            outside.push(*s);
+        }
+    }
+    inside.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    outside.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    (inside, outside)
+}
+
 fn clips() -> Vec<(String, Vec<f32>)> {
     let Ok(dir) = std::env::var("MUMBLEWAY_ROAD_AUDIO") else {
         panic!("set MUMBLEWAY_ROAD_AUDIO to a directory of mono 48 kHz f32 .raw files");
@@ -174,6 +218,42 @@ fn what_the_chain_does_with_real_helmet_audio() {
             .map(|(t, s)| format!("{t:.1}s({s:.2})"))
             .collect();
         println!("    most voiced moments: {}", listen.join(" "));
+
+        let spans = speech_spans(
+            &std::env::var("MUMBLEWAY_ROAD_AUDIO").unwrap_or_default(),
+            &name,
+        );
+        if !spans.is_empty() {
+            let (inside, outside) = split_by_label(&scores, &spans);
+            println!(
+                "    LABELLED  speech({} blocks)  p10 {:.2} p50 {:.2} p90 {:.2}",
+                inside.len(),
+                percentile(&inside, 0.10),
+                percentile(&inside, 0.50),
+                percentile(&inside, 0.90),
+            );
+            println!(
+                "              rest ({} blocks)  p50 {:.2} p90 {:.2} p99 {:.2} max {:.2}",
+                outside.len(),
+                percentile(&outside, 0.50),
+                percentile(&outside, 0.90),
+                percentile(&outside, 0.99),
+                percentile(&outside, 1.0),
+            );
+            // What a threshold placed here would actually do, which is the only
+            // form in which a threshold is worth discussing.
+            for bar in [0.75f32, 0.65, 0.55, 0.45, 0.35, 0.30, 0.20] {
+                let caught = inside.iter().filter(|s| **s >= bar).count() as f32
+                    / inside.len().max(1) as f32;
+                let false_alarm = outside.iter().filter(|s| **s >= bar).count() as f32
+                    / outside.len().max(1) as f32;
+                println!(
+                    "              bar {bar:.2}: catches {:>5.1}% of speech, {:>5.1}% of the rest",
+                    caught * 100.0,
+                    false_alarm * 100.0
+                );
+            }
+        }
 
         for profile in [
             NoiseProfile::Off,

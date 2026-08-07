@@ -43,6 +43,51 @@
 //! Music is not rejected by this and cannot be. It is harmonic, it sits inside
 //! the human range, and it is modulated at close to speech rhythm. That is a
 //! known and measured gap — see `core/tests/suppression.rs`.
+//!
+//! # It is NOT in the transmit decision, and here is why
+//!
+//! Read this before wiring it back in.
+//!
+//! Everything above is true of the synthetic signals in this repository, where
+//! the separation is emphatic: speech scores 0.85 and higher, wind and engines
+//! below 0.35. On that evidence this was put into the transmit decision — as a
+//! veto on opening for clearly aperiodic blocks, and as a licence to relax the
+//! SNR margin for clearly periodic ones.
+//!
+//! Then it was measured against audio recorded inside a real helmet, with the
+//! speech hand-labelled by the rider (`core/tests/road.rs`):
+//!
+//! ```text
+//! speech (303 blocks)   p10 0.00   p50 0.39   p90 0.70
+//! rest   (962 blocks)              p50 0.34   p90 0.70   max 0.74
+//!
+//! bar 0.65: catches 20.8% of speech, 18.4% of the rest
+//! bar 0.45: catches 43.9% of speech, 39.9% of the rest
+//! bar 0.30: catches 57.8% of speech, 52.6% of the rest
+//! ```
+//!
+//! **There is no threshold that separates them.** At every bar the share of
+//! speech caught is within about five points of the share of everything else,
+//! which is another way of saying the measure carries almost no information
+//! about whether a rider is talking. The veto at 0.30 was rejecting 42% of
+//! labelled speech against 47% of the rest: not a discriminator, a coin
+//! weighted very slightly against the rider. The relief at 0.75 fired on 0.3%
+//! of speech, which is to say never, while occupying the place in the code
+//! where a fix for being cut off was supposed to be.
+//!
+//! Why it fails is not established. Wind inside a helmet is loud, broadband
+//! and — unlike the synthesised kind — evidently structured enough to produce
+//! the same short-lag similarity a voice does, and what survives RNNoise at
+//! that input SNR may simply not be periodic any more. The generator was the
+//! optimistic one, as it has been every time.
+//!
+//! So the measure stays, computed and published, because the diagnostics panel
+//! showing it is how anybody will ever find out when that changes. It decides
+//! nothing. Anything that puts it back into the decision needs new evidence
+//! from real audio, from more than one rider and more than one helmet — the
+//! numbers above are one person, one recording, three seconds of labelled
+//! speech, which is enough to disprove a separation and nowhere near enough to
+//! establish one.
 
 /// Rate the search runs at.
 ///

@@ -16,6 +16,7 @@ use super::aec::{EchoCanceller, DEFAULT_TAPS};
 use super::dsp::{
     rms, to_dbfs, Agc, Biquad, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
 };
+use super::modulation::ModulationTracker;
 use super::pitch::PitchTracker;
 
 /// RNNoise works on fixed 10 ms blocks at 48 kHz.
@@ -112,6 +113,29 @@ impl NoiseProfile {
     }
 
     /// Gate thresholds (open, close) in dBFS.
+    ///
+    /// These used to climb with the profile — Helmet the highest at -40 —
+    /// which is backwards, and measurably so. The gate sees the signal *after*
+    /// suppression, and Helmet suppresses hardest: on real helmet audio its
+    /// output averages -45 dBFS, five decibels below the threshold it then has
+    /// to clear. The profile built for the worst conditions was the one whose
+    /// gate was hardest to open, and the two compounded.
+    ///
+    /// It cost 31% of the rider's speech. Of blocks hand-labelled as speech,
+    /// 90% cleared the SNR margin and only 69% got through the gate, so a
+    /// third of what the chain had already decided to send was thrown away
+    /// afterwards by a threshold nobody had matched to the suppression in
+    /// front of it.
+    ///
+    /// It was lowered on that reasoning and put back, because the reasoning
+    /// was wrong in a way only the measurement showed. The gate is fed -120 dB
+    /// on any block the transmit decision rejected, so its 69% is not its own
+    /// threshold talking — it is the decision upstream, seen through the gate.
+    /// Dropping the thresholds eighteen decibels moved recall by less than two
+    /// points and put 2% of synthetic noise on the wire, because for the
+    /// blocks it did affect the gate had been catching false positives the
+    /// decision let past. It is not an independent lever on recall and there is
+    /// no free one: see the transmit decision.
     fn gate_db(self) -> (f32, f32) {
         match self {
             NoiseProfile::Off => (-90.0, -95.0),
@@ -217,6 +241,13 @@ pub struct BlockAnalysis {
     pub f0_hz: f32,
     /// Whether the block was periodic enough to open a transmission by itself.
     pub pitch_says_speech: bool,
+    /// How much of the last second's loudness is moving at a talking rate.
+    ///
+    /// See [`super::modulation`]. Published, not acted on: it is a candidate
+    /// discriminator being scored against hand-labelled recordings before it
+    /// is allowed anywhere near the transmit decision, which is the order the
+    /// pitch measure should have gone in.
+    pub modulation: f32,
     /// Whether the noise gate is passing audio.
     ///
     /// Distinct from [`speaking`](Self::speaking): the gate ramps its gain, so
@@ -276,6 +307,9 @@ pub struct CaptureProcessor {
     /// Whether the block is periodic at a human pitch — the one thing in this
     /// chain that is not a measure of level.
     pitch: PitchTracker,
+    /// Whether the recent loudness is moving at a talking rate. Measured and
+    /// published; nothing is decided by it.
+    modulation: ModulationTracker,
     /// Consecutive speech blocks, used to avoid clipping word onsets.
     hangover: u32,
     /// Blocks remaining before the chain is trusted; see [`WARMUP_BLOCKS`].
@@ -351,6 +385,7 @@ impl CaptureProcessor {
             // Capacity now so the copy in `process` never reallocates.
             pre_gate: Vec::with_capacity(FRAME_SIZE),
             pitch: PitchTracker::new(),
+            modulation: ModulationTracker::new(),
             hangover: 0,
         }
     }
@@ -474,6 +509,7 @@ impl CaptureProcessor {
             band.reset();
         }
         self.pitch.reset();
+        self.modulation.reset();
         self.gate.reset();
         self.agc.reset();
         self.limiter.reset();
@@ -613,6 +649,9 @@ impl CaptureProcessor {
             self.floor.update(level_db)
         };
         let snr_db = level_db - noise_floor_db;
+        // Fed the post-suppression level, which is the envelope a listener
+        // would hear rather than the one the microphone saw.
+        let modulation = self.modulation.push(level_db);
 
         // Let Auto reconsider, from the level of the room rather than the
         // level of what the chain left of it. After the warm-up only: RNNoise
@@ -637,25 +676,10 @@ impl CaptureProcessor {
         //
         // The thing that knows it is a machine is the noise floor tracker. A
         // drone is *steady*, so the floor climbs to meet it and the SNR never
-        // clears however loud it gets. Keeping the margin in the decision
-        // keeps that knowledge; removing it threw the one signal away that
-        // could tell the difference.
-        //
-        // What the relief buys is the case it was added for. A rider at speed
-        // does clear the wind — their voice adds energy on top of it — but by
-        // less than the margin a helmet needs against a background that is
-        // both loud and tonal. Today that costs them the whole sentence, and
-        // no threshold on level can recover it because the wind moved the
-        // threshold. Periodicity is evidence the level tests cannot see, so it
-        // buys a few dB of margin and nothing more.
-        // The relief is gone with it. It fired on 0.3% of labelled speech in
-        // real helmet audio — the bar it needed to clear is one almost no real
-        // block reaches — so it was doing nothing for a rider while looking, in
-        // the code and in every synthetic test, as though it were the fix for
-        // being cut off. Something that never fires is worse than nothing: it
-        // occupies the place where a fix should be.
+        // clears however loud it gets.
         let margin_db = self.effective.snr_margin_db();
         let snr_says_speech = snr_db >= margin_db;
+
         // The decision, and the shape of it is the point.
         //
         // It used to be `vad && snr`, and a chain built on those two alone
@@ -704,6 +728,54 @@ impl CaptureProcessor {
             // measurement in `core/tests/road.rs`. It was rejecting 42% of
             // labelled speech against 47% of everything else, which is not a
             // discriminator, it is a coin weighted slightly against the rider.
+            // RNNoise's opinion is required only where the level is ambiguous.
+            //
+            // Measured, not assumed. Of the blocks a rider hand-labelled as
+            // their own speech inside a helmet at speed, the VAD fired on 40%.
+            // The SNR margin passed 90% of the same blocks, and by the
+            // threshold-free comparison in `core/tests/road.rs` the SNR is
+            // also the better feature outright — 0.77 against the VAD's 0.67,
+            // where 0.50 is a coin.
+            //
+            // So the weaker signal was holding a veto over the stronger one,
+            // and it was the binding constraint on the whole chain: loosening
+            // the SNR margin changed nothing, loosening the gate changed
+            // nothing, because neither was what stopped the words. Lowering
+            // the VAD threshold barely helped either — the probability itself
+            // is near zero on those blocks, so no threshold recovers them.
+            //
+            // The VAD keeps its say where it is worth having: near the floor,
+            // where "loud enough" and "speech" genuinely come apart, and where
+            // the drone that motivates the margin lives. Well above the floor
+            // it is overruled, because a block that clears the tracked
+            // background by that much is either speech or something the rider
+            // would want sent anyway.
+            // The override needs a second opinion, and the first attempt
+            // without one was a disaster worth recording. Overruling the VAD
+            // on level alone put 44-76% of synthetic engine and traffic noise
+            // on the wire. The VAD's low hit rate on speech made it look like
+            // the weak link; what it actually is is the only thing in the
+            // chain that recognises an engine, and the SNR margin cannot help
+            // because a lumpy engine note fluctuates well clear of its own
+            // tracked floor. A summary statistic said the VAD was the worse
+            // feature and hid that its value is concentrated exactly where the
+            // other one is blind.
+            //
+            // So the override also asks whether the loudness has been moving
+            // at a talking rate. Speech is syllables at three to eight a
+            // second; an engine at throttle and tyre roar are not, whatever
+            // their level does. See [`super::modulation`].
+            // ...and it does not work either, so the veto stays. On real audio
+            // the override recovered nothing at all — recall stayed at 59.1%,
+            // because the speech blocks the VAD misses are also the ones whose
+            // envelope does not look like syllables — while still leaking
+            // 12-41% of synthetic engine and traffic. Worst of both.
+            //
+            // The conclusion is not that the VAD is good. It is that no
+            // combination of the numbers this chain currently computes can
+            // raise recall without opening the channel to engines, and three
+            // features have now been tried: periodicity, level, and syllabic
+            // modulation. Recall is bought elsewhere — see the gate below.
             vad_says_speech && snr_says_speech
         };
 
@@ -759,6 +831,7 @@ impl CaptureProcessor {
             harmonicity: voice.harmonicity,
             f0_hz: voice.f0_hz,
             pitch_says_speech,
+            modulation,
             gate_open,
             agc_gain_db: self.agc.gain_db(),
             warming_up,

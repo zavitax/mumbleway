@@ -10,6 +10,20 @@
 	<string>Mumbleway</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<!-- The languages this app speaks, declared to the system.
+
+	     Without this, iOS treats the bundle as English-only and reports an
+	     English locale to the app however the phone is set. The Dart side then
+	     resolves the interface to English on a Russian phone, and it looks like
+	     a bug in the language handling rather than a missing declaration: the
+	     translation is complete, it is simply never asked for.
+
+	     Must list every locale in AppState.supportedLocales. -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ru</string>
+	</array>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>

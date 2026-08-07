@@ -62,7 +62,15 @@ class _RecordingToggleState extends State<RecordingToggle> {
 
   Future<void> _refresh() async {
     if (!mounted) return;
-    final now = diagnosticRecordingState();
+    var now = _state;
+    try {
+      now = diagnosticRecordingState();
+    } catch (_) {
+      // The engine is not up, so there is no recording to report on. The same
+      // guard the rest of this panel uses: the diagnostics are meant to explain
+      // a failure, and throwing on the way to describing one is the least
+      // useful thing they could do.
+    }
     final dir = await _directory();
     var files = 0;
     var bytes = 0;
@@ -230,39 +238,54 @@ class _RecordingToggleState extends State<RecordingToggle> {
             value: active,
             onChanged: _busy ? null : _setRecording,
           ),
+          // Stacked, not side by side. These were in one Row, where the two
+          // buttons take their intrinsic width and the Expanded text gets
+          // whatever is left -- which in a panel this narrow, with Russian
+          // labels on both buttons, was a few pixels. The status line then
+          // wrapped one character per line.
+          //
+          // Nothing about that is fixed by a smaller font or an ellipsis: the
+          // text needs the full width, so it gets its own line.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Text(
-                    // Losses come first while they are happening: a recording
-                    // with gaps is still worth having, and one whose gaps are
-                    // only discovered during analysis is a measurement waiting
-                    // to be wrong.
-                    dropped > 0
-                        ? l.diagRecordingDropped(dropped)
-                        : _files == 0
-                        ? l.diagRecordingNone
-                        : '${l.diagRecordingStopped(_files)} · '
-                              '${l.diagRecordingSize(megabytes)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: dropped > 0
-                          ? scheme.error
-                          : scheme.onSurfaceVariant,
-                    ),
+                Text(
+                  // Losses come first while they are happening: a recording
+                  // with gaps is still worth having, and one whose gaps are
+                  // only discovered during analysis is a measurement waiting
+                  // to be wrong.
+                  dropped > 0
+                      ? l.diagRecordingDropped(dropped)
+                      : _files == 0
+                      ? l.diagRecordingNone
+                      : '${l.diagRecordingStopped(_files)} · '
+                            '${l.diagRecordingSize(megabytes)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: dropped > 0 ? scheme.error : scheme.onSurfaceVariant,
                   ),
                 ),
-                // Both actions touch the files, so neither is offered while a
-                // writer is appending to them.
-                TextButton(
-                  onPressed: _files == 0 || active ? null : _discard,
-                  child: Text(l.diagRecordingDiscard),
-                ),
-                FilledButton.tonal(
-                  onPressed: _files == 0 || active ? null : _share,
-                  child: Text(l.diagRecordingShare),
+                const SizedBox(height: 8),
+                // Wrap rather than Row, so that two long labels on a narrow
+                // phone go onto separate lines instead of overflowing.
+                Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    // Both actions touch the files, so neither is offered while
+                    // a writer is appending to them.
+                    TextButton(
+                      onPressed: _files == 0 || active ? null : _discard,
+                      child: Text(l.diagRecordingDiscard),
+                    ),
+                    FilledButton.tonal(
+                      onPressed: _files == 0 || active ? null : _share,
+                      child: Text(l.diagRecordingShare),
+                    ),
+                  ],
                 ),
               ],
             ),

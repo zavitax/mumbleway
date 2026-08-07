@@ -1,7 +1,12 @@
 import 'dart:io' show Directory;
 
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/state/app_state.dart';
+import 'package:mumbleway/theme.dart';
+import 'package:mumbleway/widgets/recording_toggle.dart';
 
 /// Diagnostic recording has to open the microphone, and give it back.
 ///
@@ -74,5 +79,67 @@ void main() {
     // from. Nothing else should have moved the count in the meantime.
     await pending;
     expect(state.audioHolds, 0);
+  });
+
+  group('the panel fits the narrowest phone', () {
+    // The status line and the two buttons were one Row. The buttons take their
+    // intrinsic width, the text got what was left, and on a narrow panel with
+    // Russian labels that was a few pixels -- so the text wrapped one character
+    // per line. It looked like a font bug and was a layout one.
+    //
+    // Russian is the case that broke, because both labels are longer than
+    // their English equivalents. Testing English alone would have passed.
+    Widget harness(Locale locale, AppState state) => MaterialApp(
+      locale: locale,
+      theme: buildTheme(Brightness.dark),
+      supportedLocales: AppState.supportedLocales,
+      localizationsDelegates: const [
+        L.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: Scaffold(
+        body: AppStateScope(
+          state: state,
+          child: const SingleChildScrollView(child: RecordingToggle()),
+        ),
+      ),
+    );
+
+    for (final locale in const [Locale('en'), Locale('ru')]) {
+      testWidgets('in ${locale.languageCode}, on a 320pt screen', (tester) async {
+        // 320 logical pixels is the narrowest phone still worth supporting,
+        // and the diagnostics panel is full width, so this is the real case.
+        tester.view.physicalSize = const Size(320, 640);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(harness(locale, state));
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // No overflow. takeException would hold a FlutterError describing a
+        // RenderFlex that ran off the side.
+        expect(tester.takeException(), isNull);
+
+        // And the status line has room to set. One character per line is what
+        // the bug looked like, so the assertion is on the width the text was
+        // actually given rather than on how it happens to wrap.
+        final status = find.byWidgetPredicate(
+          (w) => w is Text && (w.style?.fontSize == 12),
+        );
+        expect(status, findsWidgets);
+        for (final element in status.evaluate()) {
+          final width = (element.renderObject! as RenderBox).size.width;
+          expect(
+            width,
+            greaterThan(120),
+            reason: 'the status line was squeezed to ${width.toStringAsFixed(0)}pt, '
+                'which wraps it a letter at a time',
+          );
+        }
+      });
+    }
   });
 }

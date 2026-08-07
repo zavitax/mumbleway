@@ -1,5 +1,8 @@
 name: mumbleway
-description: "A new Flutter project."
+# Not just a comment: msix:create copies this straight into the Store package's
+# manifest as the app's Description, so the Flutter template's "A new Flutter
+# project." was being shipped to the Microsoft Store as the product's own words.
+description: "Voice for motorcyclists. A Mumble client built for wind and engine noise inside a helmet."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

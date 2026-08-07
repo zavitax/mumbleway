@@ -44,6 +44,36 @@ Every job is gated and **skips cleanly when its secrets are absent**, which
 means a run can go green having uploaded nothing at all. `gh secret list` shows
 names and dates, never values.
 
+## The privacy policy, and where it lives
+
+**<https://zavitax.github.io/mumbleway/privacy>** — the URL to paste into
+Partner Center, App Store Connect and Play Console.
+
+Source is **`docs/privacy.md`**, and that is the only copy. GitHub Pages serves
+it from the `main` branch's `/docs` folder, so editing the file publishes it;
+there is nothing to copy anywhere and nothing to keep in step.
+
+Every store here requires the URL from an app that records a microphone — Store
+Policy 10.5.1 and Apple's App Privacy both — and **submission is blocked without
+it**, at the end of a long form rather than the start.
+
+Two things to hold on to when editing it:
+
+- **It has to keep agreeing with `docs/STORE_DESCRIPTION.md`**, which tells
+  readers the app collects nothing and shows no advertising. A policy that
+  drifts from the listing contradicts the store page instead of supporting it,
+  and the fine print is the half a reviewer reads closely.
+- **It describes real data flows, not a template's.** Three are easy to lose and
+  each is checkable in the code: the public server directory calls
+  `publist.mumble.info` (`app_state.dart`), optional sync writes the server list
+  to the user's *own* iCloud or Android Backup account with passwords held
+  separately (`services/cloud_sync.dart`), and diagnostic recording writes a
+  microphone to device storage (`core/src/audio/record.rs`). Add a network call
+  or a stored field, and this file is part of the change.
+
+`docs/index.md` is the Pages landing page and exists so the site root is not a
+404. It carries the tagline and links here.
+
 ## Secrets and this repository
 
 `zavitax/mumbleway` is **public**. Never paste a token, key, certificate or

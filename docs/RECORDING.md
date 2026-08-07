@@ -33,6 +33,12 @@ It writes two files at a time, rotating every 16 MB:
   recovered afterwards: from the audio alone "the gate was shut here" is an
   inference, and from this file it is a fact.
 
+**Pocket the phone and ride.** The switch opens the microphone itself, the same
+way a call does, and holds it open until you turn it off — so recording works
+without being connected to anything, and keeps working with the screen locked.
+On iOS that is the `audio` background mode; on Android it is the microphone
+foreground service, which is why a notification stays up while it runs.
+
 Turn it **off** before sharing. The switch closes the last file; sharing while
 it is still being written sends a truncated one. The panel then offers *Share
 recordings*, which on Android and iOS opens the normal share sheet — the

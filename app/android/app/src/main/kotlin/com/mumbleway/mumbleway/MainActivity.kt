@@ -499,6 +499,14 @@ class MainActivity : FlutterActivity() {
      * process with nothing in the foreground, which stops the audio threads and
      * drops the call; the service is what prevents that, and it has to run even
      * for a rider who never turns the window on.
+     *
+     * Diagnostic recording depends on this too, and less obviously. From
+     * Android 11 a backgrounded app gets silence from the microphone rather
+     * than an error, so a rider who starts a recording and pockets the phone —
+     * which is the entire use for it — would come back to a file that is the
+     * right length and empty. Nothing on either side reports a fault. This
+     * service is what makes it not happen, so it must keep running for the
+     * whole session and not only while a call is up.
      */
     private fun startKeepAliveService() {
         // Not before the microphone is granted. The service declares itself as

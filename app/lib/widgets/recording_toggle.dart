@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
+import '../state/app_state.dart';
 
 /// Turns on recording of the microphone and of what the chain decided about it.
 ///
@@ -101,8 +102,18 @@ class _RecordingToggleState extends State<RecordingToggle> {
     return Directory('${base.path}${Platform.pathSeparator}mumbleway-recordings');
   }
 
+  /// Both directions go through [AppState], which owns the audio hold.
+  ///
+  /// Calling the engine's recorder directly would start it with the devices
+  /// shut: the capture worker feeds the recorder and does not run until they
+  /// are open, so the result is an empty file that looks exactly like a ride
+  /// nobody spoke on. On Android it would be worse than empty — without the
+  /// session the hands-free link is never made and the audio would come from
+  /// the phone's own microphone, which is the confusion this feature exists to
+  /// end.
   Future<void> _setRecording(bool on) async {
     final l = L.of(context);
+    final state = AppStateScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
@@ -116,15 +127,22 @@ class _RecordingToggleState extends State<RecordingToggle> {
         final tag =
             '${now.year}${_two(now.month)}${_two(now.day)}-'
             '${_two(now.hour)}${_two(now.minute)}';
-        startDiagnosticRecording(directory: dir.path, tag: tag);
+        // Opens the microphone, and reports it rather than recording silence
+        // if it cannot be had.
+        final error = await state.beginDiagnosticRecording(dir.path, tag);
+        if (error != null) {
+          messenger.showSnackBar(
+            SnackBar(content: Text(l.diagRecordingFailed(error))),
+          );
+        }
       } else {
         // Returns what storage could not keep up with. Surfaced rather than
         // swallowed: a recording with gaps is still useful, and one with gaps
         // nobody knows about is a measurement waiting to be wrong.
-        final dropped = stopDiagnosticRecording();
-        if (dropped > BigInt.zero) {
+        final dropped = state.endDiagnosticRecording();
+        if (dropped > 0) {
           messenger.showSnackBar(
-            SnackBar(content: Text(l.diagRecordingDropped(dropped.toInt()))),
+            SnackBar(content: Text(l.diagRecordingDropped(dropped))),
           );
         }
       }
@@ -187,6 +205,11 @@ class _RecordingToggleState extends State<RecordingToggle> {
     final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
     final megabytes = (_bytes / (1024 * 1024)).toStringAsFixed(1);
+    // The switch follows the side that owns the audio hold, not the engine's
+    // own flag. They agree in every ordinary case; where they cannot, the hold
+    // is the one that must be given back exactly once.
+    final active = AppStateScope.of(context).diagnosticRecording;
+    final dropped = _state.droppedBlocks.toInt();
 
     return Card(
       margin: EdgeInsets.zero,
@@ -196,13 +219,15 @@ class _RecordingToggleState extends State<RecordingToggle> {
         children: [
           SwitchListTile(
             secondary: Icon(
-              _state.active ? Icons.fiber_manual_record : Icons.mic_none,
-              color: _state.active ? scheme.error : null,
+              active ? Icons.fiber_manual_record : Icons.mic_none,
+              color: active ? scheme.error : null,
             ),
             title: Text(l.diagRecording),
-            subtitle: Text(l.diagRecordingBody),
+            subtitle: Text(
+              active ? l.diagRecordingActive : l.diagRecordingBody,
+            ),
             isThreeLine: true,
-            value: _state.active,
+            value: active,
             onChanged: _busy ? null : _setRecording,
           ),
           Padding(
@@ -211,24 +236,32 @@ class _RecordingToggleState extends State<RecordingToggle> {
               children: [
                 Expanded(
                   child: Text(
-                    _files == 0
+                    // Losses come first while they are happening: a recording
+                    // with gaps is still worth having, and one whose gaps are
+                    // only discovered during analysis is a measurement waiting
+                    // to be wrong.
+                    dropped > 0
+                        ? l.diagRecordingDropped(dropped)
+                        : _files == 0
                         ? l.diagRecordingNone
                         : '${l.diagRecordingStopped(_files)} · '
                               '${l.diagRecordingSize(megabytes)}',
                     style: TextStyle(
                       fontSize: 12,
-                      color: scheme.onSurfaceVariant,
+                      color: dropped > 0
+                          ? scheme.error
+                          : scheme.onSurfaceVariant,
                     ),
                   ),
                 ),
                 // Both actions touch the files, so neither is offered while a
                 // writer is appending to them.
                 TextButton(
-                  onPressed: _files == 0 || _state.active ? null : _discard,
+                  onPressed: _files == 0 || active ? null : _discard,
                   child: Text(l.diagRecordingDiscard),
                 ),
                 FilledButton.tonal(
-                  onPressed: _files == 0 || _state.active ? null : _share,
+                  onPressed: _files == 0 || active ? null : _share,
                   child: Text(l.diagRecordingShare),
                 ),
               ],

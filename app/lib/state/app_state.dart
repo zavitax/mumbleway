@@ -1639,6 +1639,16 @@ class AppState extends ChangeNotifier {
     _syncAudioToUse();
   }
 
+  /// How many things are currently keeping the devices open.
+  ///
+  /// Exposed for tests because both ways of getting this wrong are silent. A
+  /// hold taken and never returned leaves the microphone open for the rest of
+  /// the session — the recording indicator lit, the battery going, and nothing
+  /// on screen to say why. A hold returned twice drops somebody else's, and the
+  /// microphone shuts under a screen that is still using it.
+  @visibleForTesting
+  int get audioHolds => _audioHolds;
+
   /// Everything that needs the devices open, which is not only calls.
   ///
   /// The microphone test in settings is a rider holding a headset and
@@ -1646,6 +1656,71 @@ class AppState extends ChangeNotifier {
   /// much as a conversation does, and leaving it out would have turned a
   /// switch that works into one that silently does nothing.
   bool get _audioNeeded => _callInProgress || monitoring || _audioHolds > 0;
+
+  /// Whether a diagnostic recording is running.
+  ///
+  /// Held here rather than read from the engine because it owns an audio hold,
+  /// and a hold has to be given back exactly once by whoever took it.
+  bool get diagnosticRecording => _diagnosticRecording;
+  bool _diagnosticRecording = false;
+
+  /// Starts a diagnostic recording, with the devices open behind it.
+  ///
+  /// **The hold is the point of this method.** The recorder is fed by the
+  /// capture worker, and the worker does not run until the engine has opened
+  /// the devices. Calling the engine's recorder without one produces a file
+  /// that is empty, valid, and indistinguishable from a ride nobody spoke on —
+  /// which is precisely the class of silent failure this whole feature exists
+  /// to remove.
+  ///
+  /// Taking the hold is also what puts the platform in the right state, and
+  /// that matters twice over on Android: without `MODE_IN_COMMUNICATION` the
+  /// hands-free link is never established and the recording is made from the
+  /// *phone's* microphone. That is the exact confusion that invalidated every
+  /// measurement made before this existed, so a recorder that could reproduce
+  /// it would be worse than none.
+  ///
+  /// Returns null on success, or something to show the rider. Muting does not
+  /// stop it: mute is applied at the transmit decision, well after the block is
+  /// handed to the recorder, so a rider can record a ride without sending any
+  /// of it — which is usually what they want.
+  Future<String?> beginDiagnosticRecording(String directory, String tag) async {
+    if (_diagnosticRecording) return null;
+
+    // Awaited before the recorder is told anything. If the microphone cannot
+    // be had — refused, or held by another app — the honest outcome is a
+    // switch that refuses to move and says why, not a file of silence.
+    final error = await holdAudio();
+    if (error != null) return error;
+
+    try {
+      startDiagnosticRecording(directory: directory, tag: tag);
+    } catch (e) {
+      releaseAudio();
+      return e.toString();
+    }
+    _diagnosticRecording = true;
+    notifyListeners();
+    return null;
+  }
+
+  /// Stops the recording, closes the files and gives the devices back.
+  ///
+  /// Returns the blocks storage could not keep up with. Safe to call when
+  /// nothing is recording, which is what teardown does.
+  int endDiagnosticRecording() {
+    if (!_diagnosticRecording) return 0;
+    _diagnosticRecording = false;
+    int dropped = 0;
+    try {
+      dropped = stopDiagnosticRecording().toInt();
+    } catch (_) {
+      // The engine has gone. The hold below still has to be returned.
+    }
+    releaseAudio();
+    notifyListeners();
+    return dropped;
+  }
 
   /// Keeps the devices following whatever is using them.
   ///
@@ -2846,6 +2921,10 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    // Before anything else: this flushes and closes the recording. A file left
+    // open by a process going away is a truncated file, and the rider finds out
+    // when they try to share it.
+    endDiagnosticRecording();
     _syncTimer?.cancel();
     _pingTimer?.cancel();
     _audioRelease?.cancel();

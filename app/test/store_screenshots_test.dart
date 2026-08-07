@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
+import 'package:mumbleway/screens/add_server_screen.dart';
 import 'package:mumbleway/screens/home_screen.dart';
+import 'package:mumbleway/screens/settings_screen.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/theme.dart';
@@ -78,19 +80,38 @@ void main() {
   // layout, which is the thing being photographed.
   const shots = <_Shot>[
     // Apple wants one set per device class it is listed on.
-    _Shot('app-store', 'iphone-6.9', 1320, 2868, 3),
+    _Shot('app-store', 'iphone-6.9', 1320, 2868, 3, everyScene: true),
     _Shot('app-store', 'iphone-6.5', 1242, 2688, 3),
     _Shot('app-store', 'ipad-12.9', 2048, 2732, 2),
     _Shot('mac-app-store', 'mac', 2880, 1800, 2),
+    // 1366x768 at ratio 1 is a small laptop, and it is the size worth having
+    // because it is the one the desktop layout is tightest in -- if the panel
+    // fits here it fits everywhere above.
+    _Shot('mac-app-store', 'mac-small', 1366, 768, 1, everyScene: true),
     // Play takes anything between 320 and 3840 on the short side, 16:9-ish.
     _Shot('google-play', 'phone', 1080, 2400, 3),
     _Shot('google-play', 'tablet-10', 1600, 2560, 2),
-    // Asked for explicitly; comfortably above the 1366x768 floor.
+    // The Microsoft Store's own floor, and the size asked for above it.
+    _Shot('microsoft-store', 'desktop-small', 1366, 768, 1, everyScene: true),
     _Shot('microsoft-store', 'desktop', 3840, 2160, 2),
   ];
 
+  // Both languages, because a Russian store page with English screenshots
+  // reads as a half-finished translation -- and because Russian is longer than
+  // English almost everywhere, so it is also the pass that shows whether the
+  // interface still fits. The diagnostic panel's status line was wrapping a
+  // letter at a time in Russian and nowhere else.
+  for (final locale in AppState.supportedLocales) {
+  for (final scene in _Scene.values) {
   for (final shot in shots) {
-    testWidgets('${shot.store} ${shot.name} ${shot.width}x${shot.height}', (
+    // The home screen is what a store leads with, so it gets every size. The
+    // other two are supporting shots and only need one phone and one desktop;
+    // seven of each would be padding a listing rather than filling it.
+    if (scene != _Scene.home && !shot.everyScene) continue;
+
+    testWidgets(
+        '${locale.languageCode} ${scene.name} ${shot.store} ${shot.name} '
+        '${shot.width}x${shot.height}', (
       tester,
     ) async {
       // physicalSize is the file's pixel size; the ratio decides how many
@@ -100,9 +121,15 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
+      final state = _connectedState();
+      if (scene == _Scene.diagnostics) state.diagnosticsOpen = true;
+
       final key = GlobalKey();
       await tester.pumpWidget(
-        RepaintBoundary(key: key, child: _app(_connectedState())),
+        RepaintBoundary(
+          key: key,
+          child: _app(state, locale, scene),
+        ),
       );
       // Fixed pumps rather than pumpAndSettle, which never returns here: the
       // on-air light blinks for as long as audio is going out and the meters
@@ -113,7 +140,8 @@ void main() {
       }
 
       final file = File(
-        '${root.path}/${shot.store}/screenshots/${shot.name}-${shot.width}x${shot.height}.png',
+        '${root.path}/${shot.store}/screenshots/${locale.languageCode}/'
+        '${scene.name}-${shot.name}-${shot.width}x${shot.height}.png',
       );
 
       // Inside runAsync, and this is the whole reason the harness hung.
@@ -137,6 +165,31 @@ void main() {
       expect(height, shot.height);
     });
   }
+  }
+  }
+}
+
+/// Which part of the app a shot is of.
+enum _Scene {
+  /// The call itself: roster, channel, connection. What a store leads with.
+  home,
+
+  /// Where a rider changes the things this app exists to let them change --
+  /// noise profile, transmit mode, audio devices.
+  settings,
+
+  /// Adding a server, which is the first thing anyone does and the step a
+  /// listing most needs to show is simple. Rendered empty, as a new user meets
+  /// it, rather than pre-filled.
+  addServer,
+
+  /// The analyser and the chain status.
+  ///
+  /// The spectrum comes out **empty** here, and honestly so: the bands are
+  /// computed by the audio worker, and there is no engine behind a test. This
+  /// shows the panel and the per-stage status, not a live signal. A screenshot
+  /// with a moving spectrum has to be taken on a device.
+  diagnostics,
 }
 
 /// Answers every "where do files go" question with one scratch directory.
@@ -172,7 +225,14 @@ class _ScratchPaths extends Fake
 }
 
 class _Shot {
-  const _Shot(this.store, this.name, this.width, this.height, this.ratio);
+  const _Shot(
+    this.store,
+    this.name,
+    this.width,
+    this.height,
+    this.ratio, {
+    this.everyScene = false,
+  });
   final String store;
   final String name;
   final int width;
@@ -180,12 +240,17 @@ class _Shot {
 
   /// Device pixel ratio, which decides the logical size and so the layout.
   final int ratio;
+
+  /// Whether the supporting scenes are shot at this size as well as the home
+  /// screen. One phone and one small desktop is enough for those.
+  final bool everyScene;
 }
 
-Widget _app(AppState state) => AppStateScope(
+Widget _app(AppState state, Locale locale, _Scene scene) => AppStateScope(
   state: state,
   child: MaterialApp(
     debugShowCheckedModeBanner: false,
+    locale: locale,
     theme: buildTheme(Brightness.dark),
     supportedLocales: AppState.supportedLocales,
     localizationsDelegates: const [
@@ -194,7 +259,13 @@ Widget _app(AppState state) => AppStateScope(
       GlobalWidgetsLocalizations.delegate,
       GlobalCupertinoLocalizations.delegate,
     ],
-    home: const HomeScreen(),
+    // These are pushed routes in the app; here each is the home, so no
+    // navigation has to be driven to reach it. The widgets are the same ones.
+    home: switch (scene) {
+      _Scene.settings => const SettingsScreen(),
+      _Scene.addServer => const AddServerScreen(),
+      _ => const HomeScreen(),
+    },
   ),
 );
 

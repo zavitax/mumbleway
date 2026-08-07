@@ -62,7 +62,15 @@ class _AddServerScreenState extends State<AddServerScreen> {
     final source = widget.existing ?? widget.prefill;
     _source = source;
     if (source == null) {
-      _port.text = defaultPort().toString();
+      // 64738 is Mumble's registered port and the answer the engine gives.
+      // Falling back to it rather than letting this throw: the engine may not
+      // be up — startup failed, or this is a test — and a screen that cannot
+      // draw at all is a worse failure than a port field the user can edit.
+      var port = 64738;
+      try {
+        port = defaultPort();
+      } catch (_) {}
+      _port.text = port.toString();
       // A name to connect under, so the field is not simply blank and in the
       // way. Derived from the device rather than shared or invented, and only
       // a suggestion — it is an ordinary editable field.
@@ -82,7 +90,16 @@ class _AddServerScreenState extends State<AddServerScreen> {
   /// briefly empty. Only filled if it still is: a rider who types faster than
   /// a method channel answers should not have their name replaced.
   Future<void> _suggestUsername() async {
-    final name = await AppStateScope.of(context).suggestedUsername();
+    // A suggestion, and only that. If the platform cannot answer — no engine,
+    // an older host, a test — the field stays empty and the rider types a
+    // name, which is what the field is for. Failing to guess is not a reason
+    // to fail to draw the form.
+    final String name;
+    try {
+      name = await AppStateScope.of(context).suggestedUsername();
+    } catch (_) {
+      return;
+    }
     if (!mounted || _user.text.isNotEmpty) return;
     _user.text = name;
   }

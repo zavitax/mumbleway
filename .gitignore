@@ -39,3 +39,12 @@ identity.key
 key.properties
 *.jks
 *.keystore
+
+# The Telegram intake bot reads its token from the environment and never from a
+# file, so nothing here should ever match. These are here because this
+# repository is public and the cost of the one time somebody takes the shortcut
+# is a stranger with control of the bot.
+.env
+.env.*
+*.token
+*_token.txt

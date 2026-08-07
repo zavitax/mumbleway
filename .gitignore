@@ -49,3 +49,8 @@ key.properties
 *.token
 *_token.txt
 __pycache__/
+
+# --- Local, machine-specific notes -----------------------------------------
+# CLAUDE.local.md names a particular machine and how to reach it. This
+# repository is public; that belongs on the machine, not in it.
+CLAUDE.local.md

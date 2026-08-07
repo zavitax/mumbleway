@@ -365,7 +365,8 @@ is forbidden to reference. That is why the setting says to use headphones.
 
 See **[docs/RELEASING.md](docs/RELEASING.md)** for the one-time setup: SignPath
 for Windows code signing (free for open source), Apple certificates and App
-Store Connect keys, and the Google Play upload key.
+Store Connect keys, the Google Play upload key, and the Partner Center identity
+values the Microsoft Store build needs.
 
 You generate every credential yourself and paste it in as an encrypted GitHub
 secret — nothing in that process requires sharing account access with anyone.

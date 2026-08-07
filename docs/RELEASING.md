@@ -334,30 +334,178 @@ reset by support — but that is a support ticket you would rather not file.
 
 ---
 
-## 4. What each store expects
+## 4. Microsoft Store — Partner Center
+
+Separate from section 1, and the two do not overlap. SignPath signs the build
+people download from GitHub. **Partner Center strips that and re-signs with its
+own certificate**, so a Store package is submitted unsigned and a SignPath
+signature would be thrown away. That is why the publish workflow builds two
+different Windows artifacts and only one of them can be installed locally.
+
+Registration is now **free** for both individual and company accounts — the 19
+USD and 99 USD fees were dropped, company accounts in May 2026. A government-ID
+identity check replaces the card, and you can sign up with a work account
+through Entra ID.
+
+### 4a. Reserve the app in Partner Center
+
+Do this first. **The app has to exist before anything can be uploaded to it**,
+and no API can create one — that is true of the manual route and the automated
+one alike.
+
+Partner Center → *Apps and games* → **New product** → *App*, then reserve the
+name. The reserved name is what the Store lists it under.
+
+### 4b. Copy the identity values
+
+Partner Center → your app → *Product management* → **Product identity**. Three
+values, all account-specific and none of them guessable:
+
+| Partner Center field | Secret | Shape |
+|---|---|---|
+| `Package/Identity/Name` | `MSIX_IDENTITY_NAME` | `12345Publisher.MumbleWay` |
+| `Package/Identity/Publisher` | `MSIX_PUBLISHER` | `CN=A1B2C3D4-1234-...` |
+| `Package/Identity/PublisherDisplayName` | `MSIX_PUBLISHER_DISPLAY_NAME` | your publisher name |
+
+They must match **exactly** or the upload is rejected. `Publisher` is the one
+that catches people out: it is a `CN=` followed by a GUID, not a company name,
+and it is not the same string as `PublisherDisplayName`.
+
+**The identity cannot be changed after the app is created.** Choose the reserved
+name deliberately.
+
+`app/pubspec.yaml` carries `identity_name: com.mumbleway.mumbleway`, which is
+correct only for a sideload package. The workflow overrides all three from these
+secrets for the Store build, which is why they are not committed.
+
+### 4c. Add the secrets
+
+| Secret | Contents |
+|---|---|
+| `MSIX_PUBLISHER` | `Package/Identity/Publisher` |
+| `MSIX_IDENTITY_NAME` | `Package/Identity/Name` |
+| `MSIX_PUBLISHER_DISPLAY_NAME` | `Package/Identity/PublisherDisplayName` |
+
+`MSIX_PUBLISHER` is the gate. Until it is set the job builds a **test-signed
+sideload package** and says so with a notice; once it is set the same job builds
+a Store package instead. Both are attached to the run as
+`mumbleway-windows-msix`, and only the sideload one will install on your own
+machine — a Store package has no signature until Partner Center gives it one, so
+double-clicking it fails, correctly.
+
+### 4d. The first submission is by hand
+
+Download `mumbleway-windows-msix` from the publish run and upload the `.msix` in
+Partner Center → *Packages*. Then the listing: description, screenshots, age
+rating.
+
+**A privacy policy URL is required, and this app cannot skip it.** Store Policy
+10.5.1 requires one from any product that accesses or transmits personal
+information; a voice client that records a microphone and sends the audio to a
+server is squarely inside that. Submission is blocked without the URL, and it is
+the sort of thing discovered at the end of a long form.
+
+Expect to justify the `microphone` capability in the listing. It is declared in
+`msix_config` because the app cannot work without it.
+
+### 4e. The version has to be raised by hand
+
+Unlike iOS and Android, which take their build number from `github.run_number`
+and therefore always rise, the Windows package version is **pinned in
+`app/pubspec.yaml`**:
+
+```yaml
+msix_config:
+  msix_version: 1.0.0.0
+```
+
+`msix:create` reads it from there and the workflow passes no override, so every
+Store build carries the same version. Partner Center rejects a submission whose
+version is not higher than the last one, so **the second submission fails unless
+this is edited first**. Two rules when editing it:
+
+- four components, and **the fourth must be `0`** — the revision field is
+  reserved for the Store and a non-zero value is rejected;
+- it must be strictly greater than the previous accepted submission.
+
+This is worth fixing rather than remembering: passing `--version` to
+`msix:create` from `github.run_number`, the way the other three platforms
+already do, would make it automatic. Left as it is for now so that the version
+in the Store cannot move without somebody deciding it should.
+
+### 4f. Automating submissions (not set up)
+
+Uploading is a drag-and-drop today, deliberately — the workflow produces the
+package and stops. Automating it needs more setup than the other stores:
+
+1. Partner Center → *Account settings* → **Tenants** → associate an Azure AD
+   (Entra ID) tenant. Needs global administrator on that directory.
+2. Register an application in it and generate a client secret.
+3. Give that application the **Manager** role in Partner Center.
+4. Collect the tenant id, client id, client secret, seller id and product id.
+
+Two caveats before spending an evening on it. The official
+[`microsoft/store-submission`](https://github.com/microsoft/store-submission)
+action documents the `win32` flow, for `.msi` and `.exe` installers — MSIX
+packages go through the older Store submission API, which is a different set of
+calls. And once a submission has been created through the API, **editing it in
+Partner Center stops it being manageable by the API afterwards**; pick one and
+stay with it.
+
+None of this is implemented in `publish.yml` and none of it has been tried here.
+
+---
+
+## 5. What each store expects
 
 | Store | Artifact | Notes |
 |---|---|---|
-| Microsoft Store | `.msix` | Partner Center signs it; the SignPath signature covers direct downloads |
-| Direct download | signed `.zip` | what CI publishes today |
+| Microsoft Store | `.msix` | Partner Center re-signs it, so it is submitted unsigned; version raised by hand — see 4 |
+| Direct download | signed `.zip` | what CI publishes today; this is the one SignPath signs |
 | App Store | `.ipa` | uploaded to TestFlight first; review takes days |
 | Google Play | `.aab` | APKs are for direct install only; Play requires a bundle |
 | Mac App Store | `.pkg` | two certificates, one for the app and one for the installer; see 2g |
 
 ---
 
-## 5. Releasing
+## 6. Releasing
 
-Tag a version and push it:
+Two routes, and they are not the same thing.
+
+**To get a build to testers**, run the publish workflow:
+
+```bash
+gh workflow run publish.yml --ref main -f track=internal
+```
+
+**To cut a release**, tag a version and push it:
 
 ```bash
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-That runs the full matrix, signs the Windows build, and attaches every artifact
-to a GitHub release. Store uploads run only when the corresponding secrets are
-present, so this is safe to try before any store account exists.
+A tag does everything the dispatch does *and* attaches every artifact to a
+GitHub release, so it is the bigger, permanent statement. Reach for the dispatch
+when the goal is simply a build somebody can ride with.
 
-A tag is not a store submission: TestFlight and Play both need a human to
-promote the build afterwards, which is deliberate.
+Either way, store uploads run only where the matching secrets are present, and
+every job **skips cleanly without them** — so a green run can mean nothing was
+uploaded at all. `gh secret list` shows which are set; it prints names and dates
+and never values.
+
+Note that pushing to `main` publishes nothing. That runs `build.yml`, which
+compiles the matrix and uploads to no store.
+
+### What still waits for a person
+
+| Platform | After the workflow |
+|---|---|
+| Google Play | live on the internal track at once; wider tracks upload as `draft` and must be promoted |
+| TestFlight | build available to testers; older builds are expired automatically |
+| App Store / Mac App Store | uploaded to App Store Connect, **not** submitted for review |
+| Microsoft Store | nothing is uploaded — the `.msix` is an artifact to submit by hand, see 4 |
+
+That a wider Play track and an App Store review both stop for a human is
+deliberate. Anything reaching people who did not opt into a test build should
+not go live because a workflow ran.

@@ -22,7 +22,8 @@
 <header class="topbar">
   <a class="brand" href="{{ '/index.html' | relative_url }}">
     <span class="brand-mark" aria-hidden="true"></span>
-    <span class="brand-name">Mumble<em>Way</em></span>
+    <img class="brand-logo" src="{{ '/assets/img/mumbleway-wordmark.svg' | relative_url }}"
+         alt="MumbleWay" width="537" height="256">
   </a>
   <nav aria-label="Sections">
     {%- for item in site.nav %}
@@ -59,7 +60,8 @@
 <footer class="footer">
   <div class="footer-grid">
     <div>
-      <p class="footer-brand">Mumble<em>Way</em></p>
+      <img class="footer-logo" src="{{ '/assets/img/mumbleway-wordmark.svg' | relative_url }}"
+           alt="MumbleWay" width="537" height="256">
       <p class="muted">Voice for motorcyclists. Free software, GPL&nbsp;v3.</p>
     </div>
     <nav aria-label="Footer">

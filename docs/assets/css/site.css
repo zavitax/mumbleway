@@ -73,24 +73,32 @@ a:hover { color: #FFC276; }
   border-bottom: 1px solid var(--line-soft);
 }
 
+/* The app's own lockup rather than the name set in type. It is two lines with
+   the second hung off to the right, so it wants height rather than width —
+   which is exactly what a bar has spare, and is why the app draws it that way
+   in its own toolbar. */
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
-  color: var(--text);
+  gap: 0.55rem;
   text-decoration: none;
-  font-family: var(--display);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  font-size: 1.05rem;
 }
+.brand-logo {
+  height: 2.1rem;
+  width: auto;
+  display: block;
+}
+/* Sits on the wordmark's baseline rather than the box's centre: the lockup is
+   optically bottom-heavy, and centring the dot against the whole image leaves
+   it floating above the word it belongs to. */
 .brand-mark {
-  width: 0.85rem; height: 0.85rem;
+  width: 0.7rem; height: 0.7rem;
+  flex: none;
+  align-self: center;
   border-radius: 50%;
   background: var(--signal);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 22%, transparent);
 }
-.brand-name em { font-style: normal; color: var(--accent); }
 
 .topbar nav {
   display: flex;
@@ -198,11 +206,16 @@ a:hover { color: #FFC276; }
 }
 .btn.primary:hover { background: #FFB761; border-color: #FFB761; color: #17110A; }
 
+/* This line sits directly on top of the bars it describes, which is the point
+   and also the problem: at the dim grey used elsewhere it was being read
+   through a moving background. Lifted a step and given a shadow the colour of
+   the ground, so it stays legible over a bar and over a gap between two. */
 .hero-note {
   font-size: 0.88rem;
-  color: var(--dim);
+  color: var(--muted);
   max-width: 44ch;
   margin: 0;
+  text-shadow: 0 1px 6px var(--ground), 0 0 14px var(--ground);
 }
 
 /* ---------- page head ---------- */
@@ -396,13 +409,12 @@ tbody tr:last-child td { border-bottom: 0; }
   gap: 2rem;
   justify-content: space-between;
 }
-.footer-brand {
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 1.05rem;
-  margin: 0 0 0.3rem;
+.footer-logo {
+  height: 2.6rem;
+  width: auto;
+  display: block;
+  margin: 0 0 0.7rem;
 }
-.footer-brand em { font-style: normal; color: var(--accent); }
 .footer p { margin: 0; font-size: 0.9rem; }
 .footer nav { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.9rem; }
 .footer nav a { color: var(--muted); text-decoration: none; }

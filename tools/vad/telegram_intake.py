@@ -14,6 +14,25 @@ first to set the mode for everything that follows. The bot replies with what it
 did, so a mistake is visible at the roadside rather than three weeks later when
 the numbers look strange.
 
+# Say what a recording is, in the caption
+
+Anything else in the caption is kept verbatim in a `.note` beside the audio.
+Write what the recording is and what was wrong with it — *"only music, no
+speech, opened the channel in places"*, *"talking at 110 with the visor up"*.
+
+This is not decoration. A clip of music arrived with no note, and answering the
+first question anyone asked of it — was the music ducking, or was it played into
+the microphone at full level on purpose? — turned out to be impossible from the
+audio, because a recording carries no record of the circumstances that produced
+it. The note is the only place that can live, and it has to be written by
+whoever was there, at the time.
+
+**The mode is read only from the first word, or from a `#noise` / `#speech`
+tag.** It used to be any occurrence anywhere in the caption, which is fine for a
+one-word caption and quietly wrong for a sentence: *"me talking over road
+noise"* would have filed speech as noise. A one-word caption behaves exactly as
+it always did.
+
 The app's own share button sends a single `mumbleway-recordings.zip` holding
 every recording on the phone, and **that needs no mode and is never asked about
 one**. A ride is not noise or speech; it is both in turn, and the `.csv` beside
@@ -296,7 +315,55 @@ def split_by_log(raw, log, speech_root, noise_root, stem):
     return counts[True], seconds[True], counts[False], seconds[False]
 
 
-def unpack(archive, roots):
+def read_mode(caption):
+    """The mode a caption asks for, and the rest of it as an explanation.
+
+    Returns `(mode | None, note)`.
+
+    Only the first word counts, or an explicit `#noise` / `#speech` tag. Any
+    occurrence anywhere would be enough for a one-word caption and wrong the
+    moment a caption is a sentence: "me talking over road noise" is speech, and
+    matching on substrings files it as noise. The tag exists so an explanation
+    can still carry a mode without having to start with it.
+    """
+    note = caption.strip()
+    if not note:
+        return None, ""
+    words = note.lower().replace("\n", " ").split()
+    tagged = [m for m in ("noise", "speech") if f"#{m}" in words]
+    if len(tagged) == 1:
+        return tagged[0], note
+    if len(tagged) > 1:
+        return None, note          # both asked for: let the caller ask again
+    if words[0] in ("noise", "speech"):
+        return words[0], note
+    return None, note
+
+
+def write_note(root, stem, text, sent_as, chat):
+    """Keep what the sender said about a recording, beside the recording.
+
+    Written even when the text is empty, because "nothing was said about this
+    one" is itself worth being able to read later without guessing whether the
+    note was lost.
+
+    **An empty note never overwrites one that says something.** A recording and
+    its decision log arrive as two messages, and only one of them is likely to
+    carry the caption — usually the first. Overwriting on the second would throw
+    away the explanation at the moment the pair became complete, which is
+    precisely when it starts being useful.
+    """
+    path = os.path.join(root, f"{stem}.note")
+    if not (text or "").strip() and os.path.exists(path):
+        return path
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(f"# sent as {sent_as} by chat {chat}\n")
+        f.write(f"# received {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC\n")
+        f.write((text or "(no explanation given)") + "\n")
+    return path
+
+
+def unpack(archive, roots, note_text="", sent_as="", chat=""):
     """Take a share-button archive apart and label what is in it.
 
     Returns `(rides, minutes, speech, speech_seconds, noise, noise_seconds,
@@ -353,6 +420,10 @@ def unpack(archive, roots):
             to_wav(raw, os.path.join(rides, f"{stem}.wav"))
             ridden += 1
             minutes += seconds / 60
+            # The caption describes the archive, so every ride out of it gets
+            # the same note. A ride that is later moved or trimmed keeps its
+            # explanation because the note travels under the ride's own name.
+            write_note(rides, stem, note_text, sent_as or os.path.basename(archive), chat)
             if os.path.exists(log):
                 a, b, c, d = split_by_log(raw, log, roots["speech"], roots["noise"], stem)
                 speech, speech_s, noise, noise_s = speech + a, speech_s + b, noise + c, noise_s + d
@@ -376,6 +447,11 @@ def drain_inbox(roots):
     A file still being copied in is not an archive yet. Anything touched in the
     last few seconds is left for the next pass rather than opened half-written,
     which reads as a corrupt archive and would otherwise be reported as one.
+
+    An archive dropped here has no caption, so **a `NAME.txt` beside `NAME.zip`
+    is read as one**. Without it the recordings that most need an explanation —
+    the long ones, which are the only reason this path exists — are the ones
+    guaranteed to arrive without any.
     """
     inbox = roots["inbox"]
     for name in sorted(os.listdir(inbox)):
@@ -384,13 +460,31 @@ def drain_inbox(roots):
         path = os.path.join(inbox, name)
         if time.time() - os.path.getmtime(path) < SETTLE_SECONDS:
             continue
+        beside = os.path.splitext(path)[0] + ".txt"
+        note_text = ""
+        if os.path.exists(beside):
+            try:
+                with open(beside, encoding="utf-8") as f:
+                    note_text = f.read().strip()
+            except OSError as e:
+                print(f"inbox: could not read {os.path.basename(beside)}: {e}",
+                      file=sys.stderr)
         try:
             rides, minutes, speech, speech_s, noise, noise_s, problems = unpack(
-                path, roots)
+                path, roots, note_text, name, "inbox")
             os.remove(path)
+            # Only once the archive it described is gone, and only if it was
+            # read: a sidecar left behind would be attached to whatever archive
+            # happened to be dropped under that name next.
+            if note_text:
+                try:
+                    os.remove(beside)
+                except OSError:
+                    pass
             print(f"inbox: {name} -> {rides} rides, {minutes:.1f} min, "
                   f"{speech} speech ({speech_s / 60:.1f} min), "
-                  f"{noise} noise ({noise_s / 60:.1f} min)")
+                  f"{noise} noise ({noise_s / 60:.1f} min)"
+                  + (f'; noted "{note_text.splitlines()[0][:60]}"' if note_text else ""))
             for problem in problems:
                 print(f"  left out: {problem}")
         except Exception as e:  # noqa: BLE001 - one bad archive is not the inbox
@@ -423,6 +517,13 @@ def handle(token, roots, modes, msg):
             "Anything else — a voice note, an audio file — has no such log, "
             "so caption it 'noise' or 'speech', or set a mode with /noise or "
             "/speech first.\n\n"
+            "Say what it is in the caption and I keep that verbatim beside "
+            "the audio: 'noise — only music, opened the channel in places'. "
+            "A recording carries no record of the circumstances that made it, "
+            "and that is usually the first thing anyone needs to know.\n\n"
+            "The mode comes from the first word, or from a #noise or #speech "
+            "tag — so a sentence mentioning noise in passing is not mistaken "
+            "for one.\n\n"
             "Files must be under 20 MB; Telegram will not give a bot "
             "anything larger.")
         return
@@ -437,12 +538,18 @@ def handle(token, roots, modes, msg):
     sent_as = payload.get("file_name") or ""
     archive = sent_as.lower().endswith(".zip")
 
-    caption = (msg.get("caption") or "").strip().lower()
-    mode = "noise" if "noise" in caption else "speech" if "speech" in caption else modes.get(chat)
+    # Kept in the sender's own case and wording: this is the one record of what
+    # the recording was and why it was worth sending, and normalising it would
+    # be editing evidence.
+    asked, note_text = read_mode(msg.get("caption") or "")
+    mode = asked or modes.get(chat)
     if mode is None and not archive:
         say(token, chat, "Which is it? Caption the file 'noise' or 'speech', "
                          "or send /noise or /speech first. An archive from the "
-                         "app needs neither — its decision logs say which.")
+                         "app needs neither — its decision logs say which.\n\n"
+                         "Anything after the first word is kept as a note, so "
+                         "say what it is: 'noise — only music, opened the "
+                         "channel in places'.")
         return
 
     size = payload.get("file_size") or 0
@@ -472,7 +579,7 @@ def handle(token, roots, modes, msg):
                 f.write(r.read())
 
             rides, minutes, speech, speech_s, noise, noise_s, problems = unpack(
-                original, roots)
+                original, roots, note_text, sent_as, chat)
             # The archive is a second copy of what now sits beside it, and every
             # send brings the whole phone again. Keeping them would fill the
             # disk with the same ride over and over.
@@ -491,6 +598,9 @@ def handle(token, roots, modes, msg):
                 "Those labels are the gate's own opinion rather than ground "
                 "truth — the whole rides are kept if any of it needs "
                 "relabelling."
+                + ("\n\nNoted against each: " + note_text if note_text else
+                   "\n\nNo note — say what a recording is in the caption and it "
+                   "is kept beside it.")
                 + ("\n\nLeft out:\n" + "\n".join(problems[:5]) if problems else ""))
             print(f"archive: {rides} rides, {minutes:.1f} min, "
                   f"{speech} speech, {noise} noise")
@@ -512,12 +622,15 @@ def handle(token, roots, modes, msg):
             print(f"{mode}: log -> {saved}.csv")
             return
 
+        write_note(root, saved, note_text, sent_as, chat)
         paired = stem and os.path.exists(os.path.join(root, f"{stem}.csv"))
         say(token, chat,
             f"Got {value / 60:.1f} min of {mode} ({kind}).\n"
             f"Saved as {saved}.raw."
             + ("\nPaired with its decision log." if paired
-               else "\nSend the .csv beside it if there is one." if stem else ""))
+               else "\nSend the .csv beside it if there is one." if stem else "")
+            + (f"\nNoted: {note_text}" if note_text else
+               "\nNo note. Caption the next one with what it is."))
         print(f"{mode}: {value:.1f}s -> {saved}.raw")
     except Exception as e:  # noqa: BLE001
         say(token, chat, f"That did not work: {e}")

@@ -35,6 +35,16 @@ when something specific is wrong.
 How the channel opens. This is the setting with the largest effect on how the
 app feels to use.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-mode-phone.webp' | relative_url }}"
+         alt="The microphone mode section with voice activated selected, above
+              the floating call window switch."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Voice activated is the default.</figcaption>
+  </figure>
+</div>
+
 <div class="table-wrap" markdown="1">
 
 | Mode | What it does | When |
@@ -162,6 +172,16 @@ reach.
 - **Android** needs the "display over other apps" permission.
 - **iOS** uses Picture in Picture, which allows three buttons: play/pause
   talks, skip back mutes, skip forward hangs up (twice to confirm).
+
+<div class="shot-wide">
+  <img src="{{ '/assets/img/shots/floating-phone.webp' | relative_url }}"
+       alt="The call floating over the home screen: a connected light, the
+            microphone meter, whether anyone is speaking, the route and mode,
+            and mute and deafen buttons."
+       width="560" height="612" loading="lazy" decoding="async">
+  <figcaption>Over another app on Android: state, meter, route and mode, and
+  the controls you need without going back.</figcaption>
+</div>
 
 ## Identity
 

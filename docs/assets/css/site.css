@@ -577,6 +577,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .shots {
   display: flex;
   flex-wrap: wrap;
+  /* Bottoms aligned, so the captions under them start on the same line. Two
+     pictures of different heights side by side with a caption hanging under
+     each at a different level reads as a broken layout rather than as a pair. */
+  align-items: flex-end;
   gap: 1.25rem;
   margin: 2rem 0 2.5rem;
   max-width: 100%;

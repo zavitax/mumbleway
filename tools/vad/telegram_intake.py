@@ -117,6 +117,30 @@ def convert(src, dst):
     return os.path.getsize(dst) / 4 / 48_000
 
 
+def to_wav(raw, dst):
+    """A copy of a `.raw` that a media player will open.
+
+    The corpus format is headerless 32-bit float, because that is what every
+    tool here reads — they all glob `*.raw` — and headerless is the point: no
+    container, no metadata, no decoding. It is also why nothing on a desktop
+    will play one, and judging a label means listening to it. Without this the
+    only way to hear a segment was to import it by hand with the sample rate
+    and format typed in from memory.
+
+    Written beside the `.raw` rather than instead of it. The training tools
+    are not touched, and a `.wav` in the same directory is invisible to a glob
+    for `*.raw`.
+
+    16-bit rather than float, because a float WAV is a thing some players still
+    decline, and this copy exists to be opened without thinking about it.
+    """
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "f32le", "-ar", str(RATE),
+         "-ac", "1", "-i", raw, "-c:a", "pcm_s16le", dst],
+        check=True,
+    )
+
+
 def pick_file(msg):
     """Whichever way the phone chose to send it."""
     for key in ("voice", "audio", "document", "video_note", "video"):
@@ -164,7 +188,9 @@ def absorb(root, sent_as, src, mode):
         return "log", max(rows - 1, 0), name
 
     raw = os.path.join(root, f"{name}.raw")
-    return "audio", convert(kept, raw), name
+    seconds = convert(kept, raw)
+    to_wav(raw, os.path.join(root, f"{name}.wav"))
+    return "audio", seconds, name
 
 
 def decisions(path):
@@ -260,7 +286,11 @@ def split_by_log(raw, log, speech_root, noise_root, stem):
         root = speech_root if speaking else noise_root
         os.makedirs(root, exist_ok=True)
         tag = "s" if speaking else "n"
-        cut(raw, lo, hi, os.path.join(root, f"{stem}-{tag}{counts[speaking]:04d}.raw"))
+        segment = os.path.join(root, f"{stem}-{tag}{counts[speaking]:04d}.raw")
+        cut(raw, lo, hi, segment)
+        # The listenable copy. These are the files whose labels have to be
+        # judged by ear, so they are the ones that most need to be playable.
+        to_wav(segment, segment[:-4] + ".wav")
 
     return counts[True], seconds[True], counts[False], seconds[False]
 
@@ -316,6 +346,10 @@ def unpack(archive, roots):
         try:
             raw = os.path.join(rides, f"{stem}.raw")
             seconds = convert(audio, raw)
+            # The whole ride, playable, for listening straight through — which
+            # is how the passages worth cutting out get noticed in the first
+            # place.
+            to_wav(raw, os.path.join(rides, f"{stem}.wav"))
             ridden += 1
             minutes += seconds / 60
             if os.path.exists(log):

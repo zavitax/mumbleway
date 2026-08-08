@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: sending-a-recording
 title: Sending a diagnostic recording
 description: How to capture what went wrong and get it to someone who can read it.
 ---

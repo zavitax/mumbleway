@@ -31,21 +31,23 @@ exclude:
   - STORE_DESCRIPTION.md
   - STORE_LISTING.md
 
-nav:
-  - title: Overview
-    url: /index.html
-  - title: Settings
-    url: /settings.html
-  - title: On the road
-    url: /scenarios.html
-  - title: Your own server
-    url: /server.html
-  - title: Send a recording
-    url: /sending-a-recording.html
-  - title: Licences
-    url: /licences.html
-  - title: Privacy
-    url: /privacy.html
+# Navigation moved to `_data/strings.yml`, where it is keyed by language along
+# with the rest of the chrome — the labels and the URLs both change with the
+# language, so they belong in the same place as the language.
+
+# `lang` is set here rather than in every page's front matter, so a new page
+# cannot be added without one. A missing `lang` selects an empty strings block
+# and renders a page with no navigation, no hero and no footer, which builds
+# perfectly and is obviously broken only if somebody looks.
+defaults:
+  - scope:
+      path: ""
+    values:
+      lang: en
+  - scope:
+      path: "ru"
+    values:
+      lang: ru
 
 repo: https://github.com/zavitax/mumbleway
 mumble: https://www.mumble.info/

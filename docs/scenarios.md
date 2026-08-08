@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: scenarios
 title: On the road
 description: Setups that work, what to expect from each, and where it stops working.
 ---
@@ -37,6 +38,8 @@ Where it earns its place. Everyone joins one channel, and the group can be
 strung out over several kilometres without anyone dropping out of the
 conversation.
 
+{% include fig-group.svg lang=page.lang %}
+
 - **Voice activation** for everyone, or the person at the back spends the ride
   holding a button.
 - **Agree a channel per group** if two groups share a server, rather than
@@ -44,19 +47,19 @@ conversation.
 - **A rider with a loud bike** may need Helmet even when everyone else is on
   Standard. It is a per-rider setting for a reason.
 
-## Rider and pillion
+## Rider and passenger
 
 Both wear headsets and both join the channel. It works, with one caveat: two
 microphones inside two helmets a foot apart, both on the same channel, is the
 easiest way to build a feedback loop.
 
-{% include fig-pillion.svg %}
+{% include fig-passenger.svg lang=page.lang %}
 
 If you hear a howl:
 
 1. Turn one of the two speaker volumes down.
 2. Set **Feedback suppression** to *Cut only when a howl builds* on both.
-3. Failing that, put the pillion on push-to-talk.
+3. Failing that, put the passenger on push-to-talk.
 
 ## Riding with music
 
@@ -89,6 +92,8 @@ own when the link comes back, and the elastic buffer catches you up rather than
 leaving everybody a second behind — but while there is no data there is no
 voice, and an intercom would still have been working.</p>
 </div>
+
+{% include fig-tunnel.svg lang=page.lang %}
 
 Two practical consequences:
 

@@ -1,0 +1,31 @@
+{%- comment -%}
+The helmet from the app icon, as a reusable <defs> symbol.
+
+Drawn freehand the first time, which gave it a stroke for a microphone boom
+that read as a tail hanging off the back. The icon already solves this: the
+visor is a slot inset from the front edge rather than a band across it, and the
+chin bar is left solid so the jaw survives at any size.
+
+It lives here rather than in each figure because three of them now use it, and
+three copies of a path is three chances for the mark on the site to stop being
+the mark on the phone. Paths copied from app/assets/icon/mumbleway.svg.
+
+  id     — the id to reference with <use href="#…">, unique within the page
+  scale  — 0.07 at the size the range figure uses it
+  shell, visor, chin — recoloured for a rider who is out of contact
+{%- endcomment -%}
+<g id="{{ include.id }}">
+  <g transform="scale({{ include.scale | default: '0.07' }}) translate(-108,-236)">
+    <path d="M 356 236 C 500 236 622 350 622 492 L 622 606
+             C 622 664 574 706 516 706 L 316 706
+             C 190 706 108 606 108 480 C 108 344 216 236 356 236 Z"
+          fill="{{ include.shell | default: '#E9F0F7' }}"/>
+    <path d="M 566 398 L 566 516 L 360 516 C 296 516 262 486 262 458
+             C 262 424 300 398 360 398 Z"
+          fill="{{ include.visor | default: '#FFA53C' }}"/>
+    <path d="M 316 706 C 232 706 166 654 132 578 L 228 546
+             C 252 600 288 626 344 626 L 516 626
+             C 574 626 622 654 622 706 Z"
+          fill="{{ include.chin | default: '#BCCBD9' }}"/>
+  </g>
+</g>

@@ -1,0 +1,93 @@
+{%- assign f = site.data.strings[include.lang].figures.tunnel -%}
+<!-- The honest limitation, drawn rather than only admitted in prose. It is on
+     this page because a reader deciding whether to rely on the app deserves to
+     meet the failure before they meet the features. -->
+<figure class="figure">
+<svg viewBox="0 0 900 300" role="img" aria-labelledby="tn-title tn-desc" class="fig">
+  <title id="tn-title">{{ f.title }}</title>
+  <desc id="tn-desc">{{ f.desc | strip_newlines }}</desc>
+
+  <text x="0" y="18" fill="#8695A6" font-size="14" font-family="inherit"
+        letter-spacing="1.5">{{ f.heading }}</text>
+
+  <!-- Signal strength, three times. Four bars each: full, none, full. -->
+  <g>
+    <g fill="#3ECF7E">
+      <rect x="123" y="87" width="8" height="8"/>
+      <rect x="135" y="81" width="8" height="14"/>
+      <rect x="147" y="75" width="8" height="20"/>
+      <rect x="159" y="69" width="8" height="26"/>
+    </g>
+    <g fill="none" stroke="#3A4553" stroke-width="1.5">
+      <rect x="428" y="87" width="8" height="8"/>
+      <rect x="440" y="81" width="8" height="14"/>
+      <rect x="452" y="75" width="8" height="20"/>
+      <rect x="464" y="69" width="8" height="26"/>
+    </g>
+    <path d="M 420 100 L 480 64" stroke="#FF5D5D" stroke-width="2.5"
+          stroke-linecap="round"/>
+    <g fill="#3ECF7E">
+      <rect x="733" y="87" width="8" height="8"/>
+      <rect x="745" y="81" width="8" height="14"/>
+      <rect x="757" y="75" width="8" height="20"/>
+      <rect x="769" y="69" width="8" height="26"/>
+    </g>
+  </g>
+
+  <g font-family="inherit" text-anchor="middle">
+    <text x="145" y="128" fill="#3ECF7E" font-size="15">{{ f.before }}</text>
+    <text x="450" y="128" fill="#FF5D5D" font-size="15">{{ f.inside }}</text>
+    <text x="755" y="128" fill="#3ECF7E" font-size="15">{{ f.after }}</text>
+
+    <text x="145" y="150" fill="#8695A6" font-size="12">{{ f.before_note }}</text>
+    <text x="450" y="150" fill="#8695A6" font-size="12">{{ f.inside_note }}</text>
+    <text x="755" y="150" fill="#8695A6" font-size="12">{{ f.after_note }}</text>
+  </g>
+
+  <!-- The road, running behind the tunnel mouth. -->
+  <line x1="20" y1="249" x2="880" y2="249" stroke="#1B242F" stroke-width="9"
+        stroke-linecap="round"/>
+  <line x1="30" y1="249" x2="870" y2="249" stroke="#33404F" stroke-width="1.5"
+        stroke-dasharray="14 20"/>
+
+  <!-- The tunnel itself, drawn over the road so the road disappears into it. -->
+  <path d="M 330 254 L 330 208 Q 330 172 450 172 Q 570 172 570 208 L 570 254 Z"
+        fill="#0A0E13" stroke="#33404F" stroke-width="1.5"/>
+
+  <!-- Audio, as packets riding along the road. Evenly spaced on the way in;
+       absent inside; and on the way out, twice as tightly packed until the
+       backlog is gone. That bunching is the elastic jitter buffer paying the
+       delay back rather than everyone staying a second behind for ever. -->
+  <g fill="#FFA53C" fill-opacity="0.9">
+    <rect x="40"  y="232" width="7" height="7"/>
+    <rect x="72"  y="232" width="7" height="7"/>
+    <rect x="104" y="232" width="7" height="7"/>
+    <rect x="136" y="232" width="7" height="7"/>
+    <rect x="168" y="232" width="7" height="7"/>
+    <rect x="200" y="232" width="7" height="7"/>
+    <rect x="232" y="232" width="7" height="7"/>
+    <rect x="264" y="232" width="7" height="7"/>
+
+    <rect x="610" y="232" width="7" height="7"/>
+    <rect x="626" y="232" width="7" height="7"/>
+    <rect x="642" y="232" width="7" height="7"/>
+    <rect x="658" y="232" width="7" height="7"/>
+    <rect x="674" y="232" width="7" height="7"/>
+    <rect x="690" y="232" width="7" height="7"/>
+    <rect x="706" y="232" width="7" height="7"/>
+    <rect x="722" y="232" width="7" height="7"/>
+
+    <rect x="754" y="232" width="7" height="7"/>
+    <rect x="786" y="232" width="7" height="7"/>
+    <rect x="818" y="232" width="7" height="7"/>
+    <rect x="850" y="232" width="7" height="7"/>
+  </g>
+
+  <!-- The one label that needs no translation. -->
+  <path d="M 610 268 L 610 274 L 729 274 L 729 268" fill="none"
+        stroke="#61707F" stroke-width="1"/>
+  <text x="669" y="290" fill="#61707F" font-size="12" font-family="inherit"
+        text-anchor="middle">2×</text>
+</svg>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
+</figure>

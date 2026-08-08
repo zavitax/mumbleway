@@ -1,0 +1,21 @@
+{%- comment -%}
+The server, as a reusable <defs> symbol, drawn from its own origin so a
+<use> places its top-left corner. 93 wide, 59 tall.
+
+A cloud rather than a rack unit. The box it replaced read as hardware in a data
+centre, which is the opposite of what is true: it is a Raspberry Pi on
+somebody's shelf or the smallest VPS anybody sells, and the thing that matters
+about it is that it is reachable from anywhere, not what it looks like.
+
+The green dot is the same light the app shows when it is connected.
+
+  id — the id to reference with <use href="#…">, unique within the page
+{%- endcomment -%}
+<g id="{{ include.id }}">
+  <path d="M 21 59 C 8 59 0 50 0 40 C 0 30 8 22 18 22
+           C 20 9 32 0 46 0 C 61 0 73 10 75 23
+           C 86 24 93 32 93 42 C 93 52 85 59 75 59 Z"
+        fill="#141B24" stroke="#FFA53C" stroke-width="1.5"
+        stroke-linejoin="round"/>
+  <circle cx="47" cy="35" r="4" fill="#3ECF7E"/>
+</g>

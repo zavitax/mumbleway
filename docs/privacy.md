@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: privacy
 title: Privacy policy
 description: What MumbleWay does with your voice, and what it does not.
 ---

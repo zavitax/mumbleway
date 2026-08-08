@@ -39,7 +39,14 @@ body {
   font-family: var(--sans);
   font-size: clamp(1rem, 0.96rem + 0.2vw, 1.0625rem);
   line-height: 1.65;
-  overflow-x: hidden;
+  /* `clip`, not `hidden`. They look identical and are not: `hidden` makes this
+     a scroll container, and a sticky element inside a scroll container sticks
+     to *that* box, which scrolls away with the document — so the top bar
+     silently stopped sticking. `clip` cuts the overflow without creating a
+     scroller, and leaves the bar stuck to the viewport where it belongs.
+     Wide content is not relying on either: tables, code blocks and figures
+     each scroll inside their own container. */
+  overflow-x: clip;
 }
 
 .skip {
@@ -160,8 +167,14 @@ a:hover { color: #FFC276; }
    a seventh was added, and the row quietly began wrapping to two lines in a
    band of widths nobody had thought to look at.
    So the script measures whether the row fits and sets `.compact` when it does
-   not. There is no width in this file and no breakpoint to keep in step. */
-.topbar { position: relative; }
+   not. There is no width in this file and no breakpoint to keep in step.
+
+   There was a `.topbar { position: relative }` here, to give the dropdown
+   below something to be absolute against. It silently un-stuck the bar: this
+   rule comes after the one that sets `position: sticky`, so it won, and the
+   bar scrolled away for months without anyone connecting the two. Nothing
+   needs to replace it — `sticky` is a positioned value and is already the
+   containing block the dropdown wants. */
 
 .topbar.compact .menu-button { display: inline-flex; }
 .topbar.compact nav {
@@ -191,6 +204,49 @@ a:hover { color: #FFC276; }
   box-shadow: inset 3px 0 0 var(--accent);
   padding-left: 0.7rem;
 }
+
+/* ---------- language switch ---------- */
+
+/* Visible at every width, which is the whole requirement: it is never behind
+   the hamburger, because somebody who cannot read the page cannot be asked to
+   find a menu labelled in a language they do not read. */
+.lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  padding: 0.34rem 0.6rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.lang:hover { color: var(--text); border-color: var(--dim); }
+.lang img {
+  display: block;
+  width: 21px;
+  height: 14px;
+  /* The one image in the bar that is a real object with real edges. Two of the
+     three flags here have a white stripe, which runs straight out into a dark
+     bar and leaves the shape looking torn; a hairline holds it together. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+/* Right of the menu when the menu is a row, left of the button when it is not.
+   Source order puts it last, which is the wide case; compact reorders rather
+   than duplicating the element, so there is one switch on the page and one
+   tab stop for it.
+
+   In compact the nav is taken out of flow by `position: absolute`, so the
+   three items left in the row are the brand, this, and the button. Moving the
+   button to the end and handing the automatic margin to the switch puts them
+   in that order without either one knowing a width. */
+.topbar.compact .menu-button { order: 1; margin-left: 0; }
+.topbar.compact .lang { margin-left: auto; }
+
 /* ---------- hero ---------- */
 
 .hero {

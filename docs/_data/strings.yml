@@ -1,0 +1,341 @@
+# Every piece of text the layout and the figures draw, in both languages.
+#
+# The pages themselves are copies under /ru/ — that was the decision, and it is
+# the right one for prose. But the chrome is not prose: the top bar, the hero
+# and the labels inside the diagrams appear on every page, and duplicating them
+# per page would mean seven places to fix a wording change in each language.
+# So the chrome lives here, keyed by language, and `_layouts/default.html`
+# reads `site.data.strings[page.lang]`.
+#
+# Figure text is here for the same reason and one more: an SVG include takes
+# `lang=page.lang`, so the diagrams are translated by the same mechanism rather
+# than by a second set of copied files.
+#
+# Adding a language means adding a block here, a set of pages under its own
+# prefix, and nothing else. Nothing in the CSS knows a width — the menu
+# measures itself — which is what makes a longer language free.
+
+en:
+  html_lang: en
+  name: English
+  code: EN
+  flag: /assets/img/flags/us.svg
+  # Named as a flag, not as the language: the image is a flag of a country and
+  # a screen reader saying "English" over a US flag would be describing
+  # something the picture does not show. The link text carries the language.
+  flag_alt: ""
+  switch_title: Read this page in English
+
+  tagline: Voice for bikers
+  description: >-
+    A Mumble client built for wind and engine noise inside a helmet.
+    Windows, macOS, iOS, iPadOS and Android.
+
+  skip: Skip to content
+  menu: Menu
+  sections: Sections
+  footer_nav: Footer
+
+  hero:
+    eyebrow: 'Mumble client · Windows · macOS · iOS · iPadOS · Android'
+    title_line1: Talk at speed,
+    title_line2: and be understood.
+    cta_primary: Set up a server
+    cta_primary_url: /server.html
+    cta_secondary: Source on GitHub
+    note: >-
+      The bars above are the app's own analyser: microphone, after suppression,
+      and what actually leaves for the server.
+
+  footer:
+    blurb: Voice for bikers. Free software, GPL&nbsp;v3.
+    source: Source
+    mumble: Mumble project
+    colophon: >-
+      MumbleWay is an independent client for the Mumble protocol. It is not
+      affiliated with or endorsed by the Mumble project.
+
+  nav:
+    - title: Overview
+      url: /index.html
+    - title: Settings
+      url: /settings.html
+    - title: On the road
+      url: /scenarios.html
+    - title: Your own server
+      url: /server.html
+    - title: Send a recording
+      url: /sending-a-recording.html
+    - title: Licences
+      url: /licences.html
+    - title: Privacy
+      url: /privacy.html
+
+  figures:
+    range:
+      title: Intercom range against an internet channel
+      desc: >-
+        On the left, a Bluetooth intercom: two riders inside a dashed circle are
+        connected, and a third who has fallen behind sits outside it,
+        disconnected. On the right, the same three riders at the same distances
+        all connect to a Mumble server, and the distances between them no
+        longer matter.
+      intercom: BLUETOOTH INTERCOM
+      intercom_range: a few hundred metres
+      out_of_range: out of range
+      server: your Mumble server
+      internet_range: a hundred metres, or another country
+      caption: >-
+        An intercom is a radio link between helmets, and it ends where the radio
+        does. Putting the channel on a server you control removes distance from
+        the problem — and replaces it with needing a signal, which is the trade
+        this whole app is.
+
+    timeline:
+      title: How voice activation opens and closes the channel
+      desc: >-
+        Three stacked tracks. The spoken word runs from 200 to 560
+        milliseconds. The detector only recognises it from 250 to 520, missing
+        the first consonant and dropping before the last. What is transmitted
+        runs from 200 to 600: an 80 millisecond look-ahead recovers the opening
+        consonant, and a 200 millisecond tail carries the closing one, fading
+        over its final 30 milliseconds.
+      you_say: You say
+      detector: Detector
+      transmitted: Transmitted
+      detected: speech detected
+      on_the_wire: on the wire
+      lookahead: 80 ms look-ahead
+      tail: 200 ms tail
+      fade: 30 ms fade
+      caption: >-
+        A threshold decides mid-syllable. Holding the audio back by 80 ms lets
+        the channel open on the sound that <em>led into</em> the decision, so
+        the opening consonant survives; a 200 ms tail carries the closing one,
+        fading at the very end so it does not click.
+
+    passenger:
+      title: How a rider and passenger build a feedback loop
+      desc: >-
+        Two helmets a foot apart on the same channel. The passenger's speaker is
+        heard by the rider's microphone, which sends it back to the passenger's
+        speaker, which the rider's microphone hears again — a loop that climbs
+        until it howls. Turning one speaker down breaks it.
+      heading: RIDER AND PASSENGER, ONE CHANNEL
+      rider: rider
+      passenger: passenger
+      loop_out: speaker into the other's microphone
+      loop_back: and straight back again
+      fix_heading: BREAK IT ANYWHERE
+      fix1: Turn one speaker volume down.
+      fix2: 'Feedback suppression: cut when a howl builds.'
+      fix3: Failing that, put the passenger on push to talk.
+      fix_note: A loop needs every step. Removing one is enough.
+      caption: >-
+        Two microphones inside two helmets a foot apart, both on the same
+        channel, is the easiest way there is to build a feedback loop — each
+        speaker reaches the other's microphone and the gain goes round. It only
+        takes one step of that circle to break it.
+
+    group:
+      title: A group strung out along a road, all on one channel
+      desc: >-
+        Five riders spread over eight kilometres of road. A Bluetooth intercom
+        would connect only the two who happen to be close together, breaking the
+        group into fragments. Every rider instead holds their own connection to
+        the same Mumble server, so the spacing between them carries no meaning
+        at all.
+      heading: FIVE RIDERS, EIGHT KILOMETRES
+      front: front
+      back: back
+      fuel: stopped for fuel
+      intercom_reach: what an intercom would still reach
+      server: one channel, one server
+      caption: >-
+        This is the case the app was built for. A group does not ride in
+        formation: somebody stops for fuel, somebody catches a red light,
+        somebody is simply faster. On an intercom the group silently breaks into
+        fragments that can each hear themselves. On one channel, the spacing
+        means nothing.
+
+    tunnel:
+      title: What happens when the signal goes
+      desc: >-
+        A road passing through a tunnel, in three stages. Before it there is
+        coverage and the conversation works. Inside there is no data and no
+        voice at all — the honest limitation. On the far side the app
+        reconnects on its own and plays the backlog off faster than real time
+        rather than leaving everybody a second behind.
+      # Short on purpose. SVG text does not wrap, so anything that needs a
+      # second line needs a split point chosen per language — which is a thing
+      # that silently stops being right the moment a word changes. The
+      # explanations live in the caption, which is HTML and wraps by itself.
+      heading: NO SIGNAL, NO CONVERSATION
+      before: coverage
+      before_note: the conversation works
+      inside: no data
+      inside_note: nothing gets through
+      after: back on the air
+      after_note: reconnects, and catches up
+      caption: >-
+        This is the defining weakness and no setting fixes it. What the app does
+        do is come back on its own and catch up rather than leaving the whole
+        group permanently a second behind — but while there is no data there is
+        no voice, and that is exactly where an intercom would still be working.
+
+ru:
+  html_lang: ru
+  name: Русский
+  code: RU
+  flag: /assets/img/flags/ru.svg
+  flag_alt: ""
+  switch_title: Читать эту страницу по-русски
+
+  tagline: Голос для байкеров
+  description: >-
+    Клиент Mumble, рассчитанный на ветер и рёв мотора внутри шлема.
+    Windows, macOS, iOS, iPadOS и Android.
+
+  skip: Перейти к содержанию
+  menu: Меню
+  sections: Разделы
+  footer_nav: Подвал
+
+  hero:
+    eyebrow: 'Клиент Mumble · Windows · macOS · iOS · iPadOS · Android'
+    title_line1: Говорите на скорости,
+    title_line2: и вас поймут.
+    cta_primary: Поднять сервер
+    cta_primary_url: /ru/server.html
+    cta_secondary: Исходный код на GitHub
+    note: >-
+      Полосы выше — анализатор самого приложения: микрофон, после
+      шумоподавления и то, что действительно уходит на сервер.
+
+  footer:
+    blurb: Голос для байкеров. Свободное ПО, GPL&nbsp;v3.
+    source: Исходный код
+    mumble: Проект Mumble
+    colophon: >-
+      MumbleWay — независимый клиент протокола Mumble. Он не связан с проектом
+      Mumble и не одобрен им.
+
+  nav:
+    - title: Обзор
+      url: /ru/index.html
+    - title: Настройки
+      url: /ru/settings.html
+    - title: В дороге
+      url: /ru/scenarios.html
+    - title: Свой сервер
+      url: /ru/server.html
+    - title: Прислать запись
+      url: /ru/sending-a-recording.html
+    - title: Лицензии
+      url: /ru/licences.html
+    - title: Приватность
+      url: /ru/privacy.html
+
+  figures:
+    range:
+      title: Дальность интеркома против интернет-канала
+      desc: >-
+        Слева Bluetooth-интерком: двое внутри пунктирного круга связаны, а
+        третий, отставший, оказался за его пределами и связи нет. Справа те же
+        трое на тех же расстояниях подключены к серверу Mumble, и расстояния
+        между ними больше ничего не значат.
+      intercom: BLUETOOTH-ИНТЕРКОМ
+      intercom_range: несколько сотен метров
+      out_of_range: вне зоны
+      server: ваш сервер Mumble
+      internet_range: сто метров или другая страна
+      caption: >-
+        Интерком — это радиосвязь между шлемами, и она кончается там, где
+        кончается радио. Канал на своём сервере убирает расстояние из задачи —
+        и заменяет его необходимостью связи. В этом размене и состоит всё
+        приложение.
+
+    timeline:
+      title: Как голосовая активация открывает и закрывает канал
+      desc: >-
+        Три дорожки одна над другой. Слово звучит с 200-й по 560-ю миллисекунду.
+        Детектор уверен в нём только с 250-й по 520-ю: он теряет первый
+        согласный и отпускает раньше последнего. В эфир уходит отрезок с 200-й
+        по 600-ю: упреждение в 80 мс возвращает начальный согласный, а хвост в
+        200 мс доносит конечный, затухая на последних 30 мс.
+      you_say: Вы говорите
+      detector: Детектор
+      transmitted: В эфир
+      detected: речь обнаружена
+      on_the_wire: идёт передача
+      lookahead: упреждение 80 мс
+      tail: хвост 200 мс
+      fade: затухание 30 мс
+      caption: >-
+        Порог принимает решение посреди слога. Задержка звука на 80 мс
+        позволяет открыть канал на том звуке, который <em>привёл</em> к
+        решению, — начальный согласный уцелевает; хвост в 200 мс доносит
+        конечный и затухает в самом конце, чтобы не щёлкнуло.
+
+    passenger:
+      title: Как водитель и пассажир создают петлю обратной связи
+      desc: >-
+        Два шлема в тридцати сантиметрах друг от друга, в одном канале. Динамик
+        пассажира слышен микрофону водителя, тот отправляет звук обратно в
+        динамик пассажира, и микрофон водителя слышит его снова — петля растёт,
+        пока не завоет. Достаточно убавить один динамик, чтобы её разорвать.
+      heading: ВОДИТЕЛЬ И ПАССАЖИР, ОДИН КАНАЛ
+      rider: водитель
+      passenger: пассажир
+      loop_out: динамик — в чужой микрофон
+      loop_back: и сразу обратно
+      fix_heading: РАЗОРВАТЬ ГДЕ УГОДНО
+      fix1: Убавьте громкость одного динамика.
+      fix2: 'Подавление обратной связи: срезать при вое.'
+      fix3: Не помогло — переведите пассажира на кнопку.
+      fix_note: Петле нужны все звенья. Хватит убрать одно.
+      caption: >-
+        Два микрофона в двух шлемах в тридцати сантиметрах друг от друга, в
+        одном канале, — самый простой способ получить петлю обратной связи:
+        каждый динамик достаёт до чужого микрофона, и усиление идёт по кругу.
+        Чтобы её разорвать, достаточно убрать одно звено.
+
+    group:
+      title: Группа, растянувшаяся по дороге, вся в одном канале
+      desc: >-
+        Пятеро растянулись на восемь километров дороги. Bluetooth-интерком
+        связал бы только тех двоих, кто случайно оказался рядом, разбив группу
+        на куски. Вместо этого у каждого своё соединение с одним и тем же
+        сервером Mumble, и интервалы между ними не значат ровно ничего.
+      heading: ПЯТЕРО, ВОСЕМЬ КИЛОМЕТРОВ
+      front: голова
+      back: хвост
+      fuel: встал на заправку
+      intercom_reach: докуда достал бы интерком
+      server: один канал, один сервер
+      caption: >-
+        Ради этого случая всё и делалось. Группа не едет строем: кто-то встал
+        на заправку, кто-то попал на красный, кто-то просто быстрее. На
+        интеркоме группа незаметно распадается на куски, каждый из которых
+        слышит сам себя. В одном канале интервалы не значат ничего.
+
+    tunnel:
+      title: Что происходит, когда пропадает связь
+      desc: >-
+        Дорога через тоннель, в трёх стадиях. До него связь есть и разговор
+        идёт. Внутри нет данных и нет голоса совсем — это честное ограничение.
+        На выходе приложение переподключается само и проигрывает накопившееся
+        быстрее реального времени, вместо того чтобы оставить всех отставшими
+        на секунду.
+      heading: НЕТ СВЯЗИ — НЕТ РАЗГОВОРА
+      before: связь есть
+      before_note: разговор идёт
+      inside: данных нет
+      inside_note: не проходит ничего
+      after: снова в эфире
+      after_note: переподключается и догоняет
+      caption: >-
+        Это главная слабость, и никакой настройкой она не лечится. Приложение
+        умеет вернуться само и догнать, вместо того чтобы навсегда оставить всю
+        группу отставшей на секунду, — но пока нет данных, нет и голоса, и
+        именно здесь интерком продолжал бы работать.

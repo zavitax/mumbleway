@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: server
 title: Your own server
 description: Running a Mumble server on Windows, macOS or Linux, in about ten minutes.
 ---

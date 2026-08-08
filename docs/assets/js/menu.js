@@ -26,22 +26,35 @@
   button.hidden = false;
 
   var brand = bar.querySelector('.brand');
+  var lang = bar.querySelector('.lang');
 
-  /// Does the row of links fit beside the wordmark?
+  /// Does the row of links fit beside the wordmark and the language switch?
   ///
   /// Measured with wrapping forced off, because a wrapped row reports the
   /// width it settled for rather than the width it wanted. Reading a layout
   /// property flushes the change synchronously and nothing paints between
   /// these statements, so the forced state is never visible.
+  ///
+  /// The bar's own padding and gaps are read from it rather than guessed at.
+  /// They were a constant here once, and a constant was wrong twice over: the
+  /// padding is a `clamp()` that changes with the viewport, and adding the
+  /// language switch added a third item and so a second gap. Both are exactly
+  /// the kind of thing a number in this file stops tracking the moment
+  /// somebody edits the stylesheet.
   function fits() {
     var was = bar.classList.contains('compact');
     bar.classList.remove('compact');
     nav.style.flexWrap = 'nowrap';
 
-    var room = bar.clientWidth
+    var style = window.getComputedStyle(bar);
+    var gap = parseFloat(style.columnGap) || 0;
+    var pad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+
+    // Three items in the row when it is not compact — brand, links, switch —
+    // so two gaps. The button is display:none here and takes neither.
+    var room = bar.clientWidth - pad - gap * 2
       - (brand ? brand.offsetWidth : 0)
-      - button.offsetWidth
-      - 48;                       // the bar's own gaps and padding
+      - (lang ? lang.offsetWidth : 0);
     var need = nav.scrollWidth;
 
     nav.style.flexWrap = '';

@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: settings
 title: Settings
 description: What each setting does, and which ones are worth changing on a motorcycle.
 ---
@@ -30,7 +31,7 @@ app feels to use.
 | Mode | What it does | When |
 |---|---|---|
 | Voice activated | Transmits automatically when you speak. The default. | Riding. You have no free hand, and the look-ahead means the first consonant survives. |
-| Push to talk | Transmits only while the talk button is held. | Loud pillion, music playing, or anywhere a false trigger would be worse than a missed word. |
+| Push to talk | Transmits only while the talk button is held. | Loud passenger, music playing, or anywhere a false trigger would be worse than a missed word. |
 | Always on | Transmits constantly. | A quiet room. Uses the most data and sends every noise you make. |
 
 </div>

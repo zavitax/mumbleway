@@ -1,0 +1,63 @@
+{%- assign f = site.data.strings[include.lang].figures.group -%}
+<!-- The case the app was actually built for, and the one a paragraph keeps
+     understating: a group does not ride in formation. -->
+<figure class="figure">
+<svg viewBox="0 0 900 320" role="img" aria-labelledby="gp-title gp-desc" class="fig">
+  <title id="gp-title">{{ f.title }}</title>
+  <desc id="gp-desc">{{ f.desc | strip_newlines }}</desc>
+
+  <defs>
+    {% include helmet.svg id="gp-rider" scale="0.07" %}
+    {% include cloud.svg id="gp-cloud" %}
+  </defs>
+
+  <text x="0" y="18" fill="#8695A6" font-size="14" font-family="inherit"
+        letter-spacing="1.5">{{ f.heading }}</text>
+
+  <!-- The server, named before it is drawn, as in the range figure. -->
+  <text x="450" y="38" fill="#8695A6" font-size="13" font-family="inherit"
+        text-anchor="middle">{{ f.server }}</text>
+  <use href="#gp-cloud" x="403" y="48"/>
+
+  <!-- The road. A band and a broken centre line, so the helmets are standing
+       on something rather than floating in a row. -->
+  <line x1="20" y1="249" x2="880" y2="249" stroke="#1B242F" stroke-width="9"
+        stroke-linecap="round"/>
+  <line x1="30" y1="249" x2="870" y2="249" stroke="#33404F" stroke-width="1.5"
+        stroke-dasharray="14 20"/>
+
+  <!-- What an intercom would still hold together: the two who happen to be
+       near each other, and nobody else. Drawn as a flattened circle because
+       the spread here is along the road and not across it. -->
+  <ellipse cx="763" cy="222" rx="80" ry="45" fill="#3ECF7E" fill-opacity="0.05"
+           stroke="#3ECF7E" stroke-opacity="0.45" stroke-width="1.5"
+           stroke-dasharray="6 6"/>
+
+  <!-- One line per rider, every one of them reaching the same place. The
+       lines are different lengths and that is the entire point — none of the
+       differences matters. -->
+  <g stroke="#FFA53C" stroke-width="1.75" fill="none" opacity="0.85">
+    <path d="M 440 105 Q 300 132 78 200"/>
+    <path d="M 445 107 Q 400 142 318 200"/>
+    <path d="M 455 107 Q 480 152 498 200"/>
+    <path d="M 462 105 Q 580 136 718 200"/>
+    <path d="M 466 103 Q 640 120 808 200"/>
+  </g>
+
+  <use href="#gp-rider" x="60"  y="206"/>
+  <use href="#gp-rider" x="300" y="206"/>
+  <use href="#gp-rider" x="480" y="206"/>
+  <use href="#gp-rider" x="700" y="206"/>
+  <use href="#gp-rider" x="790" y="206"/>
+
+  <g font-size="13" font-family="inherit" text-anchor="middle" fill="#8695A6">
+    <text x="78" y="272">{{ f.back }}</text>
+    <text x="808" y="272">{{ f.front }}</text>
+  </g>
+  <text x="78" y="289" fill="#61707F" font-size="12" font-family="inherit"
+        text-anchor="middle">{{ f.fuel }}</text>
+  <text x="763" y="296" fill="#61707F" font-size="12" font-family="inherit"
+        text-anchor="middle">{{ f.intercom_reach }}</text>
+</svg>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
+</figure>

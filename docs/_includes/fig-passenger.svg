@@ -1,0 +1,71 @@
+{%- assign f = site.data.strings[include.lang].figures.passenger -%}
+<!-- The one fault on this page that a diagram explains faster than a paragraph. -->
+<figure class="figure">
+<svg viewBox="0 0 900 250" role="img" aria-labelledby="ps-title ps-desc" class="fig">
+  <title id="ps-title">{{ f.title }}</title>
+  <desc id="ps-desc">{{ f.desc | strip_newlines }}</desc>
+
+  <defs>
+    {% include helmet.svg id="ps-helmet" scale="0.115" %}
+    <marker id="ps-arrow" viewBox="0 0 10 10" refX="8" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF5D5D"/>
+    </marker>
+  </defs>
+
+  <text x="0" y="18" fill="#8695A6" font-size="14" font-family="inherit"
+        letter-spacing="1.5">{{ f.heading }}</text>
+
+  <!-- Both helmets, facing the same way, close enough to hear each other.
+       At this scale each is 59 wide and 54 tall, so these two span x 130–189
+       and 310–369 — which is what the arcs below are keeping clear of. -->
+  <use href="#ps-helmet" x="130" y="120"/>
+  <use href="#ps-helmet" x="310" y="120"/>
+  <text x="160" y="193" fill="#8695A6" font-size="13" font-family="inherit"
+        text-anchor="middle">{{ f.rider }}</text>
+  <text x="340" y="193" fill="#8695A6" font-size="13" font-family="inherit"
+        text-anchor="middle">{{ f.passenger }}</text>
+
+  <!-- The loop. Two arcs going opposite ways, which is the whole of it: each
+       one is somebody's speaker reaching somebody else's microphone.
+
+       Both stop five units short of the helmet they point at. They used to end
+       *inside* it, which buried the arrowhead in the shell and left an arrow
+       that appeared to come from nowhere — the one thing the picture is for is
+       that each arc lands on a helmet, so the head has to be visible. -->
+  <g stroke="#FF5D5D" stroke-width="2" fill="none" marker-end="url(#ps-arrow)">
+    <path d="M 194 134 Q 267 92 305 134"/>
+    <path d="M 305 160 Q 267 202 194 160"/>
+  </g>
+  <text x="250" y="101" fill="#FF5D5D" font-size="12" font-family="inherit"
+        text-anchor="middle">{{ f.loop_out }}</text>
+  <text x="250" y="212" fill="#FF5D5D" font-size="12" font-family="inherit"
+        text-anchor="middle">{{ f.loop_back }}</text>
+
+  <!-- ── The fix ──────────────────────────────────────────────────────── -->
+  <!-- The divider sits at 470 rather than halfway. The left half is a picture
+       and needs only the width of two helmets and the arcs between them; the
+       right half is three lines of prose, and prose is the side that runs out
+       of room first — in Russian by about a third. -->
+  <line x1="470" y1="30" x2="470" y2="230" stroke="#263140" stroke-width="1"/>
+
+  <text x="510" y="18" fill="#3ECF7E" font-size="14" font-family="inherit"
+        letter-spacing="1.5">{{ f.fix_heading }}</text>
+
+  <g font-size="13" font-family="inherit">
+    <circle cx="522" cy="70" r="13" fill="none" stroke="#3ECF7E" stroke-width="1.5"/>
+    <text x="522" y="75" fill="#3ECF7E" text-anchor="middle" font-size="12">1</text>
+    <text x="548" y="75" fill="#DDE6EF">{{ f.fix1 }}</text>
+
+    <circle cx="522" cy="120" r="13" fill="none" stroke="#3ECF7E" stroke-width="1.5"/>
+    <text x="522" y="125" fill="#3ECF7E" text-anchor="middle" font-size="12">2</text>
+    <text x="548" y="125" fill="#DDE6EF">{{ f.fix2 }}</text>
+
+    <circle cx="522" cy="170" r="13" fill="none" stroke="#3ECF7E" stroke-width="1.5"/>
+    <text x="522" y="175" fill="#3ECF7E" text-anchor="middle" font-size="12">3</text>
+    <text x="548" y="175" fill="#DDE6EF">{{ f.fix3 }}</text>
+  </g>
+  <text x="548" y="212" fill="#61707F" font-size="12" font-family="inherit">{{ f.fix_note }}</text>
+</svg>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
+</figure>

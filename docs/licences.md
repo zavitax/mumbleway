@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: licences
 title: Licences
 description: MumbleWay's own licence, and every third-party component it is built from.
 ---

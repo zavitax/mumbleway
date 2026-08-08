@@ -1,58 +1,26 @@
+{%- assign f = site.data.strings[include.lang].figures.range -%}
 <!-- Why this exists at all, in one picture. -->
 <figure class="figure">
 <svg viewBox="0 0 900 340" role="img" aria-labelledby="rg-title rg-desc" class="fig">
-  <title id="rg-title">Intercom range against an internet channel</title>
-  <desc id="rg-desc">On the left, a Bluetooth intercom: two riders inside a
-  dashed circle are connected, and a third who has fallen behind sits outside
-  it, disconnected. On the right, the same three riders at the same distances
-  all connect to a Mumble server, and the distances between them no longer
-  matter.</desc>
+  <title id="rg-title">{{ f.title }}</title>
+  <desc id="rg-desc">{{ f.desc | strip_newlines }}</desc>
 
   <defs>
-    <!-- The helmet from the app icon, at 7%. Drawn freehand the first time,
-         which gave it a stroke for a microphone boom that read as a tail
-         hanging off the back. The icon already solves this: the visor is a
-         slot inset from the front edge rather than a band across it, and the
-         chin bar is left solid so the jaw survives at any size. Reusing it
-         means the mark on the site and the mark on the phone are the same
-         object. Paths copied from app/assets/icon/mumbleway.svg. -->
-    <g id="rider">
-      <g transform="scale(0.07) translate(-108,-236)">
-        <path d="M 356 236 C 500 236 622 350 622 492 L 622 606
-                 C 622 664 574 706 516 706 L 316 706
-                 C 190 706 108 606 108 480 C 108 344 216 236 356 236 Z"
-              fill="#E9F0F7"/>
-        <path d="M 566 398 L 566 516 L 360 516 C 296 516 262 486 262 458
-                 C 262 424 300 398 360 398 Z" fill="#FFA53C"/>
-        <path d="M 316 706 C 232 706 166 654 132 578 L 228 546
-                 C 252 600 288 626 344 626 L 516 626
-                 C 574 626 622 654 622 706 Z" fill="#BCCBD9"/>
-      </g>
-    </g>
-    <g id="rider-lost">
-      <g transform="scale(0.07) translate(-108,-236)">
-        <path d="M 356 236 C 500 236 622 350 622 492 L 622 606
-                 C 622 664 574 706 516 706 L 316 706
-                 C 190 706 108 606 108 480 C 108 344 216 236 356 236 Z"
-              fill="#4A5563"/>
-        <path d="M 566 398 L 566 516 L 360 516 C 296 516 262 486 262 458
-                 C 262 424 300 398 360 398 Z" fill="#28313C"/>
-        <path d="M 316 706 C 232 706 166 654 132 578 L 228 546
-                 C 252 600 288 626 344 626 L 516 626
-                 C 574 626 622 654 622 706 Z" fill="#3B4653"/>
-      </g>
-    </g>
+    {% include helmet.svg id="rider" scale="0.07" %}
+    {% include helmet.svg id="rider-lost" scale="0.07"
+       shell="#4A5563" visor="#28313C" chin="#3B4653" %}
+    {% include cloud.svg id="rg-cloud" %}
   </defs>
 
   <!-- ── Left: the intercom ───────────────────────────────────────────── -->
   <text x="0" y="20" fill="#8695A6" font-size="14" font-family="inherit"
-        letter-spacing="1.5">BLUETOOTH INTERCOM</text>
+        letter-spacing="1.5">{{ f.intercom }}</text>
 
   <circle cx="150" cy="170" r="105" fill="#3ECF7E" fill-opacity="0.05"
           stroke="#3ECF7E" stroke-opacity="0.45" stroke-width="1.5"
           stroke-dasharray="6 6"/>
   <text x="150" y="292" fill="#61707F" font-size="12" font-family="inherit"
-        text-anchor="middle">a few hundred metres</text>
+        text-anchor="middle">{{ f.intercom_range }}</text>
 
   <line x1="120" y1="150" x2="185" y2="195" stroke="#3ECF7E" stroke-width="2"/>
   <use href="#rider" x="86" y="132"/>
@@ -64,7 +32,7 @@
         stroke-dasharray="5 6"/>
   <path d="M262 126 l16 16 M278 126 l-16 16" stroke="#FF5D5D" stroke-width="2.5"
         stroke-linecap="round"/>
-  <text x="300" y="152" fill="#8695A6" font-size="13" font-family="inherit">out of range</text>
+  <text x="300" y="152" fill="#8695A6" font-size="13" font-family="inherit">{{ f.out_of_range }}</text>
 
   <!-- ── Divider ──────────────────────────────────────────────────────── -->
   <line x1="452" y1="30" x2="452" y2="300" stroke="#263140" stroke-width="1"/>
@@ -82,23 +50,9 @@
        comparison whose sides begin at different heights reads as two drawings
        that happen to share a frame. -->
   <text x="716" y="75" fill="#8695A6" font-size="13" font-family="inherit"
-        text-anchor="middle">your Mumble server</text>
+        text-anchor="middle">{{ f.server }}</text>
 
-  <!-- A cloud rather than a rack unit. The box read as hardware in a data
-       centre, which is the opposite of true: it is a Raspberry Pi on somebody's
-       shelf or the smallest VPS anybody sells, and what matters about it is
-       that it is reachable from anywhere rather than what it looks like. -->
-  <path d="M 690 141
-           C 677 141 669 132 669 122
-           C 669 112 677 104 687 104
-           C 689 91 701 82 715 82
-           C 730 82 742 92 744 105
-           C 755 106 762 114 762 124
-           C 762 134 754 141 744 141 Z"
-        fill="#141B24" stroke="#FFA53C" stroke-width="1.5"
-        stroke-linejoin="round"/>
-  <!-- The same light the app shows when it is connected. -->
-  <circle cx="716" cy="117" r="4" fill="#3ECF7E"/>
+  <use href="#rg-cloud" x="669" y="82"/>
 
   <g stroke="#FFA53C" stroke-width="2" fill="none" opacity="0.9">
     <path d="M536 200 Q600 168 700 141"/>
@@ -111,10 +65,7 @@
   <use href="#rider" x="795" y="158"/>
 
   <text x="686" y="292" fill="#61707F" font-size="12" font-family="inherit"
-        text-anchor="middle">a hundred metres, or another country</text>
+        text-anchor="middle">{{ f.internet_range }}</text>
 </svg>
-<figcaption>An intercom is a radio link between helmets, and it ends where the
-radio does. Putting the channel on a server you control removes distance from
-the problem — and replaces it with needing a signal, which is the trade this
-whole app is.</figcaption>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
 </figure>

@@ -1,5 +1,6 @@
 ---
 layout: default
+ref: index
 title: MumbleWay
 description: Voice for bikers. A Mumble client built for wind and engine noise inside a helmet.
 ---
@@ -17,7 +18,7 @@ What it is not is a general-purpose voice app with a motorcycle icon. Every
 decision in the capture chain assumes a microphone a centimetre from your
 mouth, inside a helmet, at speed, with wind and an engine underneath.
 
-{% include fig-range.svg %}
+{% include fig-range.svg lang=page.lang %}
 
 <div class="grid">
   <div class="panel spec">
@@ -57,7 +58,7 @@ it, and every stage is visible while it runs.
   removing pitch periods, rather than letting a tunnel put everybody a second
   behind.
 
-{% include fig-timeline.svg %}
+{% include fig-timeline.svg lang=page.lang %}
 
 ## You can watch it decide
 
@@ -188,7 +189,7 @@ to be fixed by a setting.
   </div>
   <div class="panel">
     <h3><a href="{{ '/scenarios.html' | relative_url }}">On the road</a></h3>
-    <p>Setups that work: a pair, a group, a pillion, a rally.</p>
+    <p>Setups that work: a pair, a group, a passenger, a rally.</p>
   </div>
   <div class="panel">
     <h3><a href="{{ '/server.html' | relative_url }}">Your own server</a></h3>

@@ -25,7 +25,7 @@ microphone.
   <figure>
     <img src="{{ '/assets/img/shots/set-devices.webp' | relative_url }}"
          alt="The audio devices heading on a phone, saying the platform routes audio automatically and a headset switches to it."
-         width="560" height="137" loading="lazy" decoding="async">
+         width="560" height="176" loading="lazy" decoding="async">
     <figcaption>On a phone, the app says so instead of offering a picker.</figcaption>
   </figure>
 </div>
@@ -43,7 +43,7 @@ the app says so, rather than offering a control that could do nothing.
   <figure>
     <img src="{{ '/assets/img/shots/set-testmic.webp' | relative_url }}"
          alt="The test microphone row with its switch off."
-         width="560" height="156" loading="lazy" decoding="async">
+         width="560" height="218" loading="lazy" decoding="async">
     <figcaption>Hear yourself exactly as the far end does.</figcaption>
   </figure>
 </div>
@@ -59,7 +59,7 @@ suppression, gate and levelling. The fastest way to judge a profile.
   <figure>
     <img src="{{ '/assets/img/shots/set-echo.webp' | relative_url }}"
          alt="The echo cancellation row, switched on."
-         width="560" height="161" loading="lazy" decoding="async">
+         width="560" height="225" loading="lazy" decoding="async">
     <figcaption>On by default. Worth it with speakers, not with a headset.</figcaption>
   </figure>
 </div>
@@ -76,7 +76,7 @@ On a headset there is no echo to cancel and it can only take something away.
   <figure>
     <img src="{{ '/assets/img/shots/set-evenout.webp' | relative_url }}"
          alt="The even out speaker loudness row, switched on, warning that a hiss between sentences may be this."
-         width="560" height="140" loading="lazy" decoding="async">
+         width="560" height="192" loading="lazy" decoding="async">
     <figcaption>The row that explains a hiss you were about to blame on the noise chain.</figcaption>
   </figure>
 </div>
@@ -93,7 +93,7 @@ the noise chain.
   <figure>
     <img src="{{ '/assets/img/shots/set-buffer.webp' | relative_url }}"
          alt="The incoming audio buffer slider at 200 ms, with the paragraph explaining what raising it does."
-         width="560" height="311" loading="lazy" decoding="async">
+         width="560" height="395" loading="lazy" decoding="async">
     <figcaption>200 ms by default, and the app raises it by itself on a poor link.</figcaption>
   </figure>
 </div>
@@ -117,7 +117,7 @@ Otherwise leave it alone.
   <figure>
     <img src="{{ '/assets/img/shots/set-roomtone.webp' | relative_url }}"
          alt="The room tone row, switched on."
-         width="560" height="156" loading="lazy" decoding="async">
+         width="560" height="315" loading="lazy" decoding="async">
     <figcaption>Cosmetic, and only on what you hear.</figcaption>
   </figure>
 </div>
@@ -132,7 +132,7 @@ It applies to what you hear, never to what you send.
   <figure>
     <img src="{{ '/assets/img/shots/set-testspk.webp' | relative_url }}"
          alt="The test speakers row with a play button."
-         width="560" height="114" loading="lazy" decoding="async">
+         width="560" height="234" loading="lazy" decoding="async">
     <figcaption>A short tone on whichever output is selected.</figcaption>
   </figure>
 </div>
@@ -149,7 +149,7 @@ Microphone gain and speaker volume, with the live meter between them.
   <figure>
     <img src="{{ '/assets/img/shots/set-micgain.webp' | relative_url }}"
          alt="The levels section: the meter reading -84 dB above the microphone gain slider at +0 dB."
-         width="560" height="150" loading="lazy" decoding="async">
+         width="560" height="195" loading="lazy" decoding="async">
     <figcaption>The meter above the slider is the thing to watch, not the number.</figcaption>
   </figure>
 </div>
@@ -164,7 +164,7 @@ then has a harder problem to solve than it needed to.
   <figure>
     <img src="{{ '/assets/img/shots/set-speakervol.webp' | relative_url }}"
          alt="The speaker volume slider at +0 dB."
-         width="560" height="153" loading="lazy" decoding="async">
+         width="560" height="200" loading="lazy" decoding="async">
     <figcaption>Incoming voices only.</figcaption>
   </figure>
 </div>
@@ -297,7 +297,7 @@ reach and without going back to the app.
          alt="The floating call window section, with the switch that turns it
               on and a note that it needs the display-over-other-apps
               permission."
-         width="560" height="410" loading="lazy" decoding="async">
+         width="560" height="480" loading="lazy" decoding="async">
     <figcaption>The switch, and what it asks for.</figcaption>
   </figure>
   <figure>
@@ -322,7 +322,7 @@ riding.
   <figure>
     <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
          alt="The buttons section: nothing bound yet, an action picker set to push to talk (hold), and a Learn button beside it."
-         width="560" height="353" loading="lazy" decoding="async">
+         width="560" height="435" loading="lazy" decoding="async">
     <figcaption>Pick the action, press Learn, then the button on the remote.</figcaption>
   </figure>
 </div>
@@ -340,7 +340,7 @@ than your music app.</p>
   <figure>
     <img src="{{ '/assets/img/shots/settings-network-phone.webp' | relative_url }}"
          alt="The network section: use the system proxy, on, with a direct connection, and an override that is detected automatically."
-         width="560" height="399" loading="lazy" decoding="async">
+         width="560" height="489" loading="lazy" decoding="async">
     <figcaption>For downloads only. Voice does not go through it.</figcaption>
   </figure>
 </div>
@@ -364,7 +364,7 @@ nothing behind it, so the section is absent rather than permanently greyed out.
   <figure>
     <img src="{{ '/assets/img/shots/settings-identity-phone.webp' | relative_url }}"
          alt="The identity section showing the certificate fingerprint, with a button to copy it."
-         width="560" height="337" loading="lazy" decoding="async">
+         width="560" height="413" loading="lazy" decoding="async">
     <figcaption>The fingerprint a server admin needs to register you.</figcaption>
   </figure>
 </div>

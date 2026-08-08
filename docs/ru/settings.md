@@ -27,7 +27,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-devices.webp' | relative_url }}"
          alt="Заголовок раздела аудиоустройств на телефоне: система распределяет звук сама, а подключённая гарнитура забирает его себе."
-         width="560" height="137" loading="lazy" decoding="async">
+         width="560" height="176" loading="lazy" decoding="async">
     <figcaption>На телефоне приложение прямо говорит об этом вместо списка устройств.</figcaption>
   </figure>
 </div>
@@ -47,7 +47,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-testmic.webp' | relative_url }}"
          alt="Строка проверки микрофона с выключенным переключателем."
-         width="560" height="156" loading="lazy" decoding="async">
+         width="560" height="218" loading="lazy" decoding="async">
     <figcaption>Услышать себя ровно так, как слышит собеседник.</figcaption>
   </figure>
 </div>
@@ -64,7 +64,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-echo.webp' | relative_url }}"
          alt="Строка подавления эха, переключатель включён."
-         width="560" height="161" loading="lazy" decoding="async">
+         width="560" height="225" loading="lazy" decoding="async">
     <figcaption>Включено по умолчанию. Нужно с динамиками, не нужно в гарнитуре.</figcaption>
   </figure>
 </div>
@@ -82,7 +82,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-evenout.webp' | relative_url }}"
          alt="Строка выравнивания громкости, включена, с предупреждением, что шипение между фразами может быть от неё."
-         width="560" height="140" loading="lazy" decoding="async">
+         width="560" height="192" loading="lazy" decoding="async">
     <figcaption>Та самая строка, из-за которой шипение легко списать на шумоподавление.</figcaption>
   </figure>
 </div>
@@ -98,7 +98,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-buffer.webp' | relative_url }}"
          alt="Ползунок буфера входящего звука на 200 мс и абзац о том, что даёт его увеличение."
-         width="560" height="311" loading="lazy" decoding="async">
+         width="560" height="395" loading="lazy" decoding="async">
     <figcaption>200 мс по умолчанию; на плохой связи приложение поднимает его само.</figcaption>
   </figure>
 </div>
@@ -122,7 +122,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-roomtone.webp' | relative_url }}"
          alt="Строка эффекта помещения, переключатель включён."
-         width="560" height="156" loading="lazy" decoding="async">
+         width="560" height="315" loading="lazy" decoding="async">
     <figcaption>Косметика, и только на то, что слышите вы.</figcaption>
   </figure>
 </div>
@@ -138,7 +138,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-testspk.webp' | relative_url }}"
          alt="Строка проверки динамиков с кнопкой воспроизведения."
-         width="560" height="114" loading="lazy" decoding="async">
+         width="560" height="234" loading="lazy" decoding="async">
     <figcaption>Короткий тон на выбранном выходе.</figcaption>
   </figure>
 </div>
@@ -155,7 +155,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-micgain.webp' | relative_url }}"
          alt="Раздел уровней: индикатор показывает −84 дБ, под ним ползунок усиления микрофона на +0 дБ."
-         width="560" height="150" loading="lazy" decoding="async">
+         width="560" height="195" loading="lazy" decoding="async">
     <figcaption>Смотреть надо на индикатор над ползунком, а не на число.</figcaption>
   </figure>
 </div>
@@ -170,7 +170,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-speakervol.webp' | relative_url }}"
          alt="Ползунок громкости динамиков на +0 дБ."
-         width="560" height="153" loading="lazy" decoding="async">
+         width="560" height="200" loading="lazy" decoding="async">
     <figcaption>Только для входящих голосов.</figcaption>
   </figure>
 </div>
@@ -304,7 +304,7 @@ description: Что делает каждая настройка и какие �
     <img src="{{ '/assets/img/shots/settings-floating-phone.webp' | relative_url }}"
          alt="Раздел плавающего окна разговора с переключателем и примечанием
               о том, что нужно разрешение «поверх других приложений»."
-         width="560" height="410" loading="lazy" decoding="async">
+         width="560" height="480" loading="lazy" decoding="async">
     <figcaption>Переключатель и то, что для него нужно.</figcaption>
   </figure>
   <figure>
@@ -329,7 +329,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
          alt="Раздел кнопок: пока ничего не назначено, выбор действия — «Рация (удерживать)» — и кнопка «Обучить» рядом."
-         width="560" height="353" loading="lazy" decoding="async">
+         width="560" height="435" loading="lazy" decoding="async">
     <figcaption>Выберите действие, нажмите «Обучить», затем кнопку на пульте.</figcaption>
   </figure>
 </div>
@@ -347,7 +347,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/settings-network-phone.webp' | relative_url }}"
          alt="Раздел сети: системный прокси включён, соединение прямое, ниже — переопределение прокси, определяется автоматически."
-         width="560" height="399" loading="lazy" decoding="async">
+         width="560" height="489" loading="lazy" decoding="async">
     <figcaption>Только для загрузок. Голос через него не идёт.</figcaption>
   </figure>
 </div>
@@ -372,7 +372,7 @@ Windows за ним ничего нет, поэтому его просто не
   <figure>
     <img src="{{ '/assets/img/shots/settings-identity-phone.webp' | relative_url }}"
          alt="Раздел идентификации: отпечаток сертификата и кнопка, чтобы его скопировать."
-         width="560" height="337" loading="lazy" decoding="async">
+         width="560" height="413" loading="lazy" decoding="async">
     <figcaption>Отпечаток, который нужен администратору сервера для вашей регистрации.</figcaption>
   </figure>
 </div>

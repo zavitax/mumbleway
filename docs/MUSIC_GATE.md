@@ -4,12 +4,143 @@
 > would justify building any of it have not been made. Written down now so the
 > reasoning survives, and so the next person does not re-derive the three
 > features that have already been tried and disproved.
+>
+> **2026-08-09: the recording arrived, and it moved most of this file.** The
+> measurement is in *[What the recording actually says](#what-the-recording-actually-says)*
+> below, and it should be read before anything under it — two of the four
+> candidates are disproved by it, and the mechanism described in the next
+> section turns out to be only half of what happens. Everything from
+> *[Candidates](#candidates-if-it-is-ducking)* onwards is the reasoning as it
+> stood *before* that measurement, kept because most of it survives and because
+> the parts that did not are worth not re-deriving.
 
 Reported from the road, 2026-08-08: **music with mid-high plucks triggers voice
 activation.** Guitar, harp, pizzicato strings, synth plucks — the transient,
 tonal kind. The rider is not talking and the channel opens anyway.
 
-## Why it gets through
+## What the recording actually says
+
+`20260809-0142-000` — 138.8 s, music throughout, **no speech at all**. So it
+measures false positives and nothing else: every conclusion below is about what
+the chain sends when it should send nothing, and none of it bounds what a
+candidate would cost in recall.
+
+### The headline number is a property of the noise profile, not of the gate
+
+Running the clip through `core/tests/road.rs` at each profile, with no echo
+canceller in the path:
+
+| Profile | Blocks transmitted | Level after suppression |
+|---|---|---|
+| Off | **80.2%** | −25.4 dB |
+| Light | **73.3%** | −35.2 dB |
+| Standard | **65.2%** | −48.7 dB |
+| Helmet | 13.8% | −81.9 dB |
+| Auto | 28.7% (settles on Helmet) | −75.9 dB |
+
+**Helmet very nearly fixes this already, and Light barely helps at all.** The
+same audio, the same gate, the same thresholds: the only thing that changed is
+how much of the music reached the decision. Any account of this fault that does
+not start there is describing the wrong stage.
+
+The session itself was on **Auto** — it logged 30.59% of blocks `speaking`
+against 28.7% measured offline, which is as close as those two things get.
+
+### The two tests are not two opinions
+
+`vad_says_speech && snr_says_speech` reads like a conjunction of independent
+evidence. It is not. Both are measured on RNNoise's *output*: the VAD is the
+network's own probability, and the SNR margin compares the post-suppression
+level against a floor tracked on the post-suppression level. Ranked by how well
+each separates the blocks that went out from the blocks that did not (AUC, 0.5
+is a coin):
+
+```
+level_db     0.971      <- after suppression
+floor_db     0.947      <- tracked on the above
+snr_db       0.778      <- the difference of the two
+harmonicity  0.668      <- measured on the denoised signal
+vad          0.602      <- RNNoise's own output
+modulation   0.533
+raw_db       0.521      <- the microphone. A coin.
+```
+
+**The raw microphone level knows nothing about whether the block was
+transmitted.** Everything that does know is downstream of one decision made by
+one network. That is why three features have now failed: they were all computed
+on the same side of it.
+
+### The same sound, decided both ways
+
+Fingerprint each block from the *raw* capture — 20 log-spaced bands,
+level-normalised — and look for a transmitted block whose sound also occurs
+somewhere it was not transmitted, at the same raw level within 1 dB.
+
+**524 of 600 sampled transmitted blocks (87%) have such a twin**, matching to
+under 3 dB rms across the bands. The suppression applied to the pairs differs by
+up to 70 dB. This is the reporter's "it fooled the gate once and not the second
+time", and it is not a per-block property at all.
+
+### What varies is the profile Auto has landed on
+
+Per 10 s, at a roughly constant input level:
+
+```
+   0-30s   tx 96-99%    suppression ~14 dB
+  30-60s   tx 63->38%   suppression 13 -> 52 dB
+  60-110s  tx 0-5%      suppression 71 -> 83 dB
+ 120-130s  tx 51%       suppression 30 dB      <- quieter passage, Auto backs off
+```
+
+`reconsider()` (`denoise.rs:472`) tracks the **raw** floor and moves
+Light → Standard → Helmet as it climbs. The music arrives at −24 dBFS median
+per block, −17 dBFS overall, so the floor rises to meet it and Auto ends in
+Helmet — but the climb takes the best part of a minute, and everything before it
+lands goes out on the wire. A track change or a quiet passage puts it back.
+
+So the fault has a shape nobody had guessed: **it is a convergence transient**,
+worst in the first ~40 seconds of any new music and again whenever the music
+changes character.
+
+### Two candidates die here
+
+- **"Too periodic" (candidate 3) is disproved.** It assumes music scores high on
+  harmonicity. Measured on this clip: p50 **0.45**, p90 0.72, p99 0.75, and
+  **0.48% of blocks clear the 0.75 voiced bar**. This chain's own periodicity
+  measure does not find the music periodic, so an upper bound on it has almost
+  nothing to bite on. `harmonicity`'s AUC of 0.668 is real but modest, and it is
+  measured post-suppression like everything else.
+- **Spectral novelty is disproved before being built.** "Suppression has not
+  converged yet" suggests detecting the novel block directly. Distance from an
+  EMA of recent raw spectra scores **AUC 0.517–0.551** across windows from
+  100 ms to 4 s. A coin. The convergence is slow and global; it is not visible
+  as per-block surprise.
+
+### What this leaves
+
+Two directions, and they are not the same size.
+
+1. **A veto computed upstream of RNNoise.** Everything the decision currently
+   uses is downstream of the suppressor, so it cannot disagree with it. This is
+   the structural fix and the expensive one.
+2. **Make Auto converge faster, or start it pessimistic.** Much cheaper, and it
+   addresses where the leak actually is rather than the class of sound. It costs
+   nothing in recall on a quiet route — a rider who is talking raises the raw
+   floor too, so a fast-converging Auto lands on Helmet during speech as well,
+   which is exactly the case where Helmet is known to hurt. That trade needs
+   measuring before anyone builds it.
+
+**Neither is justified by this file alone.** It contains no speech, so it can
+show a candidate removing the music and cannot show what the same candidate does
+to a rider. The recall half has to come from `C:\ml_data\speech_road`, and the
+acceptance criteria below still stand unchanged.
+
+## Why it gets through — the original reading, since corrected
+
+> Written before the recording. The mechanism here is real but it is the second
+> half of the story, not the first: it explains what the gate does with music
+> that reaches it, and the measurement above shows that how much reaches it is
+> the larger term.
 
 The transmit decision is two tests and nothing else (`core/src/audio/denoise.rs:779`):
 
@@ -75,6 +206,16 @@ should and no gate would survive it. That is a routing fault wearing a DSP
 fault's clothes, and it is far cheaper to fix. **Rule it out before writing any
 of the below.**
 
+**Still not ruled out, and the recording raises rather than settles it.** The
+music arrives at **−24 dBFS median, −17 dBFS overall**. That is not the level of
+a ducked background; it is the level of something playing at full tilt into the
+microphone. But this clip carries no record of how it was made — whether the
+music was ducking, whether it was meant to, or whether it was simply played into
+the mic to reproduce the fault on purpose — so the number is consistent with a
+ducking failure without being evidence of one. **Ask how the clip was made, or
+capture one where the answer is known.** It remains the cheapest thing here by a
+wide margin.
+
 ## Candidates, if it is ducking
 
 Ranked by cost, and by risk to speech — which is the constraint that matters,
@@ -107,7 +248,14 @@ note.
 Risk: a single word trailing off resembles this. The window has to be longer
 than a syllable.
 
-### 3. Too periodic
+### 3. Too periodic — **disproved, 2026-08-09**
+
+> The premise does not hold. On the music recording the chain's own periodicity
+> measure reads p50 0.45, p99 0.75, with **0.48% of blocks above the 0.75 voiced
+> bar**. The music is not scoring as strongly periodic, so an upper bound on
+> harmonicity has essentially nothing to catch. Kept below because the reasoning
+> is sound and the *premise* is what failed — a different periodicity measure,
+> computed before RNNoise, might yet read the way this one was assumed to.
 
 Voiced speech carries breath noise — harmonic-to-noise ratio around 10–20 dB. A
 plucked string is 30 dB or better. This is an *upper* bound on harmonicity,
@@ -179,3 +327,12 @@ thirty seconds of speech over it, and the same again with the music at a level
 the rider considers normal. That is enough to measure a baseline, score all four
 candidates, and find out whether the ducking works — which may turn out to be
 the whole of it.
+
+**Half of that arrived on 2026-08-09 and it was worth the wait.** 138.8 s of
+music alone gave the baseline, disproved two candidates, and found a mechanism
+nobody had proposed. What it could not do is the other half: with no speech in
+it, it cannot say what any candidate costs the rider, and *that* is the
+assertion this whole file says will fail first.
+
+So the outstanding ask is now specific: **thirty seconds of speech over the same
+music, at the same level, in the same helmet.** Everything else is in hand.

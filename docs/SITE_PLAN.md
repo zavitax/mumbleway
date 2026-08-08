@@ -145,24 +145,32 @@ Two other facts worth keeping:
 Written 2026-08-09 at the end of a session that ran out of room. Each of these
 was asked for and none was started badly.
 
-### The music recording arrived — analyse it
+### The music recording - **analysed 2026-08-09**
 
-`C:\ml_dataides60809-0142-000.{s16,csv,wav}`. **This is the recording
-`MUSIC_GATE.md` has been waiting for**, and the fault reproduces plainly:
+`C:/ml_data/rides/20260809-0142-000.{s16,csv,raw,wav}` (forward slashes on
+purpose; the previous version of this line was written through something that
+ate the backslashes and left a carriage return in the middle of the path).
 
-    138.8 s of music and no speech at all
-    transmitting 36.1% of blocks, in 17 runs
-    two runs of 14.8 s and 13.0 s, then a dozen of 0.5-3 s
+The findings are in `docs/MUSIC_GATE.md`. The short version: the leak is an
+**Auto-profile convergence transient**, not a per-block misclassification; the
+reporter's "fooled it once and not the second time" is confirmed on 87% of
+transmitted blocks; and two of the four candidate features are disproved.
 
-The reporter's most useful observation is that **one passage fooled the gate
-once and not the second time**. That rules out a pure per-block property — the
-same audio decided differently — and points at state: the noise floor tracker,
-the AGC, or the hold envelope. Compare `floor_db` and `snr_db` at the two
-instances before proposing anything.
+Three traps, each of which cost time here:
 
-**Read the CSV skipping `#` lines.** The first line is a comment and a plain
-`DictReader` takes it as the header, which silently reports 0% transmitting on
-a file that is 36% transmitting.
+- **Read the CSV skipping `#` lines.** The first line is a comment and a plain
+  `DictReader` takes it as the header - it silently reports 0% transmitting on
+  a file that is 36% transmitting.
+- **`level_db` in the log is measured *after* suppression, and the `.s16` beside
+  it is the *raw* capture** (`engine.rs:2235`). Read the two as the same signal
+  and 64 s of loud music looks like silence.
+- **`core/tests/road.rs` already does most of this.** It takes f32 mono 48 kHz
+  from `MUMBLEWAY_ROAD_AUDIO`, and the `.raw` is written beside the `.s16`.
+  Reach for it before writing another analysis script.
+
+Still wanted: **speech over the same music, at the same level, in the same
+helmet.** This clip has none, so it bounds false positives and says nothing at
+all about recall - which is the assertion `MUSIC_GATE.md` says will fail first.
 
 ### Telegram bot: take a caption with the file
 

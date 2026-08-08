@@ -212,6 +212,11 @@ retraction goes in the file where the claim was made. `tools/vad/README.md`
 leads with one; `docs/RECORDING.md` and `core/src/audio/pitch.rs` carry others.
 Do not quietly drop a disproved claim — someone will re-derive it.
 
-`docs/MUSIC_GATE.md` is the open one: music opens the voice gate, three
-features have already been tried against it and failed, and the plan waits on a
-recording rather than proposing a fourth from reasoning.
+`docs/MUSIC_GATE.md` is the open one: music opens the voice gate, and five
+features have now been tried against it and failed. The music recording arrived
+on 2026-08-09 and disproved two of them plus the file's own account of the
+mechanism — the leak turns out to be an **Auto-profile convergence transient**,
+not a per-block misclassification, and every number the transmit decision uses
+is measured downstream of the suppressor whose error it is supposed to catch.
+What is still missing is speech over the same music: that clip bounds false
+positives and can say nothing about recall.

@@ -9,28 +9,161 @@ Most of this can be left alone. Three settings matter on a bike — **microphone
 mode**, **noise cancellation** and **microphone gain** — and the rest exist for
 when something specific is wrong.
 
+**The sections below are in the order the app shows them**, so this page can be
+read beside the screen rather than searched. Diagnostics comes last because it
+is not in Settings at all — it is the waveform icon in the toolbar.
+
+## Audio devices
+
+How sound gets in and out — including several switches that are not obviously
+"devices" but sit here because they belong to the route rather than to the
+microphone.
+
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-phone.webp' | relative_url }}"
          alt="The top of the settings screen: test microphone, echo
-              cancellation, speaker levelling, the incoming audio buffer and
-              room tone."
+              cancellation, even out speaker loudness, the incoming audio
+              buffer and room tone."
          width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>Devices, levels and the buffer.</figcaption>
+    <figcaption>The first section, on a phone.</figcaption>
   </figure>
+</div>
+
+### Choosing the devices
+
+On **desktop** you pick input and output explicitly, and **Re-check devices**
+re-reads the list after you plug in or pair a headset.
+
+On **a phone there is nothing to choose.** The platform owns the routing and
+switches to a headset when one connects, so the pickers are not shown at all —
+the app says so, rather than offering a control that could do nothing.
+
+### Test microphone (hear yourself)
+
+Plays your processed voice back exactly as the far end hears it — after
+suppression, gate and levelling. The fastest way to judge a profile.
+
+**Use headphones.** Through speakers it is a feedback loop.
+
+### Echo cancellation
+
+On by default, and worth leaving on **when you are using speakers**. A speaker
+a few centimetres from the microphone sends everybody back to themselves with a
+delay, which is more distracting than almost any other audio fault.
+
+On a headset there is no echo to cancel and it can only take something away.
+
+### Even out speaker loudness
+
+Brings incoming voices to a similar level, so a quiet rider and a loud one
+arrive at the same volume. It adapts to what it hears, which has one visible
+consequence: **if a hiss seems to rise between sentences, turn this off to
+check.** It may be levelling the gaps up rather than anything being wrong in
+the noise chain.
+
+### Incoming audio buffer
+
+How much of what others say is held back before it is played, in milliseconds.
+More buffer rides out a patchy signal without gaps; less means you hear people
+sooner.
+
+The buffer is elastic: when a backlog builds — leaving a tunnel, say — it plays
+the excess off at up to double speed by removing pitch periods, rather than
+dropping it or letting everybody fall permanently behind. The app also raises
+it by itself when a link starts losing packets, and comes back down to your
+setting afterwards.
+
+**Raise it if the playback-gaps counter in Diagnostics keeps climbing.**
+Otherwise leave it alone.
+
+### Room tone
+
+Adds a short tail under incoming voices, so a talker cut off by voice
+activation does not stop mid-breath. Cosmetic, and some people dislike it.
+It applies to what you hear, never to what you send.
+
+### Test speakers
+
+Plays a short tone on the selected output.
+
+## Levels
+
+Microphone gain and speaker volume, with the live meter between them.
+
+### Microphone gain
+
+Aim for the meter to peak around three quarters while you speak normally. Too
+much gain lifts the engine noise along with your voice, and the suppression
+then has a harder problem to solve than it needed to.
+
+### Speaker volume
+
+For incoming voices only.
+
+## Noise cancellation
+
+Filters wind, engine and road noise out of your microphone. **Changes take
+effect the next time the app starts.**
+
+<div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-noise-phone.webp' | relative_url }}"
          alt="The noise cancellation section: off, light, standard, helmet and
               automatic, each with a sentence saying what it is for, and helmet
               selected."
          width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>The noise profiles, with Helmet selected.</figcaption>
+    <figcaption>Listed weakest to strongest, with Automatic at the end.</figcaption>
   </figure>
 </div>
 
-## Microphone
+<div class="table-wrap" markdown="1">
 
-### Microphone mode
+| Profile | What it is for |
+|---|---|
+| Off | No suppression, only a gentle rumble filter. A diagnostic setting rather than a condition to ride in. |
+| Light | Quiet indoor use. Keeps the most natural sound. |
+| Standard | General purpose, for most environments. |
+| Helmet / motorcycle | Steep wind-noise filter, full suppression and an assertive gate. Built for a microphone inside a helmet at speed. |
+| Automatic | Listens to the background and picks one of the settings above, changing at most every few seconds. Useful when one ride covers a quiet car park and a motorway. Never chooses Off. |
+
+</div>
+
+Start on **Helmet** if you are riding and **Standard** if you are not, or leave
+it on **Automatic** and forget about it.
+
+## Feedback suppression
+
+For when the speaker is heard by the microphone. Echo cancellation removes what
+it can predict; these handle what is left, and they work in quite different
+ways.
+
+<div class="table-wrap" markdown="1">
+
+| Setting | Behaviour |
+|---|---|
+| No feedback suppression | Echo cancellation alone. **Start here**, and change it only if you hear yourself coming back or a howl builds. |
+| Cut only when a howl builds | Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed. |
+| Suppress whatever echo cancellation missed | Continuous, for persistent bleed. |
+| Turn the microphone down while others talk | Ducking. Blunt, effective, and costs you the ability to interrupt. |
+
+</div>
+
+## Hiss removal
+
+For the steady hiss a microphone adds under everything.
+
+<div class="table-wrap" markdown="1">
+
+| Setting | Behaviour |
+|---|---|
+| No hiss removal | Leaves the sound alone. **Start here** — both of the others take something away as well. |
+| Learn the hiss and subtract it | Tracks the steady noise floor and takes it out spectrally. |
+| Turn quiet passages down further | An expander. Cheaper, and it can sound gated on quiet speech. |
+
+</div>
+
+## Microphone mode
 
 How the channel opens. This is the setting with the largest effect on how the
 app feels to use.
@@ -61,113 +194,10 @@ plucked notes open the gate. If you ride with music and use the same headset,
 push-to-talk is the reliable answer today.</p>
 </div>
 
-### Microphone gain
-
-Aim for the meter to peak around three quarters while you speak normally. Too
-much gain lifts the engine noise along with your voice, and the suppression
-then has a harder problem to solve than it needed to.
-
-### Test microphone
-
-Plays your processed voice back exactly as the far end hears it — after
-suppression, gate and levelling. The fastest way to judge a profile.
-
-**Use headphones.** Through speakers it is a feedback loop.
-
-## Noise cancellation
-
-Filters wind, engine and road noise out of your microphone. **Changes take
-effect the next time the app starts.**
-
-<div class="table-wrap" markdown="1">
-
-| Profile | What it is for |
-|---|---|
-| Automatic | Chooses between the profiles below from the measured noise floor and spectral tilt, with hysteresis so it does not flap at a junction. Never chooses Off. |
-| Helmet / motorcycle | Steep wind-noise filter, full suppression, assertive gate. Built for a microphone inside a helmet at speed. |
-| Standard | General purpose, for most environments. |
-| Light | Quiet indoor use. Keeps the most natural sound. |
-| Off | No suppression, only a gentle rumble filter. A diagnostic setting rather than a condition to ride in. |
-
-</div>
-
-Start on **Helmet** if you are riding and **Standard** if you are not, or leave
-it on **Automatic** and forget about it.
-
-## Echo cancellation
-
-On by default and worth leaving on. A helmet speaker sits a few centimetres
-from the microphone, so without cancellation everybody hears themselves back
-with a delay, which is more distracting than almost any other audio fault.
-
-## Feedback suppression
-
-Separate from echo cancellation, and for what cancellation could not model.
-
-<div class="table-wrap" markdown="1">
-
-| Setting | Behaviour |
-|---|---|
-| No feedback suppression | Echo cancellation alone. **Start here**, and change it only if you hear yourself coming back or a howl builds. |
-| Cut only when a howl builds | Leaves ordinary conversation completely alone and cuts hard the moment a tone starts climbing. Does nothing about mild bleed. |
-| Suppress whatever echo cancellation missed | Continuous, for persistent bleed. |
-| Turn the microphone down while others talk | Ducking. Blunt, effective, and costs you the ability to interrupt. |
-
-</div>
-
-## Hiss removal
-
-<div class="table-wrap" markdown="1">
-
-| Setting | Behaviour |
-|---|---|
-| No hiss removal | Leave the residual alone. |
-| Learn the hiss and subtract it | Tracks the steady noise floor and takes it out spectrally. |
-| Turn quiet passages down further | An expander. Cheaper, and it can sound gated on quiet speech. |
-
-</div>
-
-## Room tone
-
-Adds a short tail under incoming voices, so a talker cut off by voice
-activation does not stop mid-breath. Cosmetic, and some people dislike it.
-It applies to what you hear, never to what you send.
-
-## Levels and devices
-
-- **Speaker volume** — for incoming voices only.
-- **Audio devices** — on desktop, choose input and output explicitly. On phones
-  the platform routes audio automatically and connecting a headset switches to
-  it, so there is nothing to choose.
-- **Re-check devices** — after plugging in or pairing a headset.
-- **Test speakers** — plays a short tone on the selected output.
-
-## Incoming audio buffer
-
-How much incoming audio to hold before playing it, in milliseconds. Larger
-absorbs more network jitter at the cost of delay.
-
-The buffer is elastic: when a backlog builds — leaving a tunnel, say — it plays
-the excess off at up to double speed by removing pitch periods rather than
-dropping it or letting everybody fall permanently behind. You should rarely
-need to touch this.
-
-## Buttons
-
-Bind a Bluetooth remote or media button to push-to-talk, mute, deafen or hang
-up. Press **Learn**, then the button on the remote.
-
-<div class="panel warn">
-<p><strong>On iOS, a remote reports a media button press but not a hold.</strong>
-Push-to-talk-with-hold therefore cannot work from one — use the toggle action
-instead. While a media button is bound, the remote controls MumbleWay rather
-than your music app.</p>
-</div>
-
 ## Floating call window
 
-Keeps the call visible over whatever else is on screen with the controls in
-reach.
+Keeps the call visible over whatever else is on screen, with the controls in
+reach and without going back to the app.
 
 - **Android** needs the "display over other apps" permission.
 - **iOS** uses Picture in Picture, which allows three buttons: play/pause
@@ -183,11 +213,24 @@ reach.
   the controls you need without going back.</figcaption>
 </div>
 
-## Identity
+## Buttons
 
-Your client certificate and its fingerprint. Mumble servers recognise you by
-this certificate rather than by a password, so it is worth keeping — it is what
-lets a server remember your registration.
+Bind a handlebar Bluetooth remote, a headset button or a keyboard key to
+push-to-talk, mute, deafen or hang up. Press **Learn**, then the button on the
+remote. On Android these keep working with the app in the background while
+riding.
+
+<div class="panel warn">
+<p><strong>On iOS, a remote reports a media button press but not a hold.</strong>
+Push-to-talk-with-hold therefore cannot work from one — use the toggle action
+instead. While a media button is bound, the remote controls MumbleWay rather
+than your music app.</p>
+</div>
+
+## Network
+
+A proxy override for the app's downloads — the public server directory and
+profile files. It does not tunnel voice.
 
 ## Sync
 
@@ -196,28 +239,38 @@ your own iCloud or Android Backup account. Passwords are held separately from
 the server list. Nothing passes through any server of ours, because there is
 no server of ours.
 
-## Network
+**Shown only where something can actually carry the data.** On Windows there is
+nothing behind it, so the section is absent rather than permanently greyed out.
 
-A proxy override for the app's downloads — the public server directory and
-profile files. It does not tunnel voice.
+## Identity
+
+Your client certificate and its fingerprint. Mumble servers recognise you by
+this certificate rather than by a password, so it is worth keeping — it is what
+lets a server remember your registration.
 
 ## Diagnostics
 
-Reached from the waveform icon in the toolbar rather than from settings.
+**Not in Settings.** Reached from the waveform icon in the toolbar.
 
 - **Live spectrum analyser** with three traces: microphone, after suppression,
   and what is being transmitted.
 - **A light per stage** — echo, suppressor, voice detected, gate, levelling,
   hiss, feedback, to the server.
+- **Counters** for incoming audio and for this device: decoded and concealed
+  milliseconds, gaps, jitter buffer, speakers tracked, playback gaps and
+  microphone drops. Playback gaps is the one that tells you to raise the
+  buffer.
 - **Record for diagnosis**, which saves the microphone to the device along with
   what the chain decided about every 10 ms of it. Off unless you turn it on.
 - **Listen back** — plays a recording with its waveform and a playhead you can
-  drag or tap to scrub. It is a recording of your own microphone, and you
-  should hear what is in it before sending it anywhere.
+  drag or tap to scrub. A single recording can be shared or deleted from here,
+  which is where that decision actually gets made: you have just heard what is
+  in it.
 - **Share**, which produces a `.zip` per 18 MB so a whole ride fits through
   anything. See [sending a diagnostic
   recording]({{ '/sending-a-recording.html' | relative_url }}).
 
-The delete button sits at the far left of that row and the share button at the
-far right, deliberately: one sends a file and the other destroys the only copy
-of a ride that cannot be recorded again.
+On the card and on the listen sheet alike, delete and share sit at opposite
+ends of their row, deliberately: one sends a file and the other destroys the
+only copy of a ride that cannot be recorded again. Only the destructive one
+asks first.

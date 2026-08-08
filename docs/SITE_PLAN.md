@@ -22,15 +22,19 @@ Updated 2026-08-08, second pass. Everything described as done is live.
 - **The top bar had not been sticky for months.** `position: sticky` was
   overridden by a later `position: relative`, and `body { overflow-x: hidden }`
   would have defeated it independently. Both fixed.
-- **Screenshots are real captures** from the emulator against a real Mumble
-  server, including the analyser in both detection states.
+- **Screenshots are real captures** from the emulator and from Windows against
+  a real Mumble server, including the analyser in both detection states.
+- **The settings page follows the app's own order** and documents the settings
+  it used to omit, notably *Even out speaker loudness*.
+- **A recording can be shared or deleted on its own** from the listen sheet.
 
 ## Not started
 
 ### Screenshots on the other platforms
 
-Android is done. **iOS, macOS and Windows are not.** What exists is a working
-recipe rather than a plan:
+**Android and Windows are done.** iOS and macOS are not.
+
+The recipe that works on Android:
 
 ```bash
 export MSYS_NO_PATHCONV=1          # or Git Bash rewrites /sdcard/...
@@ -38,7 +42,12 @@ adb shell screencap -p /sdcard/s.png
 adb pull -a /sdcard/s.png out.png  # never `exec-out > file`; it corrupts PNGs
 ```
 
-Then PIL to WebP at 560 px wide, quality 84 — 12–62 kB each.
+On Windows, `PrintWindow` with `PW_RENDERFULLCONTENT` (flag 2) — without that
+flag a Flutter window comes back as a blank rectangle — after `MoveWindow` to a
+fixed size so every shot shares proportions. The helper is in the scratchpad as
+`shot.ps1`.
+
+Then PIL to WebP: 560 px wide for phone, 1000 px for desktop, quality 84.
 
 Two things that made the Android pass work and will be needed again:
 
@@ -46,28 +55,27 @@ Two things that made the Android pass work and will be needed again:
   today and one taken next month differ only where the app differs:
   `adb shell am broadcast -a com.android.systemui.demo -e command enter`, then
   `clock -e hhmm 1030`, `battery`, `network`, `notifications -e visible false`.
-- **Real speech into the microphone.** Acoustic loopback works: concatenate
-  clips from `C:\ml_data\speech_road` (real helmet audio, not synthetic), lift
-  the level, and `PlayLooping()` it on the host while capturing. That is what
-  produced the speech-detected analyser shot. Check the gate actually fired —
-  the legend flips to "Sending" and three lights go green — rather than
-  assuming it did.
+- **Real speech into the microphone.** Acoustic loopback works on the
+  *emulator*, which shares the host's audio devices: concatenate clips from
+  `C:\ml_data\speech_road` (real helmet audio, not synthetic), lift the level,
+  and `PlayLooping()` it on the host while capturing. **It does not work on
+  Windows** — the PC has no loopback input, so the analyser sits at its floor
+  (-119 dBFS) and only the not-speaking state can be captured there.
 
-Still missing: the share sheet, most of the settings sections (three of about
-fourteen are shown), and iOS Picture-in-Picture for the floating window.
+**iOS is buildable and runnable** — `flutter build ios --simulator --debug`
+takes about a minute on the Mac, `xcrun simctl install/launch` works, and a
+server can be added without touching the UI:
 
-### The settings page does not match the app's own order
+```bash
+xcrun simctl openurl booted "mumble://name@host:64738/"
+xcrun simctl io booted screenshot /tmp/shots/x.png
+```
 
-Noticed while capturing and **not acted on**, because it is a content decision
-rather than a bug. The app's settings screen opens on *Audio devices* and
-groups things differently from `settings.md`, which is organised by topic. The
-app also has **Even out speaker loudness**, which the page does not mention at
-all, and lists the noise profiles Off→Automatic where the page lists them
-Automatic→Off.
-
-The page is not wrong, but a reader with the screen open has to translate
-between two orders. Worth reconciling deliberately, in one pass, rather than
-patching.
+What stopped it was **getting the file back**. There is no scp from this
+machine to the Mac (`Permission denied (publickey)`), and base64 through the
+SSH tool floods the context. Solve the transfer first — an HTTP one-liner from
+the Mac, a shared folder, or an SSH key — and the captures themselves are ten
+minutes.
 
 ## Things that will bite
 
@@ -91,13 +99,16 @@ patching.
 
 ## Outside the site
 
-- **The Apple half of publish 68 never landed.** Both attempts failed on App
-  Store Connect returning HTTP 500 (`list-apps`) with Apple's own trace IDs.
-  Google Play and Windows took build 68 from the same run. Retry when their API
-  is healthy.
-- **The recording playback panel (`80a565f`) is in no store build.** It is
-  merged and verified — and now screenshotted, playing, on the site — but has
-  never shipped. One publish catches it and the Apple gap up together.
+- **Apple is healthy again.** Publish 68's Apple half was uploaded by hand, and
+  publish 69 then completed all four jobs on its own — Windows MSIX, Mac App
+  Store, Google Play and TestFlight. The HTTP 500s from `list-apps` were their
+  outage and it is over. Nothing in this repository was changed to fix it.
+
+- **The playback panel shipped in publish 69, and one thing in it did not.**
+  Per-recording delete and share went out. The fix that lets playback work at
+  all when nothing else holds the audio devices open (`be61042`) landed
+  *after* that run was triggered, so build 69 has a listen button that does
+  nothing unless a call or a recording is already running. Publish again.
 - **`docs/MUSIC_GATE.md`** still waits on a road recording with music.
 - **A one-off native abort** was seen once at startup
   (`nativeSetAndroidContext` → `SIGABRT` during `configureFlutterEngine`) after

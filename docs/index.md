@@ -104,6 +104,28 @@ construction.
   </figure>
 </div>
 
+On a desktop the same thing is a two-pane window: your servers down one side,
+the channel and who is in it down the other.
+
+<div class="shot-wide">
+  <img src="{{ '/assets/img/shots/home-desktop.webp' | relative_url }}"
+       alt="MumbleWay on Windows: saved servers on the left with latency and
+            the UDP round trip, the channel and its members on the right, and
+            the microphone meter along the bottom."
+       width="1000" height="691" loading="lazy" decoding="async">
+  <figcaption>Windows, connected. The same app, given room.</figcaption>
+</div>
+
+<div class="shot-wide">
+  <img src="{{ '/assets/img/shots/diagnostics-desktop.webp' | relative_url }}"
+       alt="The diagnostics panel on Windows: the analyser and stage lights
+            above three columns of counters for incoming audio, this device and
+            the server."
+       width="1000" height="691" loading="lazy" decoding="async">
+  <figcaption>The diagnostics panel, where a wide window shows every counter
+  at once instead of stacking them.</figcaption>
+</div>
+
 ## Advantages
 
 <div class="grid">

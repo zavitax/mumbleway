@@ -73,18 +73,28 @@
   <text x="490" y="20" fill="#FFA53C" font-size="14" font-family="inherit"
         letter-spacing="1.5">MUMBLEWAY</text>
 
-  <!-- The server, drawn as the thing everyone reaches rather than a box with
-       a label: it is somebody's Raspberry Pi, and that is the point. -->
-  <g transform="translate(686,52)">
-    <rect x="0" y="0" width="76" height="44" rx="3" fill="#141B24" stroke="#FFA53C"
-          stroke-width="1.5"/>
-    <circle cx="13" cy="13" r="3.5" fill="#3ECF7E"/>
-    <line x1="24" y1="13" x2="64" y2="13" stroke="#3E4E61" stroke-width="2.5"/>
-    <line x1="12" y1="26" x2="64" y2="26" stroke="#3E4E61" stroke-width="2.5"/>
-    <line x1="12" y1="36" x2="46" y2="36" stroke="#3E4E61" stroke-width="2.5"/>
-  </g>
-  <text x="724" y="118" fill="#8695A6" font-size="13" font-family="inherit"
+  <!-- Named before it is drawn. The label sat underneath, which meant the eye
+       reached the shape first and had to hold it unexplained until it found
+       the words — and the whole claim of this half of the picture is *what*
+       the riders are reaching. -->
+  <text x="716" y="30" fill="#8695A6" font-size="13" font-family="inherit"
         text-anchor="middle">your Mumble server</text>
+
+  <!-- A cloud rather than a rack unit. The box read as hardware in a data
+       centre, which is the opposite of true: it is a Raspberry Pi on somebody's
+       shelf or the smallest VPS anybody sells, and what matters about it is
+       that it is reachable from anywhere rather than what it looks like. -->
+  <path d="M 690 100
+           C 677 100 669 91 669 81
+           C 669 71 677 63 687 63
+           C 689 50 701 41 715 41
+           C 730 41 742 51 744 64
+           C 755 65 762 73 762 83
+           C 762 93 754 100 744 100 Z"
+        fill="#141B24" stroke="#FFA53C" stroke-width="1.5"
+        stroke-linejoin="round"/>
+  <!-- The same light the app shows when it is connected. -->
+  <circle cx="716" cy="76" r="4" fill="#3ECF7E"/>
 
   <g stroke="#FFA53C" stroke-width="2" fill="none" opacity="0.9">
     <path d="M536 200 Q600 150 700 100"/>

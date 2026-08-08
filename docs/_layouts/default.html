@@ -123,6 +123,9 @@
       {%- for item in s.nav %}
       <a href="{{ item.url | relative_url }}">{{ item.title }}</a>
       {%- endfor %}
+      {%- for item in s.footer_links %}
+      <a href="{{ item.url | relative_url }}">{{ item.title }}</a>
+      {%- endfor %}
       <a href="{{ site.repo }}">{{ s.footer.source }}</a>
       <a href="{{ site.mumble }}">{{ s.footer.mumble }}</a>
     </nav>

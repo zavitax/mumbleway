@@ -61,11 +61,16 @@ using the same one.
 
 ### 7. Russian, with a persistent language switch
 
-**The largest item by a wide margin, and the one to decide before writing any
-code.** A switch is trivial; seven translated pages and a mechanism are not.
+**The largest item by a wide margin.** A switch is trivial; seven translated
+pages and a mechanism are not.
+
+> **Decided 2026-08-08: `/ru/` page copies. Build it this way.** The structure
+> below is no longer a proposal to weigh up — it is the agreed approach, and
+> the reason it was worth settling first is that it is cheap now and expensive
+> once seven pages exist in one shape and have to be moved to another.
 
 Jekyll has no i18n and **GitHub Pages runs no plugins**, so a gem is not an
-option. Proposed structure, not yet agreed:
+option:
 
 - `/ru/` copies of every page, front matter carrying `lang: ru`.
 - `docs/_data/strings.yml` for chrome — nav labels, footer, buttons — keyed by
@@ -80,6 +85,26 @@ sending-a-recording. **`privacy.md` is the delicate one** — its URL is
 registered with three app stores, so `/privacy` must keep resolving exactly as
 it does. Do not enable `permalink: pretty`; it would move it to `/privacy/` and
 404 the URL a reviewer follows.
+
+Consequences of the copies approach that are worth knowing before starting,
+none of which change the decision:
+
+- **Copies drift.** Two files say the same thing and only one gets edited. The
+  English pages are the source; a change to one is not done until the Russian
+  one has it. Worth a check in `tool/` that walks both trees and reports any
+  page whose counterpart is older, because nothing else will notice.
+- **The Russian privacy policy is a translation of a document that is
+  load-bearing.** `docs/privacy.md` has to keep agreeing with
+  `docs/STORE_DESCRIPTION.md` and with what the app actually does — the public
+  server directory call, the optional cloud sync, diagnostic recording. A
+  translation that softens any of those is worse than no translation.
+- **Russian is longer.** Labels grow by roughly a third, which is why the menu
+  breakpoint was made measured rather than a media query. Nothing in the CSS
+  should need touching; if it does, that is a sign something else hard-codes a
+  width.
+- **Check the encoding after every edit.** `python tool/check_encoding.py`.
+  Cyrillic mojibake has been committed unnoticed in this repository before, and
+  a garbled console rendering is not evidence of a garbled file.
 
 ### 8. Translated text inside the illustrations
 

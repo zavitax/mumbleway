@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/recording_archive.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import 'recording_preview.dart';
@@ -178,14 +178,6 @@ class _RecordingToggleState extends State<RecordingToggle> {
 
   static String _two(int v) => v.toString().padLeft(2, '0');
 
-  /// The glyph each platform draws for this.
-  ///
-  /// Android has its own: three nodes joined by two lines. Everywhere else —
-  /// iOS, macOS and Windows alike — it is a box with an arrow leaving the top,
-  /// which is what `ios_share` is despite the name. Using the wrong one is not
-  /// wrong so much as foreign: it is a button people find by its shape rather
-  /// than by reading it.
-  IconData get _shareIcon => Platform.isAndroid ? Icons.share : Icons.ios_share;
 
   /// Hands the recordings over as a single archive.
   ///
@@ -216,6 +208,11 @@ class _RecordingToggleState extends State<RecordingToggle> {
     final dir = await _directory();
     if (!dir.existsSync() || !mounted) return;
     await showRecordingPreview(context, dir);
+    // The sheet can delete recordings, so the count and the size above it are
+    // stale the moment it closes. Unconditional rather than reported back:
+    // a re-count is cheap, and a flag that says nothing changed is one more
+    // thing that can be wrong.
+    if (mounted) await _refresh();
   }
 
   Future<void> _share() async {
@@ -253,7 +250,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
         if (f.path
             .split(Platform.pathSeparator)
             .last
-            .startsWith(_archiveStem)) {
+            .startsWith(archiveStem)) {
           try {
             f.deleteSync();
           } catch (_) {
@@ -266,8 +263,8 @@ class _RecordingToggleState extends State<RecordingToggle> {
       // Off this isolate. Packing a ride's worth of audio takes seconds, and
       // doing it here would stop the meters and the spectrum in a panel whose
       // whole job is to be watched.
-      final archives = await compute(_packRecordings, [
-        '$_archiveCapBytes',
+      final archives = await compute(packRecordings, [
+        '$archiveCapBytes',
         temp.path,
         for (final f in files) f.path,
       ]);
@@ -309,17 +306,6 @@ class _RecordingToggleState extends State<RecordingToggle> {
     }
   }
 
-  /// How large any one archive is allowed to get.
-  ///
-  /// Not arbitrary, and not the phone's limit — it is the smallest ceiling on
-  /// the way to somewhere useful. Telegram refuses to hand a bot a file over
-  /// 20 MB, which is the tightest of the transports these are actually sent
-  /// over, and mail gateways are not far behind. Everything still goes; it
-  /// goes as several files.
-  ///
-  /// Under rather than at the limit, because "20 MB" is not always 20 × 2^20
-  /// on the far side.
-  static const _archiveCapBytes = 18 * 1024 * 1024;
 
   /// Asks first, because the files are the only copy there will ever be.
   ///
@@ -518,7 +504,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
                         onPressed: _files == 0 || active || _busy
                             ? null
                             : _share,
-                        icon: Icon(_shareIcon),
+                        icon: Icon(shareIcon),
                         tooltip: l.diagRecordingShare,
                       ),
                     ],
@@ -543,77 +529,3 @@ class _RecordingToggleState extends State<RecordingToggle> {
 /// Numbered from one per share, so what arrives is in an obvious order and an
 /// interrupted share leaves a fixed set of names rather than one per attempt.
 ///
-/// Top-level because the packing runs on another isolate, which cannot reach a
-/// member of the widget that asked for it.
-const _archiveStem = 'mumbleway-recordings';
-
-/// [args] is the size ceiling, then the directory to write into, then the files
-/// to pack, newest ride first. Returns the archives written.
-///
-/// **As many archives as it takes, none of them over the ceiling.** A single
-/// capped archive would mean the oldest rides silently never leave the phone,
-/// and the ones that have been sitting there longest are exactly the ones most
-/// likely to hold the fault being chased.
-///
-/// Rides are kept whole and never straddle two archives. A `.s16` without the
-/// `.csv` that describes it is not half a ride, it is a recording nobody can
-/// say anything about.
-///
-/// It packs, measures, and starts a new archive when one would go over.
-/// Compression on PCM varies with how much of the ride was speech — between
-/// about five and twenty times on real recordings — so no ratio guessed in
-/// advance is close enough to size a cap by. Measuring costs a repack;
-/// guessing costs an archive that silently cannot be sent.
-///
-/// A single ride larger than the ceiling goes in an archive of its own and
-/// exceeds it, because the alternative is a recording that can never be sent
-/// at all and nothing on screen saying so.
-List<String> _packRecordings(List<String> args) {
-  final cap = int.parse(args.first);
-  final into = args[1];
-  final sep = Platform.pathSeparator;
-
-  final rides = <String, List<String>>{};
-  for (final path in args.skip(2)) {
-    final name = path.split(sep).last;
-    final dot = name.lastIndexOf('.');
-    (rides[dot < 0 ? name : name.substring(0, dot)] ??= []).add(path);
-  }
-
-  String pathFor(int i) => '$into$sep$_archiveStem-$i.zip';
-
-  void write(String out, List<String> stems) {
-    final encoder = ZipFileEncoder();
-    encoder.create(out);
-    for (final stem in stems) {
-      for (final path in rides[stem]!) {
-        // Names inside the archive are the file names alone, which is what
-        // `addFileSync` defaults to. The full path would carry the device's
-        // own directory layout to whoever receives it.
-        encoder.addFileSync(File(path));
-      }
-    }
-    encoder.closeSync();
-  }
-
-  final archives = <String>[];
-  var current = <String>[];
-  var index = 1;
-
-  for (final stem in rides.keys) {
-    final trial = [...current, stem];
-    write(pathFor(index), trial);
-    if (File(pathFor(index)).lengthSync() > cap && current.isNotEmpty) {
-      // Over. Put back what fit, close it, and begin the next one on this ride.
-      write(pathFor(index), current);
-      archives.add(pathFor(index));
-      index += 1;
-      current = [stem];
-      write(pathFor(index), current);
-    } else {
-      current = trial;
-    }
-  }
-  if (current.isNotEmpty) archives.add(pathFor(index));
-  return archives;
-}

@@ -1771,6 +1771,36 @@ abstract class L {
   /// **'Pause'**
   String get diagPreviewPause;
 
+  /// Tooltip on the delete button in the listen-back sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this recording'**
+  String get diagPreviewDelete;
+
+  /// Tooltip on the share button in the listen-back sheet
+  ///
+  /// In en, this message translates to:
+  /// **'Share this recording'**
+  String get diagPreviewShare;
+
+  /// Title of the confirmation for deleting one recording
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this recording?'**
+  String get diagPreviewDeleteTitle;
+
+  /// Body of the confirmation for deleting one recording
+  ///
+  /// In en, this message translates to:
+  /// **'{name} and its decision log go from this device. A ride cannot be recorded again.'**
+  String diagPreviewDeleteBody(String name);
+
+  /// Shown when a recording could not be deleted because a handle was still open
+  ///
+  /// In en, this message translates to:
+  /// **'That recording is still in use and was not deleted. Try again in a moment.'**
+  String get diagPreviewDeleteFailed;
+
   /// No description provided for @diagRecordingListen.
   ///
   /// In en, this message translates to:

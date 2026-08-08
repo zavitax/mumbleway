@@ -922,6 +922,24 @@ class LEn extends L {
   String get diagPreviewPause => 'Pause';
 
   @override
+  String get diagPreviewDelete => 'Delete this recording';
+
+  @override
+  String get diagPreviewShare => 'Share this recording';
+
+  @override
+  String get diagPreviewDeleteTitle => 'Delete this recording?';
+
+  @override
+  String diagPreviewDeleteBody(String name) {
+    return '$name and its decision log go from this device. A ride cannot be recorded again.';
+  }
+
+  @override
+  String get diagPreviewDeleteFailed =>
+      'That recording is still in use and was not deleted. Try again in a moment.';
+
+  @override
   String get diagRecordingListen => 'Listen to recordings';
 
   @override

@@ -924,6 +924,24 @@ class LRu extends L {
   String get diagPreviewPause => 'Пауза';
 
   @override
+  String get diagPreviewDelete => 'Удалить эту запись';
+
+  @override
+  String get diagPreviewShare => 'Отправить эту запись';
+
+  @override
+  String get diagPreviewDeleteTitle => 'Удалить эту запись?';
+
+  @override
+  String diagPreviewDeleteBody(String name) {
+    return '$name и её журнал решений будут удалены с устройства. Поездку заново не записать.';
+  }
+
+  @override
+  String get diagPreviewDeleteFailed =>
+      'Эта запись сейчас занята и не удалена. Повторите через мгновение.';
+
+  @override
   String get diagRecordingListen => 'Прослушать записи';
 
   @override

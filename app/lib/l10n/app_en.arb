@@ -402,6 +402,32 @@
   "diagPreviewBody": "It is a recording of your own microphone. Hear what is in it before you send it anywhere.",
   "diagPreviewPlay": "Play",
   "diagPreviewPause": "Pause",
+  "diagPreviewDelete": "Delete this recording",
+  "diagPreviewShare": "Share this recording",
+  "@diagPreviewShare": {
+    "description": "Tooltip on the share button in the listen-back sheet"
+  },
+  "@diagPreviewDelete": {
+    "description": "Tooltip on the delete button in the listen-back sheet"
+  },
+  "diagPreviewDeleteTitle": "Delete this recording?",
+  "@diagPreviewDeleteTitle": {
+    "description": "Title of the confirmation for deleting one recording"
+  },
+  "diagPreviewDeleteBody": "{name} and its decision log go from this device. A ride cannot be recorded again.",
+  "diagPreviewDeleteFailed": "That recording is still in use and was not deleted. Try again in a moment.",
+  "@diagPreviewDeleteFailed": {
+    "description": "Shown when a recording could not be deleted because a handle was still open"
+  },
+  "@diagPreviewDeleteBody": {
+    "description": "Body of the confirmation for deleting one recording",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "20260808-1141-000"
+      }
+    }
+  },
   "diagRecordingListen": "Listen to recordings",
   "diagRecordingDiscardTitle": "Delete recordings?",
   "diagRecordingDiscardBody": "{count, plural, =1{One file goes from this device, and a ride cannot be recorded again.} other{{count} files go from this device, and a ride cannot be recorded again.}}",

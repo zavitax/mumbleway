@@ -1,4 +1,4 @@
-import 'dart:io' show Directory;
+import 'dart:io' show Directory, File;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/theme.dart';
+import 'package:mumbleway/widgets/recording_preview.dart';
 import 'package:mumbleway/widgets/recording_toggle.dart';
 
 /// Diagnostic recording has to open the microphone, and give it back.
@@ -147,5 +148,146 @@ void main() {
         }
       });
     }
+  });
+
+  group('deleting one recording from the listen sheet', () {
+    // The audio and its `.csv` are one thing split across two files. Audio
+    // without the decision log is a recording nobody can say anything about,
+    // and the log names the fault without anybody listening to a voice — so
+    // the pair is the unit everywhere it is handled. The sheet deletes by
+    // stem, which is the one place that rule is easy to get wrong: the button
+    // sits beside a chip showing only the `.s16`.
+    late Directory dir;
+
+    setUp(() {
+      dir = Directory.systemTemp.createTempSync('mumbleway-preview');
+      for (final stem in ['20260808-1139-000', '20260808-1141-000']) {
+        // Non-empty, so opening it is a real read rather than a special case.
+        File('${dir.path}/$stem.s16').writeAsBytesSync(List.filled(9600, 0));
+        File('${dir.path}/$stem.csv').writeAsStringSync('block,transmitting\n');
+      }
+    });
+
+    tearDown(() {
+      try {
+        dir.deleteSync(recursive: true);
+      } catch (_) {
+        // Windows will not unlink a file the player still has open, so a test
+        // that failed before dismissing the sheet leaves its temp directory
+        // behind. Reporting that here would bury the reason the test failed.
+      }
+    });
+
+    Widget harness(AppState state, Directory dir) => MaterialApp(
+      theme: buildTheme(Brightness.dark),
+      supportedLocales: AppState.supportedLocales,
+      localizationsDelegates: const [
+        L.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: AppStateScope(
+            state: state,
+            child: TextButton(
+              onPressed: () => showRecordingPreview(context, dir),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    /// Pumps a fixed span rather than settling.
+    ///
+    /// The waveform is scanned on a background isolate and the sheet shows a
+    /// spinner until it lands, so `pumpAndSettle` never returns — there is
+    /// always another frame of animation owed. Fixed pumps are enough for the
+    /// sheet and dialog transitions, which is all these tests drive.
+    Future<void> beat(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    /// Lets real work finish.
+    ///
+    /// Opening the file and scanning its waveform are real I/O on a real
+    /// isolate, and a widget test runs on fake time that never advances
+    /// either. Without this the sheet is still opening its file when the tap
+    /// arrives — which is a real state, and one the sheet now handles, but not
+    /// the state these tests are about.
+    Future<void> realWork(WidgetTester tester) async {
+      // Several turns rather than one long sleep. Opening the file, spawning
+      // the isolate that scans the waveform and closing the handle again are
+      // separate pieces of real work, and each one only starts once the
+      // previous has been pumped back into the widget.
+      for (var i = 0; i < 12; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await beat(tester);
+      }
+    }
+
+    testWidgets('takes the decision log with the audio', (tester) async {
+      await tester.pumpWidget(harness(state, dir));
+      await tester.tap(find.text('open'));
+      await beat(tester);
+      await realWork(tester);
+
+      // Newest first, so the sheet opens on 1141 and that is what goes.
+      await tester.tap(find.byIcon(Icons.delete_outline));
+      await beat(tester);
+
+      // Asks first. The ride cannot be recorded again, and this button is a
+      // thumb's width from a transport control that gets pressed repeatedly.
+      expect(find.text('Delete this recording?'), findsOneWidget);
+      expect(
+        File('${dir.path}/20260808-1141-000.s16').existsSync(),
+        isTrue,
+        reason: 'nothing may go before the question is answered',
+      );
+
+      // Two different clocks, in this order, and both are needed.
+      //
+      // The tap and the pump run on fake time: the dialog's dismissal is an
+      // animation, and until it has been pumped the `showDialog` future has
+      // not completed, so the delete has not been asked for at all. The unlink
+      // that follows then waits on a real file handle closing, which fake time
+      // never advances — hence `runAsync` after it, not around it.
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await beat(tester);
+      await realWork(tester);
+
+      expect(File('${dir.path}/20260808-1141-000.s16').existsSync(), isFalse);
+      expect(
+        File('${dir.path}/20260808-1141-000.csv').existsSync(),
+        isFalse,
+        reason: 'a log left behind describes a ride nobody can hear',
+      );
+
+      // The other ride is untouched, both halves of it.
+      expect(File('${dir.path}/20260808-1139-000.s16').existsSync(), isTrue);
+      expect(File('${dir.path}/20260808-1139-000.csv').existsSync(), isTrue);
+    });
+
+    testWidgets('cancelling keeps both files', (tester) async {
+      await tester.pumpWidget(harness(state, dir));
+      await tester.tap(find.text('open'));
+      await beat(tester);
+      await realWork(tester);
+
+      await tester.tap(find.byIcon(Icons.delete_outline));
+      await beat(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await beat(tester);
+
+      for (final stem in ['20260808-1139-000', '20260808-1141-000']) {
+        expect(File('${dir.path}/$stem.s16').existsSync(), isTrue);
+        expect(File('${dir.path}/$stem.csv').existsSync(), isTrue);
+      }
+    });
   });
 }

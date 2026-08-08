@@ -182,7 +182,7 @@ effect the next time the app starts.**
          alt="The noise cancellation section: off, light, standard, helmet and
               automatic, each with a sentence saying what it is for, and helmet
               selected."
-         width="560" height="1244" loading="lazy" decoding="async">
+         width="560" height="895" loading="lazy" decoding="async">
     <figcaption>Listed weakest to strongest, with Automatic at the end.</figcaption>
   </figure>
 </div>

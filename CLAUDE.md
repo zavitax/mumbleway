@@ -165,6 +165,22 @@ Two things that are easy to reach for and should not be:
 - **`xcrun simctl openurl booted "mumble://user@host:64738/"`** fills in the
   add-server form without any tapping at all, which is often enough on its own.
 
+### Never scroll the settings screen down its middle
+
+`adb shell input swipe 540 1750 540 1110` looks like a scroll and is not. The
+settings list is mostly full-width sliders, and a swipe that starts on one drags
+*it* rather than the list. This silently moved the incoming audio buffer from
+200 ms to 280 ms during a screenshot sweep, and the screenshots taken afterwards
+documented the wrong value in a way nothing on the page would have contradicted.
+
+Swipe at **x = 1060** instead. Slider tracks end around x = 975 and the toggles
+around x = 1010, so the right margin scrolls the list and touches no control.
+
+The general form of it: after driving the UI to take screenshots, **read the
+settings back and compare them to what the page claims they are.** A capture of
+a control at the wrong value is indistinguishable from a capture at the right
+one, which is the same reason the app records its own capture input.
+
 ## Audio: what is load-bearing and not obvious
 
 - **Recording must take an audio hold.** The capture worker feeds the recorder

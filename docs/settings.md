@@ -232,6 +232,14 @@ reach and without going back to the app.
 
 <div class="shots">
   <figure>
+    <img src="{{ '/assets/img/shots/settings-floating-phone.webp' | relative_url }}"
+         alt="The floating call window section, with the switch that turns it
+              on and a note that it needs the display-over-other-apps
+              permission."
+         width="560" height="410" loading="lazy" decoding="async">
+    <figcaption>The switch, and what it asks for.</figcaption>
+  </figure>
+  <figure>
     <img src="{{ '/assets/img/shots/floating-phone.webp' | relative_url }}"
          alt="The call floating over the home screen: a connected light, the
          microphone meter, whether anyone is speaking, the route and mode,
@@ -249,6 +257,15 @@ push-to-talk, mute, deafen or hang up. Press **Learn**, then the button on the
 remote. On Android these keep working with the app in the background while
 riding.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
+         alt="The buttons section: nothing bound yet, an action picker set to push to talk (hold), and a Learn button beside it."
+         width="560" height="353" loading="lazy" decoding="async">
+    <figcaption>Pick the action, press Learn, then the button on the remote.</figcaption>
+  </figure>
+</div>
+
 <div class="panel warn">
 <p><strong>On iOS, a remote reports a media button press but not a hold.</strong>
 Push-to-talk-with-hold therefore cannot work from one — use the toggle action
@@ -256,16 +273,16 @@ instead. While a media button is bound, the remote controls MumbleWay rather
 than your music app.</p>
 </div>
 
+## Network
+
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
-         alt="The end of the settings screen: button bindings with an action picker and a Learn button, the network proxy switches, and the identity section showing the certificate fingerprint."
-         width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>Buttons, network and identity — the last three sections, together.</figcaption>
+    <img src="{{ '/assets/img/shots/settings-network-phone.webp' | relative_url }}"
+         alt="The network section: use the system proxy, on, with a direct connection, and an override that is detected automatically."
+         width="560" height="399" loading="lazy" decoding="async">
+    <figcaption>For downloads only. Voice does not go through it.</figcaption>
   </figure>
 </div>
-
-## Network
 
 A proxy override for the app's downloads — the public server directory and
 profile files. It does not tunnel voice.
@@ -281,6 +298,15 @@ no server of ours.
 nothing behind it, so the section is absent rather than permanently greyed out.
 
 ## Identity
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-identity-phone.webp' | relative_url }}"
+         alt="The identity section showing the certificate fingerprint, with a button to copy it."
+         width="560" height="337" loading="lazy" decoding="async">
+    <figcaption>The fingerprint a server admin needs to register you.</figcaption>
+  </figure>
+</div>
 
 Your client certificate and its fingerprint. Mumble servers recognise you by
 this certificate rather than by a password, so it is worth keeping — it is what

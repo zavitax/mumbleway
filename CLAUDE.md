@@ -136,6 +136,35 @@ CI is the only real check for the Swift, Kotlin and plist changes — none of it
 compiles locally on Windows. It is also not a device test, and several classes
 of bug here only appear on one.
 
+### Drive the iPhone simulator with `idb`, not with clicks
+
+`simctl` can install, launch, open a URL and take a screenshot, but it cannot
+tap. The obvious substitute — `osascript` telling System Events to click at a
+screen position — **does not work over SSH** and fails with error `-25204`,
+because the process behind the session has no Accessibility permission. It is
+also the wrong shape: it aims at where the Simulator window happens to be on
+screen rather than at the app.
+
+[`idb`](https://fbidb.io/) talks to the simulator directly. No Accessibility,
+no window geometry, and coordinates are **device points** — 393 × 852 on an
+iPhone 16 — so a tap is expressed in the same units the layout is:
+
+```bash
+idb connect <udid>
+idb ui tap --udid <udid> 165 265
+idb ui text --udid <udid> "hello"
+idb ui swipe --udid <udid> 200 700 200 200
+```
+
+Two things that are easy to reach for and should not be:
+
+- **Writing the preferences plist directly does not stick.** `cfprefsd` has it
+  cached and writes back over the edit. Go through `defaults` *inside* the
+  simulator instead: `xcrun simctl spawn booted defaults write …`, with any
+  JSON value quoted as one string inside a plist array.
+- **`xcrun simctl openurl booted "mumble://user@host:64738/"`** fills in the
+  add-server form without any tapping at all, which is often enough on its own.
+
 ## Audio: what is load-bearing and not obvious
 
 - **Recording must take an audio hold.** The capture worker feeds the recorder

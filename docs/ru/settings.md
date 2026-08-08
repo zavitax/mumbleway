@@ -240,6 +240,13 @@ description: Что делает каждая настройка и какие �
 
 <div class="shots">
   <figure>
+    <img src="{{ '/assets/img/shots/settings-floating-phone.webp' | relative_url }}"
+         alt="Раздел плавающего окна разговора с переключателем и примечанием
+              о том, что нужно разрешение «поверх других приложений»."
+         width="560" height="410" loading="lazy" decoding="async">
+    <figcaption>Переключатель и то, что для него нужно.</figcaption>
+  </figure>
+  <figure>
     <img src="{{ '/assets/img/shots/floating-phone.webp' | relative_url }}"
          alt="Разговор поверх домашнего экрана: индикатор подключения, индикатор
          микрофона, кто говорит, маршрут и режим, кнопки выключения
@@ -257,6 +264,15 @@ description: Что делает каждая настройка и какие �
 разговора. Нажмите **Обучить**, а затем — кнопку на пульте. На Android они
 продолжают работать, пока приложение свёрнуто.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
+         alt="Раздел кнопок: пока ничего не назначено, выбор действия — «Рация (удерживать)» — и кнопка «Обучить» рядом."
+         width="560" height="353" loading="lazy" decoding="async">
+    <figcaption>Выберите действие, нажмите «Обучить», затем кнопку на пульте.</figcaption>
+  </figure>
+</div>
+
 <div class="panel warn">
 <p><strong>На iOS пульт сообщает о нажатии медиакнопки, но не об
 удержании.</strong> Поэтому «удерживать, чтобы говорить» с него работать не
@@ -264,16 +280,16 @@ description: Что делает каждая настройка и какие �
 управляет MumbleWay, а не проигрывателем.</p>
 </div>
 
+## Сеть
+
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
-         alt="Конец экрана настроек: назначение кнопок с выбором действия и кнопкой «Обучить», переключатели прокси и раздел идентификации с отпечатком сертификата."
-         width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>Кнопки, сеть и идентификация — три последних раздела подряд.</figcaption>
+    <img src="{{ '/assets/img/shots/settings-network-phone.webp' | relative_url }}"
+         alt="Раздел сети: системный прокси включён, соединение прямое, ниже — переопределение прокси, определяется автоматически."
+         width="560" height="399" loading="lazy" decoding="async">
+    <figcaption>Только для загрузок. Голос через него не идёт.</figcaption>
   </figure>
 </div>
-
-## Сеть
 
 Здесь можно задать свой прокси для того, что приложение скачивает: публичного
 каталога серверов и файлов профилей. Голос через прокси не идёт.
@@ -290,6 +306,15 @@ Windows за ним ничего нет, поэтому его просто не
 погашенной строки.
 
 ## Идентификация
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-identity-phone.webp' | relative_url }}"
+         alt="Раздел идентификации: отпечаток сертификата и кнопка, чтобы его скопировать."
+         width="560" height="337" loading="lazy" decoding="async">
+    <figcaption>Отпечаток, который нужен администратору сервера для вашей регистрации.</figcaption>
+  </figure>
+</div>
 
 Ваш клиентский сертификат и его отпечаток. Серверы Mumble узнают вас именно
 по сертификату, а не по паролю, — потому его и стоит беречь: без него сервер

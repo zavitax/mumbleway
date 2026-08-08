@@ -561,9 +561,19 @@ tbody tr:last-child td { border-bottom: 0; }
 
 /* ---------- screenshots ---------- */
 
-/* A phone screenshot is tall. Left to itself it takes a whole viewport and
-   pushes the sentence explaining it off the bottom, so they sit in a row and
-   are capped by height rather than width. */
+/* One width for every screenshot, whatever it is a picture of.
+   A phone capture is tall and narrow, a desktop window is short and wide, and
+   sizing each to its own shape made a page of screenshots look like a page of
+   accidents — the desktop ones ran the full measure while the phones sat in a
+   thumbnail row beside them. They are all the same *object* to a reader: a
+   picture of the app. So they are all one width, their height follows their
+   aspect ratio, and the detail lives in the lightbox a click away.
+
+   That trade is only honest because the click exists. A 1000px window at 16rem
+   is unreadable, and a caption saying what it shows is not a substitute for
+   being able to look. */
+:root { --shot-w: 16rem; }
+
 .shots {
   display: flex;
   flex-wrap: wrap;
@@ -571,39 +581,104 @@ tbody tr:last-child td { border-bottom: 0; }
   margin: 2rem 0 2.5rem;
   max-width: 100%;
 }
-.shots figure { margin: 0; flex: 0 1 auto; }
-.shots img {
-  display: block;
-  height: auto;
-  max-height: 62vh;
-  width: auto;
-  max-width: 100%;
-  border: 1px solid var(--line);
-  background: var(--ground);
-}
-.shots figcaption {
-  margin-top: 0.6rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  max-width: 22ch;
-}
+.shots figure { margin: 0; flex: 0 0 auto; max-width: 100%; }
 
 .shot-wide {
   margin: 2rem 0 2.5rem;
   max-width: 100%;
 }
+
+.shots img,
 .shot-wide img {
   display: block;
-  width: 100%;
+  width: var(--shot-w);
+  max-width: 100%;
   height: auto;
   border: 1px solid var(--line);
+  background: var(--ground);
 }
+
+.shots figcaption,
 .shot-wide figcaption {
-  margin-top: 0.75rem;
-  font-size: 0.88rem;
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
   color: var(--muted);
-  max-width: var(--measure);
+  /* Tied to the picture rather than to the measure: a caption wider than the
+     thing it captions reads as body copy that has lost its paragraph. */
+  max-width: var(--shot-w);
 }
+
+/* ---------- lightbox ---------- */
+
+/* The link is what makes this work without JavaScript: it points at the image
+   file, so a reader with no script still gets the full-size picture, just in a
+   tab of its own. The script intercepts the click and shows it in place. */
+.shot-link {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  cursor: zoom-in;
+  line-height: 0;
+}
+.shot-link img { transition: border-color .15s; }
+.shot-link:hover img,
+.shot-link:focus-visible img { border-color: var(--accent); }
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  background: color-mix(in srgb, #000 86%, transparent);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+}
+.lightbox img {
+  /* Never larger than it really is: upscaling a 560px capture to fill a 4K
+     display shows the reader nothing except the interpolation. */
+  max-width: min(100%, 1000px);
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border: 1px solid var(--line);
+  background: var(--ground);
+  box-shadow: 0 24px 60px -20px #000;
+  cursor: default;
+}
+.lightbox figcaption {
+  margin-top: 0.8rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-align: center;
+  max-width: 46ch;
+}
+.lightbox figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-height: 100%;
+}
+.lightbox-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.lightbox-close:hover { border-color: var(--dim); }
 
 /* ---------- footer ---------- */
 

@@ -36,6 +36,7 @@ en:
     Windows, macOS, iOS, iPadOS and Android.
 
   skip: Skip to content
+  close: Close
   menu: Menu
   sections: Sections
   footer_nav: Footer
@@ -208,6 +209,7 @@ ru:
     Windows, macOS, iOS, iPadOS и Android.
 
   skip: Перейти к содержанию
+  close: Закрыть
   menu: Меню
   sections: Разделы
   footer_nav: Подвал

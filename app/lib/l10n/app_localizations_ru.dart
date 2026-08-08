@@ -24,6 +24,9 @@ class LRu extends L {
   String get remove => 'Удалить';
 
   @override
+  String get delete => 'Удалить';
+
+  @override
   String get settings => 'Настройки';
 
   @override
@@ -900,8 +903,15 @@ class LRu extends L {
   String get diagRecording => 'Запись для диагностики';
 
   @override
-  String get diagRecordingBody =>
-      'Сохраняет то, что слышит микрофон, вместе с решениями шумоподавления — чтобы обрыв записи можно было разобрать, а не угадывать. Выключено, пока вы сами не включите, и остаётся включённым до выключения.';
+  String get diagRecordingBody => 'Сохраняет звук микрофона на это устройство.';
+
+  @override
+  String get diagRecordingDiscardTitle => 'Удалить записи?';
+
+  @override
+  String diagRecordingDiscardBody(int count) {
+    return 'Файлов будет удалено: $count. Поездку заново не записать.';
+  }
 
   @override
   String get diagRecordingActive => 'Идёт запись';

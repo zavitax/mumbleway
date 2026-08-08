@@ -168,6 +168,15 @@ class _RecordingToggleState extends State<RecordingToggle> {
 
   static String _two(int v) => v.toString().padLeft(2, '0');
 
+  /// The glyph each platform draws for this.
+  ///
+  /// Android has its own: three nodes joined by two lines. Everywhere else —
+  /// iOS, macOS and Windows alike — it is a box with an arrow leaving the top,
+  /// which is what `ios_share` is despite the name. Using the wrong one is not
+  /// wrong so much as foreign: it is a button people find by its shape rather
+  /// than by reading it.
+  IconData get _shareIcon => Platform.isAndroid ? Icons.share : Icons.ios_share;
+
   /// Hands the recordings over as a single archive.
   ///
   /// A `.zip` rather than the files themselves, and that is a repair rather
@@ -245,6 +254,43 @@ class _RecordingToggleState extends State<RecordingToggle> {
   /// rather than one per attempt.
   static const _archiveName = 'mumbleway-recordings.zip';
 
+  /// Asks first, because the files are the only copy there will ever be.
+  ///
+  /// A ride cannot be recorded again. The wind, the speed, the headset and the
+  /// fault being chased were all particular to it, and this button sits beside
+  /// the one that sends them — a mis-tap is the difference between a
+  /// measurement and starting the whole exercise over.
+  Future<void> _confirmDiscard() async {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(l.diagRecordingDiscardTitle),
+        content: Text(l.diagRecordingDiscardBody(_files)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            // Coloured as the destructive one so the two actions cannot be
+            // told apart only by reading them, which is not what happens at
+            // the roadside with gloves on.
+            style: FilledButton.styleFrom(
+              backgroundColor: scheme.error,
+              foregroundColor: scheme.onError,
+            ),
+            onPressed: () => Navigator.pop(dialog, true),
+            child: Text(l.delete),
+          ),
+        ],
+      ),
+    );
+    // Dismissed by tapping outside answers null, which is a no.
+    if (confirmed == true) await _discard();
+  }
+
   Future<void> _discard() async {
     final dir = await _directory();
     if (dir.existsSync()) {
@@ -285,10 +331,17 @@ class _RecordingToggleState extends State<RecordingToggle> {
               color: active ? scheme.error : null,
             ),
             title: Text(l.diagRecording),
+            // One line, not the paragraph that used to be here. The panel is a
+            // bottom sheet on a phone and that text pushed the spectrum, the
+            // chain lights and both buttons below the fold, so the switch
+            // explained itself at the cost of everything it was next to.
+            //
+            // What it kept is the half that had to stay: this writes a
+            // microphone to storage, and someone who does not want that has to
+            // be able to tell from the switch alone.
             subtitle: Text(
               active ? l.diagRecordingActive : l.diagRecordingBody,
             ),
-            isThreeLine: true,
             value: active,
             onChanged: _busy ? null : _setRecording,
           ),
@@ -334,15 +387,16 @@ class _RecordingToggleState extends State<RecordingToggle> {
                     TextButton(
                       onPressed: _files == 0 || active || _busy
                           ? null
-                          : _discard,
+                          : _confirmDiscard,
                       child: Text(l.diagRecordingDiscard),
                     ),
-                    FilledButton.tonal(
+                    FilledButton.tonalIcon(
                       // Also off while an archive is being packed: that takes
                       // seconds on a long ride, and a second tap would start a
                       // second pack over the same file.
                       onPressed: _files == 0 || active || _busy ? null : _share,
-                      child: Text(l.diagRecordingShare),
+                      icon: Icon(_shareIcon),
+                      label: Text(l.diagRecordingShare),
                     ),
                   ],
                 ),

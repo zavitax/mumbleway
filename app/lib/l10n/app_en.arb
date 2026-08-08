@@ -5,6 +5,7 @@
   "save": "Save",
   "add": "Add",
   "remove": "Remove",
+  "delete": "Delete",
   "settings": "Settings",
   "language": "Language",
   "deafen": "Deafen",
@@ -385,7 +386,16 @@
   "diagInChannel": "In channel",
   "diagParticipants": "Participants",
   "diagRecording": "Record for diagnosis",
-  "diagRecordingBody": "Saves what your microphone hears, along with what the noise suppression decided about it, so a recording that cuts out can be looked at rather than guessed at. Off unless you turn it on, and it stays on until you turn it off.",
+  "diagRecordingBody": "Saves your microphone to this device.",
+  "diagRecordingDiscardTitle": "Delete recordings?",
+  "diagRecordingDiscardBody": "{count, plural, =1{One file goes from this device, and a ride cannot be recorded again.} other{{count} files go from this device, and a ride cannot be recorded again.}}",
+  "@diagRecordingDiscardBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "diagRecordingActive": "Recording",
   "diagRecordingStopped": "Recorded {count} files",
   "@diagRecordingStopped": {

@@ -127,6 +127,12 @@ abstract class L {
   /// **'Remove'**
   String get remove;
 
+  /// No description provided for @delete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get delete;
+
   /// No description provided for @settings.
   ///
   /// In en, this message translates to:
@@ -1732,8 +1738,20 @@ abstract class L {
   /// No description provided for @diagRecordingBody.
   ///
   /// In en, this message translates to:
-  /// **'Saves what your microphone hears, along with what the noise suppression decided about it, so a recording that cuts out can be looked at rather than guessed at. Off unless you turn it on, and it stays on until you turn it off.'**
+  /// **'Saves your microphone to this device.'**
   String get diagRecordingBody;
+
+  /// No description provided for @diagRecordingDiscardTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete recordings?'**
+  String get diagRecordingDiscardTitle;
+
+  /// No description provided for @diagRecordingDiscardBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{One file goes from this device, and a ride cannot be recorded again.} other{{count} files go from this device, and a ride cannot be recorded again.}}'**
+  String diagRecordingDiscardBody(int count);
 
   /// No description provided for @diagRecordingActive.
   ///

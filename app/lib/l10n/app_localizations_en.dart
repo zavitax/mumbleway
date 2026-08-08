@@ -24,6 +24,9 @@ class LEn extends L {
   String get remove => 'Remove';
 
   @override
+  String get delete => 'Delete';
+
+  @override
   String get settings => 'Settings';
 
   @override
@@ -892,8 +895,23 @@ class LEn extends L {
   String get diagRecording => 'Record for diagnosis';
 
   @override
-  String get diagRecordingBody =>
-      'Saves what your microphone hears, along with what the noise suppression decided about it, so a recording that cuts out can be looked at rather than guessed at. Off unless you turn it on, and it stays on until you turn it off.';
+  String get diagRecordingBody => 'Saves your microphone to this device.';
+
+  @override
+  String get diagRecordingDiscardTitle => 'Delete recordings?';
+
+  @override
+  String diagRecordingDiscardBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count files go from this device, and a ride cannot be recorded again.',
+      one:
+          'One file goes from this device, and a ride cannot be recorded again.',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get diagRecordingActive => 'Recording';

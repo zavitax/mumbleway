@@ -8,6 +8,16 @@ Most of this can be left alone. Three settings matter on a bike — **microphone
 mode**, **noise cancellation** and **microphone gain** — and the rest exist for
 when something specific is wrong.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-phone.webp' | relative_url }}"
+         alt="The settings screen showing microphone mode, gain and the noise
+              cancellation profiles."
+         width="560" height="1217" loading="lazy" decoding="async">
+    <figcaption>Microphone, levels and the noise profiles.</figcaption>
+  </figure>
+</div>
+
 ## Microphone
 
 ### Microphone mode

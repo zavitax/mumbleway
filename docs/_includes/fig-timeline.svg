@@ -1,0 +1,69 @@
+<!-- Voice activation timing. Inlined rather than linked as an <img> so the
+     labels use the page's own typeface: an SVG loaded as an image cannot see
+     the document's webfonts and would fall back to something else entirely. -->
+<figure class="figure">
+<svg viewBox="0 0 900 300" role="img" aria-labelledby="tl-title tl-desc" class="fig">
+  <title id="tl-title">How voice activation opens and closes the channel</title>
+  <desc id="tl-desc">Three stacked tracks. The spoken word runs from 200 to 560
+  milliseconds. The detector only recognises it from 250 to 520, missing the
+  first consonant and dropping before the last. What is transmitted runs from
+  200 to 600: an 80 millisecond look-ahead recovers the opening consonant, and
+  a 200 millisecond tail carries the closing one, fading over its final 30
+  milliseconds.</desc>
+
+  <defs>
+    <linearGradient id="tl-fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0.80" stop-color="#FFA53C" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#FFA53C" stop-opacity="0.06"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Track labels -->
+  <g fill="#8695A6" font-size="15" font-family="inherit">
+    <text x="0" y="53">You say</text>
+    <text x="0" y="133">Detector</text>
+    <text x="0" y="213">Transmitted</text>
+  </g>
+
+  <!-- 1. The word itself. Wide at the vowel, thin at the consonants either
+       side, which is the whole reason a level threshold gets this wrong. -->
+  <path d="M200 48 Q230 44 250 30 Q290 4 330 22 Q380 44 420 26 Q470 6 510 30
+           Q535 44 560 48 Q535 52 510 66 Q470 90 420 70 Q380 52 330 74
+           Q290 92 250 66 Q230 52 200 48 Z"
+        fill="#3D4B5C" stroke="#4E6076" stroke-width="1"/>
+  <text x="205" y="18" fill="#61707F" font-size="12" font-family="ui-monospace, monospace">s</text>
+  <text x="548" y="18" fill="#61707F" font-size="12" font-family="ui-monospace, monospace">t</text>
+
+  <!-- 2. What the detector is sure about: late in, early out. -->
+  <rect x="250" y="108" width="270" height="48" fill="#2A3644" stroke="#3E4E61"/>
+  <text x="262" y="138" fill="#8695A6" font-size="13" font-family="inherit">speech detected</text>
+
+  <!-- 3. What actually goes on the wire. -->
+  <rect x="200" y="188" width="330" height="48" fill="#FFA53C" fill-opacity="0.85"/>
+  <rect x="530" y="188" width="70" height="48" fill="url(#tl-fade)"/>
+  <text x="212" y="218" fill="#17110A" font-size="13" font-weight="700" font-family="inherit">on the wire</text>
+
+  <!-- Guides tying the three tracks together at the two moments that matter -->
+  <g stroke="#3ECF7E" stroke-width="1" stroke-dasharray="3 3" opacity="0.75">
+    <line x1="200" y1="30" x2="200" y2="250"/>
+    <line x1="250" y1="60" x2="250" y2="250"/>
+    <line x1="520" y1="60" x2="520" y2="250"/>
+    <line x1="600" y1="188" x2="600" y2="250"/>
+  </g>
+
+  <!-- Measurements -->
+  <g stroke="#3ECF7E" stroke-width="1.5" fill="none">
+    <path d="M200 258 L250 258"/>
+    <path d="M520 258 L600 258"/>
+  </g>
+  <g fill="#3ECF7E" font-size="13" font-family="inherit">
+    <text x="200" y="280">80 ms look-ahead</text>
+    <text x="520" y="280">200 ms tail</text>
+  </g>
+  <text x="602" y="218" fill="#8695A6" font-size="12" font-family="inherit">30 ms fade</text>
+</svg>
+<figcaption>A threshold decides mid-syllable. Holding the audio back by 80 ms
+lets the channel open on the sound that <em>led into</em> the decision, so the
+opening consonant survives; a 200 ms tail carries the closing one, fading at
+the very end so it does not click.</figcaption>
+</figure>

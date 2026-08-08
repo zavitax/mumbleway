@@ -1,7 +1,7 @@
 ---
 layout: default
 title: MumbleWay
-description: Voice for motorcyclists. A Mumble client built for wind and engine noise inside a helmet.
+description: Voice for bikers. A Mumble client built for wind and engine noise inside a helmet.
 ---
 
 ## Intercoms stop at the end of the group
@@ -16,6 +16,8 @@ another country.
 What it is not is a general-purpose voice app with a motorcycle icon. Every
 decision in the capture chain assumes a microphone a centimetre from your
 mouth, inside a helmet, at speed, with wind and an engine underneath.
+
+{% include fig-range.svg %}
 
 <div class="grid">
   <div class="panel spec">
@@ -55,6 +57,8 @@ it, and every stage is visible while it runs.
   removing pitch periods, rather than letting a tunnel put everybody a second
   behind.
 
+{% include fig-timeline.svg %}
+
 ## You can watch it decide
 
 Most voice apps tell you nothing. When somebody says "it cut me off", there is
@@ -72,6 +76,23 @@ invalidated by discovering the recordings behind them had come from the phone's
 own microphone rather than the headset's. Audio carries no record of what
 captured it; recording from inside the app makes it the chain's own input by
 construction.
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/diagnostics-phone.webp' | relative_url }}"
+         alt="The diagnostics panel: a spectrum analyser with three traces, a
+              row of per-stage lights, and the recording switch."
+         width="560" height="1217" loading="lazy" decoding="async">
+    <figcaption>The analyser, the chain lights, and the recorder.</figcaption>
+  </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/home-phone.webp' | relative_url }}"
+         alt="The main screen: a saved server with its latency and user count,
+              a connect button, and the microphone meter."
+         width="560" height="1217" loading="lazy" decoding="async">
+    <figcaption>Your servers, their latency, and the meter.</figcaption>
+  </figure>
+</div>
 
 ## Advantages
 

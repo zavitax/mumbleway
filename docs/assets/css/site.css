@@ -394,6 +394,76 @@ tbody tr:last-child td { border-bottom: 0; }
 
 .muted { color: var(--muted); }
 
+/* ---------- figures ---------- */
+
+/* Wider than the reading measure. A diagram read at 68ch is a diagram with its
+   labels squeezed, and these earn the extra width by carrying something the
+   prose beside them cannot say in a sentence. */
+.figure {
+  margin: 2rem 0 2.5rem;
+  max-width: 100%;
+}
+.fig {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 1.25rem;
+}
+.figure figcaption {
+  margin-top: 0.85rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  max-width: var(--measure);
+}
+
+/* ---------- screenshots ---------- */
+
+/* A phone screenshot is tall. Left to itself it takes a whole viewport and
+   pushes the sentence explaining it off the bottom, so they sit in a row and
+   are capped by height rather than width. */
+.shots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 2rem 0 2.5rem;
+  max-width: 100%;
+}
+.shots figure { margin: 0; flex: 0 1 auto; }
+.shots img {
+  display: block;
+  height: auto;
+  max-height: 62vh;
+  width: auto;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  background: var(--ground);
+}
+.shots figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  max-width: 22ch;
+}
+
+.shot-wide {
+  margin: 2rem 0 2.5rem;
+  max-width: 100%;
+}
+.shot-wide img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+}
+.shot-wide figcaption {
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  max-width: var(--measure);
+}
+
 /* ---------- footer ---------- */
 
 .footer {

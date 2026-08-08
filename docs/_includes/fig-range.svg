@@ -1,0 +1,89 @@
+<!-- Why this exists at all, in one picture. -->
+<figure class="figure">
+<svg viewBox="0 0 900 340" role="img" aria-labelledby="rg-title rg-desc" class="fig">
+  <title id="rg-title">Intercom range against an internet channel</title>
+  <desc id="rg-desc">On the left, a Bluetooth intercom: two riders inside a
+  dashed circle are connected, and a third who has fallen behind sits outside
+  it, disconnected. On the right, the same three riders at the same distances
+  all connect to a Mumble server, and the distances between them no longer
+  matter.</desc>
+
+  <defs>
+    <!-- A helmet seen from the side: shell, visor, and the boom the microphone
+         is on. Small enough to read at this size without detail. -->
+    <g id="rider">
+      <path d="M0 0 a17 17 0 0 1 34 0 v9 a5 5 0 0 1 -5 5 h-24 a5 5 0 0 1 -5 -5 z"
+            fill="#E9F0F7"/>
+      <path d="M6 2 a13 13 0 0 1 25 2 l-25 5 z" fill="#1C2530"/>
+      <path d="M8 15 q-6 5 -2 10" stroke="#8695A6" stroke-width="2" fill="none"
+            stroke-linecap="round"/>
+    </g>
+    <g id="rider-lost">
+      <path d="M0 0 a17 17 0 0 1 34 0 v9 a5 5 0 0 1 -5 5 h-24 a5 5 0 0 1 -5 -5 z"
+            fill="#4A5563"/>
+      <path d="M6 2 a13 13 0 0 1 25 2 l-25 5 z" fill="#1C2530"/>
+      <path d="M8 15 q-6 5 -2 10" stroke="#3B4653" stroke-width="2" fill="none"
+            stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <!-- ── Left: the intercom ───────────────────────────────────────────── -->
+  <text x="0" y="20" fill="#8695A6" font-size="14" font-family="inherit"
+        letter-spacing="1.5">BLUETOOTH INTERCOM</text>
+
+  <circle cx="150" cy="170" r="105" fill="#3ECF7E" fill-opacity="0.05"
+          stroke="#3ECF7E" stroke-opacity="0.45" stroke-width="1.5"
+          stroke-dasharray="6 6"/>
+  <text x="150" y="292" fill="#61707F" font-size="12" font-family="inherit"
+        text-anchor="middle">a few hundred metres</text>
+
+  <line x1="120" y1="150" x2="185" y2="195" stroke="#3ECF7E" stroke-width="2"/>
+  <use href="#rider" x="86" y="132"/>
+  <use href="#rider" x="168" y="182"/>
+
+  <!-- The one who stopped for fuel. -->
+  <use href="#rider-lost" x="330" y="96"/>
+  <path d="M215 150 L325 118" stroke="#61707F" stroke-width="2"
+        stroke-dasharray="5 6"/>
+  <path d="M262 126 l16 16 M278 126 l-16 16" stroke="#FF5D5D" stroke-width="2.5"
+        stroke-linecap="round"/>
+  <text x="300" y="152" fill="#8695A6" font-size="13" font-family="inherit">out of range</text>
+
+  <!-- ── Divider ──────────────────────────────────────────────────────── -->
+  <line x1="452" y1="30" x2="452" y2="300" stroke="#263140" stroke-width="1"/>
+
+  <!-- ── Right: the internet channel ──────────────────────────────────── -->
+  <text x="490" y="20" fill="#FFA53C" font-size="14" font-family="inherit"
+        letter-spacing="1.5">MUMBLEWAY</text>
+
+  <!-- The server, drawn as the thing everyone reaches rather than a box with
+       a label: it is somebody's Raspberry Pi, and that is the point. -->
+  <g transform="translate(686,52)">
+    <rect x="0" y="0" width="76" height="44" rx="3" fill="#141B24" stroke="#FFA53C"
+          stroke-width="1.5"/>
+    <circle cx="13" cy="13" r="3.5" fill="#3ECF7E"/>
+    <line x1="24" y1="13" x2="64" y2="13" stroke="#3E4E61" stroke-width="2.5"/>
+    <line x1="12" y1="26" x2="64" y2="26" stroke="#3E4E61" stroke-width="2.5"/>
+    <line x1="12" y1="36" x2="46" y2="36" stroke="#3E4E61" stroke-width="2.5"/>
+  </g>
+  <text x="724" y="118" fill="#8695A6" font-size="13" font-family="inherit"
+        text-anchor="middle">your Mumble server</text>
+
+  <g stroke="#FFA53C" stroke-width="2" fill="none" opacity="0.9">
+    <path d="M536 200 Q600 150 700 100"/>
+    <path d="M646 236 Q680 180 716 100"/>
+    <path d="M812 176 Q780 140 748 100"/>
+  </g>
+
+  <use href="#rider" x="502" y="182"/>
+  <use href="#rider" x="612" y="218"/>
+  <use href="#rider" x="795" y="158"/>
+
+  <text x="686" y="292" fill="#61707F" font-size="12" font-family="inherit"
+        text-anchor="middle">a hundred metres, or another country</text>
+</svg>
+<figcaption>An intercom is a radio link between helmets, and it ends where the
+radio does. Putting the channel on a server you control removes distance from
+the problem — and replaces it with needing a signal, which is the trade this
+whole app is.</figcaption>
+</figure>

@@ -159,6 +159,17 @@ password, so a registered rider is recognised automatically from then on —
 which is why the app's <em>Identity</em> setting is worth keeping.</p>
 </div>
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/addserver-phone.webp' | relative_url }}"
+         alt="The add-server form: display name, address, port, username and an
+              optional password, with shortcuts to browse public servers, import
+              a file or scan a QR code."
+         width="560" height="1217" loading="lazy" decoding="async">
+    <figcaption>Type it once, or scan the QR code the app makes.</figcaption>
+  </figure>
+</div>
+
 ## Going further
 
 This page covers only enough to get a group talking. Mumble has considerably

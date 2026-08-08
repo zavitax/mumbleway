@@ -4,7 +4,7 @@ title: Privacy policy
 description: What MumbleWay does with your voice, and what it does not.
 ---
 
-**MumbleWay** — voice for motorcyclists.
+**MumbleWay** — voice for bikers.
 Developer: Ilya Melamed. Last updated: 7 August 2026.
 
 ## The short version

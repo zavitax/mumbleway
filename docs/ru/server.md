@@ -175,6 +175,15 @@ Apple Silicon и `/usr/local/etc/` на Intel. `brew info mumble-server` печ�
     <figcaption>Ввести один раз — или отсканировать QR-код из
     приложения.</figcaption>
   </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/addserver-ios.webp' | relative_url }}"
+         alt="Та же форма на iPhone, уже заполненная по ссылке mumble://:
+              отображаемое имя, адрес, порт и имя пользователя, ниже кнопка
+              добавления."
+         width="560" height="1214" loading="lazy" decoding="async">
+    <figcaption>Или перейти по ссылке <code>mumble://</code> — форма
+    заполнится сама.</figcaption>
+  </figure>
 </div>
 
 ## Дальше

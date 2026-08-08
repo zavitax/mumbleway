@@ -169,6 +169,15 @@ which is why the app's <em>Identity</em> setting is worth keeping.</p>
          width="560" height="1217" loading="lazy" decoding="async">
     <figcaption>Type it once, or scan the QR code the app makes.</figcaption>
   </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/addserver-ios.webp' | relative_url }}"
+         alt="The same form on iPhone, already filled in from a mumble:// link:
+              display name, address, port and username, with the add button
+              below."
+         width="560" height="1214" loading="lazy" decoding="async">
+    <figcaption>Or follow a <code>mumble://</code> link, which fills the form
+    in for you.</figcaption>
+  </figure>
 </div>
 
 ## Going further

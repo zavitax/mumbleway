@@ -62,20 +62,43 @@ Two things that made the Android pass work and will be needed again:
   Windows** — the PC has no loopback input, so the analyser sits at its floor
   (-119 dBFS) and only the not-speaking state can be captured there.
 
-**iOS is buildable and runnable** — `flutter build ios --simulator --debug`
-takes about a minute on the Mac, `xcrun simctl install/launch` works, and a
-server can be added without touching the UI:
+**iOS: partly done.** The add-server form, filled in from a `mumble://` link,
+is on the server page. Getting further needs one thing this machine does not
+have — see below.
+
+The transfer problem is solved: **`\macbookpro\ilya` is reachable from
+Windows with cached credentials**, so the Mac writes to `~/shots` and Windows
+copies from the share. Never base64 through the SSH tool; it floods the
+context twice over.
+
+What works headlessly:
 
 ```bash
-xcrun simctl openurl booted "mumble://name@host:64738/"
-xcrun simctl io booted screenshot /tmp/shots/x.png
+xcrun simctl openurl booted "mumble://name@host:64738/"   # fills the add form
+xcrun simctl io booted screenshot ~/shots/x.png
+# Seed the server list without touching the UI. Through `defaults` inside the
+# simulator, not by writing the plist: cfprefsd caches it and overwrites a
+# direct edit. The JSON must arrive as one quoted string inside a plist array.
+xcrun simctl spawn booted defaults write com.mumbleway.mumbleway   flutter.mumbleway.servers '("{\"localId\":\"a\",\"name\":\"s\",...}")'
 ```
 
-What stopped it was **getting the file back**. There is no scp from this
-machine to the Mac (`Permission denied (publickey)`), and base64 through the
-SSH tool floods the context. Solve the transfer first — an HTTP one-liner from
-the Mac, a shared folder, or an SSH key — and the captures themselves are ten
-minutes.
+**What blocks the rest: synthetic clicks are refused** (`System Events` error
+-25204) because whatever process the SSH session runs under has no
+Accessibility permission. Keystrokes are allowed; clicks are not. So anything
+behind a tap — connecting, the settings screen, the diagnostics panel — cannot
+be reached from here. Granting Accessibility to the SSH session's parent in
+System Settings → Privacy & Security would unblock all of it.
+
+Two other facts worth keeping:
+
+- **The simulator shows "Not responding"** against a server the Mac can reach
+  over TCP, so the UDP ping is being dropped somewhere in between. It is a
+  property of that network, not a fault — but it means the iOS home screen
+  cannot be screenshotted honestly here, and that shot was deliberately left
+  out rather than published showing a server that does not answer.
+- **macOS does not build on this machine.** `Runner` has entitlements that
+  require signing with a development certificate, and there is none installed.
+  CI signs with its own secrets. Not worked around.
 
 ## Things that will bite
 

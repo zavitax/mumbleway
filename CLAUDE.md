@@ -182,3 +182,7 @@ When a measurement contradicts the plan, the measurement wins, and the
 retraction goes in the file where the claim was made. `tools/vad/README.md`
 leads with one; `docs/RECORDING.md` and `core/src/audio/pitch.rs` carry others.
 Do not quietly drop a disproved claim — someone will re-derive it.
+
+`docs/MUSIC_GATE.md` is the open one: music opens the voice gate, three
+features have already been tried against it and failed, and the plan waits on a
+recording rather than proposing a fourth from reasoning.

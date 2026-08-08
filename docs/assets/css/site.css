@@ -640,7 +640,11 @@ tbody tr:last-child td { border-bottom: 0; }
   /* Never larger than it really is: upscaling a 560px capture to fill a 4K
      display shows the reader nothing except the interpolation. */
   max-width: min(100%, 1000px);
-  max-height: 100%;
+  /* Viewport units rather than a percentage. A percentage resolves against the
+     figure, whose height is auto, so it never constrained anything and a tall
+     phone capture ran off the bottom of the screen with its caption. The
+     subtraction is the overlay's own padding plus room for the caption. */
+  max-height: calc(100vh - 9rem);
   width: auto;
   height: auto;
   border: 1px solid var(--line);

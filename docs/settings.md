@@ -12,10 +12,19 @@ when something specific is wrong.
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-phone.webp' | relative_url }}"
-         alt="The settings screen showing microphone mode, gain and the noise
-              cancellation profiles."
-         width="560" height="1217" loading="lazy" decoding="async">
-    <figcaption>Microphone, levels and the noise profiles.</figcaption>
+         alt="The top of the settings screen: test microphone, echo
+              cancellation, speaker levelling, the incoming audio buffer and
+              room tone."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Devices, levels and the buffer.</figcaption>
+  </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-noise-phone.webp' | relative_url }}"
+         alt="The noise cancellation section: off, light, standard, helmet and
+              automatic, each with a sentence saying what it is for, and helmet
+              selected."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>The noise profiles, with Helmet selected.</figcaption>
   </figure>
 </div>
 

@@ -80,18 +80,27 @@ construction.
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/diagnostics-phone.webp' | relative_url }}"
-         alt="The diagnostics panel: a spectrum analyser with three traces, a
-              row of per-stage lights, and the recording switch."
-         width="560" height="1217" loading="lazy" decoding="async">
-    <figcaption>The analyser, the chain lights, and the recorder.</figcaption>
+    <img src="{{ '/assets/img/shots/analyser-speaking-phone.webp' | relative_url }}"
+         alt="The diagnostics panel while speech is being detected: three traces,
+              the transmitted one filled in, and the voice, gate and to-the-server
+              lights all green."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Speech detected, and going out.</figcaption>
+  </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/analyser-silent-phone.webp' | relative_url }}"
+         alt="The same panel with no speech: the transmitted trace is flat, the
+              legend reads Not sending, and the voice, gate and to-the-server
+              lights are red."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>No speech: the sent trace goes flat while the others do not.</figcaption>
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/home-phone.webp' | relative_url }}"
-         alt="The main screen: a saved server with its latency and user count,
-              a connect button, and the microphone meter."
-         width="560" height="1217" loading="lazy" decoding="async">
-    <figcaption>Your servers, their latency, and the meter.</figcaption>
+         alt="The main screen connected to a server, showing latency, the UDP
+              round trip, the channel and the microphone meter."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Connected: latency, channel, and the meter.</figcaption>
   </figure>
 </div>
 

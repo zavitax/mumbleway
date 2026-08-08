@@ -13,10 +13,19 @@ description: Что делает каждая настройка и какие �
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-phone.webp' | relative_url }}"
-         alt="Экран настроек: режим микрофона, усиление и профили
-              шумоподавления."
-         width="560" height="1217" loading="lazy" decoding="async">
-    <figcaption>Микрофон, уровни и профили шума.</figcaption>
+         alt="Верх экрана настроек: проверка микрофона, подавление эха,
+              выравнивание громкости, буфер входящего звука и эффект
+              помещения."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Устройства, уровни и буфер.</figcaption>
+  </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-noise-phone.webp' | relative_url }}"
+         alt="Раздел шумоподавления: выключено, слабое, обычное, шлем и
+              автоматически — у каждого пункта строка о том, для чего он, —
+              выбран «Шлем / мотоцикл»."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Профили шума, выбран «Шлем / мотоцикл».</figcaption>
   </figure>
 </div>
 

@@ -82,18 +82,26 @@ Bluetooth-интерком связывает мотоциклистов поп�
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/diagnostics-phone.webp' | relative_url }}"
-         alt="Панель диагностики: анализатор спектра с тремя кривыми, ряд
-              индикаторов по ступеням тракта и переключатель записи."
-         width="560" height="1217" loading="lazy" decoding="async">
-    <figcaption>Анализатор, индикаторы тракта и запись.</figcaption>
+    <img src="{{ '/assets/img/shots/analyser-speaking-phone.webp' | relative_url }}"
+         alt="Панель диагностики в момент, когда речь обнаружена: три кривые,
+              кривая передачи закрашена, индикаторы речи, гейта и отправки на
+              сервер зелёные."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Речь обнаружена и уходит в эфир.</figcaption>
+  </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/analyser-silent-phone.webp' | relative_url }}"
+         alt="Та же панель без речи: кривая передачи легла в ноль, подпись
+              «не передаётся», индикаторы речи, гейта и отправки красные."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Речи нет: кривая передачи ложится в ноль, а две другие нет.</figcaption>
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/home-phone.webp' | relative_url }}"
-         alt="Главный экран: сохранённый сервер с задержкой и числом
-              участников, кнопка подключения и индикатор микрофона."
-         width="560" height="1217" loading="lazy" decoding="async">
-    <figcaption>Ваши серверы, их задержка и индикатор.</figcaption>
+         alt="Главный экран в подключённом состоянии: задержка, время обхода по
+              UDP, канал и индикатор микрофона."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Подключено: задержка, канал и индикатор.</figcaption>
   </figure>
 </div>
 

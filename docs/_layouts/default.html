@@ -65,18 +65,25 @@
     <a href="{{ item.url | relative_url }}"{% if page.url == item.url %} aria-current="page"{% endif %}>{{ item.title }}</a>
     {%- endfor %}
   </nav>
-  <!-- Names the language it goes to, not the one you are already reading.
-       The app's button does the opposite, deliberately: there, a control on
-       every screen is mostly being read rather than pressed, so it answers
-       "what am I looking at". Here the page itself answers that — it is a
-       screenful of prose in the language — and the only question left is how
-       to get to the other one. So it is a link, and it says where it goes.
-       Set in its own language, because the reader who needs it is the one who
-       cannot read the language currently on screen. -->
-  <a class="lang" href="{{ other_url | relative_url }}"
-     lang="{{ t.html_lang }}" hreflang="{{ t.html_lang }}" title="{{ t.switch_title }}">
-    <img src="{{ t.flag | relative_url }}" alt="" width="21" height="14" aria-hidden="true">
-    <span>{{ t.name }}</span>
+  <!-- The app's language button, as a link.
+
+       It shows the language that is *active*, not the one a click switches to,
+       because that is what the app does and the two should not disagree — the
+       app's reasoning is that a control present on every screen is mostly
+       being read rather than pressed, so it is more use answering "what am I
+       looking at". Flag, then the two-letter code, then the same two-line
+       tooltip, from the same two strings as the app.
+
+       Visible text that names the current language leaves the destination
+       unsaid, which is fine for a pointer and useless for a screen reader —
+       hence aria-label carrying what a click actually does. -->
+  {%- assign switch_hint = s.switch_to | replace: '{name}', t.name -%}
+  <a class="lang" href="{{ other_url | relative_url }}" hreflang="{{ t.html_lang }}"
+     title="{{ s.language_label }}: {{ s.name }}&#10;{{ switch_hint }}"
+     aria-label="{{ switch_hint }}">
+    <img src="{{ s.flag | relative_url }}" alt=""
+         width="{{ s.flag_w }}" height="{{ s.flag_h }}" aria-hidden="true">
+    <span aria-hidden="true">{{ s.code }}</span>
   </a>
 </header>
 
@@ -85,7 +92,7 @@
   <canvas id="analyser" aria-hidden="true"></canvas>
   <div class="hero-inner">
     <p class="eyebrow">{{ s.hero.eyebrow }}</p>
-    <h1>{{ s.hero.title_line1 }}<br>{{ s.hero.title_line2 }}</h1>
+    <h1>{{ s.hero.title }}</h1>
     <p class="lede">{{ s.description | strip_newlines }}</p>
     <div class="cta">
       <a class="btn primary" href="{{ s.hero.cta_primary_url | relative_url }}">{{ s.hero.cta_primary }}</a>

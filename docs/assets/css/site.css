@@ -207,32 +207,41 @@ a:hover { color: #FFC276; }
 
 /* ---------- language switch ---------- */
 
-/* Visible at every width, which is the whole requirement: it is never behind
+/* The app's own language button, matched: no frame, an 8px corner radius,
+   10/8 padding, a 14px flag, a 6px gap and the code at 13px/700 with 0.4px of
+   letter-spacing. The numbers are pixels rather than rems on purpose — they
+   are copied from `app/lib/widgets/language_button.dart`, where they are
+   logical pixels, and converting them to a relative unit would be a different
+   control that merely resembled it.
+
+   Visible at every width, which is the whole requirement: it is never behind
    the hamburger, because somebody who cannot read the page cannot be asked to
    find a menu labelled in a language they do not read. */
 .lang {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 6px;
   flex: none;
-  padding: 0.34rem 0.6rem;
-  border: 1px solid var(--line);
-  color: var(--muted);
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text);
   text-decoration: none;
-  font-size: 0.85rem;
-  line-height: 1.2;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  line-height: 1;
   white-space: nowrap;
-  transition: color .15s, border-color .15s;
+  transition: background-color .15s;
 }
-.lang:hover { color: var(--text); border-color: var(--dim); }
+/* Standing in for the ripple, which is the one thing here a link cannot have. */
+.lang:hover { background: var(--raised); }
 .lang img {
   display: block;
-  width: 21px;
   height: 14px;
-  /* The one image in the bar that is a real object with real edges. Two of the
-     three flags here have a white stripe, which runs straight out into a dark
-     bar and leaves the shape looking torn; a hairline holds it together. */
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+  /* Width follows: the flags have different proportions and squashing either
+     one to a fixed box is exactly what the app avoids with BoxFit.contain. */
+  width: auto;
+  border-radius: 2px;
 }
 
 /* Right of the menu when the menu is a row, left of the button when it is not.

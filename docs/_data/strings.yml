@@ -20,11 +20,15 @@ en:
   name: English
   code: EN
   flag: /assets/img/flags/us.svg
-  # Named as a flag, not as the language: the image is a flag of a country and
-  # a screen reader saying "English" over a US flag would be describing
-  # something the picture does not show. The link text carries the language.
-  flag_alt: ""
-  switch_title: Read this page in English
+  # Intrinsic size at the height the bar draws it, so the row does not reflow
+  # when the flag loads. The two flags have different proportions, so this is
+  # per language rather than a constant.
+  flag_w: 27
+  flag_h: 14
+  # The app's own two strings, so the tooltip here reads word for word like the
+  # tooltip there. Keys `language` and `switchToLanguage` in app_en.arb.
+  language_label: Language
+  switch_to: Tap to switch to {name}
 
   tagline: Voice for bikers
   description: >-
@@ -38,8 +42,7 @@ en:
 
   hero:
     eyebrow: 'Mumble client · Windows · macOS · iOS · iPadOS · Android'
-    title_line1: Talk at speed,
-    title_line2: and be understood.
+    title: Voice for bikers
     cta_primary: Set up a server
     cta_primary_url: /server.html
     cta_secondary: Source on GitHub
@@ -188,8 +191,10 @@ ru:
   name: Русский
   code: RU
   flag: /assets/img/flags/ru.svg
-  flag_alt: ""
-  switch_title: Читать эту страницу по-русски
+  flag_w: 21
+  flag_h: 14
+  language_label: Язык
+  switch_to: Нажмите, чтобы переключиться на {name}
 
   tagline: Голос для байкеров
   description: >-
@@ -203,8 +208,7 @@ ru:
 
   hero:
     eyebrow: 'Клиент Mumble · Windows · macOS · iOS · iPadOS · Android'
-    title_line1: Говорите на скорости,
-    title_line2: и вас поймут.
+    title: Голос для байкеров
     cta_primary: Поднять сервер
     cta_primary_url: /ru/server.html
     cta_secondary: Исходный код на GitHub

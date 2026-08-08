@@ -398,6 +398,11 @@
       }
     }
   },
+  "diagPreviewTitle": "Listen back",
+  "diagPreviewBody": "It is a recording of your own microphone. Hear what is in it before you send it anywhere.",
+  "diagPreviewPlay": "Play",
+  "diagPreviewPause": "Pause",
+  "diagRecordingListen": "Listen to recordings",
   "diagRecordingDiscardTitle": "Delete recordings?",
   "diagRecordingDiscardBody": "{count, plural, =1{One file goes from this device, and a ride cannot be recorded again.} other{{count} files go from this device, and a ride cannot be recorded again.}}",
   "@diagRecordingDiscardBody": {

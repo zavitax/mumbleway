@@ -909,6 +909,22 @@ class LEn extends L {
   }
 
   @override
+  String get diagPreviewTitle => 'Listen back';
+
+  @override
+  String get diagPreviewBody =>
+      'It is a recording of your own microphone. Hear what is in it before you send it anywhere.';
+
+  @override
+  String get diagPreviewPlay => 'Play';
+
+  @override
+  String get diagPreviewPause => 'Pause';
+
+  @override
+  String get diagRecordingListen => 'Listen to recordings';
+
+  @override
   String get diagRecordingDiscardTitle => 'Delete recordings?';
 
   @override

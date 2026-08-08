@@ -1999,3 +1999,34 @@ mod tests {
         );
     }
 }
+
+/// Feeds the output a stretch of a recording being previewed.
+///
+/// The transport is on the Dart side deliberately. Previewing means reading a
+/// file, and a file read has no business anywhere near the audio thread — so
+/// what crosses this boundary is decoded samples, and this end is a queue.
+///
+/// Returns how many were accepted, which is fewer than offered once the queue
+/// is full. The caller uses that to pace itself rather than to discover later
+/// that its playhead has drifted from what anybody heard.
+#[frb(sync)]
+pub fn preview_push(samples: Vec<f32>) -> anyhow::Result<u32> {
+    Ok(app()?.shared.preview_push(&samples) as u32)
+}
+
+/// Samples still waiting to be heard.
+///
+/// The playhead is what was pushed minus this. It is the only honest source
+/// for it: the queue drains at the speaker's rate, and a timer counting
+/// forwards from "play" would run ahead the moment the device buffered.
+#[frb(sync)]
+pub fn preview_queued() -> anyhow::Result<u32> {
+    Ok(app()?.shared.preview_queued() as u32)
+}
+
+/// Stops a preview, and is also how a seek starts.
+#[frb(sync)]
+pub fn preview_clear() -> anyhow::Result<()> {
+    app()?.shared.preview_clear();
+    Ok(())
+}

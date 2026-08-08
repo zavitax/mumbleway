@@ -517,6 +517,12 @@ pub struct AudioShared {
     /// intact even if the worker is busy, and makes a cue a single atomic
     /// action that cannot be half-played.
     cue_queue: Mutex<VecDeque<f32>>,
+    /// A recording being played back in the diagnostics panel.
+    ///
+    /// Its own queue rather than the cue one: a cue clears whatever is there
+    /// so a flapping connection cannot stack up tones, and doing that to a
+    /// preview would cut it off every time something beeped.
+    preview_queue: Mutex<VecDeque<f32>>,
 
     /// Copy of what was most recently handed to the output device, used as the
     /// echo canceller's reference.
@@ -746,6 +752,7 @@ impl AudioShared {
             capture_dropped_samples: AtomicU64::new(0),
             active_speakers: AtomicU32::new(0),
             cue_queue: Mutex::new(VecDeque::new()),
+            preview_queue: Mutex::new(VecDeque::new()),
             echo_reference: Mutex::new(VecDeque::new()),
             device_request: Mutex::new((None, None)),
             device_generation: AtomicU64::new(0),
@@ -1139,6 +1146,38 @@ impl AudioShared {
         // queue a backlog of tones that keeps playing long after it settles.
         q.clear();
         q.extend(pcm);
+    }
+
+    /// Hands the output a stretch of a recording being previewed.
+    ///
+    /// The transport lives on the Dart side, which is the point: previewing a
+    /// file means reading it, and reading it must not happen anywhere near the
+    /// audio thread. What crosses is decoded samples and nothing else, so this
+    /// end is a queue and a cap.
+    ///
+    /// Returns what it accepted. A caller that keeps pushing past the cap is
+    /// running ahead of the speaker rather than feeding it, and needs to be
+    /// told so rather than have its audio silently dropped — the position
+    /// readout is derived from what went in against what is left.
+    pub fn preview_push(&self, samples: &[f32]) -> usize {
+        let mut q = self.preview_queue.lock();
+        let room = MAX_QUEUED_OUTPUT_SAMPLES.saturating_sub(q.len());
+        let take = room.min(samples.len());
+        q.extend(samples[..take].iter().copied());
+        take
+    }
+
+    /// How much is still waiting to be heard. Position is what was pushed
+    /// minus this, which is the only honest way to say where the playhead is:
+    /// the queue drains at the speaker's rate, not at a timer's.
+    pub fn preview_queued(&self) -> usize {
+        self.preview_queue.lock().len()
+    }
+
+    /// Stop, and seek — both are this, since seeking is throwing away what was
+    /// queued for somewhere else and refilling from the new position.
+    pub fn preview_clear(&self) {
+        self.preview_queue.lock().clear();
     }
 
     /// Queues a steady test tone of the given length.
@@ -1624,6 +1663,12 @@ fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
     // steady climb, heard as speech breaking up for reasons that have nothing
     // to do with the network.
     mix_in(&shared.cue_queue, want, out);
+
+    // Beside the cues and before the echo reference is taken: a preview really
+    // does come out of the speaker, so the canceller has to know about it or
+    // playing a recording back through a helmet would train the canceller on a
+    // signal it never sees again.
+    mix_in(&shared.preview_queue, want, out);
 
     // Taken after the cues, because they genuinely come out of the speaker and
     // genuinely echo back into the microphone, and at 48 kHz before resampling

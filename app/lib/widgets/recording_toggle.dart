@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import 'recording_preview.dart';
 
 /// Turns on recording of the microphone and of what the chain decided about it.
 ///
@@ -206,6 +207,17 @@ class _RecordingToggleState extends State<RecordingToggle> {
   /// it — they are worth little apart — and raw PCM of a mostly silent ride
   /// compresses several times over, which matters when what is being sent is
   /// the length of a ride.
+  /// Opens the preview sheet.
+  ///
+  /// Takes no audio hold. The engine's output is already running whenever the
+  /// devices are open, and a preview is mixed into it the same way a cue is —
+  /// so this neither needs the microphone nor should take it.
+  Future<void> _listen() async {
+    final dir = await _directory();
+    if (!dir.existsSync() || !mounted) return;
+    await showRecordingPreview(context, dir);
+  }
+
   Future<void> _share() async {
     final l = L.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -482,6 +494,18 @@ class _RecordingToggleState extends State<RecordingToggle> {
                         tooltip: l.diagRecordingDiscard,
                       ),
                       const Spacer(),
+                      // Between the two, and nearer the send button than the
+                      // delete one: listening is what you do on the way to
+                      // sending, and the policy asks people to do it. An
+                      // instruction nobody can act on is not a safeguard.
+                      IconButton(
+                        onPressed: _files == 0 || active || _busy
+                            ? null
+                            : _listen,
+                        icon: const Icon(Icons.graphic_eq),
+                        tooltip: l.diagRecordingListen,
+                      ),
+                      const SizedBox(width: 4),
                       // The glyph alone. It is the one control on this panel
                       // whose meaning a shape carries completely, and the label
                       // beside it was the widest thing in the row. The words are

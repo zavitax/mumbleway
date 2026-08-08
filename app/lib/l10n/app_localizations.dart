@@ -1747,6 +1747,36 @@ abstract class L {
   /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
   String diagRecordingShared(int count, int archives);
 
+  /// No description provided for @diagPreviewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen back'**
+  String get diagPreviewTitle;
+
+  /// No description provided for @diagPreviewBody.
+  ///
+  /// In en, this message translates to:
+  /// **'It is a recording of your own microphone. Hear what is in it before you send it anywhere.'**
+  String get diagPreviewBody;
+
+  /// No description provided for @diagPreviewPlay.
+  ///
+  /// In en, this message translates to:
+  /// **'Play'**
+  String get diagPreviewPlay;
+
+  /// No description provided for @diagPreviewPause.
+  ///
+  /// In en, this message translates to:
+  /// **'Pause'**
+  String get diagPreviewPause;
+
+  /// No description provided for @diagRecordingListen.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen to recordings'**
+  String get diagRecordingListen;
+
   /// No description provided for @diagRecordingDiscardTitle.
   ///
   /// In en, this message translates to:

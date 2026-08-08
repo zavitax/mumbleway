@@ -911,6 +911,22 @@ class LRu extends L {
   }
 
   @override
+  String get diagPreviewTitle => 'Прослушать';
+
+  @override
+  String get diagPreviewBody =>
+      'Это запись вашего собственного микрофона. Послушайте, что в ней, прежде чем куда-либо её отправлять.';
+
+  @override
+  String get diagPreviewPlay => 'Воспроизвести';
+
+  @override
+  String get diagPreviewPause => 'Пауза';
+
+  @override
+  String get diagRecordingListen => 'Прослушать записи';
+
+  @override
   String get diagRecordingDiscardTitle => 'Удалить записи?';
 
   @override

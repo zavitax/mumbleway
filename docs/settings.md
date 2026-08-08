@@ -19,18 +19,16 @@ How sound gets in and out — including several switches that are not obviously
 "devices" but sit here because they belong to the route rather than to the
 microphone.
 
+### Choosing the devices
+
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/settings-phone.webp' | relative_url }}"
-         alt="The top of the settings screen: test microphone, echo
-              cancellation, even out speaker loudness, the incoming audio
-              buffer and room tone."
-         width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>The first section, on a phone.</figcaption>
+    <img src="{{ '/assets/img/shots/set-devices.webp' | relative_url }}"
+         alt="The audio devices heading on a phone, saying the platform routes audio automatically and a headset switches to it."
+         width="560" height="137" loading="lazy" decoding="async">
+    <figcaption>On a phone, the app says so instead of offering a picker.</figcaption>
   </figure>
 </div>
-
-### Choosing the devices
 
 On **desktop** you pick input and output explicitly, and **Re-check devices**
 re-reads the list after you plug in or pair a headset.
@@ -41,12 +39,30 @@ the app says so, rather than offering a control that could do nothing.
 
 ### Test microphone (hear yourself)
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-testmic.webp' | relative_url }}"
+         alt="The test microphone row with its switch off."
+         width="560" height="156" loading="lazy" decoding="async">
+    <figcaption>Hear yourself exactly as the far end does.</figcaption>
+  </figure>
+</div>
+
 Plays your processed voice back exactly as the far end hears it — after
 suppression, gate and levelling. The fastest way to judge a profile.
 
 **Use headphones.** Through speakers it is a feedback loop.
 
 ### Echo cancellation
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-echo.webp' | relative_url }}"
+         alt="The echo cancellation row, switched on."
+         width="560" height="161" loading="lazy" decoding="async">
+    <figcaption>On by default. Worth it with speakers, not with a headset.</figcaption>
+  </figure>
+</div>
 
 On by default, and worth leaving on **when you are using speakers**. A speaker
 a few centimetres from the microphone sends everybody back to themselves with a
@@ -56,6 +72,15 @@ On a headset there is no echo to cancel and it can only take something away.
 
 ### Even out speaker loudness
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-evenout.webp' | relative_url }}"
+         alt="The even out speaker loudness row, switched on, warning that a hiss between sentences may be this."
+         width="560" height="140" loading="lazy" decoding="async">
+    <figcaption>The row that explains a hiss you were about to blame on the noise chain.</figcaption>
+  </figure>
+</div>
+
 Brings incoming voices to a similar level, so a quiet rider and a loud one
 arrive at the same volume. It adapts to what it hears, which has one visible
 consequence: **if a hiss seems to rise between sentences, turn this off to
@@ -63,6 +88,15 @@ check.** It may be levelling the gaps up rather than anything being wrong in
 the noise chain.
 
 ### Incoming audio buffer
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-buffer.webp' | relative_url }}"
+         alt="The incoming audio buffer slider at 200 ms, with the paragraph explaining what raising it does."
+         width="560" height="311" loading="lazy" decoding="async">
+    <figcaption>200 ms by default, and the app raises it by itself on a poor link.</figcaption>
+  </figure>
+</div>
 
 How much of what others say is held back before it is played, in milliseconds.
 More buffer rides out a patchy signal without gaps; less means you hear people
@@ -79,11 +113,29 @@ Otherwise leave it alone.
 
 ### Room tone
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-roomtone.webp' | relative_url }}"
+         alt="The room tone row, switched on."
+         width="560" height="156" loading="lazy" decoding="async">
+    <figcaption>Cosmetic, and only on what you hear.</figcaption>
+  </figure>
+</div>
+
 Adds a short tail under incoming voices, so a talker cut off by voice
 activation does not stop mid-breath. Cosmetic, and some people dislike it.
 It applies to what you hear, never to what you send.
 
 ### Test speakers
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-testspk.webp' | relative_url }}"
+         alt="The test speakers row with a play button."
+         width="560" height="114" loading="lazy" decoding="async">
+    <figcaption>A short tone on whichever output is selected.</figcaption>
+  </figure>
+</div>
 
 Plays a short tone on the selected output.
 
@@ -91,22 +143,31 @@ Plays a short tone on the selected output.
 
 Microphone gain and speaker volume, with the live meter between them.
 
+### Microphone gain
+
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/settings-levels-phone.webp' | relative_url }}"
-         alt="The levels section: microphone gain and speaker volume sliders, with the meter above them and the noise cancellation heading below."
-         width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>Two sliders and the meter that tells you where to put them.</figcaption>
+    <img src="{{ '/assets/img/shots/set-micgain.webp' | relative_url }}"
+         alt="The levels section: the meter reading -84 dB above the microphone gain slider at +0 dB."
+         width="560" height="150" loading="lazy" decoding="async">
+    <figcaption>The meter above the slider is the thing to watch, not the number.</figcaption>
   </figure>
 </div>
-
-### Microphone gain
 
 Aim for the meter to peak around three quarters while you speak normally. Too
 much gain lifts the engine noise along with your voice, and the suppression
 then has a harder problem to solve than it needed to.
 
 ### Speaker volume
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-speakervol.webp' | relative_url }}"
+         alt="The speaker volume slider at +0 dB."
+         width="560" height="153" loading="lazy" decoding="async">
+    <figcaption>Incoming voices only.</figcaption>
+  </figure>
+</div>
 
 For incoming voices only.
 

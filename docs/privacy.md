@@ -1,9 +1,8 @@
 ---
-title: MumbleWay Privacy Policy
+layout: default
+title: Privacy policy
 description: What MumbleWay does with your voice, and what it does not.
 ---
-
-# Privacy Policy
 
 **MumbleWay** — voice for motorcyclists.
 Developer: Ilya Melamed. Last updated: 7 August 2026.

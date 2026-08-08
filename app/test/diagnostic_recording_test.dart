@@ -119,6 +119,12 @@ void main() {
         await tester.pumpWidget(harness(locale, state));
         await tester.pump(const Duration(milliseconds: 100));
 
+        // The card opens folded, and everything this test is about — the
+        // status line and the two buttons — is inside the fold. Opening it is
+        // the state worth testing: folded, there is nothing to squeeze.
+        await tester.tap(find.byIcon(Icons.expand_more));
+        await tester.pump(const Duration(milliseconds: 200));
+
         // No overflow. takeException would hold a FlutterError describing a
         // RenderFlex that ran off the side.
         expect(tester.takeException(), isNull);

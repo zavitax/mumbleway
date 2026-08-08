@@ -898,6 +898,17 @@ class LEn extends L {
   String get diagRecordingBody => 'Saves your microphone to this device.';
 
   @override
+  String diagRecordingShared(int count, int archives) {
+    String _temp0 = intl.Intl.pluralLogic(
+      archives,
+      locale: localeName,
+      other: '$archives archives',
+      one: 'one archive',
+    );
+    return 'Shared $count files in $_temp0.';
+  }
+
+  @override
   String get diagRecordingDiscardTitle => 'Delete recordings?';
 
   @override

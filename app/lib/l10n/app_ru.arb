@@ -380,6 +380,7 @@
   "diagParticipants": "Участников",
   "diagRecording": "Запись для диагностики",
   "diagRecordingBody": "Сохраняет звук микрофона на это устройство.",
+  "diagRecordingShared": "Отправлено файлов: {count}, архивов: {archives}.",
   "diagRecordingDiscardTitle": "Удалить записи?",
   "diagRecordingDiscardBody": "Файлов будет удалено: {count}. Поездку заново не записать.",
   "diagRecordingActive": "Идёт запись",

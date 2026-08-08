@@ -46,6 +46,13 @@ class _RecordingToggleState extends State<RecordingToggle> {
   int _bytes = 0;
   bool _busy = false;
 
+  /// Whether the status line and the two buttons are showing.
+  ///
+  /// Shut to begin with. This card sits under the analyser in a bottom sheet,
+  /// and while a ride is happening the analyser is the thing being watched —
+  /// none of what folds away is wanted until afterwards.
+  bool _expanded = false;
+
   @override
   void initState() {
     super.initState();
@@ -109,7 +116,9 @@ class _RecordingToggleState extends State<RecordingToggle> {
       base = await getExternalStorageDirectory();
     }
     base ??= await getApplicationDocumentsDirectory();
-    return Directory('${base.path}${Platform.pathSeparator}mumbleway-recordings');
+    return Directory(
+      '${base.path}${Platform.pathSeparator}mumbleway-recordings',
+    );
   }
 
   /// Both directions go through [AppState], which owns the audio hold.
@@ -202,8 +211,11 @@ class _RecordingToggleState extends State<RecordingToggle> {
     final messenger = ScaffoldMessenger.of(context);
     final dir = await _directory();
     if (!dir.existsSync()) return;
+    // Newest ride first, so what a cap leaves out is the oldest rather than
+    // whatever happened to sort last. File names begin with the date, so
+    // descending order is chronological without reading any of them.
     final files = dir.listSync().whereType<File>().toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+      ..sort((a, b) => b.path.compareTo(a.path));
     if (files.isEmpty) return;
 
     if (!Platform.isAndroid && !Platform.isIOS) {
@@ -218,20 +230,41 @@ class _RecordingToggleState extends State<RecordingToggle> {
     setState(() => _busy = true);
     try {
       final temp = await getTemporaryDirectory();
-      final archive = '${temp.path}${Platform.pathSeparator}$_archiveName';
-      // Cleared on the way in rather than on the way out, because it cannot be
-      // deleted on the way out — see below.
-      final previous = File(archive);
-      if (previous.existsSync()) previous.deleteSync();
+      // Cleared on the way in rather than on the way out, because they cannot
+      // be deleted on the way out — see below. A share that produced four
+      // archives followed by one that produces two would otherwise send the
+      // two new ones and the two stale ones beside them.
+      for (final f in temp.listSync().whereType<File>()) {
+        // The stem rather than the numbered prefix, so the single
+        // `mumbleway-recordings.zip` that earlier builds left here is cleared
+        // too. It will never be shared again and nothing else would remove it.
+        if (f.path
+            .split(Platform.pathSeparator)
+            .last
+            .startsWith(_archiveStem)) {
+          try {
+            f.deleteSync();
+          } catch (_) {
+            // Still held open by a transfer that has not finished. It will be
+            // overwritten by name if this share needs that number again.
+          }
+        }
+      }
 
       // Off this isolate. Packing a ride's worth of audio takes seconds, and
       // doing it here would stop the meters and the spectrum in a panel whose
       // whole job is to be watched.
-      await compute(_packRecordings, [archive, for (final f in files) f.path]);
+      final archives = await compute(_packRecordings, [
+        '$_archiveCapBytes',
+        temp.path,
+        for (final f in files) f.path,
+      ]);
 
-      await SharePlus.instance.share(
+      final result = await SharePlus.instance.share(
         ShareParams(
-          files: [XFile(archive, mimeType: 'application/zip')],
+          files: [
+            for (final a in archives) XFile(a, mimeType: 'application/zip'),
+          ],
           subject: 'MumbleWay diagnostic recording',
         ),
       );
@@ -239,6 +272,20 @@ class _RecordingToggleState extends State<RecordingToggle> {
       // and AirDrop and the mail composer go on reading the file after that —
       // deleting it now would truncate the transfer it was made for. The next
       // share clears it, and the system empties this directory anyway.
+
+      if (!mounted) return;
+      // Only after a target was actually chosen. A dismissed sheet must not
+      // offer to delete what it did not send, and the offer is an action the
+      // rider has to reach for rather than something that happens to them.
+      if (result.status == ShareResultStatus.success) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(l.diagRecordingShared(files.length, archives.length)),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(label: l.delete, onPressed: _confirmDiscard),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(
@@ -250,9 +297,17 @@ class _RecordingToggleState extends State<RecordingToggle> {
     }
   }
 
-  /// One fixed name, so a share that was interrupted leaves one file behind
-  /// rather than one per attempt.
-  static const _archiveName = 'mumbleway-recordings.zip';
+  /// How large any one archive is allowed to get.
+  ///
+  /// Not arbitrary, and not the phone's limit — it is the smallest ceiling on
+  /// the way to somewhere useful. Telegram refuses to hand a bot a file over
+  /// 20 MB, which is the tightest of the transports these are actually sent
+  /// over, and mail gateways are not far behind. Everything still goes; it
+  /// goes as several files.
+  ///
+  /// Under rather than at the limit, because "20 MB" is not always 20 × 2^20
+  /// on the far side.
+  static const _archiveCapBytes = 18 * 1024 * 1024;
 
   /// Asks first, because the files are the only copy there will ever be.
   ///
@@ -260,14 +315,18 @@ class _RecordingToggleState extends State<RecordingToggle> {
   /// fault being chased were all particular to it, and this button sits beside
   /// the one that sends them — a mis-tap is the difference between a
   /// measurement and starting the whole exercise over.
-  Future<void> _confirmDiscard() async {
+  ///
+  /// [only] narrows it to particular files — what a share just sent, so the
+  /// next archive carries the rides that did not fit rather than the same ones
+  /// again. Everything, when it is not given.
+  Future<void> _confirmDiscard({List<String>? only}) async {
     final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
         title: Text(l.diagRecordingDiscardTitle),
-        content: Text(l.diagRecordingDiscardBody(_files)),
+        content: Text(l.diagRecordingDiscardBody(only?.length ?? _files)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialog, false),
@@ -288,16 +347,18 @@ class _RecordingToggleState extends State<RecordingToggle> {
       ),
     );
     // Dismissed by tapping outside answers null, which is a no.
-    if (confirmed == true) await _discard();
+    if (confirmed == true) await _discard(only: only);
   }
 
-  Future<void> _discard() async {
+  Future<void> _discard({List<String>? only}) async {
     final dir = await _directory();
     if (dir.existsSync()) {
+      final wanted = only?.toSet();
       // Only the files this wrote, and only while nothing is recording — the
       // switch below is disabled while active, so there is no live writer whose
       // file could be deleted out from under it.
       for (final f in dir.listSync().whereType<File>()) {
+        if (wanted != null && !wanted.contains(f.path)) continue;
         try {
           f.deleteSync();
         } catch (_) {
@@ -325,8 +386,8 @@ class _RecordingToggleState extends State<RecordingToggle> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SwitchListTile(
-            secondary: Icon(
+          ListTile(
+            leading: Icon(
               active ? Icons.fiber_manual_record : Icons.mic_none,
               color: active ? scheme.error : null,
             ),
@@ -336,14 +397,29 @@ class _RecordingToggleState extends State<RecordingToggle> {
             // chain lights and both buttons below the fold, so the switch
             // explained itself at the cost of everything it was next to.
             //
-            // What it kept is the half that had to stay: this writes a
-            // microphone to storage, and someone who does not want that has to
-            // be able to tell from the switch alone.
+            // Kept visible even when the rest is folded away, because it is the
+            // half that had to stay: this writes a microphone to storage, and
+            // someone who does not want that has to be able to tell from the
+            // switch alone — not after finding and opening something.
             subtitle: Text(
               active ? l.diagRecordingActive : l.diagRecordingBody,
             ),
-            value: active,
-            onChanged: _busy ? null : _setRecording,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Switch(value: active, onChanged: _busy ? null : _setRecording),
+                AnimatedRotation(
+                  turns: _expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: const Icon(Icons.expand_more),
+                ),
+              ],
+            ),
+            // The row opens it; the switch records. Two controls in one tile,
+            // which is what an ExpansionTile does everywhere else in Material —
+            // and the switch is large, adjacent and the obvious thing to reach
+            // for, so the ambiguity is smaller than it reads.
+            onTap: () => setState(() => _expanded = !_expanded),
           ),
           // Stacked, not side by side. These were in one Row, where the two
           // buttons take their intrinsic width and the Expanded text gets
@@ -353,56 +429,69 @@ class _RecordingToggleState extends State<RecordingToggle> {
           //
           // Nothing about that is fixed by a smaller font or an ellipsis: the
           // text needs the full width, so it gets its own line.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  // Losses come first while they are happening: a recording
-                  // with gaps is still worth having, and one whose gaps are
-                  // only discovered during analysis is a measurement waiting
-                  // to be wrong.
-                  dropped > 0
-                      ? l.diagRecordingDropped(dropped)
-                      : _files == 0
-                      ? l.diagRecordingNone
-                      : '${l.diagRecordingStopped(_files)} · '
-                            '${l.diagRecordingSize(megabytes)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: dropped > 0 ? scheme.error : scheme.onSurfaceVariant,
+          // Folded away by default. The panel is a bottom sheet, the analyser
+          // above is the thing being watched, and none of this is needed until
+          // a ride is over — at which point one tap brings it back.
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    // Losses come first while they are happening: a recording
+                    // with gaps is still worth having, and one whose gaps are
+                    // only discovered during analysis is a measurement waiting
+                    // to be wrong.
+                    dropped > 0
+                        ? l.diagRecordingDropped(dropped)
+                        : _files == 0
+                        ? l.diagRecordingNone
+                        : '${l.diagRecordingStopped(_files)} · '
+                              '${l.diagRecordingSize(megabytes)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: dropped > 0
+                          ? scheme.error
+                          : scheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                // Wrap rather than Row, so that two long labels on a narrow
-                // phone go onto separate lines instead of overflowing.
-                Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    // Both actions touch the files, so neither is offered while
-                    // a writer is appending to them.
-                    TextButton(
-                      onPressed: _files == 0 || active || _busy
-                          ? null
-                          : _confirmDiscard,
-                      child: Text(l.diagRecordingDiscard),
-                    ),
-                    FilledButton.tonalIcon(
-                      // Also off while an archive is being packed: that takes
-                      // seconds on a long ride, and a second tap would start a
-                      // second pack over the same file.
-                      onPressed: _files == 0 || active || _busy ? null : _share,
-                      icon: Icon(_shareIcon),
-                      label: Text(l.diagRecordingShare),
-                    ),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  // Wrap rather than Row, so that two long labels on a narrow
+                  // phone go onto separate lines instead of overflowing.
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      // Both actions touch the files, so neither is offered while
+                      // a writer is appending to them.
+                      TextButton(
+                        onPressed: _files == 0 || active || _busy
+                            ? null
+                            : _confirmDiscard,
+                        child: Text(l.diagRecordingDiscard),
+                      ),
+                      // The glyph alone. It is the one control on this panel
+                      // whose meaning a shape carries completely, and the label
+                      // beside it was the widest thing in the row. The words are
+                      // still there for anyone who needs them — as the tooltip,
+                      // and as what a screen reader announces.
+                      IconButton.filledTonal(
+                        // Also off while an archive is being packed: that takes
+                        // seconds on a long ride, and a second tap would start a
+                        // second pack over the same files.
+                        onPressed: _files == 0 || active || _busy
+                            ? null
+                            : _share,
+                        icon: Icon(_shareIcon),
+                        tooltip: l.diagRecordingShare,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -417,14 +506,80 @@ class _RecordingToggleState extends State<RecordingToggle> {
 ///
 /// Top-level because [compute] can only carry a function that is: a method
 /// would drag the widget across with it.
-void _packRecordings(List<String> args) {
-  final encoder = ZipFileEncoder();
-  encoder.create(args.first);
-  for (final path in args.skip(1)) {
-    // Names inside the archive are the file names alone, which is what
-    // `addFileSync` defaults to. The full path would carry the device's own
-    // directory layout to whoever receives it.
-    encoder.addFileSync(File(path));
+/// Numbered from one per share, so what arrives is in an obvious order and an
+/// interrupted share leaves a fixed set of names rather than one per attempt.
+///
+/// Top-level because the packing runs on another isolate, which cannot reach a
+/// member of the widget that asked for it.
+const _archiveStem = 'mumbleway-recordings';
+
+/// [args] is the size ceiling, then the directory to write into, then the files
+/// to pack, newest ride first. Returns the archives written.
+///
+/// **As many archives as it takes, none of them over the ceiling.** A single
+/// capped archive would mean the oldest rides silently never leave the phone,
+/// and the ones that have been sitting there longest are exactly the ones most
+/// likely to hold the fault being chased.
+///
+/// Rides are kept whole and never straddle two archives. A `.s16` without the
+/// `.csv` that describes it is not half a ride, it is a recording nobody can
+/// say anything about.
+///
+/// It packs, measures, and starts a new archive when one would go over.
+/// Compression on PCM varies with how much of the ride was speech — between
+/// about five and twenty times on real recordings — so no ratio guessed in
+/// advance is close enough to size a cap by. Measuring costs a repack;
+/// guessing costs an archive that silently cannot be sent.
+///
+/// A single ride larger than the ceiling goes in an archive of its own and
+/// exceeds it, because the alternative is a recording that can never be sent
+/// at all and nothing on screen saying so.
+List<String> _packRecordings(List<String> args) {
+  final cap = int.parse(args.first);
+  final into = args[1];
+  final sep = Platform.pathSeparator;
+
+  final rides = <String, List<String>>{};
+  for (final path in args.skip(2)) {
+    final name = path.split(sep).last;
+    final dot = name.lastIndexOf('.');
+    (rides[dot < 0 ? name : name.substring(0, dot)] ??= []).add(path);
   }
-  encoder.closeSync();
+
+  String pathFor(int i) => '$into$sep$_archiveStem-$i.zip';
+
+  void write(String out, List<String> stems) {
+    final encoder = ZipFileEncoder();
+    encoder.create(out);
+    for (final stem in stems) {
+      for (final path in rides[stem]!) {
+        // Names inside the archive are the file names alone, which is what
+        // `addFileSync` defaults to. The full path would carry the device's
+        // own directory layout to whoever receives it.
+        encoder.addFileSync(File(path));
+      }
+    }
+    encoder.closeSync();
+  }
+
+  final archives = <String>[];
+  var current = <String>[];
+  var index = 1;
+
+  for (final stem in rides.keys) {
+    final trial = [...current, stem];
+    write(pathFor(index), trial);
+    if (File(pathFor(index)).lengthSync() > cap && current.isNotEmpty) {
+      // Over. Put back what fit, close it, and begin the next one on this ride.
+      write(pathFor(index), current);
+      archives.add(pathFor(index));
+      index += 1;
+      current = [stem];
+      write(pathFor(index), current);
+    } else {
+      current = trial;
+    }
+  }
+  if (current.isNotEmpty) archives.add(pathFor(index));
+  return archives;
 }

@@ -1741,6 +1741,12 @@ abstract class L {
   /// **'Saves your microphone to this device.'**
   String get diagRecordingBody;
 
+  /// No description provided for @diagRecordingShared.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
+  String diagRecordingShared(int count, int archives);
+
   /// No description provided for @diagRecordingDiscardTitle.
   ///
   /// In en, this message translates to:

@@ -906,6 +906,11 @@ class LRu extends L {
   String get diagRecordingBody => 'Сохраняет звук микрофона на это устройство.';
 
   @override
+  String diagRecordingShared(int count, int archives) {
+    return 'Отправлено файлов: $count, архивов: $archives.';
+  }
+
+  @override
   String get diagRecordingDiscardTitle => 'Удалить записи?';
 
   @override

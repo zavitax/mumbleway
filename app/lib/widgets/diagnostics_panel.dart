@@ -157,7 +157,10 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                     // ever stop it.
                     if (AppStateScope.of(context).diagnosticsOpen) ...[
                       const SpectrumView(),
-                      const SizedBox(height: 12),
+                      // Wider than the gaps inside the analyser, so the card
+                      // reads as a separate thing rather than as one more row
+                      // of the readout above it.
+                      const SizedBox(height: 20),
                       // Directly under the analyser, because it answers the
                       // question the analyser raises: having watched the gate
                       // shut on a word, the next thing anyone wants is that

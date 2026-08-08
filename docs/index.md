@@ -60,7 +60,7 @@ it, and every stage is visible while it runs.
 
 {% include fig-timeline.svg lang=page.lang %}
 
-## You can watch it decide
+## Watch how it works
 
 Most voice apps tell you nothing. When somebody says "it cut me off", there is
 no way to find out which stage cut them.

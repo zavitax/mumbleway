@@ -50,6 +50,8 @@ Both wear headsets and both join the channel. It works, with one caveat: two
 microphones inside two helmets a foot apart, both on the same channel, is the
 easiest way to build a feedback loop.
 
+{% include fig-pillion.svg %}
+
 If you hear a howl:
 
 1. Turn one of the two speaker volumes down.

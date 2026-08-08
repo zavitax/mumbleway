@@ -187,11 +187,16 @@ void main() {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: Builder(
-        builder: (context) => Scaffold(
-          body: AppStateScope(
-            state: state,
-            child: TextButton(
+      home: Scaffold(
+        body: AppStateScope(
+          state: state,
+          // Below the scope, deliberately. `showRecordingPreview` reads the
+          // app state from the context it is handed, and a context taken from
+          // above the scope cannot see it — which is the same mistake the
+          // sheet itself would make if it read the state from its own
+          // ancestry, since a modal route hangs off the Navigator.
+          child: Builder(
+            builder: (context) => TextButton(
               onPressed: () => showRecordingPreview(context, dir),
               child: const Text('open'),
             ),

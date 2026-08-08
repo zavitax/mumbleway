@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../l10n/app_localizations.dart';
 import '../services/recording_archive.dart';
 import '../services/recording_player.dart';
+import '../state/app_state.dart';
 
 /// The glyph each platform draws for sharing.
 ///
@@ -30,18 +31,23 @@ IconData get shareIcon => Platform.isAndroid ? Icons.share : Icons.ios_share;
 /// it — so this costs nothing at all until somebody asks for it, and goes away
 /// again afterwards.
 Future<void> showRecordingPreview(BuildContext context, Directory dir) {
+  // Read here rather than inside the sheet. A modal route is a child of the
+  // Navigator, not of the widget that opened it, so the scope this sits under
+  // is not necessarily in the sheet's own ancestry.
+  final state = AppStateScope.of(context);
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (_) => _PreviewSheet(dir: dir),
+    builder: (_) => _PreviewSheet(dir: dir, state: state),
   );
 }
 
 class _PreviewSheet extends StatefulWidget {
-  const _PreviewSheet({required this.dir});
+  const _PreviewSheet({required this.dir, required this.state});
   final Directory dir;
+  final AppState state;
 
   @override
   State<_PreviewSheet> createState() => _PreviewSheetState();
@@ -54,6 +60,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
   Waveform? _wave;
   bool _loading = false;
   bool _sharing = false;
+  bool _holdingAudio = false;
   Future<void>? _pendingLoad;
 
   @override
@@ -82,7 +89,37 @@ class _PreviewSheetState extends State<_PreviewSheet> {
   @override
   void dispose() {
     _player.dispose();
+    if (_holdingAudio) widget.state.releaseAudio();
     super.dispose();
+  }
+
+  /// Opens the devices before the first play, and keeps them open.
+  ///
+  /// **Playback goes through the engine**, mixed into its output beside the
+  /// cues — which means it needs an output callback running to drain the
+  /// queue, and there is no such callback unless something is holding the
+  /// devices open. A call or a recording does that; a rider who opens the
+  /// panel to listen to yesterday's ride does not. Pressing play then moved
+  /// nothing and made no sound, because the samples were being pushed into a
+  /// queue nobody was reading.
+  ///
+  /// Taken on the first play rather than when the sheet opens, so looking at a
+  /// waveform does not switch the microphone on. Released when the sheet
+  /// closes rather than on pause, so play/pause does not open and shut the
+  /// devices repeatedly.
+  Future<bool> _ensureAudio() async {
+    if (_holdingAudio) return true;
+    final error = await widget.state.holdAudio();
+    if (error != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+      }
+      return false;
+    }
+    _holdingAudio = true;
+    return true;
   }
 
   Future<void> _load(String path) {
@@ -369,9 +406,13 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                         IconButton.filled(
                           onPressed: _loading
                               ? null
-                              : () => _player.playing
-                                    ? _player.pause()
-                                    : _player.play(),
+                              : () async {
+                                  if (_player.playing) {
+                                    _player.pause();
+                                    return;
+                                  }
+                                  if (await _ensureAudio()) _player.play();
+                                },
                           icon: Icon(
                             _player.playing ? Icons.pause : Icons.play_arrow,
                           ),

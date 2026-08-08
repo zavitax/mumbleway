@@ -61,6 +61,14 @@ pub struct Recorded {
     /// of `BlockAnalysis`: this format has to stay readable by a script written
     /// months from now, and a struct that grows silently breaks every one of
     /// them.
+    /// Whether this block's audio actually went on the wire.
+    ///
+    /// The one to cut a recording on, and not the same as [`Self::speaking`]:
+    /// that is the instantaneous detector, before the hold and the fade, and
+    /// before the mode has had its say. A rider muted, or in push-to-talk with
+    /// their thumb off the button, produces blocks that are speech by every
+    /// measure here and were sent to nobody.
+    pub transmitting: bool,
     pub speaking: bool,
     pub gate_open: bool,
     pub vad: f32,
@@ -171,7 +179,7 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
     writeln!(
         log,
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
-         block,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,modulation"
+         block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,modulation"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -209,8 +217,9 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
 
         let _ = writeln!(
             sink.log,
-            "{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3}",
+            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3}",
             block_index,
+            block.transmitting as u8,
             block.speaking as u8,
             block.gate_open as u8,
             block.vad,
@@ -246,6 +255,7 @@ mod tests {
     fn block(speaking: bool) -> Recorded {
         Recorded {
             samples: vec![0.25; 480],
+            transmitting: speaking,
             speaking,
             gate_open: speaking,
             vad: 0.9,

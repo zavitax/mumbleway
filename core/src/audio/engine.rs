@@ -180,14 +180,28 @@ const IDLE_WAKE: Duration = Duration::from_secs(30);
 /// the "t" in "right", an "s", an "f" — carries a fraction of the energy of
 /// the vowel before it and falls below the gate while the word is still being
 /// said, so the far end hears the word truncated and waits for the rest.
-const VAD_HOLD_SAMPLES: usize = SAMPLE_RATE as usize * 200 / 1000;
+///
+/// **Sized so the listener gets 200 ms of audio after the detector drops, not
+/// so the channel stays open for 200 ms.** Those are different numbers here,
+/// and the difference is [`ONSET_LOOKAHEAD_SAMPLES`]: the envelope is applied
+/// to audio 80 ms older than the decision driving it, so a 200 ms hold
+/// delivers only 120 ms of speech past the last block the detector called
+/// speech. The tail exists to carry a trailing consonant, and a consonant is
+/// audio — so the audio is what gets measured, and the hold is 80 ms longer to
+/// pay for the delay.
+///
+/// With [`VAD_FADE_SAMPLES`] the channel is held 280 ms and the far end hears
+/// 200 ms, of which only the last 30 ms is below full level.
+const VAD_HOLD_SAMPLES: usize = SAMPLE_RATE as usize * 250 / 1000;
 
 /// And how long it then takes to reach silence.
 ///
 /// A ramp rather than a second cliff: cutting a signal to zero in one sample
 /// is a click, and a click at the end of every sentence is more noticeable
-/// than the truncation this is fixing.
-const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 100 / 1000;
+/// than the truncation this is fixing. Short, because its job is only to avoid
+/// that click — a long ramp is not a gentler ending, it is speech sent at the
+/// wrong level.
+const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 30 / 1000;
 
 /// How far the transmit decision runs ahead of the audio it is applied to.
 ///
@@ -2093,6 +2107,11 @@ where
     // Voice activation's *attack* protection; see [`ONSET_LOOKAHEAD_SAMPLES`].
     let mut onset_delay = OnsetDelay::new();
 
+    // Recorded blocks waiting to learn whether they were transmitted. See the
+    // release point below for why they cannot be written where they are taken.
+    let mut pending_record: VecDeque<Recorded> = VecDeque::new();
+    let mut pending_samples: usize = 0;
+
     let mut mix_scratch = Vec::new();
     let mut mixed = Vec::new();
 
@@ -2179,8 +2198,19 @@ where
                 analyser.push(TAP_PRE_GATE, processor.pre_gate());
             }
 
+            if raw.is_none() && !pending_record.is_empty() {
+                // Recording stopped. The blocks still waiting have no answer
+                // coming and never will, so they go rather than being written
+                // with a guess.
+                pending_record.clear();
+                pending_samples = 0;
+            }
             if let Some(samples) = raw {
-                shared.record_block(Recorded {
+                pending_samples += samples.len();
+                pending_record.push_back(Recorded {
+                    // Filled in once this block's audio has reached the
+                    // transmit decision, which is not this iteration.
+                    transmitting: false,
                     samples,
                     speaking: analysis.speaking,
                     gate_open: analysis.gate_open,
@@ -2291,6 +2321,33 @@ where
             } else {
                 open
             };
+
+            // One recorded block released per iteration, stamped with the
+            // decision that was actually made about *its* audio.
+            //
+            // In voice-activated mode that decision is eight blocks late: the
+            // look-ahead hands the envelope audio from 80 ms earlier, so what
+            // was just decided applies to what was captured 80 ms ago. Writing
+            // `allowed` against the block that produced it would put every
+            // boundary in the log 80 ms early — the same 80 ms the look-ahead
+            // exists to recover, so the error would look exactly like the fix
+            // working. The queue holds each block back by precisely the delay
+            // its audio was subject to.
+            //
+            // The condition mirrors `OnsetDelay::shift`, and is on samples
+            // rather than a block count so it stays right if the capture block
+            // size ever changes.
+            let ready = mode != TransmitMode::VoiceActivity
+                || pending_record
+                    .front()
+                    .is_some_and(|f| pending_samples >= ONSET_LOOKAHEAD_SAMPLES + f.samples.len());
+            if ready {
+                if let Some(mut entry) = pending_record.pop_front() {
+                    pending_samples -= entry.samples.len();
+                    entry.transmitting = allowed;
+                    shared.record_block(entry);
+                }
+            }
 
             // Everything the chain worked out on the way to that decision,
             // published so the diagnostics panel can say which stage stopped
@@ -2454,6 +2511,7 @@ mod tests {
         // a rider's phone.
         shared.record_block(Recorded {
             samples: vec![0.1; FRAME_SIZE],
+            transmitting: true,
             speaking: true,
             gate_open: true,
             vad: 0.9,
@@ -2483,6 +2541,7 @@ mod tests {
         for i in 0..5 {
             shared.record_block(Recorded {
                 samples: vec![0.25; FRAME_SIZE],
+                transmitting: i % 2 == 0,
                 speaking: i % 2 == 0,
                 gate_open: i % 2 == 0,
                 vad: 0.7,
@@ -2669,6 +2728,20 @@ mod tests {
             quiet_lead >= LEAD,
             "only {quiet_lead} of {LEAD} samples of the leading consonant were sent"
         );
+    }
+
+    #[test]
+    fn the_tail_after_a_sentence_is_200_ms_with_a_30_ms_fade() {
+        // Three constants that only mean anything together, which is the whole
+        // reason for asserting them. The envelope runs on audio that the
+        // look-ahead has already delayed, so what a listener hears after the
+        // detector drops is the hold and fade *minus* that delay. Lengthen the
+        // look-ahead alone and the tail silently shortens by as much; this
+        // fails when that happens, which is the only warning there would be.
+        let ms = |n: usize| n * 1000 / SAMPLE_RATE as usize;
+        let delivered = VAD_HOLD_SAMPLES + VAD_FADE_SAMPLES - ONSET_LOOKAHEAD_SAMPLES;
+        assert_eq!(ms(delivered), 200, "audio sent after the detector drops");
+        assert_eq!(ms(VAD_FADE_SAMPLES), 30, "linear fade at the very end");
     }
 
     #[test]

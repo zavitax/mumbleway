@@ -414,7 +414,18 @@ class AppState extends ChangeNotifier {
   }
 
   NoiseSetting noise = NoiseSetting.helmet;
-  MicMode micMode = MicMode.pushToTalk;
+
+  /// Voice activation, because a rider has no free hand.
+  ///
+  /// Push-to-talk is the safer option in the narrow sense — a button cannot be
+  /// tripped by a gust — but it asks for a hand on a handlebar at speed, and a
+  /// default nobody can reach is not a safe default. It is also the only mode
+  /// the onset look-ahead runs in, so this is what puts the first consonant of
+  /// a sentence on the wire rather than the second.
+  ///
+  /// Only affects a fresh install. Anyone who has already chosen a mode has it
+  /// in preferences and keeps it.
+  MicMode micMode = MicMode.voiceActivity;
   int maxServers = 2;
 
   /// Chosen interface language. Null follows the system.

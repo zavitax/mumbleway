@@ -70,11 +70,6 @@ MAX_BYTES = 20 * 1024 * 1024
 # What everything here reads, and what a segment is cut out of.
 RATE = 48_000
 
-# Kept either side of a run the chain called speech, and taken off either side
-# of one it did not. Without it every speech clip starts mid-vowel: the column
-# it comes from is the instantaneous decision, which drops between words.
-PAD_SECONDS = 0.10
-
 # Shorter than this is not a training example, it is a click.
 MIN_SEGMENT_SECONDS = 0.50
 
@@ -194,12 +189,17 @@ def absorb(root, sent_as, src, mode):
 
 
 def decisions(path):
-    """The `speaking` column of a decision log, one entry per block, in order.
+    """The `transmitting` column of a decision log, one per block, in order.
 
-    That column is the chain's instantaneous answer to "is this a voice",
-    before the hold and fade the transmitter puts around it. Which is what
-    makes it usable as a label and also what makes the padding below
-    necessary — it goes false between words, not between sentences.
+    **Not `speaking`.** That is the instantaneous detector, before the hold and
+    the fade and before the mode has had its say — it drops between words, so
+    cutting on it meant padding every boundary by a guess to put back what it
+    had chopped off. `transmitting` is what actually went on the wire, envelope
+    and mode and mute included, so the boundaries are the real ones and there
+    is nothing to guess.
+
+    Falls back to `speaking` for logs written before that column existed, so
+    recordings already collected still read.
     """
     says, header = [], None
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -212,7 +212,7 @@ def decisions(path):
                 header = parts
                 continue
             row = dict(zip(header, parts))
-            says.append(row.get("speaking") == "1")
+            says.append((row.get("transmitting") or row.get("speaking")) == "1")
     return says
 
 
@@ -253,10 +253,13 @@ def split_by_log(raw, log, speech_root, noise_root, stem):
     and having something usable without an afternoon of hand-labelling. The
     whole ride stays beside these so any of it can be relabelled.
 
-    Speech runs are padded and noise runs are trimmed by the same margin. The
-    column goes false between words rather than between sentences, so an
-    unpadded speech cut loses the consonant that starts it and an untrimmed
-    noise cut collects the one that ends it.
+    **Cut exactly on the boundaries, with nothing added either side.** The
+    column is `transmitting`, which already carries the look-ahead that opens
+    the gate early and the hold and fade that close it late — the margins are
+    in the signal rather than in a guess made here. Padding it would widen
+    boundaries that are already the right ones and, worse, would make the
+    segments disagree with what the far end actually heard, which is the one
+    thing they are for.
 
     Returns `(speech_count, speech_seconds, noise_count, noise_seconds)`.
     """
@@ -271,14 +274,12 @@ def split_by_log(raw, log, speech_root, noise_root, stem):
     if not 160 <= block <= 1920:
         raise ValueError(f"{block} samples per block does not look right")
 
-    pad = int(PAD_SECONDS * RATE)
     least = int(MIN_SEGMENT_SECONDS * RATE)
     counts = {True: 0, False: 0}
     seconds = {True: 0.0, False: 0.0}
 
     for speaking, first, last in runs(says):
         lo, hi = first * block, min(last * block, total)
-        lo, hi = (max(0, lo - pad), min(total, hi + pad)) if speaking else (lo + pad, hi - pad)
         if hi - lo < least:
             continue
         counts[speaking] += 1

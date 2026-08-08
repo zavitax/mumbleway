@@ -118,16 +118,34 @@ a:hover { color: #FFC276; }
     radial-gradient(120% 90% at 12% -20%, #16202C 0%, transparent 60%),
     var(--ground);
 }
+/* Behind the words and staying there. At full strength the bars reach into the
+   headline and the type has to compete with a moving background, which is the
+   failure mode of every animated hero: legibility lost to decoration. It sits
+   in the lower half, at a third strength, fading out well before the text. */
 #analyser {
   position: absolute;
   inset: auto 0 0 0;
   width: 100%;
-  height: 62%;
-  opacity: 0.5;
-  mask-image: linear-gradient(to top, #000 35%, transparent 100%);
+  height: 46%;
+  opacity: 0.34;
+  mask-image: linear-gradient(to top, #000 0%, #000 22%, transparent 92%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 22%, transparent 92%);
+}
+/* A scrim between the bars and the words, so the lede stays readable over the
+   busiest part of the animation without dimming the bars themselves. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+    var(--ground) 0%,
+    color-mix(in srgb, var(--ground) 55%, transparent) 42%,
+    transparent 72%);
 }
 .hero-inner {
   position: relative;
+  z-index: 1;
   max-width: 62rem;
   margin: 0 auto;
   padding: clamp(3.5rem, 9vw, 7rem) var(--pad) clamp(4rem, 10vw, 8rem);
@@ -328,10 +346,13 @@ tbody tr:last-child td { border-bottom: 0; }
 }
 .grid .panel { margin: 0; }
 
-/* Specs read as instruments: label small and quiet, value large and lit. */
-.spec { font-family: var(--mono); }
+/* Specs read as instruments: label small and quiet, value large and lit.
+   The mono is on the label alone — set on the panel it inherits into the
+   sentence underneath, and a paragraph of prose in a monospace face reads as a
+   terminal rather than as writing. */
 .spec .k {
   display: block;
+  font-family: var(--mono);
   font-size: 0.72rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;

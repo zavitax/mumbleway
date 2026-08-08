@@ -107,24 +107,25 @@ Bluetooth-интерком связывает мотоциклистов дру�
 На компьютере это же самое выглядит как окно из двух панелей: слева ваши
 серверы, справа канал и те, кто в нём.
 
-<div class="shot-wide">
-  <img src="{{ '/assets/img/shots/home-desktop.webp' | relative_url }}"
-       alt="MumbleWay на Windows: слева сохранённые серверы с задержкой и
-            временем обхода по UDP, справа канал и его участники, внизу
-            индикатор микрофона."
-       width="1000" height="691" loading="lazy" decoding="async">
-  <figcaption>Windows, подключено. То же приложение, которому дали
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/home-desktop.webp' | relative_url }}"
+         alt="MumbleWay на Windows: слева сохранённые серверы с задержкой и
+         временем обхода по UDP, справа канал и его участники, внизу
+         индикатор микрофона."
+         width="1000" height="691" loading="lazy" decoding="async">
+    <figcaption>Windows, подключено. То же приложение, которому дали
   места.</figcaption>
-</div>
-
-<div class="shot-wide">
-  <img src="{{ '/assets/img/shots/diagnostics-desktop.webp' | relative_url }}"
-       alt="Панель диагностики на Windows: анализатор и индикаторы ступеней, а
-            под ними три колонки счётчиков — по входящему звуку, по устройству
-            и по серверу."
-       width="1000" height="691" loading="lazy" decoding="async">
-  <figcaption>Панель диагностики: в широком окне все счётчики видны сразу, а
+  </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/diagnostics-desktop.webp' | relative_url }}"
+         alt="Панель диагностики на Windows: анализатор и индикаторы ступеней, а
+         под ними три колонки счётчиков — по входящему звуку, по устройству
+         и по серверу."
+         width="1000" height="691" loading="lazy" decoding="async">
+    <figcaption>Панель диагностики: в широком окне все счётчики видны сразу, а
   не столбиком.</figcaption>
+  </figure>
 </div>
 
 ## Достоинства

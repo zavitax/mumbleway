@@ -230,14 +230,16 @@ reach and without going back to the app.
 - **iOS** uses Picture in Picture, which allows three buttons: play/pause
   talks, skip back mutes, skip forward hangs up (twice to confirm).
 
-<div class="shot-wide">
-  <img src="{{ '/assets/img/shots/floating-phone.webp' | relative_url }}"
-       alt="The call floating over the home screen: a connected light, the
-            microphone meter, whether anyone is speaking, the route and mode,
-            and mute and deafen buttons."
-       width="560" height="612" loading="lazy" decoding="async">
-  <figcaption>Over another app on Android: state, meter, route and mode, and
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/floating-phone.webp' | relative_url }}"
+         alt="The call floating over the home screen: a connected light, the
+         microphone meter, whether anyone is speaking, the route and mode,
+         and mute and deafen buttons."
+         width="560" height="612" loading="lazy" decoding="async">
+    <figcaption>Over another app on Android: state, meter, route and mode, and
   the controls you need without going back.</figcaption>
+  </figure>
 </div>
 
 ## Buttons

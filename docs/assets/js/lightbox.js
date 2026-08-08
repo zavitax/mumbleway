@@ -12,7 +12,7 @@
  * in a tab. The overlay is the enhancement, not the mechanism.
  */
 (function () {
-  var shots = document.querySelectorAll('.shots img, .shot-wide img');
+  var shots = document.querySelectorAll('.shots img');
   if (!shots.length) return;
 
   var closeLabel = document.body.getAttribute('data-close') || 'Close';
@@ -59,10 +59,7 @@
     full.alt = img.alt || '';
     figure.appendChild(full);
 
-    // `.shots` wraps each picture in a <figure>; `.shot-wide` does not, and
-    // puts the <figcaption> straight in the div. Both carry a caption worth
-    // keeping, so look for either container.
-    var holder = img.closest('figure') || img.closest('.shot-wide');
+    var holder = img.closest('figure');
     var caption = holder && holder.querySelector('figcaption');
     if (caption) {
       var c = document.createElement('figcaption');

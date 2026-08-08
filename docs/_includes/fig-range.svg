@@ -9,21 +9,38 @@
   matter.</desc>
 
   <defs>
-    <!-- A helmet seen from the side: shell, visor, and the boom the microphone
-         is on. Small enough to read at this size without detail. -->
+    <!-- The helmet from the app icon, at 7%. Drawn freehand the first time,
+         which gave it a stroke for a microphone boom that read as a tail
+         hanging off the back. The icon already solves this: the visor is a
+         slot inset from the front edge rather than a band across it, and the
+         chin bar is left solid so the jaw survives at any size. Reusing it
+         means the mark on the site and the mark on the phone are the same
+         object. Paths copied from app/assets/icon/mumbleway.svg. -->
     <g id="rider">
-      <path d="M0 0 a17 17 0 0 1 34 0 v9 a5 5 0 0 1 -5 5 h-24 a5 5 0 0 1 -5 -5 z"
-            fill="#E9F0F7"/>
-      <path d="M6 2 a13 13 0 0 1 25 2 l-25 5 z" fill="#1C2530"/>
-      <path d="M8 15 q-6 5 -2 10" stroke="#8695A6" stroke-width="2" fill="none"
-            stroke-linecap="round"/>
+      <g transform="scale(0.07) translate(-108,-236)">
+        <path d="M 356 236 C 500 236 622 350 622 492 L 622 606
+                 C 622 664 574 706 516 706 L 316 706
+                 C 190 706 108 606 108 480 C 108 344 216 236 356 236 Z"
+              fill="#E9F0F7"/>
+        <path d="M 566 398 L 566 516 L 360 516 C 296 516 262 486 262 458
+                 C 262 424 300 398 360 398 Z" fill="#FFA53C"/>
+        <path d="M 316 706 C 232 706 166 654 132 578 L 228 546
+                 C 252 600 288 626 344 626 L 516 626
+                 C 574 626 622 654 622 706 Z" fill="#BCCBD9"/>
+      </g>
     </g>
     <g id="rider-lost">
-      <path d="M0 0 a17 17 0 0 1 34 0 v9 a5 5 0 0 1 -5 5 h-24 a5 5 0 0 1 -5 -5 z"
-            fill="#4A5563"/>
-      <path d="M6 2 a13 13 0 0 1 25 2 l-25 5 z" fill="#1C2530"/>
-      <path d="M8 15 q-6 5 -2 10" stroke="#3B4653" stroke-width="2" fill="none"
-            stroke-linecap="round"/>
+      <g transform="scale(0.07) translate(-108,-236)">
+        <path d="M 356 236 C 500 236 622 350 622 492 L 622 606
+                 C 622 664 574 706 516 706 L 316 706
+                 C 190 706 108 606 108 480 C 108 344 216 236 356 236 Z"
+              fill="#4A5563"/>
+        <path d="M 566 398 L 566 516 L 360 516 C 296 516 262 486 262 458
+                 C 262 424 300 398 360 398 Z" fill="#28313C"/>
+        <path d="M 316 706 C 232 706 166 654 132 578 L 228 546
+                 C 252 600 288 626 344 626 L 516 626
+                 C 574 626 622 654 622 706 Z" fill="#3B4653"/>
+      </g>
     </g>
   </defs>
 

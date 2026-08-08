@@ -17,6 +17,16 @@
 
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   var ctx = canvas.getContext('2d');
+
+  /* Bars are a fixed width, and how many there are follows from that.
+     A fixed *count* was the bug: 28 bands spread across whatever the viewport
+     happens to be means each bar grows with the window, so on a wide screen
+     the whole thing reads as one image stretched rather than as an analyser.
+     A real one has a bar per band at whatever size the bars are, and shows
+     more of them when there is more room. */
+  var PITCH = 22;      // px per bar, including the gap
+  var MIN_BANDS = 16;
+  var MAX_BANDS = 96;
   var BANDS = 28;
   var dpr = 1;
   var w = 0;
@@ -34,6 +44,17 @@
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     w = canvas.clientWidth;
     h = canvas.clientHeight;
+
+    var wanted = Math.max(MIN_BANDS, Math.min(MAX_BANDS, Math.round(w / PITCH)));
+    if (wanted !== BANDS) {
+      // Keep whatever the existing bars were doing and seed only the new ones,
+      // so a window drag does not restart the animation on every frame.
+      for (var k = BANDS; k < wanted; k++) {
+        mic[k] = sup[k] = sent[k] = 0;
+        phase[k] = (k * 2.399963) % (Math.PI * 2);
+      }
+      BANDS = wanted;
+    }
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -53,7 +74,7 @@
     var t = now / 1000;
     ctx.clearRect(0, 0, w, h);
 
-    var gap = 3;
+    var gap = Math.max(2, PITCH * 0.16);
     var bw = (w - gap * (BANDS - 1)) / BANDS;
 
     for (var i = 0; i < BANDS; i++) {

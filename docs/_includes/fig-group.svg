@@ -29,7 +29,7 @@
   <!-- What an intercom would still hold together: the two who happen to be
        near each other, and nobody else. Drawn as a flattened circle because
        the spread here is along the road and not across it. -->
-  <ellipse cx="763" cy="222" rx="80" ry="45" fill="#3ECF7E" fill-opacity="0.05"
+  <ellipse cx="763" cy="222" rx="80" ry="40" fill="#3ECF7E" fill-opacity="0.05"
            stroke="#3ECF7E" stroke-opacity="0.45" stroke-width="1.5"
            stroke-dasharray="6 6"/>
 
@@ -50,13 +50,16 @@
   <use href="#gp-rider" x="700" y="206"/>
   <use href="#gp-rider" x="790" y="206"/>
 
+  <!-- Clear of the ellipse above rather than tucked under it. "front" sits
+       inside the intercom's reach, so its label was crossed by the dashed edge
+       — the one line in the picture that has to read as a boundary. -->
   <g font-size="13" font-family="inherit" text-anchor="middle" fill="#8695A6">
-    <text x="78" y="272">{{ f.back }}</text>
-    <text x="808" y="272">{{ f.front }}</text>
+    <text x="78" y="282">{{ f.back }}</text>
+    <text x="808" y="282">{{ f.front }}</text>
   </g>
-  <text x="78" y="289" fill="#61707F" font-size="12" font-family="inherit"
+  <text x="78" y="299" fill="#61707F" font-size="12" font-family="inherit"
         text-anchor="middle">{{ f.fuel }}</text>
-  <text x="763" y="296" fill="#61707F" font-size="12" font-family="inherit"
+  <text x="763" y="306" fill="#61707F" font-size="12" font-family="inherit"
         text-anchor="middle">{{ f.intercom_reach }}</text>
 </svg>
 <figcaption>{{ f.caption | strip_newlines }}</figcaption>

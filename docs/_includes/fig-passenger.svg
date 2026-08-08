@@ -17,13 +17,22 @@
         letter-spacing="1.5">{{ f.heading }}</text>
 
   <!-- Both helmets, facing the same way, close enough to hear each other.
-       At this scale each is 59 wide and 54 tall, so these two span x 130–189
-       and 310–369 — which is what the arcs below are keeping clear of. -->
-  <use href="#ps-helmet" x="130" y="120"/>
-  <use href="#ps-helmet" x="310" y="120"/>
-  <text x="160" y="193" fill="#8695A6" font-size="13" font-family="inherit"
+       At this scale each is 59 wide and 54 tall, so these two span x 95–154
+       and 275–334 — which is what the arcs below are keeping clear of.
+
+       The drawing is centred in the column left of the divider, and that
+       column ends 40 short of the divider because the right column starts 40
+       past it. It used to sit 15 units right of centre and 33 lower than the
+       right column's first line, which read as a picture that had drifted:
+       the two halves of a comparison have to start at the same height, or
+       they look like two drawings sharing a frame rather than one comparison.
+       Measured in a browser, not eyeballed — every one of those numbers came
+       out of getBBox. -->
+  <use href="#ps-helmet" x="95" y="104"/>
+  <use href="#ps-helmet" x="275" y="104"/>
+  <text x="125" y="177" fill="#8695A6" font-size="13" font-family="inherit"
         text-anchor="middle">{{ f.rider }}</text>
-  <text x="340" y="193" fill="#8695A6" font-size="13" font-family="inherit"
+  <text x="305" y="177" fill="#8695A6" font-size="13" font-family="inherit"
         text-anchor="middle">{{ f.passenger }}</text>
 
   <!-- The loop. Two arcs going opposite ways, which is the whole of it: each
@@ -34,12 +43,12 @@
        that appeared to come from nowhere — the one thing the picture is for is
        that each arc lands on a helmet, so the head has to be visible. -->
   <g stroke="#FF5D5D" stroke-width="2" fill="none" marker-end="url(#ps-arrow)">
-    <path d="M 194 134 Q 267 92 305 134"/>
-    <path d="M 305 160 Q 267 202 194 160"/>
+    <path d="M 159 118 Q 232 76 270 118"/>
+    <path d="M 270 144 Q 232 186 159 144"/>
   </g>
-  <text x="250" y="101" fill="#FF5D5D" font-size="12" font-family="inherit"
+  <text x="215" y="85" fill="#FF5D5D" font-size="12" font-family="inherit"
         text-anchor="middle">{{ f.loop_out }}</text>
-  <text x="250" y="212" fill="#FF5D5D" font-size="12" font-family="inherit"
+  <text x="215" y="196" fill="#FF5D5D" font-size="12" font-family="inherit"
         text-anchor="middle">{{ f.loop_back }}</text>
 
   <!-- ── The fix ──────────────────────────────────────────────────────── -->

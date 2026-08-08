@@ -1,150 +1,107 @@
 # Remaining work on the site and the app
 
-Handover written 2026-08-08, at the end of a long session. Everything described
-as done is live; everything under "Not started" is exactly that.
+Updated 2026-08-08, second pass. Everything described as done is live.
 
-## Look at this first
+## Done since the first handover
 
-`docs/_includes/fig-pillion.svg` — the rider/pillion feedback loop — is
-committed and pushed as `d63c7b1`, and **has never been rendered in a
-browser**. It parses as XML and nothing more is known about it. Open
-`/scenarios.html` and check it before trusting it; every other figure on the
-site needed a correction once it was actually looked at.
+- **Bilingual.** All seven pages exist under `/ru/`. Chrome and every label
+  inside the diagrams come from `_data/strings.yml`, keyed by language; the
+  layout reads `site.data.strings[page.lang]` and a `ref:` in each page's front
+  matter links it to its counterpart, so the switch lands on the same page.
+- **The language switch** matches the app's button: active language, flag, code,
+  8px radius, 10/8 padding, the same two-line tooltip built from the same two
+  ARB strings. Right of the menu when wide, left of the hamburger when narrow,
+  visible at every width.
+- **The Russian was proof-read** after the first draft, which contained a
+  non-word (`уцелевает`), a misplaced negation that reversed an instruction,
+  and several calques of English idioms. Do not assume the first pass of a
+  translation is finished because it is complete.
+- **Figures**: the passenger loop's arrowheads no longer end inside the helmets;
+  two new ones (a group over eight kilometres, and the tunnel); helmet and
+  server cloud are shared includes so they cannot drift.
+- **The top bar had not been sticky for months.** `position: sticky` was
+  overridden by a later `position: relative`, and `body { overflow-x: hidden }`
+  would have defeated it independently. Both fixed.
+- **Screenshots are real captures** from the emulator against a real Mumble
+  server, including the analyser in both detection states.
 
 ## Not started
 
-### 1–4, 6. Screenshots — one job, not five
+### Screenshots on the other platforms
 
-These are a single pass driving real builds, not five separate tasks. The
-existing store screenshots come from `app/test/store_screenshots_test.dart`,
-and **that harness cannot produce most of what is wanted**: a widget test has
-no engine, so there is no live spectrum and no audio.
+Android is done. **iOS, macOS and Windows are not.** What exists is a working
+recipe rather than a plan:
 
-What is wanted:
-
-- **Real emulator captures** so buttons carry real text rather than harness
-  rendering.
-- **The analyser running**, in two states — speech detected and not — on every
-  platform. Needs audio playing into the device while capturing. The acoustic
-  loopback used earlier this session works: play a `.wav` on the host through
-  `Media.SoundPlayer` while the emulator's microphone is live. It is
-  unreliable; expect several attempts, and check `speaking` actually fired.
-- **The floating call window**, both platforms. Android needs the "display over
-  other apps" permission granted first; iOS is Picture in Picture.
-- **Settings sections** on `docs/settings.md`, per section rather than one
-  screenshot of the whole screen.
-- **A recording walkthrough** for `docs/sending-a-recording.html`: switch on,
-  card expanded, listen sheet, share sheet.
-
-Capture recipe that worked all session:
-
-```powershell
-$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
-& $adb shell screencap -p /sdcard/x.png
-& $adb pull /sdcard/x.png out.png     # NEVER `exec-out ... > file` in
-                                      # PowerShell; it corrupts binaries
+```bash
+export MSYS_NO_PATHCONV=1          # or Git Bash rewrites /sdcard/...
+adb shell screencap -p /sdcard/s.png
+adb pull -a /sdcard/s.png out.png  # never `exec-out > file`; it corrupts PNGs
 ```
 
-Then downscale to WebP with PIL, as `docs/assets/img/shots/` already is —
-560 px wide for phone, 1000 px for desktop, quality 84. Those come out at
-15–61 KB each.
+Then PIL to WebP at 560 px wide, quality 84 — 12–62 kB each.
 
-### 5. Illustrations for "On the road"
+Two things that made the Android pass work and will be needed again:
 
-One is drafted (see uncommitted, above). Others worth having: a group strung
-out over kilometres on one channel, and the tunnel/no-signal case, which is the
-honest limitation and currently only prose.
+- **Demo mode** for a fixed clock and a clean status bar, so a capture taken
+  today and one taken next month differ only where the app differs:
+  `adb shell am broadcast -a com.android.systemui.demo -e command enter`, then
+  `clock -e hhmm 1030`, `battery`, `network`, `notifications -e visible false`.
+- **Real speech into the microphone.** Acoustic loopback works: concatenate
+  clips from `C:\ml_data\speech_road` (real helmet audio, not synthetic), lift
+  the level, and `PlayLooping()` it on the host while capturing. That is what
+  produced the speech-detected analyser shot. Check the gate actually fired —
+  the legend flips to "Sending" and three lights go green — rather than
+  assuming it did.
 
-Reuse the helmet from `docs/_includes/fig-range.svg` — it is the app icon's,
-lifted from `app/assets/icon/mumbleway.svg` at 7%, and both figures should keep
-using the same one.
+Still missing: the share sheet, most of the settings sections (three of about
+fourteen are shown), and iOS Picture-in-Picture for the floating window.
 
-### 7. Russian, with a persistent language switch
+### The settings page does not match the app's own order
 
-**The largest item by a wide margin.** A switch is trivial; seven translated
-pages and a mechanism are not.
+Noticed while capturing and **not acted on**, because it is a content decision
+rather than a bug. The app's settings screen opens on *Audio devices* and
+groups things differently from `settings.md`, which is organised by topic. The
+app also has **Even out speaker loudness**, which the page does not mention at
+all, and lists the noise profiles Off→Automatic where the page lists them
+Automatic→Off.
 
-> **Decided 2026-08-08: `/ru/` page copies. Build it this way.** The structure
-> below is no longer a proposal to weigh up — it is the agreed approach, and
-> the reason it was worth settling first is that it is cheap now and expensive
-> once seven pages exist in one shape and have to be moved to another.
-
-Jekyll has no i18n and **GitHub Pages runs no plugins**, so a gem is not an
-option:
-
-- `/ru/` copies of every page, front matter carrying `lang: ru`.
-- `docs/_data/strings.yml` for chrome — nav labels, footer, buttons — keyed by
-  language, so `_layouts/default.html` reads `site.data.strings[page.lang]`.
-- The switch in the top bar: **right of the menu on wide screens, left of the
-  hamburger on narrow**, and visible at every width. It links to the current
-  page's counterpart, which means each page needs to know its opposite number —
-  simplest is a `ref:` key in front matter shared by both language versions.
-
-Pages to translate: index, settings, scenarios, server, licences, privacy,
-sending-a-recording. **`privacy.md` is the delicate one** — its URL is
-registered with three app stores, so `/privacy` must keep resolving exactly as
-it does. Do not enable `permalink: pretty`; it would move it to `/privacy/` and
-404 the URL a reviewer follows.
-
-Consequences of the copies approach that are worth knowing before starting,
-none of which change the decision:
-
-- **Copies drift.** Two files say the same thing and only one gets edited. The
-  English pages are the source; a change to one is not done until the Russian
-  one has it. Worth a check in `tool/` that walks both trees and reports any
-  page whose counterpart is older, because nothing else will notice.
-- **The Russian privacy policy is a translation of a document that is
-  load-bearing.** `docs/privacy.md` has to keep agreeing with
-  `docs/STORE_DESCRIPTION.md` and with what the app actually does — the public
-  server directory call, the optional cloud sync, diagnostic recording. A
-  translation that softens any of those is worse than no translation.
-- **Russian is longer.** Labels grow by roughly a third, which is why the menu
-  breakpoint was made measured rather than a media query. Nothing in the CSS
-  should need touching; if it does, that is a sign something else hard-codes a
-  width.
-- **Check the encoding after every edit.** `python tool/check_encoding.py`.
-  Cyrillic mojibake has been committed unnoticed in this repository before, and
-  a garbled console rendering is not evidence of a garbled file.
-
-### 8. Translated text inside the illustrations
-
-Falls out of 7 if the figures become includes taking a language parameter:
-
-```liquid
-{% include fig-range.svg lang=page.lang %}
-```
-
-…with every `<text>` reading from `site.data.strings`. Doing 7 without this
-means the diagrams stay in English on the Russian pages, and retrofitting is
-more work than building it in.
+The page is not wrong, but a reader with the screen open has to translate
+between two orders. Worth reconciling deliberately, in one pass, rather than
+patching.
 
 ## Things that will bite
 
-- **Stale cache.** Testing the site in a browser repeatedly served old CSS with
-  new JS and produced nonsense. Cache-bust the stylesheet or hard-reload before
-  believing anything looks wrong.
+- **Stale cache.** This cost time twice in one session: the served CSS had the
+  new rules and the page was still painting the old ones. Hard-reload with
+  cache ignored before believing anything looks wrong.
 - **kramdown does not parse markdown inside a block element.** Every `<div>`
-  wrapping a table needs `markdown="1"` or it renders as pipes.
-- **`baseurl` is not inferred** for a project site. It is set in `_config.yml`;
-  without it every `relative_url` resolves to the user-site root and the whole
-  navigation 404s while the pages build perfectly.
-- **The menu breakpoint is measured, not a media query** (`docs/assets/js/menu.js`).
-  Adding a nav item needs no CSS change. Adding Russian labels needs no CSS
-  change either — that is why it was made measured.
-- **Never edit source through a PowerShell pipeline.** `Get-Content |
-  Set-Content -Encoding utf8` corrupts UTF-8. Use the editing tools, and run
-  `python tool/check_encoding.py` after touching anything with non-ASCII —
-  which every Russian file is.
+  wrapping a table needs `markdown="1"`.
+- **`baseurl` is not inferred** for a project site.
+- **The menu breakpoint is measured, not a media query.** Adding a nav item or
+  a language needs no CSS change. It now reads the bar's real padding and gaps
+  rather than a constant, which was wrong twice — the padding is a `clamp()`,
+  and the language switch added a third item and so a second gap.
+- **Never edit source through a PowerShell pipeline**, and run
+  `python tool/check_encoding.py` after touching anything with Cyrillic. Note
+  also that the *terminal* mangles Cyrillic on this machine: to read Russian
+  out of a file, write it to a file and open it, do not print it.
+- **The back button exits the app** from the emulator's home screen, and
+  `am start` will not bring it back afterwards — use
+  `monkey -p com.mumbleway.mumbleway -c android.intent.category.LAUNCHER 1`.
 
 ## Outside the site
 
 - **The Apple half of publish 68 never landed.** Both attempts failed on App
-  Store Connect returning HTTP 500 (`list-apps`), with Apple's own trace IDs —
-  their outage, not our configuration. Google Play and Windows MSIX took build
-  68 from the same run. Retry when their API is healthy.
+  Store Connect returning HTTP 500 (`list-apps`) with Apple's own trace IDs.
+  Google Play and Windows took build 68 from the same run. Retry when their API
+  is healthy.
 - **The recording playback panel (`80a565f`) is in no store build.** It is
-  merged and verified on the emulator — play, seek, waveform, playhead — but
-  has never shipped. One publish catches it and the Apple gap up together.
-- **`docs/MUSIC_GATE.md`** is still waiting on a road recording with music, and
-  should not be acted on before there is one. Three features have already been
-  tried against that fault and failed.
+  merged and verified — and now screenshotted, playing, on the site — but has
+  never shipped. One publish catches it and the Apple gap up together.
+- **`docs/MUSIC_GATE.md`** still waits on a road recording with music.
+- **A one-off native abort** was seen once at startup
+  (`nativeSetAndroidContext` → `SIGABRT` during `configureFlutterEngine`) after
+  the app was backed out of and immediately restarted. It did **not** reproduce
+  on a clean `force-stop` + start, and no panic message reached logcat. Recorded
+  because it is the kind of thing that is dismissed twice and then reported by a
+  user, not because there is anything to fix from this alone.

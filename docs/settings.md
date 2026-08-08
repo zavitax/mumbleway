@@ -91,6 +91,15 @@ Plays a short tone on the selected output.
 
 Microphone gain and speaker volume, with the live meter between them.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-levels-phone.webp' | relative_url }}"
+         alt="The levels section: microphone gain and speaker volume sliders, with the meter above them and the noise cancellation heading below."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Two sliders and the meter that tells you where to put them.</figcaption>
+  </figure>
+</div>
+
 ### Microphone gain
 
 Aim for the meter to peak around three quarters while you speak normally. Too
@@ -138,6 +147,15 @@ For when the speaker is heard by the microphone. Echo cancellation removes what
 it can predict; these handle what is left, and they work in quite different
 ways.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-feedback-phone.webp' | relative_url }}"
+         alt="The feedback suppression section: four options, from no suppression through cutting only when a howl builds to ducking the microphone while others talk."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Four ways of handling what echo cancellation could not predict.</figcaption>
+  </figure>
+</div>
+
 <div class="table-wrap" markdown="1">
 
 | Setting | Behaviour |
@@ -152,6 +170,15 @@ ways.
 ## Hiss removal
 
 For the steady hiss a microphone adds under everything.
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-hiss-phone.webp' | relative_url }}"
+         alt="The hiss removal section: leave the sound alone, learn the hiss and subtract it, or turn quiet passages down further."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Start at the top. The other two both take something away as well.</figcaption>
+  </figure>
+</div>
 
 <div class="table-wrap" markdown="1">
 
@@ -225,6 +252,15 @@ riding.
 Push-to-talk-with-hold therefore cannot work from one — use the toggle action
 instead. While a media button is bound, the remote controls MumbleWay rather
 than your music app.</p>
+</div>
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-buttons-phone.webp' | relative_url }}"
+         alt="The end of the settings screen: button bindings with an action picker and a Learn button, the network proxy switches, and the identity section showing the certificate fingerprint."
+         width="560" height="1244" loading="lazy" decoding="async">
+    <figcaption>Buttons, network and identity — the last three sections, together.</figcaption>
+  </figure>
 </div>
 
 ## Network

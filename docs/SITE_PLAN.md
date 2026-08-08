@@ -139,3 +139,52 @@ Two other facts worth keeping:
   on a clean `force-stop` + start, and no panic message reached logcat. Recorded
   because it is the kind of thing that is dismissed twice and then reported by a
   user, not because there is anything to fix from this alone.
+
+## Queued, with everything needed to start
+
+Written 2026-08-09 at the end of a session that ran out of room. Each of these
+was asked for and none was started badly.
+
+### The music recording arrived — analyse it
+
+`C:\ml_dataides60809-0142-000.{s16,csv,wav}`. **This is the recording
+`MUSIC_GATE.md` has been waiting for**, and the fault reproduces plainly:
+
+    138.8 s of music and no speech at all
+    transmitting 36.1% of blocks, in 17 runs
+    two runs of 14.8 s and 13.0 s, then a dozen of 0.5-3 s
+
+The reporter's most useful observation is that **one passage fooled the gate
+once and not the second time**. That rules out a pure per-block property — the
+same audio decided differently — and points at state: the noise floor tracker,
+the AGC, or the hold envelope. Compare `floor_db` and `snr_db` at the two
+instances before proposing anything.
+
+**Read the CSV skipping `#` lines.** The first line is a comment and a plain
+`DictReader` takes it as the header, which silently reports 0% transmitting on
+a file that is 36% transmitting.
+
+### Telegram bot: take a caption with the file
+
+Asked for so a recording can be processed the moment it arrives. Today the
+mode is inferred, and a whole ride is filed without anyone saying what it is.
+Telegram puts the caption in `message.caption`, beside `document` —
+`tools/vad/telegram_intake.py` already parses the update, so it is a field to
+read and store beside the ride, not a new mechanism.
+
+### Screenshots still wanted
+
+- **Noise cancellation, feedback suppression, hiss removal and microphone
+  mode**, cropped to their sections. Each is taller than the frame it was
+  captured in, so this needs the stitched screen: `scratchpad/stitch.py`
+  assembles the sweep into one 1080x7473 image by matching row-ink profiles,
+  and prints every accent-blue heading position. Crop heading-to-heading from
+  that, then snap with `crop.py`.
+- **Sync.** Not on Android at all — the section only exists where a cloud can
+  carry the data, so it has to come from the iOS simulator.
+- **Diagnostics, one per subsection**, including the analyser live with speech
+  detected *and* transmitting. The acoustic-loopback recipe is above.
+- **"Your own server" shots are broken** and want re-making on the simulator.
+
+`idb` is installed and connected, so all of these are now reachable — see
+CLAUDE.md for how to drive it and CLAUDE.local.md for where it lives.

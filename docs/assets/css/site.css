@@ -116,6 +116,79 @@ a:hover { color: #FFC276; }
 .topbar nav a:hover { color: var(--text); }
 .topbar nav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
 
+/* ---------- the narrow-screen menu ---------- */
+
+.menu-button {
+  display: none;
+  margin-left: auto;
+  width: 2.75rem;
+  height: 2.75rem;   /* A thumb target, not an icon's bounding box. */
+  padding: 0;
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--text);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+.menu-button:hover { border-color: var(--dim); }
+
+/* Three rules drawn from one element: the middle is the box, the other two are
+   its pseudo-elements. Fewer nodes, and the whole thing animates as one. */
+.bars, .bars::before, .bars::after {
+  display: block;
+  width: 1.15rem;
+  height: 2px;
+  background: currentColor;
+  transition: transform .18s ease, opacity .18s ease;
+}
+.bars { position: relative; }
+.bars::before, .bars::after { content: ""; position: absolute; left: 0; }
+.bars::before { top: -6px; }
+.bars::after  { top: 6px; }
+
+/* Open, it becomes a cross — the same three rules, rearranged, so the control
+   says what a second press will do. */
+.topbar.open .bars { background: transparent; }
+.topbar.open .bars::before { transform: translateY(6px) rotate(45deg); }
+.topbar.open .bars::after  { transform: translateY(-6px) rotate(-45deg); }
+
+/* Below this the row cannot hold six links and a wordmark, and they wrap onto
+   a second line that pushes the content down on every page.
+   `.has-menu` is set by the script, so the list is only ever collapsed when
+   something exists to open it again. */
+@media (max-width: 47.5rem) {
+  .topbar { position: relative; flex-wrap: nowrap; }
+  .has-menu .menu-button { display: inline-flex; }
+  .has-menu nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    padding: 0.5rem var(--pad) 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 18px 30px -18px #000;
+  }
+  .has-menu.open nav { display: flex; }
+  .has-menu nav a {
+    padding: 0.75rem 0;
+    font-size: 1.02rem;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .has-menu nav a:last-child { border-bottom: 0; }
+  /* The underline that marks the current page is a bottom border on a row that
+     already has one, so it moves to the side where it reads as a marker. */
+  .has-menu nav a[aria-current="page"] {
+    border-bottom-color: var(--line-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
+    padding-left: 0.7rem;
+  }
+}
+
 /* ---------- hero ---------- */
 
 .hero {

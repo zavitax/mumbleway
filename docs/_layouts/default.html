@@ -25,7 +25,15 @@
     <img class="brand-logo" src="{{ '/assets/img/mumbleway-wordmark.svg' | relative_url }}"
          alt="MumbleWay" width="537" height="256">
   </a>
-  <nav aria-label="Sections">
+  <!-- Hidden until the script that operates it has run. Without JavaScript the
+       links stay where they are and simply wrap onto a second line, which is
+       worse-looking and entirely usable — a menu button that does nothing
+       would not be. -->
+  <button class="menu-button" type="button" aria-expanded="false"
+          aria-controls="sections" aria-label="Menu" hidden>
+    <span class="bars" aria-hidden="true"></span>
+  </button>
+  <nav id="sections" aria-label="Sections">
     {%- for item in site.nav %}
     <a href="{{ item.url | relative_url }}"{% if page.url == item.url %} aria-current="page"{% endif %}>{{ item.title }}</a>
     {%- endfor %}
@@ -78,6 +86,7 @@
   </p>
 </footer>
 
+<script src="{{ '/assets/js/menu.js' | relative_url }}" defer></script>
 <script src="{{ '/assets/js/analyser.js' | relative_url }}" defer></script>
 </body>
 </html>

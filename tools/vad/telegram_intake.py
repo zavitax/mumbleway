@@ -15,12 +15,23 @@ did, so a mistake is visible at the roadside rather than three weeks later when
 the numbers look strange.
 
 The app's own share button sends a single `mumbleway-recordings.zip` holding
-every recording on the phone, and that archive is taken apart here. It is the
-normal way recordings arrive, and it is what makes a whole ride fit: Telegram
-will not hand a bot more than 20 MB, and PCM of a mostly silent ride compresses
-around ten times over. Sending the same archive twice is harmless — files are
-named after the ride they came from, so a resend overwrites rather than
-accumulates.
+every recording on the phone, and **that needs no mode and is never asked about
+one**. A ride is not noise or speech; it is both in turn, and the `.csv` beside
+each recording already says which for every 10 ms of it. So an archive is
+unpacked into `rides/`, converted, and cut into `speech_road/` and
+`noise_road/` by its own decision logs.
+
+Those labels are the noise gate's opinion, not ground truth, and the difference
+matters: a model trained on them can only learn to imitate the gate, mistakes
+included, and the gate's mistakes are the reason for collecting road audio in
+the first place. Treat the split as triage — a way to find the passages worth
+listening to — and relabel from the whole rides, which are kept for exactly
+that.
+
+An archive also makes a whole ride fit. Telegram will not hand a bot more than
+20 MB, and PCM of a mostly silent ride compresses around ten times over.
+Sending the same archive twice is harmless: files are named after the ride they
+came from, so a resend overwrites rather than accumulates.
 
 # The token
 
@@ -55,6 +66,17 @@ API = "https://api.telegram.org"
 # Telegram will not hand a bot a file larger than this, whatever the app shows
 # as sent. Long rides have to be split; see the note in the reply text.
 MAX_BYTES = 20 * 1024 * 1024
+
+# What everything here reads, and what a segment is cut out of.
+RATE = 48_000
+
+# Kept either side of a run the chain called speech, and taken off either side
+# of one it did not. Without it every speech clip starts mid-vowel: the column
+# it comes from is the instantaneous decision, which drops between words.
+PAD_SECONDS = 0.10
+
+# Shorter than this is not a training example, it is a click.
+MIN_SEGMENT_SECONDS = 0.50
 
 
 def api(token, method, **params):
@@ -141,21 +163,126 @@ def absorb(root, sent_as, src, mode):
     return "audio", convert(kept, raw), name
 
 
-def unpack(archive, root, mode):
-    """Take a share-button archive apart, one member at a time.
+def decisions(path):
+    """The `speaking` column of a decision log, one entry per block, in order.
 
-    Returns `(minutes, recordings, logs, problems)`.
+    That column is the chain's instantaneous answer to "is this a voice",
+    before the hold and fade the transmitter puts around it. Which is what
+    makes it usable as a label and also what makes the padding below
+    necessary — it goes false between words, not between sentences.
+    """
+    says, header = [], None
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(",")
+            if header is None:
+                header = parts
+                continue
+            row = dict(zip(header, parts))
+            says.append(row.get("speaking") == "1")
+    return says
+
+
+def runs(says):
+    """Consecutive blocks that agree, as `(speaking, first, last_exclusive)`."""
+    start = 0
+    for i in range(1, len(says) + 1):
+        if i == len(says) or says[i] != says[start]:
+            yield says[start], start, i
+            start = i
+
+
+def cut(raw, first, last, dst):
+    """One stretch of a ride, copied out by sample offset.
+
+    The whole ride is already f32 mono at 48 kHz, so a segment is a byte range
+    and nothing has to be decoded again to take one.
+    """
+    with open(raw, "rb") as src, open(dst, "wb") as out:
+        src.seek(first * 4)
+        remaining = (last - first) * 4
+        while remaining > 0:
+            chunk = src.read(min(1 << 20, remaining))
+            if not chunk:
+                break
+            out.write(chunk)
+            remaining -= len(chunk)
+
+
+def split_by_log(raw, log, speech_root, noise_root, stem):
+    """Cut a ride into speech and noise using what the chain decided.
+
+    **These are weak labels, not ground truth, and that distinction is
+    load-bearing.** `speaking` is the gate's own opinion, so a model trained on
+    it can at best learn to imitate the gate — including its mistakes, which
+    are the entire reason for collecting road audio in the first place. What
+    the split is good for is triage: finding the passages worth listening to,
+    and having something usable without an afternoon of hand-labelling. The
+    whole ride stays beside these so any of it can be relabelled.
+
+    Speech runs are padded and noise runs are trimmed by the same margin. The
+    column goes false between words rather than between sentences, so an
+    unpadded speech cut loses the consonant that starts it and an untrimmed
+    noise cut collects the one that ends it.
+
+    Returns `(speech_count, speech_seconds, noise_count, noise_seconds)`.
+    """
+    says = decisions(log)
+    total = os.path.getsize(raw) // 4
+    if not says or not total:
+        return 0, 0.0, 0, 0.0
+
+    # Derived rather than assumed. It is 480 samples — 10 ms — but a recorder
+    # that changes block size would otherwise silently mislabel every ride.
+    block = total // len(says)
+    if not 160 <= block <= 1920:
+        raise ValueError(f"{block} samples per block does not look right")
+
+    pad = int(PAD_SECONDS * RATE)
+    least = int(MIN_SEGMENT_SECONDS * RATE)
+    counts = {True: 0, False: 0}
+    seconds = {True: 0.0, False: 0.0}
+
+    for speaking, first, last in runs(says):
+        lo, hi = first * block, min(last * block, total)
+        lo, hi = (max(0, lo - pad), min(total, hi + pad)) if speaking else (lo + pad, hi - pad)
+        if hi - lo < least:
+            continue
+        counts[speaking] += 1
+        seconds[speaking] += (hi - lo) / RATE
+        root = speech_root if speaking else noise_root
+        os.makedirs(root, exist_ok=True)
+        tag = "s" if speaking else "n"
+        cut(raw, lo, hi, os.path.join(root, f"{stem}-{tag}{counts[speaking]:04d}.raw"))
+
+    return counts[True], seconds[True], counts[False], seconds[False]
+
+
+def unpack(archive, roots):
+    """Take a share-button archive apart and label what is in it.
+
+    Returns `(rides, minutes, speech, speech_seconds, noise, noise_seconds,
+    problems)`.
+
+    **No mode is asked for and none would mean anything.** A ride is not noise
+    or speech, it is both in turn, and the `.csv` beside the audio already says
+    which for every 10 ms of it. Asking the rider to pick one for a whole
+    archive threw that away and then made them guess at a label the phone had
+    already worked out.
 
     **Members are taken by name only.** `../` in a member name is the oldest
     way there is to write outside the directory you meant, and while this bot
     has an allow-list, an allow-list is one environment variable away from
     being wrong — and this is the one place where a name chosen elsewhere
     decides where a file lands.
-
-    Sorted, so a `.csv` and the `.s16` it describes are handled together and a
-    failure names the ride it belongs to.
     """
-    minutes, recordings, logs, problems = 0.0, 0, 0, []
+    rides = roots["rides"]
+    os.makedirs(rides, exist_ok=True)
+    problems, members = [], []
+
     with zipfile.ZipFile(archive) as z:
         for entry in sorted(z.infolist(), key=lambda e: e.filename):
             if entry.is_dir():
@@ -166,23 +293,36 @@ def unpack(archive, root, mode):
             if not member.lower().endswith((".s16", ".csv")):
                 problems.append(f"{member}: not a recording, left out")
                 continue
-
-            temp = os.path.join(root, f".unpacking-{member}")
             try:
-                with z.open(entry) as src, open(temp, "wb") as f:
+                with z.open(entry) as src, open(os.path.join(rides, member), "wb") as f:
                     shutil.copyfileobj(src, f)
-                kind, value, _ = absorb(root, member, temp, mode)
-                if kind == "audio":
-                    minutes += value / 60
-                    recordings += 1
-                else:
-                    logs += 1
+                members.append(member)
             except Exception as e:  # noqa: BLE001 - one bad member is not the archive
                 problems.append(f"{member}: {e}")
-            finally:
-                if os.path.exists(temp):
-                    os.remove(temp)
-    return minutes, recordings, logs, problems
+
+    ridden = minutes = 0
+    speech = noise = 0
+    speech_s = noise_s = 0.0
+    for stem in sorted({os.path.splitext(m)[0] for m in members}):
+        audio = os.path.join(rides, f"{stem}.s16")
+        log = os.path.join(rides, f"{stem}.csv")
+        if not os.path.exists(audio):
+            problems.append(f"{stem}: a decision log with no audio beside it")
+            continue
+        try:
+            raw = os.path.join(rides, f"{stem}.raw")
+            seconds = convert(audio, raw)
+            ridden += 1
+            minutes += seconds / 60
+            if os.path.exists(log):
+                a, b, c, d = split_by_log(raw, log, roots["speech"], roots["noise"], stem)
+                speech, speech_s, noise, noise_s = speech + a, speech_s + b, noise + c, noise_s + d
+            else:
+                problems.append(f"{stem}: no decision log, so nothing to label it by")
+        except Exception as e:  # noqa: BLE001
+            problems.append(f"{stem}: {e}")
+
+    return ridden, minutes, speech, speech_s, noise, noise_s, problems
 
 
 def handle(token, roots, modes, msg):
@@ -196,25 +336,35 @@ def handle(token, roots, modes, msg):
     if text in ("/start", "/help", "/id"):
         say(token, chat,
             f"Your chat id is {chat}.\n\n"
-            "Send audio with caption 'noise' or 'speech', or use /noise and "
-            "/speech to set a mode. Files must be under 20 MB — Telegram will "
-            "not give a bot anything larger.\n\n"
-            "The easiest way is the app itself: diagnostics panel, share, and "
-            "send the mumbleway-recordings.zip it makes. It holds every "
-            "recording on the phone with the decisions the noise gate made "
-            "about each, it is about a tenth the size of the raw audio, and "
-            "sending it again later is harmless.")
+            "Send the mumbleway-recordings.zip from the app's diagnostics "
+            "panel and it is unpacked, converted and split into speech and "
+            "noise on its own — the .csv beside each recording already says "
+            "which every 10 ms of it was, so there is nothing to label by "
+            "hand and nothing to tell me. Sending the same archive again "
+            "later is harmless.\n\n"
+            "Anything else — a voice note, an audio file — has no such log, "
+            "so caption it 'noise' or 'speech', or set a mode with /noise or "
+            "/speech first.\n\n"
+            "Files must be under 20 MB; Telegram will not give a bot "
+            "anything larger.")
         return
 
     payload, kind = pick_file(msg)
     if payload is None:
         return
 
+    # The name is known before the file is fetched, and it decides whether
+    # there is anything to ask. An archive carries its own labels, so asking
+    # for one would be asking the rider to overrule the phone.
+    sent_as = payload.get("file_name") or ""
+    archive = sent_as.lower().endswith(".zip")
+
     caption = (msg.get("caption") or "").strip().lower()
     mode = "noise" if "noise" in caption else "speech" if "speech" in caption else modes.get(chat)
-    if mode is None:
+    if mode is None and not archive:
         say(token, chat, "Which is it? Caption the file 'noise' or 'speech', "
-                         "or send /noise or /speech first.")
+                         "or send /noise or /speech first. An archive from the "
+                         "app needs neither — its decision logs say which.")
         return
 
     size = payload.get("file_size") or 0
@@ -233,8 +383,41 @@ def handle(token, roots, modes, msg):
 
         # The name the phone sent, which for the app's own recordings carries
         # the pairing. `file_path` is Telegram's storage path and does not.
-        sent_as = payload.get("file_name") or os.path.basename(path)
+        sent_as = sent_as or os.path.basename(path)
         stem = app_stem(sent_as)
+
+        # What the app's share button produces, and so the ordinary case.
+        if archive:
+            os.makedirs(roots["rides"], exist_ok=True)
+            original = os.path.join(roots["rides"], ".incoming.zip")
+            with urllib.request.urlopen(url, timeout=300) as r, open(original, "wb") as f:
+                f.write(r.read())
+
+            rides, minutes, speech, speech_s, noise, noise_s, problems = unpack(
+                original, roots)
+            # The archive is a second copy of what now sits beside it, and every
+            # send brings the whole phone again. Keeping them would fill the
+            # disk with the same ride over and over.
+            os.remove(original)
+
+            if not rides:
+                say(token, chat,
+                    "That archive held no recordings I could read."
+                    + ("\n\n" + "\n".join(problems[:5]) if problems else ""))
+                return
+            say(token, chat,
+                f"{rides} ride{'' if rides == 1 else 's'}, {minutes:.1f} min.\n"
+                f"Split by the decision logs: {speech} speech "
+                f"({speech_s / 60:.1f} min), {noise} noise "
+                f"({noise_s / 60:.1f} min).\n\n"
+                "Those labels are the gate's own opinion rather than ground "
+                "truth — the whole rides are kept if any of it needs "
+                "relabelling."
+                + ("\n\nLeft out:\n" + "\n".join(problems[:5]) if problems else ""))
+            print(f"archive: {rides} rides, {minutes:.1f} min, "
+                  f"{speech} speech, {noise} noise")
+            return
+
         name = stem or f"{mode}_{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
         root = roots[mode]
         os.makedirs(root, exist_ok=True)
@@ -242,26 +425,6 @@ def handle(token, roots, modes, msg):
         original = os.path.join(root, f"{name}{os.path.splitext(sent_as)[1] or '.bin'}")
         with urllib.request.urlopen(url, timeout=300) as r, open(original, "wb") as f:
             f.write(r.read())
-
-        # What the app's share button produces, and so the ordinary case.
-        if sent_as.lower().endswith(".zip"):
-            minutes, recordings, logs, problems = unpack(original, root, mode)
-            # The archive itself is a copy of things now unpacked beside it, and
-            # every send brings the whole phone again. Keeping them would fill
-            # the disk with the same ride over and over.
-            os.remove(original)
-            if not recordings and not logs:
-                say(token, chat, "That archive held nothing I recognise. The "
-                                 "app's own share button is the one to use.")
-                return
-            say(token, chat,
-                f"Unpacked into {mode}: {recordings} recording"
-                f"{'' if recordings == 1 else 's'} ({minutes:.1f} min) and "
-                f"{logs} decision log{'' if logs == 1 else 's'}."
-                + ("\n\nLeft out:\n" + "\n".join(problems[:5]) if problems else ""))
-            print(f"{mode}: archive -> {recordings} audio, {logs} logs, "
-                  f"{minutes:.1f} min")
-            return
 
         kept, value, saved = absorb(root, sent_as, original, mode)
         if kept == "log":
@@ -297,6 +460,11 @@ def main():
     roots = {
         "noise": os.path.join(base, "noise_road"),
         "speech": os.path.join(base, "speech_road"),
+        # Rides land here whole — audio, decision log and the converted copy —
+        # and the segments cut from them go to the two above. Keeping the whole
+        # thing is what makes the split reversible: the labels are the gate's
+        # own, so anything it got wrong is still here to be relabelled.
+        "rides": os.path.join(base, "rides"),
     }
     modes = {}
 

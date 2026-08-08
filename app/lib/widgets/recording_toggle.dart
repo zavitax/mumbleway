@@ -457,21 +457,31 @@ class _RecordingToggleState extends State<RecordingToggle> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // Wrap rather than Row, so that two long labels on a narrow
-                  // phone go onto separate lines instead of overflowing.
-                  Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 8,
-                    runSpacing: 4,
+                  // Driven to opposite ends of the card, deliberately. These
+                  // actions are not equivalents: one sends a file and the
+                  // other destroys the only copy of a ride that cannot be
+                  // recorded again. Side by side they sat a thumb's width
+                  // apart — in gloves, on a phone clamped to a handlebar. The
+                  // distance between them is the safety feature.
+                  Row(
                     children: [
                       // Both actions touch the files, so neither is offered while
                       // a writer is appending to them.
-                      TextButton(
+                      //
+                      // Small, and the colour of what it does. A glyph is a
+                      // smaller target than a word, which is the right size
+                      // for the button nobody should hit by accident.
+                      IconButton(
                         onPressed: _files == 0 || active || _busy
                             ? null
                             : _confirmDiscard,
-                        child: Text(l.diagRecordingDiscard),
+                        icon: const Icon(Icons.delete_outline),
+                        iconSize: 20,
+                        visualDensity: VisualDensity.compact,
+                        color: scheme.error,
+                        tooltip: l.diagRecordingDiscard,
                       ),
+                      const Spacer(),
                       // The glyph alone. It is the one control on this panel
                       // whose meaning a shape carries completely, and the label
                       // beside it was the widest thing in the row. The words are

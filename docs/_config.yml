@@ -26,6 +26,7 @@ exclude:
   - RECORDING.md
   - VOICE_MODEL.md
   - MUSIC_GATE.md
+  - RECORDING_INTAKE.md
   - STORE_DESCRIPTION.md
   - STORE_LISTING.md
 
@@ -38,6 +39,8 @@ nav:
     url: /scenarios.html
   - title: Your own server
     url: /server.html
+  - title: Send a recording
+    url: /sending-a-recording.html
   - title: Licences
     url: /licences.html
   - title: Privacy

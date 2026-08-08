@@ -29,9 +29,10 @@ it is on is in the file, so turn it off when you have what you need.</p>
 
 ## Listen to it first
 
-Before you send anything, play it back in the panel. It is a recording of your
-own voice, and you should know what is in it. If you would rather not send the
-audio, you do not have to — see below.
+Before you send anything, play it back: the **Listen back** button in the
+recording card opens a waveform with a playhead you can drag or tap to scrub.
+It is a recording of your own voice and you should know what is in it. If you
+would rather not send the audio at all, you do not have to — see below.
 
 ## Send it
 

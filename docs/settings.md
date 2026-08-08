@@ -181,4 +181,13 @@ Reached from the waveform icon in the toolbar rather than from settings.
   hiss, feedback, to the server.
 - **Record for diagnosis**, which saves the microphone to the device along with
   what the chain decided about every 10 ms of it. Off unless you turn it on.
-  Sharing produces a `.zip` per 18 MB so it can be sent anywhere.
+- **Listen back** — plays a recording with its waveform and a playhead you can
+  drag or tap to scrub. It is a recording of your own microphone, and you
+  should hear what is in it before sending it anywhere.
+- **Share**, which produces a `.zip` per 18 MB so a whole ride fits through
+  anything. See [sending a diagnostic
+  recording]({{ '/sending-a-recording.html' | relative_url }}).
+
+The delete button sits at the far left of that row and the share button at the
+far right, deliberately: one sends a file and the other destroys the only copy
+of a ride that cannot be recorded again.

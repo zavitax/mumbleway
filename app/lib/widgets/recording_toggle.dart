@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:archive/archive_io.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -166,30 +168,82 @@ class _RecordingToggleState extends State<RecordingToggle> {
 
   static String _two(int v) => v.toString().padLeft(2, '0');
 
+  /// Hands the recordings over as a single archive.
+  ///
+  /// A `.zip` rather than the files themselves, and that is a repair rather
+  /// than tidiness. **iOS types every shared item by its file extension.**
+  /// `.csv` it knows — `public.comma-separated-values-text` — but `.s16` it has
+  /// never heard of, so it invents a *dynamic* identifier for it
+  /// (`dyn.ah62d4rv4ge81gqm0`), and a share target that accepts only declared
+  /// types quietly accepts none of it. The sheet opens, a target is picked, and
+  /// nothing arrives. Nothing fails and nothing logs.
+  ///
+  /// Android was never affected, which is what made this look like a share
+  /// sheet that was simply broken: Android matches on MIME type, where
+  /// `application/octet-stream` is perfectly ordinary, so the same call works
+  /// there and the fault only ever appears on a phone.
+  ///
+  /// `public.zip-archive` is a type every target knows. It also makes the pair
+  /// one item, so audio cannot arrive without the decisions recorded alongside
+  /// it — they are worth little apart — and raw PCM of a mostly silent ride
+  /// compresses several times over, which matters when what is being sent is
+  /// the length of a ride.
   Future<void> _share() async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final dir = await _directory();
     if (!dir.existsSync()) return;
     final files = dir.listSync().whereType<File>().toList()
       ..sort((a, b) => a.path.compareTo(b.path));
     if (files.isEmpty) return;
 
-    if (Platform.isAndroid || Platform.isIOS) {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: files.map((f) => XFile(f.path)).toList(),
-          subject: 'MumbleWay diagnostic recording',
-        ),
-      );
-    } else {
+    if (!Platform.isAndroid && !Platform.isIOS) {
       // No share sheet worth the name on desktop, and a path that can be
       // pasted is more use than one that has to be retyped.
       await Clipboard.setData(ClipboardData(text: dir.path));
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(dir.path)));
+      messenger.showSnackBar(SnackBar(content: Text(dir.path)));
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final temp = await getTemporaryDirectory();
+      final archive = '${temp.path}${Platform.pathSeparator}$_archiveName';
+      // Cleared on the way in rather than on the way out, because it cannot be
+      // deleted on the way out — see below.
+      final previous = File(archive);
+      if (previous.existsSync()) previous.deleteSync();
+
+      // Off this isolate. Packing a ride's worth of audio takes seconds, and
+      // doing it here would stop the meters and the spectrum in a panel whose
+      // whole job is to be watched.
+      await compute(_packRecordings, [archive, for (final f in files) f.path]);
+
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(archive, mimeType: 'application/zip')],
+          subject: 'MumbleWay diagnostic recording',
+        ),
+      );
+      // Deliberately not deleted here. `share` returns when the sheet closes,
+      // and AirDrop and the mail composer go on reading the file after that —
+      // deleting it now would truncate the transfer it was made for. The next
+      // share clears it, and the system empties this directory anyway.
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text(l.diagRecordingShareFailed('$e'))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// One fixed name, so a share that was interrupted leaves one file behind
+  /// rather than one per attempt.
+  static const _archiveName = 'mumbleway-recordings.zip';
 
   Future<void> _discard() async {
     final dir = await _directory();
@@ -278,11 +332,16 @@ class _RecordingToggleState extends State<RecordingToggle> {
                     // Both actions touch the files, so neither is offered while
                     // a writer is appending to them.
                     TextButton(
-                      onPressed: _files == 0 || active ? null : _discard,
+                      onPressed: _files == 0 || active || _busy
+                          ? null
+                          : _discard,
                       child: Text(l.diagRecordingDiscard),
                     ),
                     FilledButton.tonal(
-                      onPressed: _files == 0 || active ? null : _share,
+                      // Also off while an archive is being packed: that takes
+                      // seconds on a long ride, and a second tap would start a
+                      // second pack over the same file.
+                      onPressed: _files == 0 || active || _busy ? null : _share,
                       child: Text(l.diagRecordingShare),
                     ),
                   ],
@@ -294,4 +353,24 @@ class _RecordingToggleState extends State<RecordingToggle> {
       ),
     );
   }
+}
+
+/// Packs the recordings into one archive, on a background isolate.
+///
+/// [args] is the archive to write, followed by the files to put in it. A plain
+/// list of strings because it has to cross an isolate boundary, and this is the
+/// shape that needs nothing said about how to do that.
+///
+/// Top-level because [compute] can only carry a function that is: a method
+/// would drag the widget across with it.
+void _packRecordings(List<String> args) {
+  final encoder = ZipFileEncoder();
+  encoder.create(args.first);
+  for (final path in args.skip(1)) {
+    // Names inside the archive are the file names alone, which is what
+    // `addFileSync` defaults to. The full path would carry the device's own
+    // directory layout to whoever receives it.
+    encoder.addFileSync(File(path));
+  }
+  encoder.closeSync();
 }

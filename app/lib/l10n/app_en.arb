@@ -422,6 +422,14 @@
       }
     }
   },
+  "diagRecordingShareFailed": "Could not share the recordings: {reason}",
+  "@diagRecordingShareFailed": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "levelsHelp": "Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.",
   "floatingAndroidBody": "Talk, mute, deafen and hang up over other apps. Needs the \"display over other apps\" permission.",
   "floatingIosBody": "Picture in Picture, appearing when you leave the app. The system allows three buttons: play/pause talks, skip back mutes, skip forward hangs up (twice to confirm).",

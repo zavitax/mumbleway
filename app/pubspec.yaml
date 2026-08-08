@@ -49,6 +49,11 @@ dependencies:
   path_provider: ^2.1.4
   http: ^1.6.0
   share_plus: ^13.3.0
+  # Packs the diagnostic recordings into one archive before they are shared.
+  # Not cosmetic: iOS types a shared item by its extension, and `.s16` is not a
+  # type it knows, so the share sheet offers targets that then receive nothing.
+  # Already present transitively under `image`; declared because this uses it.
+  archive: ^4.0.9
   file_selector: ^1.1.0
 
   # Renders a server's details as a QR code, and reads one back.

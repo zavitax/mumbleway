@@ -928,6 +928,11 @@ class LEn extends L {
   }
 
   @override
+  String diagRecordingShareFailed(String reason) {
+    return 'Could not share the recordings: $reason';
+  }
+
+  @override
   String get levelsHelp =>
       'Aim for the meter to peak around three quarters while speaking normally. Too much gain lifts the engine noise with your voice.';
 

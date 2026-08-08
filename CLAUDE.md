@@ -155,6 +155,15 @@ of bug here only appear on one.
   output-only; offering it lets iOS take it when music starts and tear the input
   down silently. This was a real bug, reported as "recording only works when
   music is not playing".
+- **A file iOS has no type for cannot be shared.** iOS types a shared item by
+  its extension. `.s16` is not a type it knows, so it invents a *dynamic*
+  identifier (`dyn.…`), and share targets that accept only declared types
+  accept none of it: the sheet opens, a target is picked, nothing arrives, and
+  nothing logs. Android matches on MIME instead, where
+  `application/octet-stream` is ordinary — so this fails only on a phone, and
+  looks like a broken share sheet. The recordings go out as one `.zip`
+  (`public.zip-archive`) for that reason. Check `UTType(filenameExtension:)`
+  before sharing any new file type.
 - **`CFBundleLocalizations` must list every `.arb` language.** iOS and macOS
   report an English locale for an undeclared language whatever the phone is set
   to, so a complete translation is simply never asked for. A test asserts this.

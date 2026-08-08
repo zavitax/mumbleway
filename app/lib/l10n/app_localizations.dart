@@ -1783,6 +1783,12 @@ abstract class L {
   /// **'Could not start recording: {reason}'**
   String diagRecordingFailed(String reason);
 
+  /// No description provided for @diagRecordingShareFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not share the recordings: {reason}'**
+  String diagRecordingShareFailed(String reason);
+
   /// No description provided for @levelsHelp.
   ///
   /// In en, this message translates to:

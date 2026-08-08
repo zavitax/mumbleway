@@ -936,6 +936,11 @@ class LRu extends L {
   }
 
   @override
+  String diagRecordingShareFailed(String reason) {
+    return 'Не удалось отправить записи: $reason';
+  }
+
+  @override
   String get levelsHelp =>
       'Стремитесь к тому, чтобы при обычной речи индикатор доходил примерно до трёх четвертей. Избыточное усиление поднимает шум двигателя вместе с голосом.';
 

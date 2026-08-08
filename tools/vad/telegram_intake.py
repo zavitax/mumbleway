@@ -78,6 +78,10 @@ PAD_SECONDS = 0.10
 # Shorter than this is not a training example, it is a click.
 MIN_SEGMENT_SECONDS = 0.50
 
+# How long an inbox file must sit still before it is treated as finished. A
+# copy in progress is not an archive, and opening one looks like corruption.
+SETTLE_SECONDS = 5
+
 
 def api(token, method, **params):
     url = f"{API}/bot{token}/{method}"
@@ -325,6 +329,45 @@ def unpack(archive, roots):
     return ridden, minutes, speech, speech_s, noise, noise_s, problems
 
 
+def drain_inbox(roots):
+    """Unpack any archive dropped into `inbox/` by hand.
+
+    Telegram will not give a bot a file over 20 MB, and no amount of care on
+    the app's side removes that ceiling — a long enough ride simply cannot
+    arrive that way. This is the way round it: copy the `.zip` off the phone
+    over a cable, AirDrop or a drive, drop it here, and it is unpacked and
+    labelled exactly as if it had been sent, with no size limit at all.
+
+    A file still being copied in is not an archive yet. Anything touched in the
+    last few seconds is left for the next pass rather than opened half-written,
+    which reads as a corrupt archive and would otherwise be reported as one.
+    """
+    inbox = roots["inbox"]
+    for name in sorted(os.listdir(inbox)):
+        if not name.lower().endswith(".zip"):
+            continue
+        path = os.path.join(inbox, name)
+        if time.time() - os.path.getmtime(path) < SETTLE_SECONDS:
+            continue
+        try:
+            rides, minutes, speech, speech_s, noise, noise_s, problems = unpack(
+                path, roots)
+            os.remove(path)
+            print(f"inbox: {name} -> {rides} rides, {minutes:.1f} min, "
+                  f"{speech} speech ({speech_s / 60:.1f} min), "
+                  f"{noise} noise ({noise_s / 60:.1f} min)")
+            for problem in problems:
+                print(f"  left out: {problem}")
+        except Exception as e:  # noqa: BLE001 - one bad archive is not the inbox
+            # Left where it is, and renamed so the next pass does not retry it
+            # for ever. The name says what happened without needing the log.
+            print(f"inbox: {name} failed: {e}", file=sys.stderr)
+            try:
+                os.replace(path, path + ".failed")
+            except OSError:
+                pass
+
+
 def handle(token, roots, modes, msg):
     chat = msg["chat"]["id"]
     text = (msg.get("text") or "").strip().lower()
@@ -465,15 +508,37 @@ def main():
         # thing is what makes the split reversible: the labels are the gate's
         # own, so anything it got wrong is still here to be relabelled.
         "rides": os.path.join(base, "rides"),
+        # Drop a `.zip` here and it is taken in on the next pass, with none of
+        # Telegram's 20 MB ceiling. This is the route for a ride too long to
+        # send, and it needs no bot at all beyond one that is running.
+        "inbox": os.path.join(base, "inbox"),
     }
     modes = {}
 
+    # Made now rather than when the first file lands. Empty directories are how
+    # somebody checks the bot is pointed where they think it is, and creating
+    # them lazily means the answer to "is this working" is unavailable until
+    # after a 20 MB upload — at which point a wrong base path or a directory
+    # that cannot be written to is discovered the expensive way.
+    for root in roots.values():
+        os.makedirs(root, exist_ok=True)
+
     me = api(token, "getMe")["result"]
-    print(f"listening as @{me.get('username')}; noise -> {roots['noise']}, "
-          f"speech -> {roots['speech']}")
+    print(f"listening as @{me.get('username')}")
+    for label in ("inbox", "rides", "speech", "noise"):
+        print(f"  {label:6} -> {roots[label]}")
+    print("drop a .zip in inbox to take one in without Telegram's 20 MB limit")
 
     offset = None
     while True:
+        # Before the poll, which blocks for the best part of a minute. After it
+        # would mean a file dropped in just as a long poll started sits there
+        # until the poll gives up.
+        try:
+            drain_inbox(roots)
+        except Exception as e:  # noqa: BLE001 - the inbox must not stop the bot
+            print(f"inbox scan failed: {e}", file=sys.stderr)
+
         try:
             got = api(token, "getUpdates", timeout=50, **({"offset": offset} if offset else {}))
         except Exception as e:  # noqa: BLE001 - a dropped poll is not fatal

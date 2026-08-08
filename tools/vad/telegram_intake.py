@@ -14,6 +14,14 @@ first to set the mode for everything that follows. The bot replies with what it
 did, so a mistake is visible at the roadside rather than three weeks later when
 the numbers look strange.
 
+The app's own share button sends a single `mumbleway-recordings.zip` holding
+every recording on the phone, and that archive is taken apart here. It is the
+normal way recordings arrive, and it is what makes a whole ride fit: Telegram
+will not hand a bot more than 20 MB, and PCM of a mostly silent ride compresses
+around ten times over. Sending the same archive twice is harmless — files are
+named after the ride they came from, so a resend overwrites rather than
+accumulates.
+
 # The token
 
 Read from the environment and never from a file in this repository, which is
@@ -33,11 +41,13 @@ Message the bot once and it will tell you your own id.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 
 API = "https://api.telegram.org"
@@ -101,6 +111,80 @@ def app_stem(name):
     return m.group(1) if m else None
 
 
+def absorb(root, sent_as, src, mode):
+    """File one recording under the recorder's own name, converting audio.
+
+    Returns `("audio", seconds, name)` or `("log", blocks, name)`. The caller
+    decides what to say about it, because one file arriving on its own and
+    twenty arriving in an archive want very different replies.
+
+    A file already there is overwritten rather than renamed around. The app
+    shares *everything* on the phone each time, so the same ride arrives again
+    on every send, and the alternative to overwriting is a corpus that grows a
+    duplicate copy per visit to the bot.
+    """
+    stem = app_stem(sent_as)
+    name = stem or f"{mode}_{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
+    kept = os.path.join(root, f"{name}{os.path.splitext(sent_as)[1] or '.bin'}")
+    if os.path.abspath(src) != os.path.abspath(kept):
+        os.replace(src, kept)
+
+    # A decision log is not audio and must not be handed to ffmpeg. It is the
+    # more valuable half of the pair — it is the only record of what the chain
+    # concluded, and nothing can reconstruct it from the audio.
+    if kept.lower().endswith(".csv"):
+        with open(kept, encoding="utf-8", errors="replace") as f:
+            rows = sum(1 for line in f if line and not line.startswith("#"))
+        return "log", max(rows - 1, 0), name
+
+    raw = os.path.join(root, f"{name}.raw")
+    return "audio", convert(kept, raw), name
+
+
+def unpack(archive, root, mode):
+    """Take a share-button archive apart, one member at a time.
+
+    Returns `(minutes, recordings, logs, problems)`.
+
+    **Members are taken by name only.** `../` in a member name is the oldest
+    way there is to write outside the directory you meant, and while this bot
+    has an allow-list, an allow-list is one environment variable away from
+    being wrong — and this is the one place where a name chosen elsewhere
+    decides where a file lands.
+
+    Sorted, so a `.csv` and the `.s16` it describes are handled together and a
+    failure names the ride it belongs to.
+    """
+    minutes, recordings, logs, problems = 0.0, 0, 0, []
+    with zipfile.ZipFile(archive) as z:
+        for entry in sorted(z.infolist(), key=lambda e: e.filename):
+            if entry.is_dir():
+                continue
+            member = os.path.basename(entry.filename.replace("\\", "/"))
+            if not member or member.startswith("."):
+                continue
+            if not member.lower().endswith((".s16", ".csv")):
+                problems.append(f"{member}: not a recording, left out")
+                continue
+
+            temp = os.path.join(root, f".unpacking-{member}")
+            try:
+                with z.open(entry) as src, open(temp, "wb") as f:
+                    shutil.copyfileobj(src, f)
+                kind, value, _ = absorb(root, member, temp, mode)
+                if kind == "audio":
+                    minutes += value / 60
+                    recordings += 1
+                else:
+                    logs += 1
+            except Exception as e:  # noqa: BLE001 - one bad member is not the archive
+                problems.append(f"{member}: {e}")
+            finally:
+                if os.path.exists(temp):
+                    os.remove(temp)
+    return minutes, recordings, logs, problems
+
+
 def handle(token, roots, modes, msg):
     chat = msg["chat"]["id"]
     text = (msg.get("text") or "").strip().lower()
@@ -114,10 +198,12 @@ def handle(token, roots, modes, msg):
             f"Your chat id is {chat}.\n\n"
             "Send audio with caption 'noise' or 'speech', or use /noise and "
             "/speech to set a mode. Files must be under 20 MB — Telegram will "
-            "not give a bot anything larger, so split long rides.\n\n"
-            "Recordings from MumbleWay's own diagnostics panel come as pairs: "
-            "a .s16 and a .csv with the same name. Send both — the .csv is what "
-            "the noise gate decided, and nothing can work that out afterwards.")
+            "not give a bot anything larger.\n\n"
+            "The easiest way is the app itself: diagnostics panel, share, and "
+            "send the mumbleway-recordings.zip it makes. It holds every "
+            "recording on the phone with the decisions the noise gate made "
+            "about each, it is about a tenth the size of the raw audio, and "
+            "sending it again later is harmless.")
         return
 
     payload, kind = pick_file(msg)
@@ -135,7 +221,9 @@ def handle(token, roots, modes, msg):
     if size > MAX_BYTES:
         say(token, chat,
             f"That is {size / 1e6:.0f} MB and Telegram caps what a bot may "
-            f"fetch at 20 MB. Split it and send the pieces.")
+            f"fetch at 20 MB. If it is the app's archive, delete the "
+            f"recordings in the panel after this send — it packs everything "
+            f"still on the phone every time, so it only grows.")
         return
 
     try:
@@ -155,27 +243,41 @@ def handle(token, roots, modes, msg):
         with urllib.request.urlopen(url, timeout=300) as r, open(original, "wb") as f:
             f.write(r.read())
 
-        # A decision log is not audio and must not be handed to ffmpeg. It is
-        # the more valuable half of the pair — it is the only record of what the
-        # chain concluded, and nothing can reconstruct it from the audio.
-        if sent_as.lower().endswith(".csv"):
-            rows = sum(1 for line in open(original, encoding="utf-8", errors="replace")
-                       if line and not line.startswith("#"))
+        # What the app's share button produces, and so the ordinary case.
+        if sent_as.lower().endswith(".zip"):
+            minutes, recordings, logs, problems = unpack(original, root, mode)
+            # The archive itself is a copy of things now unpacked beside it, and
+            # every send brings the whole phone again. Keeping them would fill
+            # the disk with the same ride over and over.
+            os.remove(original)
+            if not recordings and not logs:
+                say(token, chat, "That archive held nothing I recognise. The "
+                                 "app's own share button is the one to use.")
+                return
             say(token, chat,
-                f"Kept the decision log for {stem or name} "
-                f"({max(rows - 1, 0)} blocks). Send the .s16 beside it.")
-            print(f"{mode}: log -> {original}")
+                f"Unpacked into {mode}: {recordings} recording"
+                f"{'' if recordings == 1 else 's'} ({minutes:.1f} min) and "
+                f"{logs} decision log{'' if logs == 1 else 's'}."
+                + ("\n\nLeft out:\n" + "\n".join(problems[:5]) if problems else ""))
+            print(f"{mode}: archive -> {recordings} audio, {logs} logs, "
+                  f"{minutes:.1f} min")
             return
 
-        raw = os.path.join(root, f"{name}.raw")
-        seconds = convert(original, raw)
+        kept, value, saved = absorb(root, sent_as, original, mode)
+        if kept == "log":
+            say(token, chat,
+                f"Kept the decision log for {saved} ({value} blocks). "
+                f"Send the .s16 beside it.")
+            print(f"{mode}: log -> {saved}.csv")
+            return
+
         paired = stem and os.path.exists(os.path.join(root, f"{stem}.csv"))
         say(token, chat,
-            f"Got {seconds / 60:.1f} min of {mode} ({kind}).\n"
-            f"Saved as {os.path.basename(raw)}."
+            f"Got {value / 60:.1f} min of {mode} ({kind}).\n"
+            f"Saved as {saved}.raw."
             + ("\nPaired with its decision log." if paired
                else "\nSend the .csv beside it if there is one." if stem else ""))
-        print(f"{mode}: {seconds:.1f}s -> {raw}")
+        print(f"{mode}: {value:.1f}s -> {saved}.raw")
     except Exception as e:  # noqa: BLE001
         say(token, chat, f"That did not work: {e}")
         print(f"failed: {e}", file=sys.stderr)

@@ -77,29 +77,33 @@
        reached the shape first and had to hold it unexplained until it found
        the words — and the whole claim of this half of the picture is *what*
        the riders are reaching. -->
-  <text x="716" y="30" fill="#8695A6" font-size="13" font-family="inherit"
+  <!-- Baseline 75, so the cap-tops land on y=65 — the top of the dashed circle
+       opposite (cy 170 less r 105). The two halves are a comparison, and a
+       comparison whose sides begin at different heights reads as two drawings
+       that happen to share a frame. -->
+  <text x="716" y="75" fill="#8695A6" font-size="13" font-family="inherit"
         text-anchor="middle">your Mumble server</text>
 
   <!-- A cloud rather than a rack unit. The box read as hardware in a data
        centre, which is the opposite of true: it is a Raspberry Pi on somebody's
        shelf or the smallest VPS anybody sells, and what matters about it is
        that it is reachable from anywhere rather than what it looks like. -->
-  <path d="M 690 100
-           C 677 100 669 91 669 81
-           C 669 71 677 63 687 63
-           C 689 50 701 41 715 41
-           C 730 41 742 51 744 64
-           C 755 65 762 73 762 83
-           C 762 93 754 100 744 100 Z"
+  <path d="M 690 141
+           C 677 141 669 132 669 122
+           C 669 112 677 104 687 104
+           C 689 91 701 82 715 82
+           C 730 82 742 92 744 105
+           C 755 106 762 114 762 124
+           C 762 134 754 141 744 141 Z"
         fill="#141B24" stroke="#FFA53C" stroke-width="1.5"
         stroke-linejoin="round"/>
   <!-- The same light the app shows when it is connected. -->
-  <circle cx="716" cy="76" r="4" fill="#3ECF7E"/>
+  <circle cx="716" cy="117" r="4" fill="#3ECF7E"/>
 
   <g stroke="#FFA53C" stroke-width="2" fill="none" opacity="0.9">
-    <path d="M536 200 Q600 150 700 100"/>
-    <path d="M646 236 Q680 180 716 100"/>
-    <path d="M812 176 Q780 140 748 100"/>
+    <path d="M536 200 Q600 168 700 141"/>
+    <path d="M646 236 Q680 192 716 141"/>
+    <path d="M812 176 Q782 156 748 141"/>
   </g>
 
   <use href="#rider" x="502" y="182"/>

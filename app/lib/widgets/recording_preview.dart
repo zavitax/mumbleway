@@ -66,6 +66,8 @@ class _PreviewSheetState extends State<_PreviewSheet> {
   @override
   void initState() {
     super.initState();
+    // Give the devices back the moment playback stops.
+    _player.addListener(_releaseWhenIdle);
     _files = _scan();
     if (_files.isNotEmpty) _load(_files.first.path);
   }
@@ -88,9 +90,33 @@ class _PreviewSheetState extends State<_PreviewSheet> {
 
   @override
   void dispose() {
+    _player.removeListener(_releaseWhenIdle);
     _player.dispose();
-    if (_holdingAudio) widget.state.releaseAudio();
+    _releaseAudio();
     super.dispose();
+  }
+
+  /// Hands the devices back as soon as nothing is playing.
+  ///
+  /// The hold used to last as long as the sheet was open, on the reasoning
+  /// that play/pause should not open and shut the devices repeatedly. That is
+  /// true and it is not worth what it costs: **iOS lights the recording
+  /// indicator for the whole time**, so a rider who played a clip and stopped
+  /// was left looking at a system-wide light saying the microphone was live
+  /// while nothing was happening. On a device where the indicator is the
+  /// user's only evidence about the microphone, it has to mean what it says.
+  ///
+  /// Reaching for the devices again on the next play costs a fraction of a
+  /// second and is invisible; a recording light that is lit for no reason is
+  /// not.
+  void _releaseWhenIdle() {
+    if (!_player.playing) _releaseAudio();
+  }
+
+  void _releaseAudio() {
+    if (!_holdingAudio) return;
+    _holdingAudio = false;
+    widget.state.releaseAudio();
   }
 
   /// Opens the devices before the first play, and keeps them open.
@@ -264,6 +290,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
     // it and clears what was queued in the engine, so nothing carries on
     // playing out of a file that is gone.
     await _player.stop();
+    _releaseAudio();
 
     // Audio first, and the log only once the audio has actually gone.
     //

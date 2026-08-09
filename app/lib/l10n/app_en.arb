@@ -366,6 +366,8 @@
   "diagGapsConcealed": "Gaps concealed",
   "diagSpeakersTracked": "Speakers tracked",
   "diagMicrophoneDropped": "Microphone dropped",
+  "diagInputPeak": "Microphone peak",
+  "diagInputClipped": "Microphone clipped",
   "diagMicrophoneLevel": "Microphone level",
   "diagReconnectAttempts": "Reconnect attempts",
   "diagReset": "Reset",

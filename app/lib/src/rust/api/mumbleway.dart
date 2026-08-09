@@ -752,6 +752,17 @@ class UiChainStatus {
   final double noiseFloorDb;
   final double activationThresholdDb;
 
+  /// The loudest microphone sample seen, in dBFS, and how many have hit full
+  /// scale.
+  ///
+  /// **The only level here measured before the chain touches the block.**
+  /// Everything else — including the meter beside the gain slider — is taken
+  /// after suppression, which is why an overdriven microphone was invisible
+  /// until this existed: the output can sit well below full scale while the
+  /// input is pinned at it.
+  final double inputPeakDb;
+  final BigInt inputClipped;
+
   /// The suppression profile actually in force.
   ///
   /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -770,6 +781,8 @@ class UiChainStatus {
     required this.levelDb,
     required this.noiseFloorDb,
     required this.activationThresholdDb,
+    required this.inputPeakDb,
+    required this.inputClipped,
     required this.effectiveProfile,
   });
 
@@ -782,6 +795,8 @@ class UiChainStatus {
       levelDb.hashCode ^
       noiseFloorDb.hashCode ^
       activationThresholdDb.hashCode ^
+      inputPeakDb.hashCode ^
+      inputClipped.hashCode ^
       effectiveProfile.hashCode;
 
   @override
@@ -796,6 +811,8 @@ class UiChainStatus {
           levelDb == other.levelDb &&
           noiseFloorDb == other.noiseFloorDb &&
           activationThresholdDb == other.activationThresholdDb &&
+          inputPeakDb == other.inputPeakDb &&
+          inputClipped == other.inputClipped &&
           effectiveProfile == other.effectiveProfile;
 }
 

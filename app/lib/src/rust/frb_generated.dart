@@ -2576,8 +2576,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2586,7 +2586,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       levelDb: dco_decode_f_32(arr[4]),
       noiseFloorDb: dco_decode_f_32(arr[5]),
       activationThresholdDb: dco_decode_f_32(arr[6]),
-      effectiveProfile: dco_decode_noise_setting(arr[7]),
+      inputPeakDb: dco_decode_f_32(arr[7]),
+      inputClipped: dco_decode_u_64(arr[8]),
+      effectiveProfile: dco_decode_noise_setting(arr[9]),
     );
   }
 
@@ -3281,6 +3283,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_levelDb = sse_decode_f_32(deserializer);
     var var_noiseFloorDb = sse_decode_f_32(deserializer);
     var var_activationThresholdDb = sse_decode_f_32(deserializer);
+    var var_inputPeakDb = sse_decode_f_32(deserializer);
+    var var_inputClipped = sse_decode_u_64(deserializer);
     var var_effectiveProfile = sse_decode_noise_setting(deserializer);
     return UiChainStatus(
       stages: var_stages,
@@ -3290,6 +3294,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       levelDb: var_levelDb,
       noiseFloorDb: var_noiseFloorDb,
       activationThresholdDb: var_activationThresholdDb,
+      inputPeakDb: var_inputPeakDb,
+      inputClipped: var_inputClipped,
       effectiveProfile: var_effectiveProfile,
     );
   }
@@ -3994,6 +4000,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_32(self.levelDb, serializer);
     sse_encode_f_32(self.noiseFloorDb, serializer);
     sse_encode_f_32(self.activationThresholdDb, serializer);
+    sse_encode_f_32(self.inputPeakDb, serializer);
+    sse_encode_u_64(self.inputClipped, serializer);
     sse_encode_noise_setting(self.effectiveProfile, serializer);
   }
 

@@ -1615,6 +1615,18 @@ abstract class L {
   /// **'Microphone dropped'**
   String get diagMicrophoneDropped;
 
+  /// No description provided for @diagInputPeak.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone peak'**
+  String get diagInputPeak;
+
+  /// No description provided for @diagInputClipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone clipped'**
+  String get diagInputClipped;
+
   /// No description provided for @diagMicrophoneLevel.
   ///
   /// In en, this message translates to:

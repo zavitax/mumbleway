@@ -1203,7 +1203,11 @@ pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
 
 #[frb(sync)]
 pub fn reset_audio_glitches() -> anyhow::Result<()> {
-    app()?.shared.reset_glitch_counts();
+    let app = app()?;
+    app.shared.reset_glitch_counts();
+    // The input peak is a running maximum, so Reset has to clear it too or it
+    // reports the loudest thing that ever happened for the rest of the session.
+    app.shared.reset_input_peak();
     Ok(())
 }
 
@@ -1279,6 +1283,16 @@ pub struct UiChainStatus {
     pub level_db: f32,
     pub noise_floor_db: f32,
     pub activation_threshold_db: f32,
+    /// The loudest microphone sample seen, in dBFS, and how many have hit full
+    /// scale.
+    ///
+    /// **The only level here measured before the chain touches the block.**
+    /// Everything else — including the meter beside the gain slider — is taken
+    /// after suppression, which is why an overdriven microphone was invisible
+    /// until this existed: the output can sit well below full scale while the
+    /// input is pinned at it.
+    pub input_peak_db: f32,
+    pub input_clipped: u64,
     /// The suppression profile actually in force.
     ///
     /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -1471,6 +1485,15 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         noise_floor_db: c.noise_floor_db,
         activation_threshold_db: c.activation_threshold_db,
         effective_profile: from_profile_index(c.profile),
+        input_peak_db: {
+            let (peak, _) = shared.input_peak();
+            if peak > 0.0 {
+                20.0 * peak.log10()
+            } else {
+                -120.0
+            }
+        },
+        input_clipped: shared.input_peak().1,
     })
 }
 

@@ -47,10 +47,17 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
   }
 
+  /// Where the chain stands, for the one counter measured before it runs.
+  UiChainStatus? _chain;
+
   void _refresh() {
     if (!mounted) return;
     try {
       final now = _Snapshot.of(audioDiagnostics());
+      // Free to ask for and always current, unlike the spectrum: the chain
+      // publishes it every block whether anybody is reading. The input peak
+      // rides on it.
+      final chain = audioChainStatus();
       final was = _previous;
       setState(() {
         // Rates from deltas: the counters are cumulative precisely so the
@@ -65,6 +72,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         _memory.add(now.memoryMb);
         _previous = now;
         _audio = now;
+        _chain = chain;
       });
     } catch (_) {
       // The engine is not up; nothing to report.
@@ -211,6 +219,23 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 '${audio.captureDroppedMs} ms',
                                 bad: audio.captureDroppedMs > 0,
                               ),
+                              // Before the chain, unlike everything around it.
+                              // The meter beside the gain slider is measured
+                              // after suppression, so it cannot show an
+                              // overdriven microphone -- which is exactly the
+                              // fault that hid here for an evening.
+                              _Row(
+                                l.diagInputPeak,
+                                '${_chain?.inputPeakDb.toStringAsFixed(1) ?? "-"} dBFS',
+                                bad: (_chain?.inputPeakDb ?? -120) > -0.5,
+                              ),
+                              if ((_chain?.inputClipped ?? BigInt.zero) >
+                                  BigInt.zero)
+                                _Row(
+                                  l.diagInputClipped,
+                                  '${_chain!.inputClipped} samples',
+                                  bad: true,
+                                ),
                               _Row(
                                 l.diagMicrophoneLevel,
                                 '${state.inputLevelDb.toStringAsFixed(0)} dBFS',

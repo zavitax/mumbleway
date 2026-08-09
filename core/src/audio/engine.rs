@@ -530,6 +530,15 @@ pub struct AudioShared {
     /// Boxed because it is 62 kB and this is swapped, not copied through, on
     /// the audio thread.
     waveform: Mutex<Option<Box<WaveformFrame>>>,
+    /// The loudest sample seen on the microphone since the last read, and how
+    /// many samples have hit full scale.
+    ///
+    /// Deliberately about the *input*, which nothing else here measures: every
+    /// other level in this struct is taken after the chain has worked on the
+    /// block. Stored as bits so the peak can be published from the audio
+    /// thread without a lock.
+    input_peak_bits: AtomicU32,
+    input_clipped: AtomicU64,
     /// The background classifier's last word, as a tri-state: 0 nothing has
     /// said anything, 1 clear, 2 loud and structured.
     ///
@@ -787,6 +796,8 @@ impl AudioShared {
             waveform_until: AtomicU64::new(0),
             waveform: Mutex::new(None),
             background_noisy: AtomicU8::new(0),
+            input_peak_bits: AtomicU32::new(0),
+            input_clipped: AtomicU64::new(0),
             chain: Mutex::new(ChainStatus::default()),
             recording: AtomicBool::new(false),
             recorder: Mutex::new(None),
@@ -1052,6 +1063,45 @@ impl AudioShared {
         if let Some(mut slot) = self.waveform.try_lock() {
             *slot = Some(frame);
         }
+    }
+
+    /// Records the loudest sample in a block, and any that reached full scale.
+    ///
+    /// A running maximum rather than the last block's: a peak that appears for
+    /// one block in a hundred is exactly what a rider needs to be told about,
+    /// and a display that only ever showed the newest block would hide it.
+    /// Cleared by [`Self::reset_input_peak`], which the panel's Reset calls.
+    pub fn note_input_peak(&self, peak: f32, clipped: u32) {
+        let bits = peak.to_bits();
+        let mut current = self.input_peak_bits.load(Ordering::Relaxed);
+        while f32::from_bits(current) < peak {
+            match self.input_peak_bits.compare_exchange_weak(
+                current,
+                bits,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(seen) => current = seen,
+            }
+        }
+        if clipped > 0 {
+            self.input_clipped
+                .fetch_add(clipped as u64, Ordering::Relaxed);
+        }
+    }
+
+    /// The loudest input sample seen, and how many have hit full scale.
+    pub fn input_peak(&self) -> (f32, u64) {
+        (
+            f32::from_bits(self.input_peak_bits.load(Ordering::Relaxed)),
+            self.input_clipped.load(Ordering::Relaxed),
+        )
+    }
+
+    pub fn reset_input_peak(&self) {
+        self.input_peak_bits.store(0, Ordering::Relaxed);
+        self.input_clipped.store(0, Ordering::Relaxed);
     }
 
     /// What the background classifier last concluded, and whether anything has
@@ -2313,6 +2363,34 @@ where
             // One index per block, taken before any of the work, so the
             // analyser's arming and its cadence are decided from the same
             // number the rest of this iteration uses.
+            // What the microphone is actually delivering, before anything of
+            // ours reads it.
+            //
+            // **Nothing watched this until 2026-08-10, and it cost an
+            // evening.** The meter beside the gain slider reads
+            // `analysis.level_db`, which is measured *after* RNNoise and the
+            // profile filters — so it can sit comfortably below full scale
+            // while the input is pinned at it. A rider overdriving the
+            // microphone had no way to find out, and the natural conclusion is
+            // that the suppression is broken.
+            //
+            // Worse, `record.rs` clamps to ±1.0 on the way to i16, so a
+            // diagnostic recording of an overdriven input comes back visibly
+            // clipped with nothing to say it was clipped on the way in rather
+            // than by the chain.
+            let mut peak = 0.0f32;
+            let mut clipped = 0u32;
+            for &s in block.iter() {
+                let a = s.abs();
+                if a > peak {
+                    peak = a;
+                }
+                if a >= 0.999 {
+                    clipped += 1;
+                }
+            }
+            shared.note_input_peak(peak, clipped);
+
             let block_index = shared.next_block_index();
             let analysing = shared.spectrum_wanted(block_index);
             if analysing {

@@ -301,6 +301,22 @@ documents Diagnostics as a bulleted list with **no screenshots at all**, so the
 markup to hold six or seven figures has to be written as well as the captures
 taken.
 
+### A close button on the playback panel
+
+Asked for 2026-08-09. The listen sheet closes by swiping it down or by the back
+gesture, and neither is discoverable — the diagnostics panel beside it has an
+explicit `✕` in its header and the playback panel should match it.
+
+Where it goes: `_PreviewSheet` in `app/lib/widgets/recording_preview.dart`, in
+the header row beside the title, using the same icon and placement as the
+diagnostics panel's own close so the two read as the same control. It needs a
+tooltip and a label from `_data`/the ARB files in both languages — `close`
+already exists as a string on the site side, so check whether the app has one
+before adding another.
+
+Worth doing at the same time as the playback screenshots below, since both want
+the panel open and the shot should show the button that will be there.
+
 ### The music gate: a decision, not a measurement
 
 `docs/MUSIC_GATE.md` is now measured end to end and the input side is closed —

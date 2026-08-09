@@ -64,15 +64,19 @@ class BackgroundClassifier {
 
   /// Where the model can actually run.
   ///
-  /// **Phones only, deliberately.** `tflite_flutter` ships native binaries for
-  /// Android and iOS; on Windows and Linux it expects a `libtensorflowlite_c`
-  /// built by hand and committed, and on macOS the dylib it ships is not even
-  /// wired into its podspec. Committing an opaque prebuilt binary to a public
-  /// repository and shipping it through the Mac App Store is a large amount of
-  /// risk for platforms that are not on a motorcycle. Measured: adding the
-  /// dependency does not break the desktop builds, because nothing loads the
-  /// library unless an interpreter is created.
-  static bool get supportedHere => Platform.isAndroid || Platform.isIOS;
+  /// **Not Windows or Linux yet**, and the reason is a missing binary rather
+  /// than a missing idea. `tflite_flutter` ships native libraries for Android
+  /// and iOS through Gradle and CocoaPods, and a universal macOS dylib inside
+  /// the package itself — which the vendored copy in `third_party` now wires
+  /// into `Contents/Frameworks` and signs. For Windows it ships nothing at all
+  /// and its README says to build your own, so that one waits on a CI job that
+  /// builds `libtensorflowlite_c` from source.
+  ///
+  /// macOS runs it on the CPU whatever the machine: the shipped dylib has no
+  /// Core ML or GPU delegate symbols in it. Measured at 2.4 ms an inference on
+  /// Apple Silicon, which at one every two seconds is nothing worth avoiding.
+  static bool get supportedHere =>
+      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
 
   Interpreter? _model;
   IsolateInterpreter? _isolate;

@@ -932,10 +932,9 @@ packages:
   tflite_flutter:
     dependency: "direct main"
     description:
-      name: tflite_flutter
-      sha256: "0bba9040d8decda0960d7abf8eabf32243bf092bc7d0084e8e19681866b0bdbe"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/tflite_flutter"
+      relative: true
+    source: path
     version: "0.12.1"
   typed_data:
     dependency: transitive

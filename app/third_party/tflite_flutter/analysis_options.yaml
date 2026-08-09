@@ -9,23 +9,12 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
-analyzer:
-  exclude:
-    # Vendored by flutter_rust_bridge to drive the per-platform Rust build.
-    # It is third-party tooling with its own pubspec, not part of this app.
-    - rust_builder/**
-    - lib/src/rust/**
-    # Upstream `tflite_flutter`, vendored so one line of it can be patched —
-    # see its bindings.dart. Everything else in there is somebody else's code
-    # at somebody else's lint settings, and restyling it would bury the one
-    # change that matters in a diff of hundreds that do not.
-    - third_party/**
-
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
   # included above or to enable additional rules. A list of all available lints
-  # and their documentation is published at https://dart.dev/lints.
+  # and their documentation is published at
+  # https://dart-lang.github.io/linter/lints/index.html.
   #
   # Instead of disabling a lint rule for the entire project in the
   # section below, it can also be suppressed for a single line of code
@@ -33,8 +22,9 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
-
+    constant_identifier_names: false
+  # avoid_print: false  # Uncomment to disable the `avoid_print` rule
+  # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+analyzer:
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

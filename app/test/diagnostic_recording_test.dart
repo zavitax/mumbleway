@@ -294,5 +294,21 @@ void main() {
         expect(File('${dir.path}/$stem.csv').existsSync(), isTrue);
       }
     });
+
+    testWidgets('the close button dismisses the sheet', (tester) async {
+      // The sheet's only other exits are a downward swipe and the back
+      // gesture, neither of which is on screen. This asserts the visible one
+      // works — and, since `dispose` is what hands the devices back, that it
+      // takes the sheet off the tree rather than merely looking like it.
+      await tester.pumpWidget(harness(state, dir));
+      await tester.tap(find.text('open'));
+      await beat(tester);
+      await realWork(tester);
+      expect(find.text('Listen back'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await beat(tester);
+      expect(find.text('Listen back'), findsNothing);
+    });
   });
 }

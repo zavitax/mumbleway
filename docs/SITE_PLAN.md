@@ -161,6 +161,14 @@ All live, in publishes 71 to 74 (every one green on all four stores).
 - **Six settings screenshots recropped** so each holds exactly its own option,
   and *Choosing the devices* now comes from Windows, where there is actually a
   choice to show.
+- **A close button on the listen sheet**, matching the diagnostics panel's own
+  `✕` in glyph and position, with a test that it takes the sheet off the tree
+  rather than merely looking closed. It reuses `diagClose`; the app already had
+  the string in both languages.
+- **Both figures on *sending a diagnostic recording* retaken and recropped** to
+  the card and the sheet themselves. They were whole phone screens before, so
+  most of each figure was the screen behind the subject — and, having been shot
+  in different sessions, the two backgrounds did not even match.
 
 ## Queued, with everything needed to start
 
@@ -272,25 +280,8 @@ failures are silent:
 
 ### Screenshots still wanted
 
-Three, and each is blocked on something specific rather than on effort.
-
-**Playback panel, showing the green transmitted blocks.** The APK with the new
-panel is built and installed on the emulator, mic and overlay permissions are
-granted, and `scratchpad/speech_loop.wav` is 66.7 s of real helmet speech with
-0.35 s gaps in it — the gaps matter, because they are what makes the green
-alternate with grey instead of filling the whole waveform.
-
-*The blocker:* **recording writes nothing without an audio hold.** The capture
-worker does not run until the engine has opened the devices, so with no server
-connected and no microphone test running there is nothing to record — the toggle
-goes on and off and no file appears. Open the devices first, either by turning
-on *Test microphone (hear yourself)* in Settings, which holds audio for as long
-as that screen is up, or by connecting to a server. Then play the loop on the
-host, record for ~25 s, and open the listen sheet.
-
-`transmitting` does *not* depend on being connected — it is decided by the
-transmit mode and the analysis (`engine.rs:2303`) — so green appears on a
-voice-activated recording with no server, provided the devices are open.
+Two now, and each is blocked on something specific rather than on effort. The
+playback panel is done — see below for what the blocker actually was.
 
 **Sync.** Not on Android at all; the section only exists where a cloud can carry
 the data, so it has to come from the iOS simulator.
@@ -299,23 +290,49 @@ the data, so it has to come from the iOS simulator.
 detected *and* transmitting. Note this is more than cropping: `settings.md`
 documents Diagnostics as a bulleted list with **no screenshots at all**, so the
 markup to hold six or seven figures has to be written as well as the captures
-taken.
+taken. The live one needs a working microphone on the emulator, which is the
+thing that stopped working — see the correction below.
+`analyser-speaking-phone.webp` was taken when it did work, so this is a gap in
+coverage rather than a broken figure.
 
-### A close button on the playback panel
+### The playback-panel blocker was not the audio hold — **corrected 2026-08-09**
 
-Asked for 2026-08-09. The listen sheet closes by swiping it down or by the back
-gesture, and neither is discoverable — the diagnostics panel beside it has an
-explicit `✕` in its header and the playback panel should match it.
+This file said recording writes nothing without an audio hold, and that the way
+through was to open *Test microphone (hear yourself)* first. **That was wrong,
+and it sent the next session down a blind alley.** `beginDiagnosticRecording`
+in `app_state.dart` takes the hold itself, and its doc comment says why —
+starting the recorder with the devices shut is exactly the silent failure the
+whole feature exists to remove. The toggle needs no help.
 
-Where it goes: `_PreviewSheet` in `app/lib/widgets/recording_preview.dart`, in
-the header row beside the title, using the same icon and placement as the
-diagnostics panel's own close so the two read as the same control. It needs a
-tooltip and a label from `_data`/the ARB files in both languages — `close`
-already exists as a string on the site side, so check whether the app has one
-before adding another.
+What actually happened is that recording worked perfectly and captured 175 s of
+**silence**: the emulator's virtual microphone hears the host's input device,
+and this machine's microphone is not picking up its own speakers. The decision
+log said so unambiguously — 0.0% transmitting, level a median −102 dB — and the
+`.csv` beside the audio is the cheap way to find that out, before anything is
+cropped.
 
-Worth doing at the same time as the playback screenshots below, since both want
-the panel open and the shot should show the button that will be there.
+So the acoustic loopback that worked in an earlier session does not work today,
+and fixing it means changing the host's default audio devices or volume, which
+is not a thing to do to somebody's machine for a screenshot.
+
+**What was done instead, and is the better answer anyway:** two real rides from
+`C:\ml_data\rides` were pushed onto the emulator with `adb push` into
+`/sdcard/Android/data/com.mumbleway.mumbleway/files/mumbleway-recordings`, where
+the app picks them up as its own. They are genuine app output — helmet audio
+recorded by this app on a real bike, with the decision log that was written
+beside it — so the green in the figure is a real transmit history rather than a
+loop played at a laptop. `20260808-0524-000` is 60.9 s at 31.3% transmitting in
+14 runs, which is what makes the green alternate instead of filling the bar.
+
+Two smaller things learned in the same pass:
+
+- **A reinstall wipes the server list**, and the server the earlier screenshots
+  used answers *Invalid server password*, which is not something to go looking
+  for. The figures are cropped to the card and the sheet, so it does not matter
+  — and the crop is the better figure regardless.
+- **`am start` with a `mumble://` URL fills the add-server form on Android**
+  exactly as `simctl openurl` does on iOS, but only when the app is already
+  running; from cold it lands on the launcher instead.
 
 ### The music gate: a decision, not a measurement
 

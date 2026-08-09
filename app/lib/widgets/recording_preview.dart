@@ -376,9 +376,33 @@ class _PreviewSheetState extends State<_PreviewSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              l.diagPreviewTitle,
-              style: Theme.of(context).textTheme.titleMedium,
+            // A close button, and not only the drag handle above it.
+            //
+            // A sheet closes by being swiped down or by the back gesture, and
+            // neither is on screen — the handle is a grip, not a control that
+            // says what it does. The diagnostics panel this sheet is opened
+            // from has an explicit ✕ in its header, so the same glyph in the
+            // same corner means the same thing in both places, which is the
+            // whole argument for putting it here rather than a nicer one.
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    l.diagPreviewTitle,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  tooltip: l.diagClose,
+                  icon: const Icon(Icons.close, size: 20),
+                  // `maybePop`, so this goes through whatever the route would
+                  // consult on a back gesture rather than round it. Closing by
+                  // the button and closing by swiping down should be the same
+                  // act — the hold on the devices is given back in `dispose`
+                  // either way, so neither can leave the microphone open.
+                  onPressed: () => Navigator.maybePop(context),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(

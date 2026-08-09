@@ -390,9 +390,14 @@ lets a server remember your registration.
 - **Record for diagnosis**, which saves the microphone to the device along with
   what the chain decided about every 10 ms of it. Off unless you turn it on.
 - **Listen back** — plays a recording with its waveform and a playhead you can
-  drag or tap to scrub. A single recording can be shared or deleted from here,
-  which is where that decision actually gets made: you have just heard what is
-  in it.
+  drag or tap to scrub. **The green stretches are the parts that actually went
+  to the server**, read from the decision log beside the audio, so the question
+  a rider is really asking — "was I heard here?" — is answered by the picture.
+  Pinch to zoom in on a phone, or hold ctrl and use the wheel on a desktop; the
+  playhead stays in view, and the clock beneath counts milliseconds because a
+  gate that shuts mid-word does it inside a second. A single recording can be
+  shared or deleted from here, which is where that decision actually gets made:
+  you have just heard what is in it.
 - **Share**, which produces a `.zip` per 18 MB so a whole ride fits through
   anything. See [sending a diagnostic
   recording]({{ '/sending-a-recording.html' | relative_url }}).

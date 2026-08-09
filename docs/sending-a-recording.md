@@ -41,16 +41,18 @@ would rather not send the audio at all, you do not have to — see below.
          alt="The recording card expanded, showing how many files are held and
               how much space they take, with a small red delete button at the
               far left and listen and share buttons at the far right."
-         width="560" height="1244" loading="lazy" decoding="async">
+         width="560" height="266" loading="lazy" decoding="async">
     <figcaption>Expanded: what is held, and the three things you can do with it.</figcaption>
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/listen-phone.webp' | relative_url }}"
          alt="The listen-back sheet playing a recording: one chip per recording,
-              a waveform with the played part highlighted, a red playhead part
-              way along, and the elapsed and total time."
-         width="560" height="1244" loading="lazy" decoding="async">
-    <figcaption>Listening back before sending: drag or tap the waveform to scrub.</figcaption>
+              a waveform whose green stretches are the parts that went to the
+              server, a red playhead part way along, and the elapsed and total
+              time in minutes, seconds and milliseconds."
+         width="560" height="484" loading="lazy" decoding="async">
+    <figcaption>Listening back before sending. Green is what went out; drag,
+    tap or pinch the waveform.</figcaption>
   </figure>
 </div>
 

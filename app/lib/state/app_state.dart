@@ -425,7 +425,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  NoiseSetting noise = NoiseSetting.helmet;
+  /// `Automatic`, because it is now the option that decides best.
+  ///
+  /// It was `Helmet` on the reasoning that this is an app for riding and
+  /// over-suppression is the safer error. That reasoning is now out of date:
+  /// `Automatic` reaches `Helmet` within a second of hearing an engine, holds
+  /// it for fifteen seconds after the engine stops, and takes a minute of
+  /// quiet before it will go anywhere near the lightest profile — so a rider
+  /// who never opens Settings gets `Helmet` when it matters and something
+  /// kinder at the coffee stop.
+  ///
+  /// Only affects a fresh install. Anyone who has already chosen keeps their
+  /// choice, which is the whole point of storing it.
+  NoiseSetting noise = NoiseSetting.auto;
 
   /// Voice activation, because a rider has no free hand.
   ///

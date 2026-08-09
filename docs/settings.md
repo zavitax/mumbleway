@@ -205,8 +205,10 @@ effect the next time the app starts.**
 
 </div>
 
-Start on **Helmet** if you are riding and **Standard** if you are not, or leave
-it on **Automatic** and forget about it.
+**Automatic is the default**, and for most people it is the answer: it reaches
+the helmet setting within a second of hearing an engine and takes its time
+coming back down. Choose **Helmet** by hand if you would rather it never
+changed, or **Standard** if you are not riding.
 
 ### How Automatic decides
 

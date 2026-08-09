@@ -23,10 +23,12 @@ microphone.
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/set-devices.webp' | relative_url }}"
-         alt="The audio devices heading on a phone, saying the platform routes audio automatically and a headset switches to it."
-         width="560" height="176" loading="lazy" decoding="async">
-    <figcaption>On a phone, the app says so instead of offering a picker.</figcaption>
+    <img src="{{ '/assets/img/shots/set-devices-windows.webp' | relative_url }}"
+         alt="The audio devices section on Windows: a microphone picker, a
+              speakers picker, and a re-check devices button."
+         width="1000" height="210" loading="lazy" decoding="async">
+    <figcaption>On Windows you pick them. A phone routes audio itself and
+    says so instead.</figcaption>
   </figure>
 </div>
 

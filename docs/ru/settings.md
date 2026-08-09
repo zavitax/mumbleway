@@ -25,10 +25,12 @@ description: Что делает каждая настройка и какие �
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/set-devices.webp' | relative_url }}"
-         alt="Заголовок раздела аудиоустройств на телефоне: система распределяет звук сама, а подключённая гарнитура забирает его себе."
-         width="560" height="176" loading="lazy" decoding="async">
-    <figcaption>На телефоне приложение прямо говорит об этом вместо списка устройств.</figcaption>
+    <img src="{{ '/assets/img/shots/set-devices-windows.webp' | relative_url }}"
+         alt="Раздел аудиоустройств в Windows: список микрофонов, список
+              динамиков и кнопка «Проверить устройства заново»."
+         width="1000" height="210" loading="lazy" decoding="async">
+    <figcaption>В Windows устройства выбираются вручную. Телефон распределяет
+    звук сам и прямо об этом говорит.</figcaption>
   </figure>
 </div>
 

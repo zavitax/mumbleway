@@ -2419,6 +2419,13 @@ class AppState extends ChangeNotifier {
   bool get _callInProgress =>
       runtimes.values.any((r) => r.isLive || r.isBusy);
 
+  /// Whether anything said right now would actually reach somebody.
+  ///
+  /// Stricter than [_callInProgress], which counts a reconnect as a call worth
+  /// staying awake for. Nothing leaves the phone during a reconnect, so for the
+  /// question "did that go out" only a live session counts.
+  bool get anyLive => runtimes.values.any((r) => r.isLive);
+
   bool? _lastCallActive;
 
   /// Tells the platform whether there is a call worth staying awake for.

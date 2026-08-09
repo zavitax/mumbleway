@@ -98,6 +98,10 @@ class _SpectrumViewState extends State<SpectrumView>
     final l = L.of(context);
     final spectrum = _spectrum;
     final scheme = Theme.of(context).colorScheme;
+    // Green means it reached somebody, so it needs both halves: the chain
+    // decided to send, and there is a live session for it to go to.
+    final sending =
+        (spectrum?.transmitting ?? false) && AppStateScope.of(context).anyLive;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,7 +116,7 @@ class _SpectrumViewState extends State<SpectrumView>
           ),
         ),
         const SizedBox(height: 8),
-        _Legend(transmitting: spectrum?.transmitting ?? false),
+        _Legend(transmitting: sending),
         const SizedBox(height: 6),
         SizedBox(
           height: 120,
@@ -122,6 +126,7 @@ class _SpectrumViewState extends State<SpectrumView>
                   size: Size.infinite,
                   painter: _SpectrumPainter(
                     spectrum: spectrum,
+                    sending: sending,
                     grid: scheme.onSurfaceVariant.withValues(alpha: 0.16),
                     raw: scheme.onSurfaceVariant.withValues(alpha: 0.55),
                     preGate: scheme.primary,
@@ -308,12 +313,24 @@ class _Idle extends StatelessWidget {
 class _SpectrumPainter extends CustomPainter {
   const _SpectrumPainter({
     required this.spectrum,
+    required this.sending,
     required this.grid,
     required this.raw,
     required this.preGate,
   });
 
   final UiSpectrum spectrum;
+
+  /// Whether that block actually left for somebody.
+  ///
+  /// Not `spectrum.transmitting` on its own. That is the chain's decision —
+  /// "this would go out" — and it is deliberately independent of whether there
+  /// is a server, because a diagnostic recording made alone still needs it. On
+  /// this display, though, green claims the audio *went*, and with nothing
+  /// connected it went nowhere. An iPhone in a room with people in it showed
+  /// green bars while connected to no server at all; the Android emulator only
+  /// looked right because its microphone hears silence.
+  final bool sending;
   final Color grid;
   final Color raw;
   final Color preGate;
@@ -357,7 +374,7 @@ class _SpectrumPainter extends CustomPainter {
 
     // Sent first as filled bars, so it reads as the body of the display and the
     // two thin lines read as what it was made from.
-    final bars = Paint()..color = sentColour(spectrum.transmitting);
+    final bars = Paint()..color = sentColour(sending);
     for (var i = 0; i < bands; i++) {
       final top = y(spectrum.sentDb[i]);
       if (top >= size.height) continue;
@@ -393,7 +410,8 @@ class _SpectrumPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SpectrumPainter old) => old.spectrum.seq != spectrum.seq;
+  bool shouldRepaint(_SpectrumPainter old) =>
+      old.spectrum.seq != spectrum.seq || old.sending != sending;
 }
 
 /// The processing chain as a row of dots, in the order audio passes through it.

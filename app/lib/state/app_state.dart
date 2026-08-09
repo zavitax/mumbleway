@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_localizations.dart';
 import '../services/server_refusal.dart';
 import '../services/audio_session.dart';
+import '../services/background_classifier.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/device_identity.dart';
@@ -346,6 +347,7 @@ class AppState extends ChangeNotifier {
   static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
+  static const _prefsBackgroundClassifier = 'mumbleway.backgroundClassifier';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
   static const _prefsSettingStamps = 'mumbleway.settingStamps';
@@ -719,6 +721,7 @@ class AppState extends ChangeNotifier {
       jitterBufferMs = _clampJitter(v);
     }
     reverb = prefs.getBool(_prefsReverb) ?? true;
+    backgroundClassifier = prefs.getBool(_prefsBackgroundClassifier) ?? true;
     final guard = prefs.getInt(_prefsFeedbackGuard);
     if (guard != null &&
         guard >= 0 &&
@@ -1613,6 +1616,7 @@ class AppState extends ChangeNotifier {
     }
 
     _audioActive = true;
+    _syncClassifier();
     notifyListeners();
     return null;
   }
@@ -1634,6 +1638,7 @@ class AppState extends ChangeNotifier {
       }
       await AudioSessionBridge.instance.deactivate();
       _audioActive = false;
+      _syncClassifier();
       notifyListeners();
     });
   }
@@ -2115,6 +2120,49 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsReverb, value);
+  }
+
+  /// Whether the background classifier may run.
+  ///
+  /// On by default, and only ever consulted where the model can actually run —
+  /// see [BackgroundClassifier.supportedHere]. The switch exists because the
+  /// honest answer to "what does this cost" depends on the phone: with an
+  /// accelerator behind it the inference is small, and without one it is the
+  /// CPU every two seconds for the whole ride. A rider on a phone with no
+  /// accelerator is told so in Diagnostics and can turn it off here.
+  bool backgroundClassifier = true;
+
+  /// Runs the model, or does not. Owned here because it has to keep working
+  /// with every screen closed and the phone in a pocket, which is most of a
+  /// ride.
+  final classifier = BackgroundClassifier();
+
+  /// Starts or stops the classifier to match the current conditions.
+  ///
+  /// Four things have to be true at once, and any of them can change at any
+  /// time: the devices are open (there is nothing to listen to otherwise),
+  /// `Auto` is chosen (nothing else reads the verdict), the rider has left the
+  /// switch on, and the platform can run the model at all.
+  void _syncClassifier() {
+    final want =
+        _audioActive &&
+        noise == NoiseSetting.auto &&
+        backgroundClassifier &&
+        BackgroundClassifier.supportedHere;
+    if (want == classifier.running) return;
+    if (want) {
+      unawaited(classifier.start());
+    } else {
+      unawaited(classifier.stop());
+    }
+  }
+
+  Future<void> setBackgroundClassifier({required bool value}) async {
+    backgroundClassifier = value;
+    _syncClassifier();
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsBackgroundClassifier, value);
   }
 
   /// Levels incoming speakers towards a common loudness.
@@ -2672,6 +2720,11 @@ class AppState extends ChangeNotifier {
   Future<void> updateNoise(NoiseSetting v) async {
     noise = v;
     setNoise(noise: v);
+    // The classifier exists to inform `Auto` and has no say under the other
+    // four, so it stops running the moment one of them is chosen. Not merely
+    // ignored -- stopped, because an inference every two seconds is a real
+    // cost and nobody should pay it for an answer that will not be read.
+    _syncClassifier();
     await _persist();
     notifyListeners();
   }

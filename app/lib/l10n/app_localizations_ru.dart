@@ -1211,6 +1211,24 @@ class LRu extends L {
   String get diagAutoProfile => 'Авто выбрал';
 
   @override
+  String get backgroundClassifier => 'Распознавать фоновый шум';
+
+  @override
+  String get backgroundClassifierBody =>
+      'Слушает мотор, ветер и музыку и держит шлемный профиль, пока они звучат. Работает только в режиме «Автоматически». Выключите, если в «Диагностике» сказано, что расчёт идёт на процессоре.';
+
+  @override
+  String get diagStageBackground => 'Фон';
+
+  @override
+  String get diagClassifierOnCpu =>
+      'На этом устройстве нет ускорителя, поэтому распознавание фона считает процессор. Работать будет, но в долгой поездке это заметно по батарее.';
+
+  @override
+  String get diagClassifierUnavailable =>
+      'Распознавание фона работает только на телефонах, поэтому здесь шлемный профиль выбирается по уровням.';
+
+  @override
   String get diagSpectrum => 'Тракт голоса';
 
   @override

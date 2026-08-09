@@ -1215,6 +1215,24 @@ class LEn extends L {
   String get diagAutoProfile => 'Auto is using';
 
   @override
+  String get backgroundClassifier => 'Detect background noise';
+
+  @override
+  String get backgroundClassifierBody =>
+      'Listens for engine, wind and music and holds the helmet profile while they last. Runs only under Automatic. Turn it off if Diagnostics says it is running on the processor.';
+
+  @override
+  String get diagStageBackground => 'Background';
+
+  @override
+  String get diagClassifierOnCpu =>
+      'No accelerator on this device, so the background detector runs on the processor. It works, and it costs battery on a long ride.';
+
+  @override
+  String get diagClassifierUnavailable =>
+      'Background detection runs on phones only, so the helmet profile is chosen from levels here.';
+
+  @override
   String get diagSpectrum => 'Voice chain';
 
   @override

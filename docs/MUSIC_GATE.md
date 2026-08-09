@@ -486,10 +486,53 @@ and is not addressed here.
 So this is a guard, not the fix. It removes the inversion at the quiet end and
 leaves the middle alone.
 
-### Agreed design: TFLite in the app, as a supporting vote for Helmet
+### Built 2026-08-09: the classifier, the tap, and the 15 s hold
 
-Decided but **not built**. Written down with the choices already made so it can
-be picked up cold.
+Shipped. The rule, as asked for: **when the background is loud and structured,
+`Auto` takes Helmet; when it stops being so, Helmet is held for fifteen more
+seconds.**
+
+- **`core/src/audio/waveform.rs`** is the tap the design said was missing:
+  15 600 samples at 16 kHz, decimated from 48 kHz by averaging threes — the
+  same three-tap box average `yamnet_bench.py` used, deliberately, so the app's
+  input matches the input every number here was measured on.
+- **It arms by being read** and lapses five seconds later, exactly like the
+  spectrum. Nothing polls, nothing collects, nothing infers — so a rider who
+  has chosen a profile by hand pays nothing at all.
+- **Escalating skips the dwell.** The five-second dwell exists to stop `Auto`
+  flapping on a level threshold; this is not a level. Coming down does not
+  skip anything, and composes with the calm ratchet: after the hold expires,
+  lightening still needs its own fifteen seconds of real quiet.
+- **The verdict is a tri-state**, not a bool. "Nobody is classifying" and "the
+  background is clear" lead to opposite behaviour, and on desktop nothing ever
+  classifies.
+- **`background_classifier` is a setting**, on by default, hidden where the
+  model cannot run, and the panel warns when it is running on the CPU.
+
+**The bar is 0.30, and it was measured rather than chosen.**
+`tools/vad/yamnet_threshold.py` scores frames rather than medians, because what
+the app does with a frame is take Helmet on it:
+
+| Clip | Wanted | ≥0.05 | ≥0.20 | ≥0.30 | ≥0.50 |
+|---|---|---|---|---|---|
+| music only | Helmet | 97.9% | 95.8% | 95.8% | 95.1% |
+| voice over music | Helmet | 84.7% | 69.4% | 62.9% | 57.3% |
+| ride A, engine and wind | **Helmet** | 100% | 100% | 100% | 100% |
+| ride B, quiet, talking | no | **0.0%** | **0.0%** | **0.0%** | **0.0%** |
+
+The separation is total: the negative clip never fires at any bar down to 0.05.
+0.30 was taken because it sits in the flat part of all four curves — a
+threshold on a plateau is robust, one on a slope is tuned to the clips it was
+picked on.
+
+**What is still unmeasured** is the thing the design said to measure:
+per-inference CPU and battery on a real phone. The corpus is also still one
+genre, one speaker, one room.
+
+### The design as agreed, and the choices behind it
+
+Written down before any of it was built, and kept because the reasoning is the
+part worth having.
 
 **What it decides.** One boolean on `AudioShared` — the background is loud and
 structured — consulted by `reconsider()` as a *supporting* vote for Helmet, never
@@ -497,10 +540,30 @@ as a veto and never anywhere near the transmit gate. Wrong here costs some
 naturalness; wrong at the gate cuts a rider off. That asymmetry is the whole
 reason this is worth doing at the profile.
 
-**Where the model runs: Dart, not Rust.** `tflite_flutter` is mature and the
-Rust TFLite bindings are not, and this is 4 MB of asset plus one inference a
-few seconds apart — nowhere near the audio thread's budget or its no-allocation
-rule.
+**Where the model runs: Dart, not Rust.** Asked again while it was being built,
+so the reasons are written out rather than asserted:
+
+- **The accelerators are only reachable through the platform SDKs.** This is the
+  decisive one. Core ML on iOS and the GPU delegate on Android come from
+  `TensorFlowLiteSwift/CoreML` and `com.google.ai.edge.litert:litert-gpu`,
+  which the Flutter plugin already pulls through CocoaPods and Gradle. From
+  Rust, `tflitec` binds a TFLite C library you must supply yourself and gets
+  you no delegates; `tract` and `ort` are pure-CPU. "Use the NPU where
+  available" is not implementable in the Rust core without rebuilding the
+  platform integration the plugin already is.
+- **Cross-compilation.** `core` is built for five targets. A C++ TFLite
+  dependency would have to be vendored or built for each; Gradle and CocoaPods
+  do that already, for the two platforms that matter.
+- **Nothing about it is real-time.** One inference every two seconds on a
+  0.975 s window, off the audio thread entirely. There is no latency argument
+  for the core.
+- **`core` stays testable anywhere.** Its 300-odd tests need no model, no GPU
+  and no platform SDK, and a neural runtime in there would end that.
+
+The cost, stated: the decision now lives outside the engine, so the chain has
+to accept an opinion from something that may not exist. That is why
+`background_noisy` is a tri-state rather than a bool — "nobody is classifying"
+and "the background is clear" lead to opposite behaviour.
 
 **What is missing to make that possible.** Nothing hands Dart a *waveform*
 today. `audio_spectrum()` gives 24 bands, which YAMNet cannot eat: it wants

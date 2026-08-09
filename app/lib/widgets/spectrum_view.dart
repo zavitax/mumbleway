@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/background_classifier.dart';
 import '../services/noise_profiles.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -139,7 +140,62 @@ class _SpectrumViewState extends State<SpectrumView>
             AppStateScope.of(context).noise == NoiseSetting.auto)
           _AutoProfile(profile: _chain!.effectiveProfile),
         if (_chain != null) _ChainDots(status: _chain!),
+        // Not `const`: it reads the classifier's state, and a const child
+        // would be built once and never notice the model starting.
+        // ignore: prefer_const_constructors
+        _ClassifierNote(),
       ],
+    );
+  }
+}
+
+/// Says when the classifier is running without an accelerator behind it.
+///
+/// **A warning rather than a failure.** It works either way; what changes is
+/// who pays. With Core ML or the GPU delegate an inference is small, and on
+/// plain CPU it is the processor every two seconds for the whole ride, which on
+/// a long one is battery a rider would rather have spent on the ride.
+///
+/// What it claims is deliberately narrow: *the accelerated path was not
+/// built*. Core ML decides per operation whether to use the Neural Engine, the
+/// GPU or the CPU and reports none of it, so "an NPU is doing this" is not
+/// something the app can honestly say — only that it asked and was refused.
+class _ClassifierNote extends StatelessWidget {
+  const _ClassifierNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final classifier = AppStateScope.of(context).classifier;
+    // Two things to explain, and a grey dot explains neither on its own.
+    final String message;
+    if (!BackgroundClassifier.supportedHere) {
+      message = l.diagClassifierUnavailable;
+    } else if (classifier.onCpuOnly) {
+      message = l.diagClassifierOnCpu;
+    } else {
+      return const SizedBox.shrink();
+    }
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 15,
+            color: StatusColors.connecting,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -361,6 +417,7 @@ class _ChainDots extends StatelessWidget {
     'agc' => l.diagStageLevel,
     'dehiss' => l.diagStageHiss,
     'feedback' => l.diagStageFeedback,
+    'background' => l.diagStageBackground,
     'transmit' => l.diagStageTransmit,
     _ => stage.id,
   };

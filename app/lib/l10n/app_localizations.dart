@@ -2251,6 +2251,36 @@ abstract class L {
   /// **'Auto is using'**
   String get diagAutoProfile;
 
+  /// No description provided for @backgroundClassifier.
+  ///
+  /// In en, this message translates to:
+  /// **'Detect background noise'**
+  String get backgroundClassifier;
+
+  /// No description provided for @backgroundClassifierBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Listens for engine, wind and music and holds the helmet profile while they last. Runs only under Automatic. Turn it off if Diagnostics says it is running on the processor.'**
+  String get backgroundClassifierBody;
+
+  /// No description provided for @diagStageBackground.
+  ///
+  /// In en, this message translates to:
+  /// **'Background'**
+  String get diagStageBackground;
+
+  /// No description provided for @diagClassifierOnCpu.
+  ///
+  /// In en, this message translates to:
+  /// **'No accelerator on this device, so the background detector runs on the processor. It works, and it costs battery on a long ride.'**
+  String get diagClassifierOnCpu;
+
+  /// No description provided for @diagClassifierUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Background detection runs on phones only, so the helmet profile is chosen from levels here.'**
+  String get diagClassifierUnavailable;
+
   /// No description provided for @diagSpectrum.
   ///
   /// In en, this message translates to:

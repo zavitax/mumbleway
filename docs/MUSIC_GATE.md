@@ -604,6 +604,48 @@ it works — it does.
 delegate may attach and where finding 1 says the win will be partial anyway.
 And the positive side of the corpus is still one genre, one room.
 
+### DeepFilterNet, 2026-08-09 — the first thing that makes the problem easy
+
+Installed locally to try (`tools/vad/dfn_enhance.py`). It is a *speech
+enhancer* rather than a detector, which is the category everything else in this
+file has ignored: instead of trying to recognise music and change a profile, it
+removes everything that is not a voice. It runs natively at 48 kHz, so the
+corpus goes in without a resample.
+
+| Clip | YAMNet `Music`, before → after |
+|---|---|
+| music only | 0.980 → **0.004** |
+| voice over music | 0.500 → **0.000** |
+| ride, engine and wind | 0.969 → **0.004** |
+| ride, quiet, talking | 0.002 → 0.004 |
+
+**But a score of 0.000 is only good news if the voice survived it**, and that
+table cannot say. The hand labels can. Against the 23 marked ranges in
+`20260809-1201-000`:
+
+| | speech | gaps | separation |
+|---|---|---|---|
+| original | −11.5 dB | −12.9 dB | **1.5 dB** |
+| DeepFilterNet | −16.0 dB | −32.0 dB | **16.0 dB** |
+
+Read the last column. **1.5 dB is the whole fault this file is about**: with
+music playing, the gaps between words are within a decibel and a half of the
+speech, so no threshold on level can separate them and every level-derived
+feature here was doomed before it was written. DeepFilterNet takes 19.0 dB out
+of the gaps and 4.5 dB out of the speech, which turns that into 16 dB — the
+quantity the transmit gate keys on, improved by 14.5 dB.
+
+**What this is not yet.** Level separation is not intelligibility: −4.5 dB on
+the speech is a level change, and whether the voice is *damaged* needs ESTOI,
+which `core/src/audio/quality.rs` already implements and this has not been run
+through. It is also one clip, processed offline as a whole file — the streaming
+mode a phone would use is a different thing to measure. And 10.4× real time on
+a desktop CPU says nothing about an ARM core with a 10 ms budget and no
+allocation allowed on the audio thread.
+
+So: the most promising measurement in this file, and three specific reasons not
+to believe it yet.
+
 ### The platforms were never running the same chain — live experiment
 
 Reported 2026-08-09: **the same music in `Helmet` is suppressed markedly better

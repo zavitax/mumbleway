@@ -229,6 +229,56 @@ sweep shows exactly is the **profile selection**, which depends on absolute
 level; the transmitted shares within each profile are indicative rather than
 measured-from-life.
 
+### Scored against hand labels — 2026-08-09
+
+The sidecar arrived: 23 ranges marked by ear, **66.9 s of speech in a 121.0 s
+clip, 55.3%**. So "transmit everything" scores 55.3% precision, and that is the
+number every figure below has to beat to mean anything.
+
+| Profile | Sent | Kept of speech | Of what it sent, was speech |
+|---|---|---|---|
+| Off | 86.3% | 94.2% | 60.6% |
+| Light | 73.5% | 90.1% | 68.1% |
+| Standard | 69.5% | 88.5% | 70.8% |
+| **Helmet** | 59.6% | **80.0%** | **74.6%** |
+| Auto (→ Helmet) | 62.4% | 81.7% | 72.7% |
+
+**This is a trade, not a win.** Helmet buys 14 points of precision over Off and
+pays 14 points of recall for them. A quarter of what it sends is still music,
+and it drops a fifth of the rider's speech. Nothing in the chain is separating
+the two classes well; the profiles are choosing a point on one curve.
+
+And the curve is not steep, because **no feature here is strong**. Against the
+labels, threshold-free:
+
+```
+level_db     0.827      <- best, and it is post-suppression level
+snr_db       0.767
+vad          0.718
+harmonicity  0.603      <- the pitch measure, on real mixed audio
+modulation   0.358      <- WORSE than a coin
+```
+
+Three things in that list are worth stating plainly.
+
+**Modulation is inverted.** At 0.358 it is not weak, it is backwards: this music
+has *more* syllabic-rate envelope movement than the speech does. The attempt
+recorded above that "recovered nothing at all" was not unlucky — the feature
+points the wrong way on real material, and any future use of it has to account
+for that rather than re-tune a threshold.
+
+**Harmonicity is much weaker than the earlier read suggested.** The 0.48% versus
+11.53% figures compared two whole clips; against per-block labels it scores
+0.603, and the 0.75 bar catches only **18.7% of speech** while admitting 2.6% of
+the rest. It is precise and nearly deaf. That is consistent with candidate 3
+being dead and it also caps what candidate 1 can be worth, since both read the
+same signal.
+
+**RNNoise's VAD fires on 57% of labelled speech** in Helmet, against the SNR
+margin's 84%. That is the same ratio `core/tests/road.rs` found on helmet audio
+with no music in it at all, so it is a property of the detector on real speech
+rather than anything music does.
+
 ### What this leaves
 
 Two directions, and they are not the same size.
@@ -463,14 +513,12 @@ assertion this whole file says will fail first.
 music, so the pair now bounds both false positives and recall — see the recall
 section above.
 
-What is left is not another recording. It is **a `20260809-1201-000.speech`
-sidecar**: one `start end` pair per line marking where the talking is, written
-by ear. `core/tests/road.rs` already reads it, and with it every figure in this
-file becomes an assertion instead of an estimate. Without it the only available
-label is the chain's own harmonicity, which is the thing being judged.
+**The sidecar arrived on 2026-08-09 and the scored numbers are above.** Both
+halves of the acceptance criteria now have real labels behind them, and the
+answer is that no candidate in this file is supported by them: the strongest
+feature the chain computes scores 0.827 and the pitch measure scores 0.603.
 
-**Nothing else is outstanding on the input side.** The two clips cover both
-halves — false positives and recall — of the case that is actually being
-chased, which is an external source heard acoustically. The one thing worth
-adding later, and only to confirm the prediction above, is the same music at a
-distance rather than in the same room.
+What is left is a decision, not a measurement. Either accept the trade Helmet
+already makes -- 80% of speech kept, a quarter of what is sent still music --
+or find a feature that is not measured downstream of RNNoise, since every one
+that is has now been scored and none separates the classes.

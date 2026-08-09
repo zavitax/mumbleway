@@ -72,7 +72,11 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             tooltip: state.deafened ? l.undeafen : l.deafen,
             onPressed: state.toggleDeafen,
-            icon: Icon(state.deafened ? Icons.hearing_disabled : Icons.hearing),
+            // A speaker rather than an ear. Deafen silences what *arrives*,
+            // and every other app a rider has used puts that behind a speaker
+            // with a line through it; an ear is the anatomy rather than the
+            // control, and it reads as a hearing-aid setting.
+            icon: Icon(state.deafened ? Icons.volume_off : Icons.volume_up),
             color: state.deafened ? StatusColors.failed : null,
           ),
           IconButton(

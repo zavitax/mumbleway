@@ -361,7 +361,10 @@ class _UserRow extends StatelessWidget {
   /// who is talking, so `UiUser.talking` only ever changes when the server
   /// happens to send an unrelated roster update.
   static (IconData, Color) _statusVisual(UiUser u, {required bool speaking}) {
-    if (u.deafened) return (Icons.hearing_disabled, StatusColors.failed);
+    // The same glyph the toolbar uses for the same state. Two icons for one
+    // condition is how a roster ends up meaning something different from the
+    // button that caused it.
+    if (u.deafened) return (Icons.volume_off, StatusColors.failed);
     if (u.localMute) return (Icons.volume_off, StatusColors.failed);
     if (u.muted) return (Icons.mic_off, StatusColors.failed);
     if (speaking) return (Icons.volume_up, StatusColors.talking);

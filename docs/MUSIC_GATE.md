@@ -638,13 +638,53 @@ quantity the transmit gate keys on, improved by 14.5 dB.
 **What this is not yet.** Level separation is not intelligibility: −4.5 dB on
 the speech is a level change, and whether the voice is *damaged* needs ESTOI,
 which `core/src/audio/quality.rs` already implements and this has not been run
-through. It is also one clip, processed offline as a whole file — the streaming
-mode a phone would use is a different thing to measure. And 10.4× real time on
-a desktop CPU says nothing about an ARM core with a 10 ms budget and no
-allocation allowed on the audio thread.
+through. And it is one clip.
 
-So: the most promising measurement in this file, and three specific reasons not
-to believe it yet.
+#### It runs in our block, exactly — `tools/vad/dfn_realtime.py`
+
+The geometry is not close, it is identical:
+
+| | rate | hop | FFT |
+|---|---|---|---|
+| DeepFilterNet 3 | 48 000 Hz | **480 samples (10.0 ms)** | 960 |
+| this app's capture worker | 48 000 Hz | **480 samples (10.0 ms)** | — |
+
+**A capture block is one model frame.** Nothing has to be buffered, resampled
+or re-blocked to feed it, which removes the entire class of integration bug
+that usually eats this kind of work.
+
+Two findings from running it a frame at a time, single-threaded:
+
+- **One frame on its own fails**; two work. DeepFilterNet 3 has a frame of
+  look-ahead, so adopting it costs **10 ms of added latency** — on top of the
+  80 ms onset delay that voice-activated mode already carries. That is a real
+  number to put beside the 14.5 dB.
+- **Per-frame cost at the smallest workable chunk is 4.8 ms**, against a 10 ms
+  budget. It falls to 0.45 ms/frame at 100-frame chunks, which says most of the
+  4.8 ms is per-call overhead rather than model work.
+
+| frames per call | chunk | per frame | p99 per call |
+|---|---|---|---|
+| 2 | 20 ms | 4.82 ms | 16.1 ms |
+| 10 | 100 ms | 1.20 ms | 15.0 ms |
+| 100 | 1000 ms | 0.45 ms | 54.7 ms |
+
+**Read that as a shape, not a value.** It is PyTorch in Python on a desktop
+CPU; the shipping path is Rust — DeepFilterNet's own real-time implementation
+uses `tract`, which is pure Rust and needs no per-platform native runtime, so
+unlike the TFLite classifier it could live in `core` beside the chain rather
+than in Dart. ONNX export is also supported and splits into
+`enc`/`erb_dec`/`df_dec` with the GRU states as explicit I/O for streaming, and
+there is a Rust ONNX-Runtime implementation in the wild. Either way the number
+above is the pessimistic one and it already fits.
+
+**Licence check before any of this ships**: the crate is MIT/Apache-2.0, which
+is compatible with this app's GPL v3 — but the *model weights* carry their own
+terms and have not been read yet.
+
+So: the most promising measurement in this file, one integration cost worth
+knowing (10 ms), and three things still unproven — intelligibility, more than
+one clip, and the model licence.
 
 ### The platforms were never running the same chain — live experiment
 

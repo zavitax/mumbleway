@@ -142,7 +142,8 @@ Two other facts worth keeping:
 
 ## Shipped 2026-08-09
 
-All live, in publishes 71 to 74 (every one green on all four stores).
+All live, in publishes 71 to 75 (every one green on all four stores; the ARM64
+MSIX job skips by design).
 
 - **The app links to this site.** The wordmark opens it, a *Website* item is in
   the overflow menu, and the settings bar has a help button landing on
@@ -169,6 +170,13 @@ All live, in publishes 71 to 74 (every one green on all four stores).
   the card and the sheet themselves. They were whole phone screens before, so
   most of each figure was the screen behind the subject — and, having been shot
   in different sessions, the two backgrounds did not even match.
+- **Diagnostics is documented, with seven figures**, where it had been a bullet
+  list with none. Three of its parts had never been written up at all: the
+  microphone level / noise floor / *opens at* trio, which is the voice gate in
+  numbers; the thirty-second history graphs; and the **engine log**, which is
+  the single most useful thing to copy into a bug report. The analyser figure
+  is the capture taken while real speech was going out — an analyser sitting at
+  its floor says nothing about what an analyser is for.
 
 ## Queued, with everything needed to start
 
@@ -280,20 +288,11 @@ failures are silent:
 
 ### Screenshots still wanted
 
-Two now, and each is blocked on something specific rather than on effort. The
-playback panel is done — see below for what the blocker actually was.
+One now. The playback panel and Diagnostics are both done — see below for what
+the playback blocker actually was.
 
 **Sync.** Not on Android at all; the section only exists where a cloud can carry
 the data, so it has to come from the iOS simulator.
-
-**Diagnostics, one per subsection**, including the analyser live with speech
-detected *and* transmitting. Note this is more than cropping: `settings.md`
-documents Diagnostics as a bulleted list with **no screenshots at all**, so the
-markup to hold six or seven figures has to be written as well as the captures
-taken. The live one needs a working microphone on the emulator, which is the
-thing that stopped working — see the correction below.
-`analyser-speaking-phone.webp` was taken when it did work, so this is a gap in
-coverage rather than a broken figure.
 
 ### The playback-panel blocker was not the audio hold — **corrected 2026-08-09**
 

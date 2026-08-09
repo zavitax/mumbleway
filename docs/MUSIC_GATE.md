@@ -737,6 +737,45 @@ call "robotic" even when every word is intact — the same finding
 adapts on a signal something else has already altered. If echo behaviour
 changes, that is the first place to look.
 
+### Measured 2026-08-10: stage skipping has nothing left to give
+
+Asked for as an optimisation before reaching for the GPU. The answer is that
+the model is already taking the cheap path most of the time, and that the
+measurement found something more important than a speed-up.
+
+`cargo test --release -- --ignored --nocapture frame_cost`, with `MW_CLIP`
+pointed at each corpus clip. Times are release Rust on a desktop x86:
+
+| Clip | mean | p99 | worst | zero-mask | both decoders |
+|---|---|---|---|---|---|
+| ride, engine and wind | 0.54 ms | 2.75 | 4.05 | **97.3%** | 2.6% |
+| voice over music | 2.28 ms | 6.94 | **14.38** | 58.8% | 41.2% |
+| ride, quiet, talking | 2.32 ms | 7.13 | **12.94** | 31.9% | 39.0% |
+| voice over music, 2026-08-10 | 2.08 ms | 6.87 | **10.48** | 70.2% | 29.6% |
+
+**Three things fall out, and none of them is "lower a threshold".**
+
+1. **The cheap path is already the common one.** On a ride with no speech,
+   97.3% of frames take the zero-mask branch and run no decoder at all. There
+   is no tuning left: `apply_stages` is doing what it was built to do.
+2. **The worst frame already exceeds the 10 ms budget on a desktop** — 14.4 ms
+   on voice over music. What keeps it viable is the *mean*, 2.1–2.3 ms, and the
+   fact that the worker has buffering; a single slow frame is survivable and a
+   sustained one is not. That is exactly what the give-up guard measures, and
+   it is why it fires on a low-end phone: at ten to twenty times a desktop's
+   frame cost the *mean* goes over, not just the tail.
+3. **The model's own SNR estimate is bimodal and confident** — p50 at the −15 dB
+   floor and p75 at +2.9 to +26 dB. It is separating speech from not-speech
+   cleanly, which is the property the whole adoption rests on.
+
+**The thing worth chasing, though, is finding 1 read the other way.** The
+zero-mask branch does not attenuate the background — it *replaces it with
+zero*. On a ride that is 97% of frames muted outright and 2.6% passed through a
+filter, which is a hard on/off edge at every boundary. **That is a much better
+candidate for "Helmet sounds choppier than Standard" than anything in the
+profiles**, and it sits in front of both of them. `MIN_DB` is the threshold
+that decides it, and it has never been tuned — it is the crate's default.
+
 ### The platforms were never running the same chain — live experiment
 
 Reported 2026-08-09: **the same music in `Helmet` is suppressed markedly better

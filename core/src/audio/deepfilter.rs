@@ -61,6 +61,25 @@ const ATTEN_LIM_DB: f32 = 24.0;
 /// The deadline one block has to be returned in, in microseconds.
 const BUDGET_US: u32 = 10_000;
 
+/// Where the model may skip work, in dB of its own SNR estimate.
+///
+/// `apply_stages` picks one of four paths per frame: below `MIN_DB` a zero
+/// mask and no decoder at all; above `MAX_ERB_DB` no processing; above
+/// `MAX_DF_DB` the cheap ERB decoder only; and between them both decoders,
+/// which is the expensive one.
+///
+/// **A helmet at speed sits in the expensive branch by construction** — that
+/// is what "noisy" means — so these are the only lever on cost that does not
+/// change engine. Lowering `MAX_DF_DB` sends more frames down the ERB-only
+/// path: cheaper, and less deep filtering on exactly the frames that are
+/// already fairly clean.
+///
+/// The defaults are the crate's (-10 / 30 / 20) and are kept until measured;
+/// `frame_cost` below is what measures them.
+const MIN_DB: f32 = -10.0;
+const MAX_ERB_DB: f32 = 30.0;
+const MAX_DF_DB: f32 = 20.0;
+
 /// Consecutive missed deadlines before the enhancer switches itself off.
 ///
 /// One second's worth. Long enough that a scheduler hiccup or a cold cache
@@ -127,7 +146,9 @@ impl Enhancer {
     fn build() -> Result<DfTract> {
         // Mono. Every route this app records from is one channel by the time
         // it reaches the chain.
-        let params = RuntimeParams::default_with_ch(1).with_atten_lim(ATTEN_LIM_DB);
+        let params = RuntimeParams::default_with_ch(1)
+            .with_atten_lim(ATTEN_LIM_DB)
+            .with_thresholds(MIN_DB, MAX_ERB_DB, MAX_DF_DB);
         let model = DfTract::new(DfParams::default(), &params)?;
         anyhow::ensure!(
             model.hop_size == HOP,
@@ -270,8 +291,18 @@ mod tests {
         );
     }
 
-    /// What one frame costs, in release. `cargo test --release -- --ignored
-    /// --nocapture frame_cost`.
+    /// What one frame costs, in release, on real audio.
+    ///
+    /// ```text
+    /// set MW_CLIP=<a 48 kHz f32 mono .raw from the ride corpus>
+    /// cargo test --release -- --ignored --nocapture frame_cost
+    /// ```
+    ///
+    /// Falls back to a synthetic tone if no clip is given, which is enough to
+    /// show the shape and nothing like a helmet at speed. The distribution of
+    /// the model's own SNR estimate is the interesting output: it says which
+    /// of the four `apply_stages` paths a real ride actually takes, and
+    /// therefore how much the thresholds have to give.
     ///
     /// Ignored because it is a measurement rather than an assertion, and a
     /// timing test that fails on a busy machine teaches people to ignore
@@ -279,19 +310,84 @@ mod tests {
     #[test]
     #[ignore]
     fn frame_cost() {
+        let audio: Vec<f32> = match std::env::var("MW_CLIP") {
+            Ok(path) => {
+                let bytes = std::fs::read(&path).expect("could not read MW_CLIP");
+                eprintln!("clip: {path}");
+                bytes
+                    .chunks_exact(4)
+                    .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                    .collect()
+            }
+            Err(_) => {
+                eprintln!("clip: synthetic (set MW_CLIP to a 48 kHz f32 .raw)");
+                (0..HOP * 500)
+                    .map(|i| 0.2 * (i as f32 * 0.03).sin() + 0.02 * ((i * 7) as f32).sin())
+                    .collect()
+            }
+        };
+
         let mut e = Enhancer::new();
         assert!(e.active());
-        let speech: Vec<f32> = (0..HOP * 200)
-            .map(|i| 0.2 * (i as f32 * 0.03).sin() + 0.02 * ((i * 7) as f32).sin())
-            .collect();
-        for chunk in speech.chunks_exact(HOP) {
+        let mut per_frame = Vec::new();
+        let mut lsnrs = Vec::new();
+        for chunk in audio.chunks_exact(HOP) {
             let mut block = chunk.to_vec();
+            let t0 = std::time::Instant::now();
             e.process(&mut block);
+            per_frame.push(t0.elapsed().as_micros() as f32 / 1000.0);
+            lsnrs.push(e.lsnr());
         }
-        let (worst, over, frames) = e.timing();
+
+        // The first few frames carry one-off setup.
+        per_frame.drain(..5.min(per_frame.len()));
+        let mut sorted = per_frame.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct = |p: f32| sorted[((sorted.len() - 1) as f32 * p) as usize];
+        let mean = per_frame.iter().sum::<f32>() / per_frame.len() as f32;
         eprintln!(
-            "{frames} frames, worst {:.2} ms, {over} over the 10 ms budget",
-            worst as f32 / 1000.0
+            "{} frames  mean {:.2} ms  p50 {:.2}  p95 {:.2}  p99 {:.2}  worst {:.2}",
+            per_frame.len(),
+            mean,
+            pct(0.50),
+            pct(0.95),
+            pct(0.99),
+            sorted[sorted.len() - 1]
+        );
+
+        let mut ls = lsnrs.clone();
+        ls.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let lp = |p: f32| ls[((ls.len() - 1) as f32 * p) as usize];
+        eprintln!(
+            "lsnr dB: p05 {:.1}  p25 {:.1}  p50 {:.1}  p75 {:.1}  p95 {:.1}",
+            lp(0.05),
+            lp(0.25),
+            lp(0.50),
+            lp(0.75),
+            lp(0.95)
+        );
+
+        // Which of the four paths the ride actually takes, at the thresholds
+        // in force. This is the number that says how much is on the table.
+        let (mut zero, mut clean, mut erb_only, mut both) = (0, 0, 0, 0);
+        for &l in &lsnrs {
+            if l < MIN_DB {
+                zero += 1;
+            } else if l > MAX_ERB_DB {
+                clean += 1;
+            } else if l > MAX_DF_DB {
+                erb_only += 1;
+            } else {
+                both += 1;
+            }
+        }
+        let n = lsnrs.len() as f32;
+        eprintln!(
+            "stages: zero-mask {:.1}%  untouched {:.1}%  erb-only {:.1}%               both decoders {:.1}%  <- the expensive one",
+            100.0 * zero as f32 / n,
+            100.0 * clean as f32 / n,
+            100.0 * erb_only as f32 / n,
+            100.0 * both as f32 / n
         );
     }
 

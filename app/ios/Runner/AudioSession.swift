@@ -179,47 +179,33 @@ final class AudioSession {
     let session = AVAudioSession.sharedInstance()
     try session.setCategory(
       .playAndRecord,
-      // **An experiment, running since 2026-08-09.** This was `.default`, and
-      // the reasoning for that is worth keeping because it may still be right:
-      // this app does its own echo cancellation and noise suppression, tuned
-      // by ear, and a second canceller underneath them is the kind of thing
-      // that produces artefacts nobody can locate.
+      // **`.voiceChat` was tried, and it clipped the microphone.**
       //
-      // What changed is a comparison. The same music, in Helmet, is suppressed
-      // markedly better on Android than on an iPhone — and the mechanism looks
-      // like this line. Android's capture goes through cpal's AAudio backend,
-      // which sets no input preset, so AAudio applies its default of
-      // `VOICE_RECOGNITION` and Google's noise suppression runs *before* our
-      // chain sees a sample. On iOS `.default` gave us a genuinely raw
-      // microphone, so Helmet was doing the whole job alone. The platforms
-      // were never doing the same work, and only one of us chose that.
+      // The reasoning for `.default` is that this app does its own echo
+      // cancellation and noise suppression, tuned by ear, and a second
+      // canceller underneath them produces artefacts nobody can locate. That
+      // was challenged by a fair observation: the same music in `Helmet` was
+      // suppressed better on Android than on an iPhone, because Android's
+      // capture goes through AAudio's default `VOICE_RECOGNITION` preset and
+      // gets Google's noise suppression before our chain sees a sample, while
+      // `.default` here gave a genuinely raw microphone. The platforms were
+      // never doing the same work.
       //
-      // So: `.voiceChat`, which brings Apple's voice processing in and makes
-      // the two platforms comparable. One variable, deliberately — our own AEC
-      // is left running, because turning both knobs at once would leave no way
-      // to attribute the result.
+      // So `.voiceChat` went out for a build, and the diagnostic recordings
+      // settled it. Speech, measured on the *raw* capture:
       //
-      // What to watch, in this order:
+      //     before .voiceChat   -11.9 dB   0.27% of samples at full scale
+      //     with .voiceChat      -6.0 dB   9.61% of samples at full scale
       //
-      //  * music in Helmet, against the same clip on Android — the thing this
-      //    is for;
-      //  * echo, which is where a second canceller does its damage. Two AECs
-      //    fighting sounds like a voice that pumps or goes hollow, and if that
-      //    appears, ours is the one to switch off next;
-      //  * the AGC. Apple's normalises level, and this app's own gate and floor
-      //    tracker read level. `docs/MUSIC_GATE.md` records that quieter music
-      //    used to land in a lighter profile, so a system AGC lifting quiet
-      //    music is exactly the input that could bring that back.
+      // Apple's AGC drives the signal 11 dB hotter and into the ceiling, and
+      // a tenth of every voiced sample is clipped. That is audible as
+      // distortion, it happens *before* anything of ours runs, and no profile
+      // can undo it — which is also why `Helmet` seemed to be the culprit: it
+      // is the profile that makes already-clipped speech most obvious.
       //
-      // Also worth reading off the engine log: `.voiceChat` can hand back a
-      // different input rate and channel count from `.default`. The chain
-      // resamples, so it is not a fault — but it is the sort of change that
-      // moves several numbers at once, and it is written down in the log at
-      // the moment the streams open.
-      //
-      // Revert to `.default` if any of the last two turn up. The comparison is
-      // the point, not the mode.
-      mode: .voiceChat,
+      // The asymmetry with Android is real and stands. The answer to it is not
+      // this.
+      mode: .default,
       options: [
         // Helmet intercoms are HFP devices. Without this they are not offered
         // as an input at all, and the phone quietly records from its own

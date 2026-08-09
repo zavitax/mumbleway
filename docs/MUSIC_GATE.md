@@ -795,7 +795,27 @@ chose:
 So every comparison between the two platforms in this file has been comparing
 different inputs, and the iPhone was the harder one by construction.
 
-**The experiment**: iOS moves to `mode: .voiceChat`, one variable, with our own
+**The experiment ran, and it failed — reverted 2026-08-10.** Apple's AGC drives
+the microphone into the ceiling. Measured on the *raw* capture, speech only:
+
+| Build | speech level | samples at full scale |
+|---|---|---|
+| before `.voiceChat` | −11.9 dB | 0.27% |
+| `.voiceChat` | **−6.0 dB** | **9.61%** |
+
+Eleven decibels hotter and **a tenth of every voiced sample clipped**, which is
+audible as distortion and happens before a line of our code runs. It was
+reported as "speech distorted when Auto switches to Helmet"; the switch was a
+red herring — clipping measured 9.61% before the switch and 9.60% after, and
+`Helmet` is simply the profile that makes already-clipped speech most obvious.
+The band analysis found no change at 180 Hz either, so the rumble filter was
+not it.
+
+The asymmetry that motivated the experiment is real and stands: Android gets
+Google's noise suppression free from AAudio's default `VOICE_RECOGNITION`
+preset, and iOS gets a raw microphone. The answer to it is not this.
+
+**The original text**: iOS moves to `mode: .voiceChat`, one variable, with our own
 AEC left running so the result can be attributed. Published for testing. What
 decides it is music in `Helmet` against the same clip on Android; what would
 call it off is echo pumping (two cancellers fighting) or the system AGC lifting

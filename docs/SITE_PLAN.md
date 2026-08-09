@@ -140,6 +140,28 @@ Two other facts worth keeping:
   because it is the kind of thing that is dismissed twice and then reported by a
   user, not because there is anything to fix from this alone.
 
+## Shipped 2026-08-09
+
+All live, in publishes 71 to 74 (every one green on all four stores).
+
+- **The app links to this site.** The wordmark opens it, a *Website* item is in
+  the overflow menu, and the settings bar has a help button landing on
+  `/settings.html`. The language follows the app's own locale rather than the
+  device's, because the site is bilingual by whole copies of each page and
+  getting it wrong is a working link to documentation the reader cannot read.
+- **Server refusals reach the user.** A refused mute used to arrive as a chat
+  line from "server", where it read as somebody talking and scrolled away. It
+  now lands in a snackbar over whatever screen is on top.
+- **`Auto` may only choose a lighter profile after 15 s of quiet.** Going
+  heavier is unchanged. It removes an inversion that was measured: quieter music
+  was landing in lighter profiles and leaking *more*.
+- **The playback panel colours what was transmitted green**, zooms to 64x by
+  pinch or by ctrl/cmd-wheel, keeps the playhead on screen, and shows the
+  playhead time to the millisecond between the buttons.
+- **Six settings screenshots recropped** so each holds exactly its own option,
+  and *Choosing the devices* now comes from Windows, where there is actually a
+  choice to show.
+
 ## Queued, with everything needed to start
 
 Written 2026-08-09 at the end of a session that ran out of room. Each of these
@@ -172,13 +194,14 @@ Still wanted: **speech over the same music, at the same level, in the same
 helmet.** This clip has none, so it bounds false positives and says nothing at
 all about recall - which is the assertion `MUSIC_GATE.md` says will fail first.
 
-### Telegram bot: take a caption with the file
+### Telegram bot: take a caption — **done 2026-08-09**
 
-Asked for so a recording can be processed the moment it arrives. Today the
-mode is inferred, and a whole ride is filed without anyone saying what it is.
-Telegram puts the caption in `message.caption`, beside `document` —
-`tools/vad/telegram_intake.py` already parses the update, so it is a field to
-read and store beside the ride, not a new mechanism.
+Shipped. Anything in the caption beyond the mode is kept verbatim in a `.note`
+beside the audio and echoed back; an archive's note goes against every ride in
+it; and the inbox path reads a `NAME.txt` beside `NAME.zip`, because the long
+rides that can only arrive that way are otherwise guaranteed to arrive with no
+explanation. The mode now comes from the first word or a `#noise` / `#speech`
+tag, so a sentence mentioning noise in passing is not mistaken for one.
 
 ### How a section screenshot has to be cropped
 
@@ -249,17 +272,72 @@ failures are silent:
 
 ### Screenshots still wanted
 
-- **Feedback suppression, hiss removal and microphone mode**, by the recipe
-  above. Noise cancellation is done and is the worked example.
-- **Choosing the devices — take it on Windows, not on a phone.** The mobile
-  section only says the platform routes audio automatically, so the picture
-  shows nothing worth looking at. Windows has the actual device pickers, which
-  is what the section is about.
-- **Sync.** Not on Android at all — the section only exists where a cloud can
-  carry the data, so it has to come from the iOS simulator.
-- **Diagnostics, one per subsection**, including the analyser live with speech
-  detected *and* transmitting. The acoustic-loopback recipe is above.
-- **"Your own server" shots are broken** and want re-making on the simulator.
+Three, and each is blocked on something specific rather than on effort.
 
-`idb` is installed and connected, so all of these are now reachable — see
-CLAUDE.md for how to drive it and CLAUDE.local.md for where it lives.
+**Playback panel, showing the green transmitted blocks.** The APK with the new
+panel is built and installed on the emulator, mic and overlay permissions are
+granted, and `scratchpad/speech_loop.wav` is 66.7 s of real helmet speech with
+0.35 s gaps in it — the gaps matter, because they are what makes the green
+alternate with grey instead of filling the whole waveform.
+
+*The blocker:* **recording writes nothing without an audio hold.** The capture
+worker does not run until the engine has opened the devices, so with no server
+connected and no microphone test running there is nothing to record — the toggle
+goes on and off and no file appears. Open the devices first, either by turning
+on *Test microphone (hear yourself)* in Settings, which holds audio for as long
+as that screen is up, or by connecting to a server. Then play the loop on the
+host, record for ~25 s, and open the listen sheet.
+
+`transmitting` does *not* depend on being connected — it is decided by the
+transmit mode and the analysis (`engine.rs:2303`) — so green appears on a
+voice-activated recording with no server, provided the devices are open.
+
+**Sync.** Not on Android at all; the section only exists where a cloud can carry
+the data, so it has to come from the iOS simulator.
+
+**Diagnostics, one per subsection**, including the analyser live with speech
+detected *and* transmitting. Note this is more than cropping: `settings.md`
+documents Diagnostics as a bulleted list with **no screenshots at all**, so the
+markup to hold six or seven figures has to be written as well as the captures
+taken.
+
+### The music gate: a decision, not a measurement
+
+`docs/MUSIC_GATE.md` is now measured end to end and the input side is closed —
+both clips, hand labels, and every candidate scored. What is left is a choice:
+
+- **Accept the trade Helmet already makes** (80.0% of speech kept, a quarter of
+  what it sends still music), or
+- **Adopt a neural VAD**, which is the only thing measured here that beats it:
+  TEN VAD matches Helmet's recall at 80.2% with 89.5% precision and a third of
+  the music leak. The ordered plan is in that file.
+
+Six hand-built features have now failed. The properties that separate music from
+speech in a quiet room are properties a motorcycle also has, and every feature
+the chain currently computes is measured downstream of the one RNNoise decision
+it would have to disagree with.
+
+### TFLite in the app — designed, not built
+
+Agreed and written up in `MUSIC_GATE.md`: YAMNet as a *supporting* vote for
+Helmet, never a veto and never near the transmit gate, because being wrong about
+a profile costs some naturalness where being wrong about transmitting cuts a
+rider off. Model in Dart (`tflite_flutter` is mature where the Rust bindings are
+not), inference every few seconds rather than per block, and paired with the
+15 s calm ratchet that already shipped so it can push towards Helmet promptly
+and only release on real quiet. A dot in the diagnostics array so the decision
+is visible rather than inferred.
+
+**What it needs first, and does not have:** nothing hands Dart a *waveform*.
+`audio_spectrum()` returns 24 bands and YAMNet wants 15 600 raw samples at
+16 kHz, so this needs a new self-expiring `#[frb(sync)]` tap built like the
+spectrum one — self-expiring because a model polled forever in a rider's pocket
+is the failure `DiagnosticsPanel` already guards against.
+
+**Then measure**, because neither number is known: per-inference CPU on a real
+phone, and the battery cost of the tap.
+
+`idb` is installed and connected, so the iOS work is reachable — see CLAUDE.md
+for how to drive it and CLAUDE.local.md for where it lives. There is also a CUDA
+GPU on this machine, unused and not needed: the installed torch is a `+cpu`
+build, which is why `cuda.is_available()` is False.

@@ -179,13 +179,17 @@ the same device. Music in the room is not that. The question at the top of this
 file is therefore not answered by either recording — it is out of scope for
 them, which is different from being ruled out.
 
-**And the road fault is a different case.** A rider's music plays *from the
-phone*, through the same route the intercom uses, where ducking does apply and
-where the level is whatever survives it. These clips model loud music in a room.
-That is the same class of provenance problem `core/tests/road.rs` records in its
-header — four recordings scored before anyone noticed they came from the phone's
-microphone rather than the headset's — and it is worth stating before these
-numbers are quoted at the road report.
+**And that is the fault, not an approximation of it.** Confirmed by the reporter:
+music through the intercom causes no trouble, and what is being chased is an
+*external* source heard by the microphone. So these clips are on target, and the
+usual provenance worry — that a recording describes a different signal from the
+one the complaint is about, as `core/tests/road.rs` records in its header — does
+not apply here. It is worth saying plainly, because an earlier draft of this
+section said the opposite.
+
+It also removes a whole class of fix. There is no routing, focus or session
+setting that can turn down a stereo in the room. Whatever is done about this has
+to be done in the chain.
 
 ### Quieter music leaks more, because Auto reads level
 
@@ -206,9 +210,17 @@ thirty dB quieter is worse again, because it drops into Light. `Off` sits at
 80.2% at every level, unchanged — the level-only path compares against a floor
 that scales with the signal, so it cannot see a change of gain at all.
 
-So the recording that prompted all of this **caught the chain at its best**. The
-case the rider actually reported — their own music, ducked, therefore quieter —
-lands in exactly the profiles where music is barely suppressed.
+So the recording that prompted all of this **caught the chain at its best**, and
+that matters precisely because the source is external: how loud it arrives is a
+question of how far away it is. A stereo in the same room at −17 dBFS lands in
+Helmet and is mostly rejected. The same stereo across a car park, or a vehicle
+alongside at the lights, arrives ten or twenty dB down — and lands in Standard
+or Light, where music is barely suppressed at all.
+
+**The chain is therefore best at the case a rider would most expect it to
+struggle with, and worst at the moderate one they would not think to mention.**
+That is also a testable prediction to put to the reporter: the fault should be
+worse with the source further away, not nearer.
 
 *Caveat on the method:* scaling a recording is not the same as recording quieter
 music. The gain is applied to the microphone's own noise as well, so the SNR is
@@ -317,11 +329,17 @@ ducking failure without being evidence of one. **Ask how the clip was made, or
 capture one where the answer is known.** It remains the cheapest thing here by a
 wide margin.
 
-**Asked and answered, 2026-08-09: the music came from computer speakers**, so
-ducking never applied to either clip and they cannot speak to it. See
-*[Provenance](#provenance-the-music-came-from-the-room-not-from-the-phone)*.
-Ruling it out still needs a recording made with the music playing **from the
-phone**, which is the case the rider reported.
+> **Retired, 2026-08-09. Do not spend time on this.** The fault is *external*
+> music — a stereo in the room, a car alongside, a PA at the lights — reaching
+> the microphone acoustically. Ducking governs audio played by other apps on the
+> same device and can do nothing about sound in the air, so it is not a cheaper
+> explanation here; it is not an explanation at all. Music played through the
+> intercom is reported as no trouble.
+>
+> Everything above this line stays because the reasoning was sound and the
+> conclusion was wrong for a reason worth keeping: it assumed the music reached
+> the microphone through the phone. Once the source is outside, the entire
+> routing hypothesis goes with it, and what is left is a DSP problem after all.
 
 ## Candidates, if it is ducking
 
@@ -450,3 +468,9 @@ sidecar**: one `start end` pair per line marking where the talking is, written
 by ear. `core/tests/road.rs` already reads it, and with it every figure in this
 file becomes an assertion instead of an estimate. Without it the only available
 label is the chain's own harmonicity, which is the thing being judged.
+
+**Nothing else is outstanding on the input side.** The two clips cover both
+halves — false positives and recall — of the case that is actually being
+chased, which is an external source heard acoustically. The one thing worth
+adding later, and only to confirm the prediction above, is the same music at a
+distance rather than in the same room.

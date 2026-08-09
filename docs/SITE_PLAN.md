@@ -108,6 +108,13 @@ Two other facts worth keeping:
 - **kramdown does not parse markdown inside a block element.** Every `<div>`
   wrapping a table needs `markdown="1"`.
 - **`baseurl` is not inferred** for a project site.
+- **A colon in an unquoted front-matter value breaks the language switch, and
+  nothing else.** `description: Панель … «почему так вышло»: анализатор` is
+  invalid YAML, and Jekyll does not fail the build over it — it drops the keys
+  it could not read, so the page loses its `ref` and the switch quietly falls
+  back to the home page of the other language. Caught only by clicking it.
+  Quote the value, or use a dash. `python -c "import yaml; …"` over every page's
+  front matter takes a second and is the check that would have caught it.
 - **The menu breakpoint is measured, not a media query.** Adding a nav item or
   a language needs no CSS change. It now reads the bar's real padding and gaps
   rather than a constant, which was wrong twice — the padding is a `clamp()`,
@@ -171,7 +178,8 @@ MSIX job skips by design).
   most of each figure was the screen behind the subject — and, having been shot
   in different sessions, the two backgrounds did not even match.
 - **Diagnostics is its own page**, in both languages, and is in the top bar
-  between *Settings* and *On the road*. It answers a different question from
+  immediately before *Send a recording* — the two belong together, because
+  sending a recording starts in Diagnostics. It answers a different question from
   Settings — not *what should this be set to* but *why did that happen* — and
   it had outgrown being the last section of a page about switches. The settings
   page keeps a stub that points at it, because people will look there.

@@ -64,12 +64,12 @@ en:
       url: /index.html
     - title: Settings
       url: /settings.html
-    - title: Diagnostics
-      url: /diagnostics.html
     - title: On the road
       url: /scenarios.html
     - title: Your own server
       url: /server.html
+    - title: Diagnostics
+      url: /diagnostics.html
     - title: Send a recording
       url: /sending-a-recording.html
 
@@ -239,12 +239,12 @@ ru:
       url: /ru/index.html
     - title: Настройки
       url: /ru/settings.html
-    - title: Диагностика
-      url: /ru/diagnostics.html
     - title: В дороге
       url: /ru/scenarios.html
     - title: Свой сервер
       url: /ru/server.html
+    - title: Диагностика
+      url: /ru/diagnostics.html
     - title: Прислать запись
       url: /ru/sending-a-recording.html
 

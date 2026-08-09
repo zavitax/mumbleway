@@ -235,7 +235,18 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             let _ = sink.pcm.flush();
             let _ = sink.log.flush();
             match open_sink(dir, stem, sink.index + 1, rate) {
-                Ok(next) => sink = next,
+                Ok(next) => {
+                    sink = next;
+                    // Back to zero, because each pair is a recording in its
+                    // own right. Running the counter on made the column mean
+                    // "block within the session", which is a number nothing
+                    // can use: the audio beside it starts at sample zero, so
+                    // every reader that multiplied the column by the block
+                    // size pointed past the end of the file it was reading.
+                    // The listen sheet did exactly that and drew the tail of
+                    // a long ride as if none of it had been transmitted.
+                    block_index = 0;
+                }
                 Err(e) => {
                     tracing::error!("could not rotate the diagnostic recording: {e}");
                     break;
@@ -287,6 +298,56 @@ mod tests {
         assert_eq!(rows.len(), 11);
         assert!(rows[1].starts_with("0,1,1,"), "first block was speaking");
         assert!(rows[2].starts_with("1,0,0,"), "second was not");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_rotated_file_numbers_its_blocks_from_zero() {
+        // The column is an offset into the audio lying beside it, and after a
+        // rotation that audio starts again at sample zero. Running the counter
+        // on across the rotation made every row of the second file point past
+        // the end of it, which the listen sheet drew as a ride that transmitted
+        // nothing -- the tail of a long ride, and the file it opens first.
+        let dir = std::env::temp_dir().join(format!("mw-rec-rot-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+
+        // Straight down the channel rather than through `push`, which drops
+        // rather than waits -- that is right on the audio thread and useless
+        // here, where sixteen megabytes have to actually reach the disk.
+        //
+        // Enough to fill one file and start the next, computed rather than
+        // guessed so it stays right if the rotation size moves.
+        let per_block = 480 * 2;
+        let blocks = (ROTATE_BYTES / per_block) + 4;
+        fs::create_dir_all(&dir).unwrap(); // `start` does this; `write_loop` does not
+        let (tx, rx) = sync_channel(QUEUE_BLOCKS);
+        let dir2 = dir.clone();
+        let writer = std::thread::spawn(move || write_loop(rx, &dir2, "rot", 48_000));
+        for i in 0..blocks {
+            tx.send(Message::Block(Box::new(block(i % 2 == 0))))
+                .unwrap();
+        }
+        drop(tx);
+        writer.join().unwrap();
+
+        let second = fs::read_to_string(dir.join("rot-001.csv")).unwrap();
+        let rows: Vec<&str> = second.lines().filter(|l| !l.starts_with('#')).collect();
+        assert!(rows.len() >= 2, "the second file has a header and rows");
+        assert!(
+            rows[1].starts_with("0,"),
+            "the second file must start at block 0, not {:?}",
+            &rows[1][..rows[1].find(',').unwrap()]
+        );
+
+        // And its audio starts at zero too, which is the pairing the column
+        // is meant to describe.
+        let pcm = fs::metadata(dir.join("rot-001.s16")).unwrap().len();
+        assert_eq!(
+            pcm / per_block,
+            (rows.len() - 1) as u64,
+            "one block of audio per row, in the rotated file as much as the first"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

@@ -120,14 +120,29 @@ Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
       if (line.isEmpty || line.startsWith('#')) continue;
       final comma = line.indexOf(',');
       if (comma <= 0) continue;
-      final first = int.tryParse(line.substring(0, comma));
-      if (first == null) continue; // the header row
+      if (int.tryParse(line.substring(0, comma)) == null) {
+        continue; // the header row
+      }
       final rest = line.substring(comma + 1);
       final next = rest.indexOf(',');
       if (next <= 0) continue;
       if (rest.substring(0, next) == '1') {
-        // Each row is one block of `kRecordingBlock` samples.
-        final start = first * kRecordingBlock;
+        // Where the row sits in this file, not what its first column says.
+        //
+        // **The two disagree, and it shipped.** A recording rotates to a new
+        // pair of files every 16 MB, and the writer's block counter ran on
+        // across the rotation: the second file's log opened at block 17,477
+        // while its own audio opened at sample zero. Every row then pointed
+        // past the end of its own recording and was clamped to the last
+        // bucket, so the tail of a long ride drew with no green at all — and
+        // the tail is what the listen sheet opens first, being the newest
+        // name. The waveform said "none of this was sent" about a ride that
+        // was, which is the one thing this colour must never do.
+        //
+        // The writer is fixed as well. Counting rows is what repairs the
+        // recordings already sitting on people's phones, and rows are one per
+        // block in file order by construction, so it is also less to trust.
+        final start = block * kRecordingBlock;
         final a = (start ~/ perBucket).clamp(0, buckets - 1);
         final b = ((start + kRecordingBlock - 1) ~/ perBucket)
             .clamp(0, buckets - 1);

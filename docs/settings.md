@@ -185,9 +185,10 @@ effect the next time the app starts.**
   <figure>
     <img src="{{ '/assets/img/shots/settings-noise-phone.webp' | relative_url }}"
          alt="The noise cancellation section: off, light, standard, helmet and
-              automatic, each with a sentence saying what it is for, and helmet
-              selected."
-         width="560" height="895" loading="lazy" decoding="async">
+              automatic, each with a sentence saying what it is for, with
+              automatic selected and its paragraph describing the sound
+              classifier and the two cooldowns."
+         width="560" height="933" loading="lazy" decoding="async">
     <figcaption>Listed weakest to strongest, with Automatic at the end.</figcaption>
   </figure>
 </div>
@@ -200,12 +201,41 @@ effect the next time the app starts.**
 | Light | Quiet indoor use. Keeps the most natural sound. |
 | Standard | General purpose, for most environments. |
 | Helmet / motorcycle | Steep wind-noise filter, full suppression and an assertive gate. Built for a microphone inside a helmet at speed. |
-| Automatic | Listens to the background and picks one of the settings above, changing at most every few seconds. Useful when one ride covers a quiet car park and a motorway. Never chooses Off. |
+| Automatic | Listens to the background and picks one of the settings above. Useful when one ride covers a quiet car park and a motorway. Never chooses Off. |
 
 </div>
 
 Start on **Helmet** if you are riding and **Standard** if you are not, or leave
 it on **Automatic** and forget about it.
+
+### How Automatic decides
+
+Two things, and they pull in the same direction.
+
+**A sound classifier, on phones.** Automatic runs a small neural model on
+what the microphone hears — about one look per two seconds, on the phone's
+accelerator where there is one. When it hears **engine, wind or music** it takes
+the helmet setting *immediately*, without the few seconds the level-based part
+waits, and holds it for **fifteen seconds** after they stop.
+
+It is a vote for the helmet setting and nothing else. It can never choose a
+lighter one, it never touches the decision about whether to transmit, and it
+does nothing at all unless Automatic is chosen — a profile you picked by hand is
+an instruction. Nothing runs it on Windows or macOS, where Automatic uses levels
+alone.
+
+**Dialling down is slow, and slower the further down it goes.** Leaving the
+helmet setting for Standard needs **fifteen seconds** of the background actually
+asking for it; going on from Standard to Light needs **a minute more**. It walks
+down one step at a time rather than jumping, because Light barely suppresses
+anything and arriving there wrongly is the expensive mistake.
+
+Going *up* has no such wait. Being under-suppressed at speed loses you; being
+over-suppressed at a coffee stop sounds slightly processed.
+
+**Diagnostics shows where it landed** — the profile in force, and a
+**Background** light for what the classifier is saying. See
+[Diagnostics]({{ '/diagnostics.html' | relative_url }}).
 
 ## Feedback suppression
 

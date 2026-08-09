@@ -46,23 +46,34 @@ switch to remember.
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/diag-lights-phone.webp' | relative_url }}"
-         alt="Two rows of coloured dots labelled echo, suppressor, voice
-              detected, gate, levelling, hiss, feedback and to the server."
-         width="560" height="71" loading="lazy" decoding="async">
-    <figcaption>Green passes audio on, amber holds something back, red stops it
-    here.</figcaption>
+         alt="The profile Automatic has landed on, then two rows of coloured
+              dots labelled echo, suppressor, voice detected, gate, levelling,
+              hiss, feedback, background and to the server, and a note saying
+              background detection is running on the processor at 130
+              milliseconds per check."
+         width="560" height="170" loading="lazy" decoding="async">
+    <figcaption>Where Automatic landed, every stage of the chain, and what the
+    classifier costs on this device.</figcaption>
   </figure>
 </div>
 
 One dot per stage of the capture chain: **echo**, **suppressor**, **voice
-detected**, **gate**, **levelling**, **hiss**, **feedback** and **to the
-server**. The colours mean the same thing at every stage — green is working and
-passing audio on, amber is working but holding something back, red is stopping
-audio here, and grey is switched off and therefore has no opinion.
+detected**, **gate**, **levelling**, **hiss**, **feedback**, **background** and
+**to the server**. The colours mean the same thing at every stage — green is
+working and passing audio on, amber is working but holding something back, red
+is stopping audio here, and grey is switched off and therefore has no opinion.
 
 The last one is the one to read first. **To the server** red means your voice
 is not leaving the phone, and the dot to its left usually says which stage
 stopped it.
+
+**Background** is the odd one out: it is not a stage the audio passes through
+but the sound classifier
+[Automatic]({{ '/settings.html' | relative_url }}) runs. Green means it is
+listening and the background is clear, amber that it has heard engine, wind or
+music and is holding the helmet setting, and grey that nothing is classifying —
+because a profile was chosen by hand, or because this is a desktop, where the
+model does not run. When it is grey the line underneath says which.
 
 ## Counters
 

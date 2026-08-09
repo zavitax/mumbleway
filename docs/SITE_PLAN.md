@@ -180,14 +180,81 @@ Telegram puts the caption in `message.caption`, beside `document` —
 `tools/vad/telegram_intake.py` already parses the update, so it is a field to
 read and store beside the ride, not a new mechanism.
 
+### How a section screenshot has to be cropped
+
+Two standing rules, both asked for after a batch came back wrong. They apply to
+every section shot, not only the ones outstanding below.
+
+- **Crop to the documented section and nothing else.** No part of the section
+  above or below, however tidy it looks. A reader following a heading on the
+  page expects the picture under it to show that heading's settings and only
+  those; anything else is a second subject in the frame.
+- **The whole section, including its heading, with a margin.** An option cut off
+  the bottom is invisible to a reader — nothing on the page says it is missing —
+  which is why four crops that had lost their last option were reverted rather
+  than shipped.
+
+Those two pull against each other, and the way to satisfy both is not to eyeball
+it:
+
+1. Scroll so the section's **heading sits near the top** of the screen, which is
+   what gives the section a whole screen to fit in. Cropping out of whatever
+   frame happened to contain it is what lost the options the first time.
+2. Require the **next section's heading to be in the same frame**. That is the
+   only evidence nothing ran off the bottom — the crop then ends in the gap
+   before it, so the neighbouring section is used as a boundary and never
+   appears in the picture.
+3. Snap both edges to rows with no ink, as `crop.py` does, so an edge never
+   falls through a line of text.
+
+`settings-noise-phone.webp` was made this way and is the reference: heading,
+intro, all five options with Automatic complete, and nothing from Levels or
+Feedback suppression.
+
+**Stitching the sweep into one tall screen does not work** and the note that
+said to do it was wrong. `scratchpad/stitch.py` assembles the frames by matching
+row-ink profiles, and the result has smeared bands over several headings —
+crops taken from it are plausible and wrong, which is worse than the fault being
+fixed.
+
+### Driving the Android emulator for these
+
+Recorded because three separate approaches failed, each differently, and the
+failures are silent:
+
+- **Never swipe down the middle of the settings list.** It drags whichever
+  slider is under the finger rather than scrolling, and it moved the incoming
+  audio buffer to 280 ms in the middle of a sweep. See CLAUDE.md.
+- **x = 1060 does not scroll either** — it is inside Android's edge-gesture
+  zone, so the system takes the swipe and the list never moves. The gap between
+  the toggles and that zone is too narrow to aim at.
+- **Key events do nothing.** `PAGE_DOWN` and `DPAD_DOWN` leave a Flutter list
+  where it is.
+- Only the **touch-down point** decides which widget claims a gesture, so a safe
+  scroll is a question of where the swipe starts. A heading's description
+  paragraph is text and is never a control.
+- **A burst of input wedges the app** into an ANR dialog, after which every
+  scroll silently does nothing and the screenshots look merely unchanged. Pace
+  the gestures, and check the app still responds before believing a frame.
+- **Read settings back from preferences, not from a screenshot**, when checking
+  whether the UI was disturbed:
+
+  ```bash
+  adb shell run-as com.mumbleway.mumbleway \
+    cat /data/data/com.mumbleway.mumbleway/shared_prefs/FlutterSharedPreferences.xml
+  ```
+
+  A capture of a control at the wrong value is indistinguishable from one at the
+  right value, which is the same reason the app records its own capture input.
+
 ### Screenshots still wanted
 
-- **Noise cancellation, feedback suppression, hiss removal and microphone
-  mode**, cropped to their sections. Each is taller than the frame it was
-  captured in, so this needs the stitched screen: `scratchpad/stitch.py`
-  assembles the sweep into one 1080x7473 image by matching row-ink profiles,
-  and prints every accent-blue heading position. Crop heading-to-heading from
-  that, then snap with `crop.py`.
+- **Feedback suppression, hiss removal and microphone mode**, by the recipe
+  above. Noise cancellation is done and is the worked example.
+- **Choosing the devices — take it on Windows, not on a phone.** The mobile
+  section only says the platform routes audio automatically, so the picture
+  shows nothing worth looking at. Windows has the actual device pickers, which
+  is what the section is about.
 - **Sync.** Not on Android at all — the section only exists where a cloud can
   carry the data, so it has to come from the iOS simulator.
 - **Diagnostics, one per subsection**, including the analyser live with speech

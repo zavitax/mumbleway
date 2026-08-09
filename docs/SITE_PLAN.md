@@ -170,6 +170,11 @@ MSIX job skips by design).
   the card and the sheet themselves. They were whole phone screens before, so
   most of each figure was the screen behind the subject — and, having been shot
   in different sessions, the two backgrounds did not even match.
+- **Diagnostics is its own page**, in both languages, and is in the top bar
+  between *Settings* and *On the road*. It answers a different question from
+  Settings — not *what should this be set to* but *why did that happen* — and
+  it had outgrown being the last section of a page about switches. The settings
+  page keeps a stub that points at it, because people will look there.
 - **Diagnostics is documented, with seven figures**, where it had been a bullet
   list with none. Three of its parts had never been written up at all: the
   microphone level / noise floor / *opens at* trio, which is the voice gate in

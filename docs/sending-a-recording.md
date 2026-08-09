@@ -12,7 +12,8 @@ fault and guessing at one.
 
 ## Record the fault
 
-1. Open **Diagnostics** — the waveform icon in the toolbar.
+1. Open **[Diagnostics]({{ '/diagnostics.html' | relative_url }})** — the
+   waveform icon in the toolbar.
 2. Expand the **Record for diagnosis** card and turn the switch on.
 3. **Ride, and provoke the fault.** Talk the way you were talking when it went
    wrong, at the speed it went wrong at, with the same headset.

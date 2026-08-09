@@ -525,9 +525,44 @@ The separation is total: the negative clip never fires at any bar down to 0.05.
 threshold on a plateau is robust, one on a slope is tuned to the clips it was
 picked on.
 
+**Hardware acceleration: asked for, attempted, and mostly refused.**
+
+The app asks for Core ML on iOS and the GPU delegate on Android, and falls back
+to a plain CPU interpreter when either is turned down. On the Android emulator
+the fallback is what happens, and the log says why in two separate ways:
+
+```
+Following operations are not supported by GPU delegate:
+  COMPLEX_ABS, RFFT2D, SPLIT, GATHER (1D indices only), PAD, STRIDED_SLICE …
+31 operations will run on the GPU, and the remaining 16 will run on the CPU.
+Can not open OpenCL library on this device … Falling back to OpenGL
+TfLiteGpuDelegate Init: [GL_INVALID_ENUM] … Created 0 GPU delegate kernels.
+```
+
+Two findings, and the first is the one that generalises:
+
+1. **YAMNet is a poor candidate for delegation, on any device.** It computes its
+   own mel spectrogram inside the graph, so `RFFT2D` and `COMPLEX_ABS` are part
+   of the model — and no GPU delegate supports them. Even where the delegate
+   initialises cleanly, **31 of 47 operations offload and 16 stay on the CPU**,
+   with a transfer at each boundary. So "runs on the NPU" was never available
+   here in the whole-graph sense; the best case is a partial offload of the
+   convolutional stack.
+2. **The emulator has no usable GPU driver**, which is a fact about the emulator
+   and says nothing about a phone. What it did prove is that the fallback path
+   works: the interpreter is rebuilt without the delegate, the classifier runs,
+   and Diagnostics says it is on the processor.
+
+**What the app claims is therefore deliberately narrow**: not "an NPU is doing
+this", only that the accelerated path was or was not built. Core ML decides per
+operation whether to use the Neural Engine, the GPU or the CPU and reports none
+of it, so anything stronger would be a claim the code cannot check.
+
 **What is still unmeasured** is the thing the design said to measure:
-per-inference CPU and battery on a real phone. The corpus is also still one
-genre, one speaker, one room.
+per-inference CPU and battery on a real phone, where the delegate may well
+attach. Given finding 1, the honest expectation is a partial offload rather
+than a large win, and the CPU number matters more than it looked like it would.
+The corpus is also still one genre, one speaker, one room.
 
 ### The design as agreed, and the choices behind it
 

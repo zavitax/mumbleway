@@ -233,6 +233,25 @@ segfaulted inside `TfLiteInterpreterAllocateTensors` on an Adreno 506; a Dart
 written before the attempt and cleared after, because nothing else survives a
 SIGSEGV.
 
+## Instrument the input before debugging the chain
+
+The diagnostics panel had eleven numbers in it and **not one was measured before
+the capture chain ran**. The meter beside the microphone gain slider read
+`analysis.level_db`, taken after RNNoise and the profile filters — so the one
+control that sets the input level was showing the output of the thing that level
+feeds, and it sat comfortably mid-scale while the microphone was clipping 35% of
+its samples.
+
+That single blind spot presented as four separate faults: distorted speech,
+`Helmet` sounding worse than `Standard`, music surviving the gate, and a long
+argument between a meter and a measurement that were both correct about
+different signals. `record.rs` compounded it by clamping to ±1.0 on the way to
+i16, so the recordings showed clipping with nothing to say where it happened.
+
+**A measurement taken after the thing you are debugging cannot exonerate it.**
+The panel now carries a microphone peak and a clipped-sample count taken on the
+raw block, and the meter reads the microphone.
+
 ## Measurement discipline
 
 Several plans in this repository were disproved by their own acceptance tests

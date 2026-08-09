@@ -318,6 +318,37 @@ recording that it is useless here: at its most aggressive setting it still calls
 **45.8% of pure music speech**, and its AUC of 0.578 is close enough to a coin
 that no threshold rescues it.
 
+#### Whisper, which should have been the ceiling and is not
+
+An ASR model asks a stronger question than a VAD, so it ought to win. Run with
+`vad_filter` off — leaving it on would have scored Silero again under another
+name — `whisper base` gives:
+
+| | Marked as speech | Keeps of speech | Was speech |
+|---|---|---|---|
+| voice over music | 90.0% | **98.5%** | 60.5% |
+| music only | **14.4%** | — | 0% by construction |
+
+**Excellent recall, useless precision.** 60.5% barely clears the 55.3% a client
+that transmitted everything would score, because Whisper's segments run straight
+through the pauses — its timestamps are a transcript's, not a detector's. And it
+marks 14.4% of pure music as speech, three times TEN VAD and infinitely more
+than Silero.
+
+Two things worth taking from it anyway:
+
+- **It found 98.5% of the hand-marked speech**, which is independent support for
+  the labels themselves. They were marked by ear, and nothing until now had
+  checked them.
+- **What it transcribed from 138.8 s of music was `"Music Music Music"`.** The
+  model knows perfectly well what it is listening to; that knowledge is in the
+  *text*, not in the timestamps. Any use of Whisper here would have to read what
+  it said rather than when it said it — which is an oracle's job, offline, and
+  it is already what `tools/vad/transcribe.py` uses it for.
+
+So the ranking is unchanged: Silero for precision, TEN VAD for recall, and
+Whisper stays the labelling oracle it already was.
+
 ### Detecting music to drive the profile — tried, and it fails on a bike
 
 A better idea than gating, and worth recording why it did not work rather than

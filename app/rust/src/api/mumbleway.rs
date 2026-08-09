@@ -1279,6 +1279,15 @@ pub struct UiChainStatus {
     pub level_db: f32,
     pub noise_floor_db: f32,
     pub activation_threshold_db: f32,
+    /// The suppression profile actually in force.
+    ///
+    /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
+    /// in force is always one of the other four — and which one is the only
+    /// thing about Auto a rider cannot see anywhere else. Reported whatever the
+    /// setting is, because the panel is the place where "what is the chain
+    /// doing" is answered and the answer should not depend on how it was
+    /// arrived at.
+    pub effective_profile: NoiseSetting,
 }
 
 /// The latest analyser frame, and an ask for the next one.
@@ -1429,7 +1438,24 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         level_db: c.level_db,
         noise_floor_db: c.noise_floor_db,
         activation_threshold_db: c.activation_threshold_db,
+        effective_profile: from_profile_index(c.profile),
     })
+}
+
+/// The profile index the chain publishes, back into the FFI enum.
+///
+/// By index rather than by importing the core enum's `TryFrom`, because there
+/// is none — the chain stores a `u8` so the status struct can be `Copy` and
+/// written under a lock every block. Anything unexpected reads as `Standard`:
+/// this drives a label, and a label that says the middle profile is a smaller
+/// lie than one that says suppression is off.
+fn from_profile_index(i: u8) -> NoiseSetting {
+    match i {
+        0 => NoiseSetting::Off,
+        1 => NoiseSetting::Light,
+        3 => NoiseSetting::Helmet,
+        _ => NoiseSetting::Standard,
+    }
 }
 
 /// Whether a diagnostic recording is running, and how it is doing.

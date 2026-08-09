@@ -1212,6 +1212,9 @@ class LEn extends L {
   String get diagLogNoProblems => 'No warnings or errors.';
 
   @override
+  String get diagAutoProfile => 'Auto is using';
+
+  @override
   String get diagSpectrum => 'Voice chain';
 
   @override

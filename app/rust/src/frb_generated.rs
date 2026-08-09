@@ -2891,6 +2891,8 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_levelDb = <f32>::sse_decode(deserializer);
         let mut var_noiseFloorDb = <f32>::sse_decode(deserializer);
         let mut var_activationThresholdDb = <f32>::sse_decode(deserializer);
+        let mut var_effectiveProfile =
+            <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         return crate::api::mumbleway::UiChainStatus {
             stages: var_stages,
             would_pass_voice_activated: var_wouldPassVoiceActivated,
@@ -2899,6 +2901,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             level_db: var_levelDb,
             noise_floor_db: var_noiseFloorDb,
             activation_threshold_db: var_activationThresholdDb,
+            effective_profile: var_effectiveProfile,
         };
     }
 }
@@ -3606,6 +3609,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.level_db.into_into_dart().into_dart(),
             self.noise_floor_db.into_into_dart().into_dart(),
             self.activation_threshold_db.into_into_dart().into_dart(),
+            self.effective_profile.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4352,6 +4356,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <f32>::sse_encode(self.level_db, serializer);
         <f32>::sse_encode(self.noise_floor_db, serializer);
         <f32>::sse_encode(self.activation_threshold_db, serializer);
+        <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);
     }
 }
 

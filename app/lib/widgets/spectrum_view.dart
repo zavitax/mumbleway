@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/noise_profiles.dart';
 import '../src/rust/api/mumbleway.dart';
+import '../state/app_state.dart';
 import '../theme.dart';
 
 /// Live view of what the capture chain is doing to the rider's voice.
@@ -126,8 +128,49 @@ class _SpectrumViewState extends State<SpectrumView>
                 ),
         ),
         const SizedBox(height: 10),
+        // Only under Auto, and above the dots because it is the setting the
+        // dots are all measured under.
+        //
+        // Auto is the one setting whose effect a rider cannot read anywhere
+        // else: the settings screen can only say "Automatic", which is a rule
+        // rather than an answer. Under the other four the panel would just be
+        // repeating what the rider already chose.
+        if (_chain != null &&
+            AppStateScope.of(context).noise == NoiseSetting.auto)
+          _AutoProfile(profile: _chain!.effectiveProfile),
         if (_chain != null) _ChainDots(status: _chain!),
       ],
+    );
+  }
+}
+
+/// Where Auto has landed, as a name.
+class _AutoProfile extends StatelessWidget {
+  const _AutoProfile({required this.profile});
+
+  final NoiseSetting profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(Icons.auto_mode, size: 14, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            l.diagAutoProfile,
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            noiseProfileTitle(l, profile),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
     );
   }
 }

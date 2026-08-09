@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../l10n/app_localizations.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
+import '../services/noise_profiles.dart';
 import '../services/overlay.dart';
 import '../services/site_links.dart';
 import '../src/rust/api/mumbleway.dart';
@@ -222,13 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  static String _noiseTitle(L l, NoiseSetting n) => switch (n) {
-    NoiseSetting.off => l.noiseOff,
-    NoiseSetting.light => l.noiseLight,
-    NoiseSetting.standard => l.noiseStandard,
-    NoiseSetting.helmet => l.noiseHelmet,
-    NoiseSetting.auto => l.noiseAuto,
-  };
+  static String _noiseTitle(L l, NoiseSetting n) => noiseProfileTitle(l, n);
 
   static String _noiseSubtitle(L l, NoiseSetting n) => switch (n) {
     NoiseSetting.off => l.noiseOffBody,

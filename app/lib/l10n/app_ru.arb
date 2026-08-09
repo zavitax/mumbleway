@@ -464,6 +464,7 @@
   "diagLogClear": "Очистить журнал",
   "diagLogEmpty": "Пока ничего не записано.",
   "diagLogNoProblems": "Предупреждений и ошибок нет.",
+  "diagAutoProfile": "Авто выбрал",
   "diagSpectrum": "Тракт голоса",
   "diagSpectrumWaiting": "Ожидание звука",
   "diagSpectrumStalled": "Звуковой движок остановлен",

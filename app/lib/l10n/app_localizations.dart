@@ -2245,6 +2245,12 @@ abstract class L {
   /// **'No warnings or errors.'**
   String get diagLogNoProblems;
 
+  /// No description provided for @diagAutoProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto is using'**
+  String get diagAutoProfile;
+
   /// No description provided for @diagSpectrum.
   ///
   /// In en, this message translates to:

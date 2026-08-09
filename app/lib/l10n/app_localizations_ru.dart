@@ -1208,6 +1208,9 @@ class LRu extends L {
   String get diagLogNoProblems => 'Предупреждений и ошибок нет.';
 
   @override
+  String get diagAutoProfile => 'Авто выбрал';
+
+  @override
   String get diagSpectrum => 'Тракт голоса';
 
   @override

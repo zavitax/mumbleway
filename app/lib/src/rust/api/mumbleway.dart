@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
@@ -722,6 +722,16 @@ class UiChainStatus {
   final double noiseFloorDb;
   final double activationThresholdDb;
 
+  /// The suppression profile actually in force.
+  ///
+  /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
+  /// in force is always one of the other four — and which one is the only
+  /// thing about Auto a rider cannot see anywhere else. Reported whatever the
+  /// setting is, because the panel is the place where "what is the chain
+  /// doing" is answered and the answer should not depend on how it was
+  /// arrived at.
+  final NoiseSetting effectiveProfile;
+
   const UiChainStatus({
     required this.stages,
     required this.wouldPassVoiceActivated,
@@ -730,6 +740,7 @@ class UiChainStatus {
     required this.levelDb,
     required this.noiseFloorDb,
     required this.activationThresholdDb,
+    required this.effectiveProfile,
   });
 
   @override
@@ -740,7 +751,8 @@ class UiChainStatus {
       warmingUp.hashCode ^
       levelDb.hashCode ^
       noiseFloorDb.hashCode ^
-      activationThresholdDb.hashCode;
+      activationThresholdDb.hashCode ^
+      effectiveProfile.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -753,7 +765,8 @@ class UiChainStatus {
           warmingUp == other.warmingUp &&
           levelDb == other.levelDb &&
           noiseFloorDb == other.noiseFloorDb &&
-          activationThresholdDb == other.activationThresholdDb;
+          activationThresholdDb == other.activationThresholdDb &&
+          effectiveProfile == other.effectiveProfile;
 }
 
 class UiChannel {

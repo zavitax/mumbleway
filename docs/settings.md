@@ -212,7 +212,7 @@ ways.
   <figure>
     <img src="{{ '/assets/img/shots/settings-feedback-phone.webp' | relative_url }}"
          alt="The feedback suppression section: four options, from no suppression through cutting only when a howl builds to ducking the microphone while others talk."
-         width="560" height="1244" loading="lazy" decoding="async">
+         width="560" height="911" loading="lazy" decoding="async">
     <figcaption>Four ways of handling what echo cancellation could not predict.</figcaption>
   </figure>
 </div>
@@ -236,7 +236,7 @@ For the steady hiss a microphone adds under everything.
   <figure>
     <img src="{{ '/assets/img/shots/settings-hiss-phone.webp' | relative_url }}"
          alt="The hiss removal section: leave the sound alone, learn the hiss and subtract it, or turn quiet passages down further."
-         width="560" height="1244" loading="lazy" decoding="async">
+         width="560" height="769" loading="lazy" decoding="async">
     <figcaption>Start at the top. The other two both take something away as well.</figcaption>
   </figure>
 </div>
@@ -259,9 +259,9 @@ app feels to use.
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-mode-phone.webp' | relative_url }}"
-         alt="The microphone mode section with voice activated selected, above
-              the floating call window switch."
-         width="560" height="1244" loading="lazy" decoding="async">
+         alt="The microphone mode section: voice activated, push to talk and
+              always on, with voice activated selected."
+         width="560" height="506" loading="lazy" decoding="async">
     <figcaption>Voice activated is the default.</figcaption>
   </figure>
 </div>

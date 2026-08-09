@@ -219,7 +219,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/settings-feedback-phone.webp' | relative_url }}"
          alt="Раздел подавления обратной связи: четыре варианта — от полного отсутствия до обрыва при нарастании воя и приглушения микрофона, пока говорят другие."
-         width="560" height="1244" loading="lazy" decoding="async">
+         width="560" height="911" loading="lazy" decoding="async">
     <figcaption>Четыре способа справиться с тем, что эхоподавитель не предсказал.</figcaption>
   </figure>
 </div>
@@ -243,7 +243,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/settings-hiss-phone.webp' | relative_url }}"
          alt="Раздел подавления шипения: оставить как есть, выучить шипение и вычесть его или сильнее приглушать тихие места."
-         width="560" height="1244" loading="lazy" decoding="async">
+         width="560" height="769" loading="lazy" decoding="async">
     <figcaption>Начните с первого пункта: два других заодно что-нибудь отнимут.</figcaption>
   </figure>
 </div>
@@ -266,9 +266,9 @@ description: Что делает каждая настройка и какие �
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-mode-phone.webp' | relative_url }}"
-         alt="Раздел режима микрофона: выбран «По голосу», ниже переключатель
-              плавающего окна разговора."
-         width="560" height="1244" loading="lazy" decoding="async">
+         alt="Раздел режима микрофона: «По голосу», «Зажимать кнопку» и
+              «Всегда включён», выбрано «По голосу»."
+         width="560" height="506" loading="lazy" decoding="async">
     <figcaption>По умолчанию — «По голосу».</figcaption>
   </figure>
 </div>

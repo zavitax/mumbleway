@@ -577,15 +577,37 @@ tbody tr:last-child td { border-bottom: 0; }
 .shots {
   display: flex;
   flex-wrap: wrap;
-  /* Bottoms aligned, so the captions under them start on the same line. Two
-     pictures of different heights side by side with a caption hanging under
-     each at a different level reads as a broken layout rather than as a pair. */
-  align-items: flex-end;
+  /* Pictures aligned at the top. Aligning the bottoms instead did line the
+     captions up, but it bought that by leaving the tops ragged — which is the
+     edge a reader actually follows across a row. */
+  align-items: flex-start;
   gap: 1.25rem;
   margin: 2rem 0 2.5rem;
   max-width: 100%;
 }
 .shots figure { margin: 0; flex: 0 0 auto; max-width: 100%; }
+
+/* Captions aligned separately from the pictures.
+   One flex line can only align a figure by one edge, so tops and captions are
+   a choice between two. Two grid rows are not: every picture starts on the
+   first line and every caption on the second, whatever the pictures' heights.
+   The flex rules above stay as the fallback, so a browser without subgrid gets
+   top-aligned pictures and ragged captions rather than a broken row. */
+@supports (grid-template-rows: subgrid) {
+  .shots {
+    display: grid;
+    grid-template-columns:
+      repeat(auto-fit, minmax(min(var(--shot-w), 100%), var(--shot-w)));
+    grid-template-rows: auto auto;
+    justify-content: start;
+    align-items: start;
+  }
+  .shots figure {
+    display: grid;
+    grid-row: span 2;
+    grid-template-rows: subgrid;
+  }
+}
 
 .shots img {
   display: block;

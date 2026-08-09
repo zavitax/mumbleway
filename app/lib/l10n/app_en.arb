@@ -596,5 +596,13 @@
   "diagStageLevel": "Levelling",
   "diagStageHiss": "Hiss",
   "diagStageFeedback": "Feedback",
-  "diagStageTransmit": "To the server"
+  "diagStageTransmit": "To the server",
+  "website": "Website",
+  "@website": {"description": "Menu item opening the app’s own website in a browser."},
+  "openWebsite": "Open the MumbleWay website",
+  "@openWebsite": {"description": "Tooltip on the wordmark, which opens the website."},
+  "helpForThisScreen": "Help for this screen",
+  "@helpForThisScreen": {"description": "Tooltip on the help button in the settings title bar."},
+  "couldNotOpenLink": "Could not open the link. No browser answered.",
+  "@couldNotOpenLink": {"description": "Shown when the platform refuses to open a web address."}
 }

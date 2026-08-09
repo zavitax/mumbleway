@@ -478,5 +478,9 @@
   "diagStageLevel": "Выравнивание",
   "diagStageHiss": "Шипение",
   "diagStageFeedback": "Обратная связь",
-  "diagStageTransmit": "На сервер"
+  "diagStageTransmit": "На сервер",
+  "website": "Сайт",
+  "openWebsite": "Открыть сайт MumbleWay",
+  "helpForThisScreen": "Справка по этому экрану",
+  "couldNotOpenLink": "Не удалось открыть ссылку: ни один браузер не откликнулся."
 }

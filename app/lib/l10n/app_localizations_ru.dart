@@ -1251,4 +1251,17 @@ class LRu extends L {
 
   @override
   String get diagStageTransmit => 'На сервер';
+
+  @override
+  String get website => 'Сайт';
+
+  @override
+  String get openWebsite => 'Открыть сайт MumbleWay';
+
+  @override
+  String get helpForThisScreen => 'Справка по этому экрану';
+
+  @override
+  String get couldNotOpenLink =>
+      'Не удалось открыть ссылку: ни один браузер не откликнулся.';
 }

@@ -2334,6 +2334,30 @@ abstract class L {
   /// In en, this message translates to:
   /// **'To the server'**
   String get diagStageTransmit;
+
+  /// Menu item opening the app’s own website in a browser.
+  ///
+  /// In en, this message translates to:
+  /// **'Website'**
+  String get website;
+
+  /// Tooltip on the wordmark, which opens the website.
+  ///
+  /// In en, this message translates to:
+  /// **'Open the MumbleWay website'**
+  String get openWebsite;
+
+  /// Tooltip on the help button in the settings title bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Help for this screen'**
+  String get helpForThisScreen;
+
+  /// Shown when the platform refuses to open a web address.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open the link. No browser answered.'**
+  String get couldNotOpenLink;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

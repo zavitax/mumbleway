@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/site_links.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/diagnostics_panel.dart';
@@ -36,10 +37,27 @@ class HomeScreen extends StatelessWidget {
         // name or letting it overflow into the buttons. It never grows: a
         // wordmark that swelled to fill a tablet's app bar would be the
         // loudest thing on a screen whose subject is the server list.
-        title: const FittedBox(
+        //
+        // It is also the way to the website, which is where a rider goes to
+        // find out what any of this does. Made a link here rather than inside
+        // `Wordmark`: the mark is a drawing and should stay one, and this is
+        // the only place it is a link.
+        title: FittedBox(
           fit: BoxFit.scaleDown,
           alignment: Alignment.centerLeft,
-          child: Wordmark(),
+          child: Tooltip(
+            message: l.openWebsite,
+            child: InkWell(
+              onTap: () => openSite(context, SiteLinks.home(siteLanguage(context))),
+              // A bare `Wordmark` gives the reader nothing to announce, so the
+              // link needs its own label and role.
+              child: Semantics(
+                link: true,
+                label: l.openWebsite,
+                child: const Wordmark(),
+              ),
+            ),
+          ),
         ),
         actions: [
           const LanguageButton(),
@@ -79,6 +97,9 @@ class HomeScreen extends StatelessWidget {
                   if (e != null) {
                     messenger.showSnackBar(SnackBar(content: Text(e)));
                   }
+                case 'website':
+                  if (!context.mounted) return;
+                  await openSite(context, SiteLinks.home(siteLanguage(context)));
                 case 'settings':
                   if (!context.mounted) return;
                   await Navigator.push(
@@ -107,6 +128,15 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'website',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.public),
+                  title: Text(l.website),
+                ),
+              ),
               PopupMenuItem(
                 value: 'settings',
                 child: ListTile(

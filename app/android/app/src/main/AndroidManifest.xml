@@ -111,5 +111,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- So the documentation links can be opened. From Android 11 a package
+             this app has not declared is invisible to it, and url_launcher then
+             reports that nothing can handle an ordinary https address — which
+             looks like a broken link rather than a missing manifest entry. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/overlay.dart';
+import '../services/site_links.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -73,7 +74,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(l.settings),
-        actions: const [LanguageButton()],
+        // Help last, so it sits at the outside edge and stays put as other
+        // actions come and go.
+        actions: [
+          const LanguageButton(),
+          IconButton(
+            tooltip: l.helpForThisScreen,
+            onPressed: () =>
+                openSite(context, SiteLinks.settings(siteLanguage(context))),
+            icon: const Icon(Icons.help_outline),
+          ),
+        ],
       ),
       body: ListView(
         children: [

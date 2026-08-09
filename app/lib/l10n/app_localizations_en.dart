@@ -1255,4 +1255,17 @@ class LEn extends L {
 
   @override
   String get diagStageTransmit => 'To the server';
+
+  @override
+  String get website => 'Website';
+
+  @override
+  String get openWebsite => 'Open the MumbleWay website';
+
+  @override
+  String get helpForThisScreen => 'Help for this screen';
+
+  @override
+  String get couldNotOpenLink =>
+      'Could not open the link. No browser answered.';
 }

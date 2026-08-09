@@ -48,6 +48,10 @@ dependencies:
   # Resolves the writable directory the client identity certificate lives in.
   path_provider: ^2.1.4
   http: ^1.6.0
+  # Hands a documentation link to the platform's browser. The app never renders
+  # the site itself: an in-app web view would put our chrome around pages that
+  # are already a website, and would have to be kept in step with them.
+  url_launcher: ^6.3.1
   share_plus: ^13.3.0
   # Packs the diagnostic recordings into one archive before they are shared.
   # Not cosmetic: iOS types a shared item by its extension, and `.s16` is not a

@@ -38,6 +38,7 @@ use super::jitter::{
 use super::record::{DiagnosticRecorder, Recorded};
 use super::resample::Resampler;
 use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
+use super::waveform::{WaveformFrame, WaveformTap};
 
 /// Where every stage of the capture chain stands, as of the last block.
 ///
@@ -87,6 +88,13 @@ pub struct ChainStatus {
     /// De-hiss and feedback-guard modes, as their indices.
     pub dehiss_mode: u8,
     pub feedback_mode: u8,
+    /// The background classifier is holding `Helmet` in force.
+    ///
+    /// Published so the panel can say *why* the profile is what it is. Helmet
+    /// arrived at by level and Helmet arrived at by the classifier look
+    /// identical from outside, and a rider trying to work out whether the
+    /// model is doing anything cannot tell them apart without this.
+    pub music_hold: bool,
 }
 
 impl Default for ChainStatus {
@@ -105,6 +113,7 @@ impl Default for ChainStatus {
             noise_floor_db: -100.0,
             activation_threshold_db: -100.0,
             profile: 0,
+            music_hold: false,
             transmit_mode: 0,
             dehiss_mode: 0,
             feedback_mode: 0,
@@ -492,6 +501,29 @@ pub struct AudioShared {
     spectrum_until: AtomicU64,
     /// The most recent analysis, if any has been produced.
     spectrum: Mutex<Option<SpectrumFrame>>,
+    /// Armed the same way and for the same reasons as [`Self::spectrum_until`],
+    /// for the raw window the background classifier eats.
+    ///
+    /// Separate from the spectrum's arming rather than sharing it: the two are
+    /// wanted at different times. The panel wants bands while a rider is
+    /// looking at it; the classifier wants samples while `Auto` is chosen,
+    /// which is usually with the panel shut and the phone in a pocket. Sharing
+    /// one flag would mean either the analyser ran for the classifier's sake or
+    /// the classifier stopped when the panel closed.
+    waveform_until: AtomicU64,
+    /// The most recent window of raw microphone audio at 16 kHz.
+    ///
+    /// Boxed because it is 62 kB and this is swapped, not copied through, on
+    /// the audio thread.
+    waveform: Mutex<Option<Box<WaveformFrame>>>,
+    /// The background classifier's last word, as a tri-state: 0 nothing has
+    /// said anything, 1 clear, 2 loud and structured.
+    ///
+    /// Three states rather than a bool because "nobody is classifying" and
+    /// "the classifier says it is quiet" must not be the same value. They lead
+    /// to opposite behaviour, and a bool would have made the desktop build,
+    /// where nothing ever classifies, permanently assert an all-clear.
+    background_noisy: AtomicU8,
     /// Where every stage of the capture chain stands, as of the last block.
     chain: Mutex<ChainStatus>,
 
@@ -738,6 +770,9 @@ impl AudioShared {
             blocks_processed: AtomicU64::new(0),
             spectrum_until: AtomicU64::new(0),
             spectrum: Mutex::new(None),
+            waveform_until: AtomicU64::new(0),
+            waveform: Mutex::new(None),
+            background_noisy: AtomicU8::new(0),
             chain: Mutex::new(ChainStatus::default()),
             recording: AtomicBool::new(false),
             recorder: Mutex::new(None),
@@ -949,6 +984,15 @@ impl AudioShared {
     /// for any reason, including ones nobody thought of — is not paid for.
     pub const SPECTRUM_ARM_BLOCKS: u64 = 50;
 
+    /// How long an ask keeps the classifier's window being collected.
+    ///
+    /// 500 blocks is five seconds, ten times the analyser's, because the
+    /// reader polls on the model's cadence rather than the screen's. Collecting
+    /// is cheap — a mean of three and a store, per sample — so the cost of
+    /// being generous here is small, and the cost of being mean is a window
+    /// that is never whole when the model asks for it.
+    pub const WAVEFORM_ARM_BLOCKS: u64 = 500;
+
     /// Asks for the analyser to keep running, and returns the latest frame.
     ///
     /// The ask and the read are one call on purpose. Two calls would let a
@@ -966,6 +1010,65 @@ impl AudioShared {
     /// Whether the analyser should run for the block at `index`.
     pub fn spectrum_wanted(&self, index: u64) -> bool {
         self.spectrum_until.load(Ordering::Relaxed) > index
+    }
+
+    /// Asks for the classifier's window to keep being collected, and returns
+    /// the latest one.
+    ///
+    /// Armed for longer than the spectrum — 5 seconds against half a second —
+    /// because the reader's cadence is the model's, and running a neural
+    /// network more often than the thing it describes changes would be the
+    /// battery cost this design exists to avoid. Long enough that a poll every
+    /// few seconds keeps it alive; short enough that a screen going off stops
+    /// it well inside a ride.
+    pub fn take_waveform(&self) -> Option<Box<WaveformFrame>> {
+        let now = self.blocks_processed.load(Ordering::Relaxed);
+        self.waveform_until
+            .store(now + Self::WAVEFORM_ARM_BLOCKS, Ordering::Relaxed);
+        self.waveform.try_lock().and_then(|mut f| f.take())
+    }
+
+    /// Whether the classifier's window should be collected for block `index`.
+    pub fn waveform_wanted(&self, index: u64) -> bool {
+        self.waveform_until.load(Ordering::Relaxed) > index
+    }
+
+    /// Publishes a window. Dropped rather than waited for, like the spectrum.
+    pub fn publish_waveform(&self, frame: Box<WaveformFrame>) {
+        if let Some(mut slot) = self.waveform.try_lock() {
+            *slot = Some(frame);
+        }
+    }
+
+    /// What the background classifier last concluded, and whether anything has
+    /// concluded anything at all.
+    ///
+    /// `None` until something sets it, which is not the same as "the background
+    /// is clear": on a desktop, or with the setting off, nothing ever will, and
+    /// a chain that read that absence as an all-clear would be acting on a
+    /// measurement nobody made.
+    pub fn background_noisy(&self) -> Option<bool> {
+        match self.background_noisy.load(Ordering::Relaxed) {
+            0 => None,
+            1 => Some(false),
+            _ => Some(true),
+        }
+    }
+
+    /// Sets it, from outside the audio thread.
+    pub fn set_background_noisy(&self, noisy: bool) {
+        self.background_noisy
+            .store(if noisy { 2 } else { 1 }, Ordering::Relaxed);
+    }
+
+    /// Forgets it, when the classifier stops running.
+    ///
+    /// Called when the setting is turned off or `Auto` is deselected, so the
+    /// chain goes back to deciding on its own rather than on a verdict that
+    /// has stopped being updated. A stale `true` would pin `Helmet` for the
+    /// rest of the session.
+    pub fn clear_background_noisy(&self) {
+        self.background_noisy.store(0, Ordering::Relaxed);
     }
 
     /// Publishes a frame. Silently drops it if the reader holds the lock,
@@ -2128,6 +2231,10 @@ where
     // at all unless the diagnostics panel is asking for frames.
     let mut analyser = SpectrumAnalyser::new();
     let mut spectrum = SpectrumFrame::default();
+    // Likewise allocated once and idle unless something is asking. 62 kB of
+    // ring, filled with a mean of three per sample.
+    let mut waveform = WaveformTap::new();
+    let mut waveform_at = 0u64;
     let mut encoder = match VoiceEncoder::new(config.quality) {
         Ok(e) => e,
         Err(e) => {
@@ -2194,6 +2301,29 @@ where
                 analyser.push(TAP_RAW, &block);
             }
 
+            // The classifier's window, from the same place the analyser's raw
+            // trace comes from: after input gain and before anything else. It
+            // has to be the microphone rather than the suppressor's output,
+            // because disagreeing with the suppressor is the entire reason a
+            // model is here — see `docs/MUSIC_GATE.md`.
+            if shared.waveform_wanted(block_index) {
+                waveform.push(&block);
+                // Published about once a second. The reader wants a window
+                // every few seconds and copying 62 kB more often than that is
+                // work with nobody to read it.
+                if waveform.ready() && block_index >= waveform_at + 100 {
+                    if let Some(frame) = waveform.frame() {
+                        shared.publish_waveform(frame);
+                        waveform_at = block_index;
+                    }
+                }
+            } else if waveform.ready() {
+                // Nobody is asking any more. Dropped rather than kept, so a
+                // reader that comes back in an hour is not handed an hour-old
+                // window as if it were now.
+                waveform.reset();
+            }
+
             // Take the matching stretch of what was played, so the canceller
             // has a reference for this block. Short-fill with silence rather
             // than stalling: a missing reference simply means nothing to cancel.
@@ -2215,6 +2345,13 @@ where
             if want_profile != processor.profile() {
                 processor.set_profile(want_profile);
             }
+
+            // The classifier's verdict, likewise polled rather than pushed, so
+            // the audio thread never waits on the thread running a model.
+            // `None` — nobody is classifying — reads as "clear", which is the
+            // right default: it leaves `Auto` deciding exactly as it did
+            // before any of this existed.
+            processor.set_background_noisy(shared.background_noisy().unwrap_or(false));
 
             let want_aec = shared.echo_cancellation_enabled();
             if want_aec != processor.echo_cancellation_enabled() {
@@ -2422,6 +2559,7 @@ where
                 transmit_mode: mode as u8,
                 dehiss_mode: shared.dehiss_mode(),
                 feedback_mode: shared.feedback_mode() as u8,
+                music_hold: processor.music_hold_active(),
             });
 
             // Loopback monitoring: hear exactly what would be transmitted.
@@ -2942,6 +3080,65 @@ mod tests {
         shared.take_spectrum();
         assert!(shared.spectrum_wanted(now));
         assert!(!shared.spectrum_wanted(now + AudioShared::SPECTRUM_ARM_BLOCKS));
+    }
+
+    #[test]
+    fn the_classifier_window_arms_and_lapses_the_same_way() {
+        // Same argument as the spectrum, and a stronger one: this feeds a
+        // neural network, so a tap left collecting for a caller that stopped
+        // asking is battery spent on a model nobody is running.
+        let shared = AudioShared::new();
+        assert!(!shared.waveform_wanted(0));
+
+        shared.take_waveform();
+        assert!(shared.waveform_wanted(0), "asking did not arm it");
+        assert!(
+            shared.waveform_wanted(AudioShared::WAVEFORM_ARM_BLOCKS - 1),
+            "it lapsed before the five seconds were up"
+        );
+        assert!(
+            !shared.waveform_wanted(AudioShared::WAVEFORM_ARM_BLOCKS),
+            "it did not lapse"
+        );
+    }
+
+    #[test]
+    fn nothing_classifying_is_not_the_same_as_a_clear_background() {
+        // The distinction the tri-state exists for. On desktop, or with the
+        // setting off, nothing ever sets this — and a chain that read the
+        // absence as an all-clear would be acting on a measurement nobody
+        // made. It would also make the value unclearable, so turning the
+        // classifier off would leave its last verdict in force for ever.
+        let shared = AudioShared::new();
+        assert_eq!(shared.background_noisy(), None);
+
+        shared.set_background_noisy(false);
+        assert_eq!(shared.background_noisy(), Some(false));
+
+        shared.set_background_noisy(true);
+        assert_eq!(shared.background_noisy(), Some(true));
+
+        shared.clear_background_noisy();
+        assert_eq!(shared.background_noisy(), None, "a stale verdict survived");
+    }
+
+    #[test]
+    fn a_window_is_only_handed_out_once() {
+        // Taken rather than copied: two readers polling would otherwise both
+        // classify the same second of audio, and the second verdict would look
+        // like confirmation of the first while being the same measurement.
+        let shared = AudioShared::new();
+        assert!(shared.take_waveform().is_none());
+
+        shared.publish_waveform(Box::new(crate::audio::waveform::WaveformFrame {
+            samples: [0.0; crate::audio::waveform::WINDOW],
+            seq: 1,
+        }));
+        assert!(shared.take_waveform().is_some());
+        assert!(
+            shared.take_waveform().is_none(),
+            "the window was handed out twice"
+        );
     }
 
     #[test]

@@ -90,6 +90,10 @@ dependencies:
   # layout reimplemented in Dart, so the mark in the app bar and the mark on a
   # store page cannot drift apart — see widgets/wordmark.dart.
   flutter_svg: ^2.3.0
+  # Runs YAMNet, which says whether the background is loud and structured, so
+  # Auto can pick Helmet on evidence rather than on a level threshold. See
+  # services/background_classifier.dart for why it is phones only.
+  tflite_flutter: ^0.12.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1414,6 +1414,20 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             value: 0.0,
         },
         UiStage {
+            id: "background".into(),
+            // Grey when nothing is classifying, which is a real and common
+            // state — desktop, the setting off, or a profile chosen by hand —
+            // and must not read as "the background is clear". Amber while the
+            // hold runs, because that is when it is affecting something.
+            state: match (shared.background_noisy(), c.music_hold) {
+                (None, _) => StageState::Off,
+                (_, true) => StageState::Warn,
+                (Some(true), _) => StageState::Warn,
+                (Some(false), _) => StageState::Good,
+            },
+            value: 0.0,
+        },
+        UiStage {
             id: "transmit".into(),
             state: if c.muted {
                 StageState::Off
@@ -1440,6 +1454,63 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         activation_threshold_db: c.activation_threshold_db,
         effective_profile: from_profile_index(c.profile),
     })
+}
+
+/// A window of raw microphone audio for the background classifier.
+#[derive(Debug, Clone)]
+pub struct UiWaveform {
+    /// 15 600 samples at 16 kHz — 0.975 s — which is the size YAMNet was built
+    /// for. Crosses as a `Float32List`, so it is one 62 kB copy every few
+    /// seconds rather than anything per block.
+    pub samples: Vec<f32>,
+    /// Increments per window. Not moving means the worker stopped, which to a
+    /// classifier is indistinguishable from a very quiet ride.
+    pub seq: u64,
+}
+
+/// The latest window of microphone audio, and an ask for the next one.
+///
+/// **Calling this is what makes the engine collect it.** Same self-expiring
+/// arrangement as [`audio_spectrum`] and for a stronger reason: what reads this
+/// runs a neural network, so a tap left running for a caller that stopped
+/// asking is battery spent on nothing. The ask lasts five seconds.
+///
+/// `None` means no whole window is ready — either nothing has been collected
+/// yet, or the last one has already been taken. A partly filled window is never
+/// offered: it would be a fragment of a ride padded with silence, and the model
+/// would classify the padding.
+#[frb(sync)]
+pub fn audio_waveform() -> anyhow::Result<Option<UiWaveform>> {
+    let frame = match app()?.shared.take_waveform() {
+        Some(f) => f,
+        None => return Ok(None),
+    };
+    Ok(Some(UiWaveform {
+        samples: frame.samples.to_vec(),
+        seq: frame.seq,
+    }))
+}
+
+/// Tells the chain what the background classifier concluded.
+///
+/// A supporting vote for `Helmet`, consulted only when the rider has chosen
+/// `Auto`, and never anywhere near the transmit decision. Being wrong about a
+/// profile costs some naturalness; being wrong at the gate cuts a rider off.
+#[frb(sync)]
+pub fn set_background_noisy(noisy: bool) -> anyhow::Result<()> {
+    app()?.shared.set_background_noisy(noisy);
+    Ok(())
+}
+
+/// Forgets the classifier's last word, when it stops running.
+///
+/// Not the same as reporting a clear background, and the difference is the
+/// whole reason this exists: a verdict that stopped being updated would pin
+/// `Helmet` for the rest of the session.
+#[frb(sync)]
+pub fn clear_background_noisy() -> anyhow::Result<()> {
+    app()?.shared.clear_background_noisy();
+    Ok(())
 }
 
 /// The profile index the chain publishes, back into the FFI enum.

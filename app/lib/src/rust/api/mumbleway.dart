@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -184,6 +184,36 @@ UiSpectrum? audioSpectrum() =>
 /// anybody is reading. Unlike [`audio_spectrum`] it arms nothing.
 UiChainStatus audioChainStatus() =>
     RustLib.instance.api.crateApiMumblewayAudioChainStatus();
+
+/// The latest window of microphone audio, and an ask for the next one.
+///
+/// **Calling this is what makes the engine collect it.** Same self-expiring
+/// arrangement as [`audio_spectrum`] and for a stronger reason: what reads this
+/// runs a neural network, so a tap left running for a caller that stopped
+/// asking is battery spent on nothing. The ask lasts five seconds.
+///
+/// `None` means no whole window is ready — either nothing has been collected
+/// yet, or the last one has already been taken. A partly filled window is never
+/// offered: it would be a fragment of a ride padded with silence, and the model
+/// would classify the padding.
+UiWaveform? audioWaveform() =>
+    RustLib.instance.api.crateApiMumblewayAudioWaveform();
+
+/// Tells the chain what the background classifier concluded.
+///
+/// A supporting vote for `Helmet`, consulted only when the rider has chosen
+/// `Auto`, and never anywhere near the transmit decision. Being wrong about a
+/// profile costs some naturalness; being wrong at the gate cuts a rider off.
+void setBackgroundNoisy({required bool noisy}) =>
+    RustLib.instance.api.crateApiMumblewaySetBackgroundNoisy(noisy: noisy);
+
+/// Forgets the classifier's last word, when it stops running.
+///
+/// Not the same as reporting a clear background, and the difference is the
+/// whole reason this exists: a verdict that stopped being updated would pin
+/// `Helmet` for the rest of the session.
+void clearBackgroundNoisy() =>
+    RustLib.instance.api.crateApiMumblewayClearBackgroundNoisy();
 
 /// Starts recording the microphone and what the chain decided about it.
 ///
@@ -1227,4 +1257,29 @@ class UiUser {
           deafened == other.deafened &&
           localMute == other.localMute &&
           status == other.status;
+}
+
+/// A window of raw microphone audio for the background classifier.
+class UiWaveform {
+  /// 15 600 samples at 16 kHz — 0.975 s — which is the size YAMNet was built
+  /// for. Crosses as a `Float32List`, so it is one 62 kB copy every few
+  /// seconds rather than anything per block.
+  final Float32List samples;
+
+  /// Increments per window. Not moving means the worker stopped, which to a
+  /// classifier is indistinguishable from a very quiet ride.
+  final BigInt seq;
+
+  const UiWaveform({required this.samples, required this.seq});
+
+  @override
+  int get hashCode => samples.hashCode ^ seq.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiWaveform &&
+          runtimeType == other.runtimeType &&
+          samples == other.samples &&
+          seq == other.seq;
 }

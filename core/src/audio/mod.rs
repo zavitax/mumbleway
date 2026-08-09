@@ -16,6 +16,7 @@ pub mod resample;
 pub mod spectrum;
 pub mod stretch;
 pub mod testsig;
+pub mod waveform;
 
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};
 pub use denoise::{CaptureProcessor, NoiseProfile};
@@ -23,3 +24,4 @@ pub use engine::{AudioConfig, AudioCue, AudioEngine, AudioShared, ChainStatus, T
 pub use jitter::{SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES};
 pub use resample::Resampler;
 pub use spectrum::{SpectrumAnalyser, SpectrumFrame, BANDS, TAPS, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
+pub use waveform::{WaveformFrame, WaveformTap, WINDOW as WAVEFORM_WINDOW};

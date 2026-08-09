@@ -57,6 +57,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiStats dco_decode_box_autoadd_ui_stats(dynamic raw);
 
   @protected
+  UiWaveform dco_decode_box_autoadd_ui_waveform(dynamic raw);
+
+  @protected
   ConnStatus dco_decode_conn_status(dynamic raw);
 
   @protected
@@ -123,6 +126,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiSpectrum? dco_decode_opt_box_autoadd_ui_spectrum(dynamic raw);
 
   @protected
+  UiWaveform? dco_decode_opt_box_autoadd_ui_waveform(dynamic raw);
+
+  @protected
   (String?, String?) dco_decode_record_opt_string_opt_string(dynamic raw);
 
   @protected
@@ -186,6 +192,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiUser dco_decode_ui_user(dynamic raw);
 
   @protected
+  UiWaveform dco_decode_ui_waveform(dynamic raw);
+
+  @protected
   void dco_decode_unit(dynamic raw);
 
   @protected
@@ -231,6 +240,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiStats sse_decode_box_autoadd_ui_stats(SseDeserializer deserializer);
+
+  @protected
+  UiWaveform sse_decode_box_autoadd_ui_waveform(SseDeserializer deserializer);
 
   @protected
   ConnStatus sse_decode_conn_status(SseDeserializer deserializer);
@@ -307,6 +319,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  UiWaveform? sse_decode_opt_box_autoadd_ui_waveform(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   (String?, String?) sse_decode_record_opt_string_opt_string(
     SseDeserializer deserializer,
   );
@@ -374,6 +391,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiUser sse_decode_ui_user(SseDeserializer deserializer);
 
   @protected
+  UiWaveform sse_decode_ui_waveform(SseDeserializer deserializer);
+
+  @protected
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
@@ -429,6 +449,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_ui_stats(UiStats self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_waveform(
+    UiWaveform self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_conn_status(ConnStatus self, SseSerializer serializer);
@@ -524,6 +550,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_ui_waveform(
+    UiWaveform? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_record_opt_string_opt_string(
     (String?, String?) self,
     SseSerializer serializer,
@@ -603,6 +635,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_user(UiUser self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_waveform(UiWaveform self, SseSerializer serializer);
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);

@@ -426,18 +426,32 @@ anything hand-built here (0.579) and well short of the VADs on their own task
 play" — and YAMNet scores Music at 0.002. The words are about music and the
 sound is not, and it is not fooled. No lexical method would manage that.
 
-**Ride A is the problem, and I cannot resolve it.** It scores Music 0.969, as
-high as the actual music clip. Either YAMNet hears an engine as music — the
-failure every hand-built feature here had, for the reason
-[recorded above](#detecting-music-to-drive-the-profile--tried-and-it-fails-on-a-bike) —
-or that ride has music in it and the label was wrong. Whisper transcribes no
-words from it at all, which rules out speech and settles nothing about music.
+**Ride A is not a problem, and the question it raised is withdrawn.** It scores
+Music 0.969, as high as the actual music clip, and the first reading here called
+that a false positive on engine noise. That reading assumed the target was
+*music*. It is not.
 
-**That matters backwards as well as forwards.** Ride A was used as a *negative*
-in the beat/tonal experiment above. If it contains music, that experiment's
-negatives were contaminated and its conclusion needs re-checking. **Somebody has
-to listen to `20260808-0512-000.wav` and say which it is.** It is 33 seconds.
-Until then two results here rest on an assumption nobody has verified.
+**What the profile decision needs to know is whether the background is something
+Helmet handles better** — and an engine at speed is exactly that. Scoring it
+0.969 is the right answer to the right question. Under that target every clip
+above is correct:
+
+| Clip | Music score | Wanted |
+|---|---|---|
+| music only | 0.980 | Helmet |
+| voice over music | 0.500 | Helmet |
+| ride A, engine and wind | 0.969 | **Helmet** |
+| ride B, rider talking, quiet | 0.002 | not Helmet |
+
+So the AUC of 0.773 was measured against the wrong label and understates it. The
+class is called `Music`; what it is being used as is *"loud structured
+background"*, and the name is the model's, not the meaning.
+
+This also retires the request to listen to `20260808-0512-000` and re-check the
+beat/tonal negatives. Those negatives were only contaminated with respect to a
+target we no longer have. (The `.wav` did not exist — only the `.raw` — and has
+now been written beside it, for anyone who wants to hear it anyway.)
+
 
 ### Built: Auto may only lighten after 15 s of quiet
 
@@ -471,6 +485,47 @@ and is not addressed here.
 
 So this is a guard, not the fix. It removes the inversion at the quiet end and
 leaves the middle alone.
+
+### Agreed design: TFLite in the app, as a supporting vote for Helmet
+
+Decided but **not built**. Written down with the choices already made so it can
+be picked up cold.
+
+**What it decides.** One boolean on `AudioShared` — the background is loud and
+structured — consulted by `reconsider()` as a *supporting* vote for Helmet, never
+as a veto and never anywhere near the transmit gate. Wrong here costs some
+naturalness; wrong at the gate cuts a rider off. That asymmetry is the whole
+reason this is worth doing at the profile.
+
+**Where the model runs: Dart, not Rust.** `tflite_flutter` is mature and the
+Rust TFLite bindings are not, and this is 4 MB of asset plus one inference a
+few seconds apart — nowhere near the audio thread's budget or its no-allocation
+rule.
+
+**What is missing to make that possible.** Nothing hands Dart a *waveform*
+today. `audio_spectrum()` gives 24 bands, which YAMNet cannot eat: it wants
+15 600 raw samples at 16 kHz, 0.975 s. So this needs a new `#[frb(sync)]` tap
+returning a decimated mono window, built exactly like the spectrum one —
+self-expiring so it stops when nobody is asking, since a model polled forever in
+a rider's pocket is the failure `DiagnosticsPanel` already guards against.
+
+**Cadence: once every few seconds, not per block.** The thing being detected
+changes over tens of seconds and `AUTO_DWELL_BLOCKS` is already 5 s. Pair it with
+the 15 s calm ratchet above: the classifier can push *towards* Helmet promptly
+and can only release with the quiet the ratchet already requires.
+
+**A dot in the diagnostics array**, beside the existing per-stage lights, so the
+decision is visible rather than inferred — the panel's whole purpose. Green when
+the background is clear, amber when it is loud and structured and Helmet is
+being suggested, grey when the classifier is not running, which it will not be
+whenever the panel is shut. It needs a `UiStage` id, a localised label in both
+ARB files, and the same `if (state.diagnosticsOpen)` gating as the analyser.
+
+**What must be measured before it ships**, because none of it is known yet:
+per-inference CPU on a real phone, the battery cost of the tap, and whether the
+0.5 score on speech-over-music is stable enough to threshold — that clip sits
+exactly on the fence at p50, which is the one number in the table above that
+should worry anyone.
 
 ### The plan
 

@@ -324,6 +324,36 @@ mod tests {
     }
 
     #[test]
+    fn the_enhancer_actually_changes_the_audio() {
+        // The guard on the regression above. If this ever stops being true --
+        // the model failing to load, say -- then "the recorder captured the
+        // microphone" would be trivially satisfied by an enhancer that does
+        // nothing, and the ordering test would pass while measuring nothing.
+        //
+        // Speech-shaped tone under broadband noise: the enhancer should take
+        // out enough of the noise that the block is measurably different.
+        let mut e = Enhancer::new();
+        assert!(e.active());
+        let mut changed = false;
+        let mut seed = 12345u32;
+        for _ in 0..40 {
+            let mut block: Vec<f32> = (0..HOP)
+                .map(|i| {
+                    seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                    let noise = (seed >> 16) as f32 / 32768.0 - 1.0;
+                    0.25 * (i as f32 * 0.06).sin() + 0.15 * noise
+                })
+                .collect();
+            let before = block.clone();
+            e.process(&mut block);
+            if block.iter().zip(&before).any(|(a, b)| (a - b).abs() > 1e-4) {
+                changed = true;
+            }
+        }
+        assert!(changed, "the enhancer left every block untouched");
+    }
+
+    #[test]
     fn a_wrong_sized_block_is_left_alone_rather_than_panicking() {
         let mut e = Enhancer::new();
         let mut block = vec![0.5f32; HOP - 1];

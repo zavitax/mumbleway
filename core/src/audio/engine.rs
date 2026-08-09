@@ -2342,23 +2342,6 @@ where
                 waveform.reset();
             }
 
-            // **The first thing that touches the audio.**
-            //
-            // After the raw taps above and before everything else, which is
-            // the only placement that works. Every stage below reads a level
-            // -- the floor tracker, the gate, the AGC, the profile chooser --
-            // so enhancing later would leave all of them reading the old one;
-            // and enhancing *earlier* would rewrite what the recorder and the
-            // analyser's microphone trace show, which have to stay the
-            // microphone or no measurement made from them means anything.
-            //
-            // It is in front of the echo canceller too, which is worth
-            // watching: the AEC adapts against a reference of what was played,
-            // and it is now adapting on a signal something else has already
-            // altered. `docs/MUSIC_GATE.md` records this as the thing to check
-            // if echo behaviour changes.
-            enhancer.process(&mut block);
-
             // Take the matching stretch of what was played, so the canceller
             // has a reference for this block. Short-fill with silence rather
             // than stalling: a missing reference simply means nothing to cancel.
@@ -2409,6 +2392,35 @@ where
             } else {
                 None
             };
+
+            // **The first thing that alters the audio, and it goes here.**
+            //
+            // Late enough that every raw tap above it still sees the
+            // microphone -- the analyser's grey trace, the classifier's
+            // window, and above all the diagnostic recorder's copy, three
+            // lines up. **This was wrong when it first shipped**: the enhancer
+            // ran before that clone, so recordings were of enhanced audio, and
+            // the comment sitting here claimed the opposite. Every measurement
+            // in `docs/MUSIC_GATE.md` is made from `.s16` files on the
+            // assumption that they are the microphone; a recorder that
+            // silently captured something else would have invalidated the
+            // corpus without a single symptom. `core/src/audio/record.rs`
+            // exists because that has happened to this project once already.
+            //
+            // Early enough that everything which reads a *level* reads the
+            // enhanced one -- the floor tracker, the gate, the AGC and the
+            // profile chooser are all below this line.
+            //
+            // The classifier is deliberately on the raw side. It is looking
+            // for the background, and this removes the background; fed the
+            // output of the enhancer it would never hear music again.
+            //
+            // It is in front of the echo canceller too, which is worth
+            // watching: the AEC adapts against a reference of what was played,
+            // and it is now adapting on a signal something else has already
+            // altered. `docs/MUSIC_GATE.md` records this as the thing to check
+            // if echo behaviour changes.
+            enhancer.process(&mut block);
 
             let analysis = processor.process_with_reference(&mut block, &echo_ref);
             if analysing {

@@ -705,7 +705,17 @@ Three things decided it, and none of them was the plan:
   is the property the YAMNet classifier does not have, and the reason this one
   lives in `core` beside the chain instead of in Dart.
 
-**Placement is after the raw taps and before everything else.** Every stage
+**Placement is after the raw taps and before everything else — and it was
+wrong on the first attempt.** The enhancer ran ahead of the diagnostic
+recorder's copy, so recordings were of *enhanced* audio while the comment
+beside the code claimed the opposite. Every measurement in this file is made
+from `.s16` files on the assumption that they are the microphone, so a recorder
+quietly capturing something else would have invalidated the corpus with no
+symptom at all — which is the exact failure `core/src/audio/record.rs` was
+written to end, and it nearly happened again. Caught by the person testing it,
+not by a test; there is now a test.
+
+ Every stage
 below reads a level — the floor tracker, the gate, the AGC, the profile chooser
 — so enhancing later would leave them all reading the old one. Enhancing
 *earlier* would rewrite what the recorder and the analyser's microphone trace

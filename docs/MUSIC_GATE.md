@@ -404,6 +404,41 @@ it: sustained energy with the VAD saying no speech is a much better "pick
 Helmet" signal than anything measured here, and it reuses the model from the
 step below instead of adding a second one. Worth folding into step 4.
 
+### YAMNet, asked what the sound *is*
+
+The right question and the right size: 4 MB of TFLite, one 0.975 s frame at a
+time, and 521 classes of which two are `Speech` and `Music`. It can answer the
+thing the profile decision wants to know rather than the thing the gate wants.
+
+| Clip | Music p50 | Speech p50 | Loudest class |
+|---|---|---|---|
+| music only | **0.980** | 0.004 | Music |
+| voice over music | 0.500 | 0.148 | Music |
+| ride, no music A | **0.969** | 0.006 | Music |
+| ride, no music B | 0.002 | 0.084 | Speech |
+
+Music score, clips with music against clips without: **AUC 0.773**. Better than
+anything hand-built here (0.579) and well short of the VADs on their own task
+(0.90+).
+
+**Ride B is the encouraging result and is worth stating.** It is a rider talking
+*about* music — "let's try to turn on the music, the music on the phone does not
+play" — and YAMNet scores Music at 0.002. The words are about music and the
+sound is not, and it is not fooled. No lexical method would manage that.
+
+**Ride A is the problem, and I cannot resolve it.** It scores Music 0.969, as
+high as the actual music clip. Either YAMNet hears an engine as music — the
+failure every hand-built feature here had, for the reason
+[recorded above](#detecting-music-to-drive-the-profile--tried-and-it-fails-on-a-bike) —
+or that ride has music in it and the label was wrong. Whisper transcribes no
+words from it at all, which rules out speech and settles nothing about music.
+
+**That matters backwards as well as forwards.** Ride A was used as a *negative*
+in the beat/tonal experiment above. If it contains music, that experiment's
+negatives were contaminated and its conclusion needs re-checking. **Somebody has
+to listen to `20260808-0512-000.wav` and say which it is.** It is 33 seconds.
+Until then two results here rest on an assumption nobody has verified.
+
 ### Built: Auto may only lighten after 15 s of quiet
 
 The one change from all of this that is in the code. `reconsider()` now counts

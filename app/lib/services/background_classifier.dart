@@ -133,17 +133,28 @@ class BackgroundClassifier {
     _starting = true;
     try {
       final options = InterpreterOptions();
-      // One delegate attempt per platform, and a plain CPU interpreter if it
-      // is refused. A delegate that fails to attach throws at `fromAsset`, so
-      // the fallback is a second load rather than a flag.
+      // One delegate attempt, and a plain CPU interpreter if it is refused.
+      // A delegate that fails to attach throws at `fromAsset`, so the fallback
+      // is a second load rather than a flag.
       try {
         if (Platform.isIOS) {
           options.addDelegate(CoreMlDelegate());
           _accelerator = 'Core ML';
-        } else if (Platform.isAndroid) {
-          options.addDelegate(GpuDelegateV2());
-          _accelerator = 'GPU';
         }
+        // **No GPU delegate on Android.** It killed the process on an OPPO
+        // A3s (Adreno 506, Android 12): a SIGSEGV inside
+        // `TfLiteInterpreterAllocateTensors`, which is native and therefore
+        // uncatchable — the `catch` below never runs and the app is simply
+        // gone. Sometimes, because it only starts when Automatic is chosen and
+        // the devices are open.
+        //
+        // Not worth another attempt, either. TFLite's own log on the emulator
+        // said the delegate could take **31 of 47 operations** and the rest
+        // would stay on the CPU, because YAMNet computes its own mel
+        // spectrogram and no GPU delegate supports `RFFT2D` or `COMPLEX_ABS`.
+        // So the offer was a partial offload of a model that runs once every
+        // two seconds, and the price was crashing on the class of phone the
+        // acceleration was meant to help.
         _model = await Interpreter.fromAsset(
           'assets/models/yamnet.tflite',
           options: options,

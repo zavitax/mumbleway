@@ -279,6 +279,84 @@ margin's 84%. That is the same ratio `core/tests/road.rs` found on helmet audio
 with no music in it at all, so it is a property of the detector on real speech
 rather than anything music does.
 
+### A neural VAD solves this, and the chain's own features do not
+
+`tools/vad/bench_vads.py` runs every detector we can get hold of over both
+clips, scored the same way. The music-only clip needs no labelling judgement at
+all: the correct output is silence everywhere, so **every frame a detector fires
+on is wrong by construction.**
+
+| Detector | AUC | Keeps of speech | Was speech | Fires on music-only |
+|---|---|---|---|---|
+| **Silero** | **0.917** | 71.0% | **97.9%** | **0.000%** (0 of 13 877) |
+| **TEN VAD** | 0.903 | **80.2%** | 89.5% | 4.9% |
+| WebRTC agg=3 | 0.578 | 93.6% | 59.8% | 45.8% |
+| WebRTC agg=1 | 0.525 | 99.9% | 56.6% | 84.0% |
+| *the chain (Helmet)* | — | *80.0%* | *74.6%* | *13.8%* |
+| *RNNoise's own VAD* | *0.718* | — | — | — |
+
+**Silero did not merely stay under the threshold on the music — it never came
+near it.** Peak probability across the whole 138.8 s clip is **0.105**. TEN VAD
+peaks at 0.756 and fires on 4.9%.
+
+And **TEN VAD matches the chain's recall exactly — 80.2% against 80.0% — while
+being right about what it sends far more often (89.5% against 74.6%) and leaking
+a third as much music (4.9% against 13.8%).** That is not a trade. It is the
+same recall for better precision on both counts.
+
+Two things this settles:
+
+- **The missing feature was never going to be found by hand.** Every candidate
+  in this file scores between 0.36 and 0.83; both neural detectors clear 0.90.
+  Five hand-built features have now been tried against this fault.
+- **They are upstream of RNNoise**, which is the property
+  [the analysis above](#the-two-tests-are-not-two-opinions) said was needed and
+  which nothing in the chain has. They are fed the raw microphone.
+
+WebRTC is included because it is the obvious cheap answer and it is worth
+recording that it is useless here: at its most aggressive setting it still calls
+**45.8% of pure music speech**, and its AUC of 0.578 is close enough to a coin
+that no threshold rescues it.
+
+### The plan
+
+Ordered so that each step is worth doing even if the next is never taken.
+
+**1. Confirm it on more than one clip.** One music genre, one speaker, one room.
+The result is large enough that it is unlikely to be noise, but every previous
+conclusion in this file was overturned by the next measurement, and two of them
+were mine from the same day. `bench_vads.py` takes a clip and its labels, so
+this is a matter of recording rather than of code.
+
+**2. Decide between them on the axis that matters to a rider.** Silero is the
+better *detector*; TEN VAD keeps more speech. Being cut off mid-sentence is the
+complaint this project has heard most, so 80.2% against 71.0% recall is worth
+more than 97.9% against 89.5% precision — provisionally TEN VAD, but this is a
+judgement to make with a rider, not from a table.
+
+**3. Measure the cost before designing around it.** Both are small, but the
+capture path has a 10 ms budget and no allocation on the audio thread. Needed:
+per-block CPU on a real phone, model size in the bundle, and the added latency
+(Silero's window is 512 samples at 16 kHz, so 32 ms, which is not free next to
+the existing 80 ms onset delay). If it does not fit the worker, none of the
+above matters.
+
+**4. Add it as a third opinion, not a replacement.** The transmit decision is
+`vad && snr`, both downstream of RNNoise. A neural VAD is the first genuinely
+independent signal available, so the shape is `(vad && snr) || neural`, or
+neural as a veto — which of those depends on step 2's recall/precision choice.
+Keep the existing arms: they are what make the chain work with the panel closed
+and the profile on Off.
+
+**5. Re-run `core/tests/suppression.rs` and the road corpus.** The existing wind,
+engine and traffic cases stay at zero or the change is not an improvement, it is
+a different trade. This is the assertion most likely to fail.
+
+**What is deliberately not in the plan:** training anything. There is a CUDA GPU
+on the dev machine and it is not needed. Two off-the-shelf models already beat
+every hand-built feature here, and this project has one trained model in its
+history that collapsed on real audio after looking excellent on synthetic.
+
 ### What this leaves
 
 Two directions, and they are not the same size.

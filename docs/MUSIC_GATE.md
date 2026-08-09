@@ -116,6 +116,58 @@ changes character.
   100 ms to 4 s. A coin. The convergence is slow and global; it is not visible
   as per-block surprise.
 
+### The recall half arrived too — 2026-08-09, later the same day
+
+`20260809-1201-000`, 121 s, **speech over music from the iPhone microphone**.
+With the music-only clip beside it, both halves of the acceptance criteria have
+numbers for the first time. Same chain, same settings, the two clips differing
+only in whether anyone was talking:
+
+| Profile | Music alone | Voice over music |
+|---|---|---|
+| Off | 80.2% | 86.3% |
+| Light | 73.3% | 73.5% |
+| Standard | 65.2% | 69.5% |
+| **Helmet** | **13.8%** | **59.6%** |
+| Auto (→ Helmet) | 28.7% | 62.4% |
+
+**Helmet already separates them, on real audio, by better than four to one.**
+It is also the profile Auto settles on. Light and Standard separate them by
+essentially nothing — 73.3 against 73.5 is not a discriminator — which says
+again that the profile, not the gate, is what decides this.
+
+The pitch measure separates them too, and by more than anything else here:
+blocks over the 0.75 voiced bar go from **0.48% on music alone to 11.53% on
+speech over music**. That does not rescue candidate 3 — an *upper* bound on
+harmonicity still has nothing to bite on — but it does say the measure knows
+which clip has a voice in it.
+
+On the device, with Auto in force, the decision log says:
+
+```
+transmitting 74.1%   speaking 61.0%      (offline Auto: 62.4% — the same run)
+voiced blocks (harmonicity >= 0.75): 24.8 s, 20.4% of the file
+  of voiced blocks,     91.4% transmitted     <- recall
+  of non-voiced blocks, 69.6% transmitted
+```
+
+**Two caveats, and the second is the reason this is not yet the acceptance
+measurement.**
+
+*Non-voiced is not the same as not-speech.* Unvoiced consonants have no pitch,
+and the hold and fade keep the channel open between words on purpose. Some of
+that 69.6% is the chain working correctly. This clip interleaves speech and
+music, so it cannot separate "music that leaked" from "a gap held open" — which
+is precisely what the music-only clip is for, and why the pair is worth more
+than either.
+
+*Scoring the chain by its own harmonicity is circular.* It is the closest thing
+to a label this file carries, and it is a number the chain computes and uses.
+A real label means a `NAME.speech` sidecar — one `start end` pair per line, by
+ear — which `core/tests/road.rs` already reads (`speech_spans`). **That is now
+the cheapest remaining step, and it would turn every figure above into an
+acceptance test.**
+
 ### What this leaves
 
 Two directions, and they are not the same size.
@@ -334,5 +386,12 @@ nobody had proposed. What it could not do is the other half: with no speech in
 it, it cannot say what any candidate costs the rider, and *that* is the
 assertion this whole file says will fail first.
 
-So the outstanding ask is now specific: **thirty seconds of speech over the same
-music, at the same level, in the same helmet.** Everything else is in hand.
+**And the other half arrived hours later.** `20260809-1201-000` is speech over
+music, so the pair now bounds both false positives and recall — see the recall
+section above.
+
+What is left is not another recording. It is **a `20260809-1201-000.speech`
+sidecar**: one `start end` pair per line marking where the talking is, written
+by ear. `core/tests/road.rs` already reads it, and with it every figure in this
+file becomes an assertion instead of an estimate. Without it the only available
+label is the chain's own harmonicity, which is the thing being judged.

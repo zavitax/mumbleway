@@ -177,6 +177,14 @@ MSIX job skips by design).
   the card and the sheet themselves. They were whole phone screens before, so
   most of each figure was the screen behind the subject — and, having been shot
   in different sessions, the two backgrounds did not even match.
+- **The panel names the profile Auto has landed on**, above the dots. It was
+  the one setting whose effect could not be read anywhere: the settings screen
+  can only say "Automatic". The value was already crossing the bridge.
+- **A long recording draws its green again.** Files rotate every 16 MB and the
+  writer's block counter ran on across the rotation, so the tail file's log
+  opened at block 17,477 against audio that opened at sample zero — and the
+  tail is the file the listen sheet opens first. Fixed on both sides; the
+  reader now counts rows, which is what repairs recordings already on phones.
 - **Diagnostics is its own page**, in both languages, and is in the top bar
   immediately before *Send a recording* — the two belong together, because
   sending a recording starts in Diagnostics. It answers a different question from
@@ -363,6 +371,16 @@ the chain currently computes is measured downstream of the one RNNoise decision
 it would have to disagree with.
 
 ### TFLite in the app — designed, not built
+
+**Asked after 2026-08-09: "I don't see the music classifier state among the
+diagnostic dots."** It is not there because nothing computes it. There is no
+`yamnet`, `tflite` or `litert` anywhere in `core/src`, `app/lib`, `app/rust`,
+`Cargo.toml` or `pubspec.yaml` — the whole of it is this section and the design
+in `MUSIC_GATE.md`. The dots that exist are `aec`, `rnnoise`, `vad`, `gate`,
+`agc`, `dehiss`, `feedback` and `transmit`, and each of them is a colour put on
+a value the chain already had. A music dot has no value behind it yet, and a dot
+that is always grey teaches the reader that the classifier is switched off
+rather than absent.
 
 Agreed and written up in `MUSIC_GATE.md`: YAMNet as a *supporting* vote for
 Helmet, never a veto and never near the transmit gate, because being wrong about

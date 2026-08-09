@@ -482,5 +482,19 @@
   "website": "Сайт",
   "openWebsite": "Открыть сайт MumbleWay",
   "helpForThisScreen": "Справка по этому экрану",
-  "couldNotOpenLink": "Не удалось открыть ссылку: ни один браузер не откликнулся."
+  "couldNotOpenLink": "Не удалось открыть ссылку: ни один браузер не откликнулся.",
+  "serverRefused": "Сервер отказал: {reason}",
+  "@serverRefused": {"placeholders": {"reason": {"type": "String"}}},
+  "denyText": "Сервер не стал передавать это сообщение.",
+  "denyPermission": "Сервер отказал: нет прав на это действие.",
+  "denySuperUser": "Эту учётную запись нельзя изменить из клиента.",
+  "denyChannelName": "Сервер не принял такое название канала.",
+  "denyTextTooLong": "Сообщение длиннее, чем разрешает сервер.",
+  "denyTemporaryChannel": "В временном канале это невозможно.",
+  "denyMissingCertificate": "Для этого серверу нужен сертификат.",
+  "denyUserName": "Сервер не принял такое имя.",
+  "denyChannelFull": "Канал заполнен.",
+  "denyNestingLimit": "Глубже вкладывать каналы на этом сервере нельзя.",
+  "denyChannelCountLimit": "На сервере уже столько каналов, сколько он допускает.",
+  "denyListenerLimit": "Сервер достиг предела по числу слушателей."
 }

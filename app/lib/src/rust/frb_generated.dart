@@ -2182,16 +2182,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           changed: dco_decode_bool(raw[3]),
         );
       case 9:
+        return AppEvent_Refused(
+          serverId: dco_decode_String(raw[1]),
+          reason: dco_decode_String(raw[2]),
+          kind: dco_decode_u_32(raw[3]),
+        );
+      case 10:
         return AppEvent_Welcome(
           serverId: dco_decode_String(raw[1]),
           text: dco_decode_String(raw[2]),
         );
-      case 10:
+      case 11:
         return AppEvent_SelfSession(
           serverId: dco_decode_String(raw[1]),
           session: dco_decode_u_32(raw[2]),
         );
-      case 11:
+      case 12:
         return AppEvent_Log(entries: dco_decode_list_ui_log_entry(raw[1]));
       default:
         throw Exception("unreachable");
@@ -2750,16 +2756,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         );
       case 9:
         var var_serverId = sse_decode_String(deserializer);
+        var var_reason = sse_decode_String(deserializer);
+        var var_kind = sse_decode_u_32(deserializer);
+        return AppEvent_Refused(
+          serverId: var_serverId,
+          reason: var_reason,
+          kind: var_kind,
+        );
+      case 10:
+        var var_serverId = sse_decode_String(deserializer);
         var var_text = sse_decode_String(deserializer);
         return AppEvent_Welcome(serverId: var_serverId, text: var_text);
-      case 10:
+      case 11:
         var var_serverId = sse_decode_String(deserializer);
         var var_session = sse_decode_u_32(deserializer);
         return AppEvent_SelfSession(
           serverId: var_serverId,
           session: var_session,
         );
-      case 11:
+      case 12:
         var var_entries = sse_decode_list_ui_log_entry(deserializer);
         return AppEvent_Log(entries: var_entries);
       default:
@@ -3442,19 +3457,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(serverId, serializer);
         sse_encode_String(fingerprint, serializer);
         sse_encode_bool(changed, serializer);
-      case AppEvent_Welcome(serverId: final serverId, text: final text):
+      case AppEvent_Refused(
+        serverId: final serverId,
+        reason: final reason,
+        kind: final kind,
+      ):
         sse_encode_i_32(9, serializer);
+        sse_encode_String(serverId, serializer);
+        sse_encode_String(reason, serializer);
+        sse_encode_u_32(kind, serializer);
+      case AppEvent_Welcome(serverId: final serverId, text: final text):
+        sse_encode_i_32(10, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(text, serializer);
       case AppEvent_SelfSession(
         serverId: final serverId,
         session: final session,
       ):
-        sse_encode_i_32(10, serializer);
+        sse_encode_i_32(11, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_u_32(session, serializer);
       case AppEvent_Log(entries: final entries):
-        sse_encode_i_32(11, serializer);
+        sse_encode_i_32(12, serializer);
         sse_encode_list_ui_log_entry(entries, serializer);
     }
   }

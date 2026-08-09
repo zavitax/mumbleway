@@ -604,5 +604,19 @@
   "helpForThisScreen": "Help for this screen",
   "@helpForThisScreen": {"description": "Tooltip on the help button in the settings title bar."},
   "couldNotOpenLink": "Could not open the link. No browser answered.",
-  "@couldNotOpenLink": {"description": "Shown when the platform refuses to open a web address."}
+  "@couldNotOpenLink": {"description": "Shown when the platform refuses to open a web address."},
+  "serverRefused": "The server said no: {reason}",
+  "@serverRefused": {"placeholders": {"reason": {"type": "String"}}, "description": "Snackbar shown when the server refuses an action."},
+  "denyText": "The server would not deliver that message.",
+  "denyPermission": "The server refused: you do not have permission for that.",
+  "denySuperUser": "That account cannot be changed from a client.",
+  "denyChannelName": "The server would not accept that channel name.",
+  "denyTextTooLong": "That message is longer than the server allows.",
+  "denyTemporaryChannel": "That cannot be done in a temporary channel.",
+  "denyMissingCertificate": "The server needs a certificate for that.",
+  "denyUserName": "The server would not accept that name.",
+  "denyChannelFull": "That channel is full.",
+  "denyNestingLimit": "Channels cannot be nested any deeper on this server.",
+  "denyChannelCountLimit": "The server has as many channels as it allows.",
+  "denyListenerLimit": "The server has reached its listener limit."
 }

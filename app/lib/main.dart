@@ -12,6 +12,7 @@ import 'src/rust/frb_generated.dart';
 import 'state/app_state.dart';
 import 'screens/home_screen.dart';
 import 'theme.dart';
+import 'widgets/refusal_listener.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -168,6 +169,11 @@ class _MumbleWayAppState extends State<MumbleWayApp>
             GlobalCupertinoLocalizations.delegate,
           ],
           navigatorKey: _navigator,
+          // Inside the MaterialApp, so there is a ScaffoldMessenger to show a
+          // snackbar in, and above the home screen so a refusal still reaches
+          // the user after they have navigated somewhere else.
+          builder: (context, child) =>
+              RefusalListener(child: child ?? const SizedBox.shrink()),
           home: const HomeScreen(),
         ),
       ),

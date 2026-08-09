@@ -830,10 +830,14 @@ impl Session {
             }
             MessageType::PermissionDenied => {
                 let m = mumble::PermissionDenied::decode(payload)?;
-                let reason = m.reason.unwrap_or_else(|| "permission denied".into());
-                self.emit(SessionEvent::Text {
-                    from: "server".into(),
-                    message: reason,
+                // Passed through as the server wrote it, empty included. A
+                // placeholder invented here would be English text the UI could
+                // not tell from the server's own and could not translate, and
+                // it would hide the type — which is the only thing most servers
+                // actually send.
+                self.emit(SessionEvent::Refused {
+                    reason: m.reason.unwrap_or_default(),
+                    kind: m.r#type.unwrap_or(0) as u32,
                 })
                 .await;
             }

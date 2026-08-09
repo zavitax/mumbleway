@@ -1268,4 +1268,52 @@ class LEn extends L {
   @override
   String get couldNotOpenLink =>
       'Could not open the link. No browser answered.';
+
+  @override
+  String serverRefused(String reason) {
+    return 'The server said no: $reason';
+  }
+
+  @override
+  String get denyText => 'The server would not deliver that message.';
+
+  @override
+  String get denyPermission =>
+      'The server refused: you do not have permission for that.';
+
+  @override
+  String get denySuperUser => 'That account cannot be changed from a client.';
+
+  @override
+  String get denyChannelName =>
+      'The server would not accept that channel name.';
+
+  @override
+  String get denyTextTooLong =>
+      'That message is longer than the server allows.';
+
+  @override
+  String get denyTemporaryChannel =>
+      'That cannot be done in a temporary channel.';
+
+  @override
+  String get denyMissingCertificate =>
+      'The server needs a certificate for that.';
+
+  @override
+  String get denyUserName => 'The server would not accept that name.';
+
+  @override
+  String get denyChannelFull => 'That channel is full.';
+
+  @override
+  String get denyNestingLimit =>
+      'Channels cannot be nested any deeper on this server.';
+
+  @override
+  String get denyChannelCountLimit =>
+      'The server has as many channels as it allows.';
+
+  @override
+  String get denyListenerLimit => 'The server has reached its listener limit.';
 }

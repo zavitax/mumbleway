@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/server_refusal.dart';
 import '../services/audio_session.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
@@ -381,6 +382,16 @@ class AppState extends ChangeNotifier {
 
   /// Most recent moderation applied to us by someone else, for a banner.
   String? lastModerationMessage;
+
+  /// Refusals from the server, as they arrive.
+  ///
+  /// A stream rather than a field, and deliberately: two refusals in a row are
+  /// two things the user needs told, and a field would silently keep only the
+  /// second. Broadcast because the listener is whatever screen is on top, and
+  /// that changes.
+  Stream<ServerRefusal> get refusals => _refusals.stream;
+  final StreamController<ServerRefusal> _refusals =
+      StreamController<ServerRefusal>.broadcast();
 
   /// Server shown in the detail pane on wide layouts. Narrow layouts ignore it
   /// and expand cards inline instead.
@@ -2927,6 +2938,15 @@ class AppState extends ChangeNotifier {
             unawaited(_persist());
           }
         }
+      case AppEvent_Refused(:final serverId, :final reason, :final kind):
+        // Straight out again, without touching the roster or the chat log --
+        // nothing here changed, which is the whole point of a refusal.
+        _refusals.add(ServerRefusal(
+          serverId: serverId,
+          reason: reason,
+          kind: kind,
+        ));
+        return;
       case AppEvent_Welcome(:final serverId, :final text):
         runtimeFor(serverId).welcome = text;
       case AppEvent_Log(:final entries):

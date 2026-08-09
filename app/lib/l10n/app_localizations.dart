@@ -2358,6 +2358,84 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Could not open the link. No browser answered.'**
   String get couldNotOpenLink;
+
+  /// Snackbar shown when the server refuses an action.
+  ///
+  /// In en, this message translates to:
+  /// **'The server said no: {reason}'**
+  String serverRefused(String reason);
+
+  /// No description provided for @denyText.
+  ///
+  /// In en, this message translates to:
+  /// **'The server would not deliver that message.'**
+  String get denyText;
+
+  /// No description provided for @denyPermission.
+  ///
+  /// In en, this message translates to:
+  /// **'The server refused: you do not have permission for that.'**
+  String get denyPermission;
+
+  /// No description provided for @denySuperUser.
+  ///
+  /// In en, this message translates to:
+  /// **'That account cannot be changed from a client.'**
+  String get denySuperUser;
+
+  /// No description provided for @denyChannelName.
+  ///
+  /// In en, this message translates to:
+  /// **'The server would not accept that channel name.'**
+  String get denyChannelName;
+
+  /// No description provided for @denyTextTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'That message is longer than the server allows.'**
+  String get denyTextTooLong;
+
+  /// No description provided for @denyTemporaryChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'That cannot be done in a temporary channel.'**
+  String get denyTemporaryChannel;
+
+  /// No description provided for @denyMissingCertificate.
+  ///
+  /// In en, this message translates to:
+  /// **'The server needs a certificate for that.'**
+  String get denyMissingCertificate;
+
+  /// No description provided for @denyUserName.
+  ///
+  /// In en, this message translates to:
+  /// **'The server would not accept that name.'**
+  String get denyUserName;
+
+  /// No description provided for @denyChannelFull.
+  ///
+  /// In en, this message translates to:
+  /// **'That channel is full.'**
+  String get denyChannelFull;
+
+  /// No description provided for @denyNestingLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels cannot be nested any deeper on this server.'**
+  String get denyNestingLimit;
+
+  /// No description provided for @denyChannelCountLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has as many channels as it allows.'**
+  String get denyChannelCountLimit;
+
+  /// No description provided for @denyListenerLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has reached its listener limit.'**
+  String get denyListenerLimit;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

@@ -2466,13 +2466,23 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
             }
             9 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
+                let mut var_reason = <String>::sse_decode(deserializer);
+                let mut var_kind = <u32>::sse_decode(deserializer);
+                return crate::api::mumbleway::AppEvent::Refused {
+                    server_id: var_serverId,
+                    reason: var_reason,
+                    kind: var_kind,
+                };
+            }
+            10 => {
+                let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_text = <String>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Welcome {
                     server_id: var_serverId,
                     text: var_text,
                 };
             }
-            10 => {
+            11 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_session = <u32>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::SelfSession {
@@ -2480,7 +2490,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     session: var_session,
                 };
             }
-            11 => {
+            12 => {
                 let mut var_entries =
                     <Vec<crate::api::mumbleway::UiLogEntry>>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Log {
@@ -3329,20 +3339,31 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 changed.into_into_dart().into_dart(),
             ]
             .into_dart(),
-            crate::api::mumbleway::AppEvent::Welcome { server_id, text } => [
+            crate::api::mumbleway::AppEvent::Refused {
+                server_id,
+                reason,
+                kind,
+            } => [
                 9.into_dart(),
+                server_id.into_into_dart().into_dart(),
+                reason.into_into_dart().into_dart(),
+                kind.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
+            crate::api::mumbleway::AppEvent::Welcome { server_id, text } => [
+                10.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 text.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::SelfSession { server_id, session } => [
-                10.into_dart(),
+                11.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 session.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Log { entries } => {
-                [11.into_dart(), entries.into_into_dart().into_dart()].into_dart()
+                [12.into_dart(), entries.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -3943,18 +3964,28 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 <String>::sse_encode(fingerprint, serializer);
                 <bool>::sse_encode(changed, serializer);
             }
-            crate::api::mumbleway::AppEvent::Welcome { server_id, text } => {
+            crate::api::mumbleway::AppEvent::Refused {
+                server_id,
+                reason,
+                kind,
+            } => {
                 <i32>::sse_encode(9, serializer);
+                <String>::sse_encode(server_id, serializer);
+                <String>::sse_encode(reason, serializer);
+                <u32>::sse_encode(kind, serializer);
+            }
+            crate::api::mumbleway::AppEvent::Welcome { server_id, text } => {
+                <i32>::sse_encode(10, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <String>::sse_encode(text, serializer);
             }
             crate::api::mumbleway::AppEvent::SelfSession { server_id, session } => {
-                <i32>::sse_encode(10, serializer);
+                <i32>::sse_encode(11, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <u32>::sse_encode(session, serializer);
             }
             crate::api::mumbleway::AppEvent::Log { entries } => {
-                <i32>::sse_encode(11, serializer);
+                <i32>::sse_encode(12, serializer);
                 <Vec<crate::api::mumbleway::UiLogEntry>>::sse_encode(entries, serializer);
             }
             _ => {

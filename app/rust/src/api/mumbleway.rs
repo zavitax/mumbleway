@@ -179,6 +179,18 @@ pub enum AppEvent {
         fingerprint: String,
         changed: bool,
     },
+    /// The server refused an action -- muting somebody, joining a channel,
+    /// sending a message. Carried on its own so the UI can put it in front of
+    /// the user instead of into the chat log, where it used to go and where a
+    /// refusal reads as somebody talking and then scrolls away.
+    Refused {
+        server_id: String,
+        /// The server's own words. Often empty: most servers send only a type.
+        reason: String,
+        /// Mumble's `DenyType`, so the UI has something translatable to say
+        /// when `reason` is empty.
+        kind: u32,
+    },
     Welcome {
         server_id: String,
         text: String,
@@ -586,6 +598,13 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                     from,
                     message,
                 }),
+                SessionEvent::Refused { reason, kind } => {
+                    emit(AppEvent::Refused {
+                        server_id,
+                        reason,
+                        kind,
+                    })
+                }
                 SessionEvent::Stats(s) => emit(AppEvent::Stats(UiStats {
                     server_id,
                     tcp_ping_ms: s.tcp_ping_ms,

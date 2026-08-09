@@ -477,6 +477,21 @@ sealed class AppEvent with _$AppEvent {
     required String fingerprint,
     required bool changed,
   }) = AppEvent_Certificate;
+
+  /// The server refused an action -- muting somebody, joining a channel,
+  /// sending a message. Carried on its own so the UI can put it in front of
+  /// the user instead of into the chat log, where it used to go and where a
+  /// refusal reads as somebody talking and then scrolls away.
+  const factory AppEvent.refused({
+    required String serverId,
+
+    /// The server's own words. Often empty: most servers send only a type.
+    required String reason,
+
+    /// Mumble's `DenyType`, so the UI has something translatable to say
+    /// when `reason` is empty.
+    required int kind,
+  }) = AppEvent_Refused;
   const factory AppEvent.welcome({
     required String serverId,
     required String text,

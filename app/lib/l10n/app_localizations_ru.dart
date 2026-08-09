@@ -1264,4 +1264,47 @@ class LRu extends L {
   @override
   String get couldNotOpenLink =>
       'Не удалось открыть ссылку: ни один браузер не откликнулся.';
+
+  @override
+  String serverRefused(String reason) {
+    return 'Сервер отказал: $reason';
+  }
+
+  @override
+  String get denyText => 'Сервер не стал передавать это сообщение.';
+
+  @override
+  String get denyPermission => 'Сервер отказал: нет прав на это действие.';
+
+  @override
+  String get denySuperUser => 'Эту учётную запись нельзя изменить из клиента.';
+
+  @override
+  String get denyChannelName => 'Сервер не принял такое название канала.';
+
+  @override
+  String get denyTextTooLong => 'Сообщение длиннее, чем разрешает сервер.';
+
+  @override
+  String get denyTemporaryChannel => 'В временном канале это невозможно.';
+
+  @override
+  String get denyMissingCertificate => 'Для этого серверу нужен сертификат.';
+
+  @override
+  String get denyUserName => 'Сервер не принял такое имя.';
+
+  @override
+  String get denyChannelFull => 'Канал заполнен.';
+
+  @override
+  String get denyNestingLimit =>
+      'Глубже вкладывать каналы на этом сервере нельзя.';
+
+  @override
+  String get denyChannelCountLimit =>
+      'На сервере уже столько каналов, сколько он допускает.';
+
+  @override
+  String get denyListenerLimit => 'Сервер достиг предела по числу слушателей.';
 }

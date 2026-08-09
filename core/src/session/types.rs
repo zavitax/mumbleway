@@ -212,6 +212,20 @@ pub enum SessionEvent {
         changed: bool,
     },
     Welcome(String),
+    /// The server refused something we asked it to do.
+    ///
+    /// Reported apart from [`Text`](Self::Text), which is where this used to go.
+    /// A refusal dressed as a chat line from "server" is indistinguishable from
+    /// somebody talking, and it scrolls away — so the one message telling a user
+    /// why their action did nothing was the easiest thing on screen to miss.
+    ///
+    /// `reason` is the server's own words and may be empty: most servers send
+    /// only a type. `kind` is that type, kept as a stable number so the UI can
+    /// say something translated rather than nothing.
+    Refused {
+        reason: String,
+        kind: u32,
+    },
 }
 
 /// Commands the UI issues to a session.

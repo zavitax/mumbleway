@@ -97,10 +97,19 @@ is being held in the jitter buffer, and how many people are being tracked.
 "this phone could not keep up"; **playback gaps is the one that says to raise
 the [incoming audio buffer]({{ '/settings.html' | relative_url }})**.
 
-The last three are the voice gate, in numbers: **microphone level** is what is
-arriving now, **noise floor** is what the app has settled on as this
-environment's quiet, and **opens at** is the level your voice has to beat to be
-sent. On a bike at speed the floor climbs and the threshold climbs with it —
+**Microphone peak** is the loudest sample the microphone has delivered, taken
+*before* anything in the app touches it, with a count of samples that reached
+full scale. It is the only number here measured on the input, and it is the one
+to read if the sound is distorted: the meter beside the gain slider used to be
+measured after suppression, so an overdriven microphone was invisible to the
+one control that sets the input level. If this sits at 0.0 dBFS and the clipped
+count climbs, the input is being overdriven and nothing downstream can undo it.
+
+The last three are the voice gate, in numbers, and they are all measured
+*after* suppression so that they can be compared with each other: **after
+suppression** is the level the gate is judging, **noise floor** is what the app
+has settled on as this environment's quiet, and **opens at** is the level a
+block has to beat to be sent. On a bike at speed the floor climbs and the threshold climbs with it —
 which is what the noise profiles are for.
 
 ## The last thirty seconds

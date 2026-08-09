@@ -1630,7 +1630,7 @@ abstract class L {
   /// No description provided for @diagMicrophoneLevel.
   ///
   /// In en, this message translates to:
-  /// **'Microphone level'**
+  /// **'After suppression'**
   String get diagMicrophoneLevel;
 
   /// No description provided for @diagReconnectAttempts.

@@ -236,17 +236,25 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   '${_chain!.inputClipped} samples',
                                   bad: true,
                                 ),
+                              // All three from the chain, and all three after
+                              // suppression, because they are only meaningful
+                              // against each other: the level the gate sees,
+                              // the floor it tracks, and the bar it opens at.
+                              // Mixing a raw level into that trio would invite
+                              // a comparison that means nothing -- which is
+                              // why the raw number is the row above, named
+                              // separately.
                               _Row(
                                 l.diagMicrophoneLevel,
-                                '${state.inputLevelDb.toStringAsFixed(0)} dBFS',
+                                '${_chain?.levelDb.toStringAsFixed(0) ?? "-"} dBFS',
                               ),
                               _Row(
                                 l.diagNoiseFloor,
-                                '${state.noiseFloorDb.toStringAsFixed(0)} dBFS',
+                                '${_chain?.noiseFloorDb.toStringAsFixed(0) ?? "-"} dBFS',
                               ),
                               _Row(
                                 l.diagOpensAt,
-                                '${state.activationThresholdDb.toStringAsFixed(0)} dBFS',
+                                '${_chain?.activationThresholdDb.toStringAsFixed(0) ?? "-"} dBFS',
                               ),
                             ],
                           ),

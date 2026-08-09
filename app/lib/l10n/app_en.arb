@@ -368,7 +368,7 @@
   "diagMicrophoneDropped": "Microphone dropped",
   "diagInputPeak": "Microphone peak",
   "diagInputClipped": "Microphone clipped",
-  "diagMicrophoneLevel": "Microphone level",
+  "diagMicrophoneLevel": "After suppression",
   "diagReconnectAttempts": "Reconnect attempts",
   "diagReset": "Reset",
   "diagClose": "Close",

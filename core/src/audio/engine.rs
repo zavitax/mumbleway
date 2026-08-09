@@ -2380,6 +2380,7 @@ where
             // than by the chain.
             let mut peak = 0.0f32;
             let mut clipped = 0u32;
+            let mut sum_sq = 0.0f64;
             for &s in block.iter() {
                 let a = s.abs();
                 if a > peak {
@@ -2388,8 +2389,28 @@ where
                 if a >= 0.999 {
                     clipped += 1;
                 }
+                sum_sq += (s as f64) * (s as f64);
             }
             shared.note_input_peak(peak, clipped);
+
+            // **The meter shows the microphone, not the chain's opinion of
+            // it.** This used to be `analysis.level_db`, measured after
+            // RNNoise and the profile filters — so the bar beside the gain
+            // slider could sit comfortably below full scale while the input
+            // was pinned at it, and an overdriven microphone was invisible to
+            // the one control that exists to set the input level. A rider
+            // setting gain by that meter was reading the output of the very
+            // thing the gain feeds.
+            //
+            // The post-suppression level has not gone anywhere: it is still in
+            // `ChainStatus`, where the gate's own numbers live and where it is
+            // comparable with the floor and the threshold beside it.
+            let rms = (sum_sq / block.len() as f64).sqrt() as f32;
+            shared.store_level(if rms > 0.0 {
+                (20.0 * rms.log10()).max(SILENT_DB)
+            } else {
+                SILENT_DB
+            });
 
             let block_index = shared.next_block_index();
             let analysing = shared.spectrum_wanted(block_index);
@@ -2554,7 +2575,6 @@ where
                 }
             }
 
-            shared.store_level(analysis.level_db);
             shared.store_threshold(analysis.activation_threshold_db);
             shared.store_noise_floor(analysis.noise_floor_db);
             shared

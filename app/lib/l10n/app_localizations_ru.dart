@@ -1114,7 +1114,7 @@ class LRu extends L {
   String get pipNobodyElse => 'Больше здесь никого нет';
 
   @override
-  String get feedbackGuard => 'Подавление обратной связи';
+  String get feedbackGuard => 'Подавление гула обратной связи';
 
   @override
   String get feedbackGuardBody =>

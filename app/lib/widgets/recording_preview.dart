@@ -343,10 +343,18 @@ class _PreviewSheetState extends State<_PreviewSheet> {
     await _load(remaining[was.clamp(0, remaining.length - 1)].path);
   }
 
+  /// `m:ss.mmm`.
+  ///
+  /// Milliseconds because this is a diagnostic panel: the thing being looked
+  /// for is a gate closing mid-word, which happens inside a second and cannot
+  /// be pointed at with a clock that only counts them. Tabular figures below
+  /// keep it from twitching as the digits change.
   static String _clock(Duration d) {
     final m = d.inMinutes;
     final s = d.inSeconds % 60;
-    return '$m:${s.toString().padLeft(2, '0')}';
+    final ms = d.inMilliseconds % 1000;
+    return '$m:${s.toString().padLeft(2, '0')}'
+        '.${ms.toString().padLeft(3, '0')}';
   }
 
   @override
@@ -449,16 +457,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                               ? l.diagPreviewPause
                               : l.diagPreviewPlay,
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '${_clock(_player.position)} / '
-                          '${_clock(_player.duration)}',
-                          style: TextStyle(
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 4),
                         // Delete beside the transport control, share at the far
                         // end. That is the card's rule and the reason is the
                         // same: the button that destroys the only copy and the
@@ -478,7 +477,24 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                           color: scheme.error,
                           tooltip: l.diagPreviewDelete,
                         ),
-                        const Spacer(),
+                        // In the gap between the two groups, so it is
+                        // genuinely centred rather than drifting with the play
+                        // button — and it keeps delete and share as far apart
+                        // as the row allows, which is the rule above.
+                        Expanded(
+                          child: Center(
+                            child: Text(
+                              '${_clock(_player.position)} / '
+                              '${_clock(_player.duration)}',
+                              style: TextStyle(
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
                         IconButton.filledTonal(
                           onPressed: _sharing ? null : _share,
                           icon: _sharing

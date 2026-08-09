@@ -309,7 +309,7 @@ ru:
       # воя", shortened to fit the figure. A diagram that names a control
       # differently from the screen it describes sends the reader looking for
       # something that is not there.
-      fix2: 'Подавление обратной связи: обрывать при вое.'
+      fix2: 'Подавление гула обратной связи: обрывать при вое.'
       fix3: Не помогло — переведите пассажира на кнопку.
       fix_note: Петле нужны все звенья. Хватит убрать одно.
       caption: >-

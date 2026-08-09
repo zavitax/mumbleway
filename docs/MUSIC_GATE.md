@@ -604,6 +604,32 @@ it works — it does.
 delegate may attach and where finding 1 says the win will be partial anyway.
 And the positive side of the corpus is still one genre, one room.
 
+### The platforms were never running the same chain — live experiment
+
+Reported 2026-08-09: **the same music in `Helmet` is suppressed markedly better
+on Android than on an iPhone**, and better again on the Android emulator.
+
+Not a bug in the chain. It is upstream of it, and it is an asymmetry nobody
+chose:
+
+- **Android** captures through cpal's AAudio backend, which sets **no input
+  preset** — so AAudio applies its default, `VOICE_RECOGNITION`, and Google's
+  noise suppression runs before our chain sees a sample. Verified by reading
+  cpal 0.18: there is no `InputPreset` anywhere in its AAudio host.
+- **iOS** used `mode: .default`, chosen deliberately so that Apple's voice
+  processing would not sit underneath ours. That gave a genuinely raw
+  microphone — and left `Helmet` doing the entire job alone.
+
+So every comparison between the two platforms in this file has been comparing
+different inputs, and the iPhone was the harder one by construction.
+
+**The experiment**: iOS moves to `mode: .voiceChat`, one variable, with our own
+AEC left running so the result can be attributed. Published for testing. What
+decides it is music in `Helmet` against the same clip on Android; what would
+call it off is echo pumping (two cancellers fighting) or the system AGC lifting
+quiet music, which is precisely the input that produced the level inversion
+recorded earlier in this file.
+
 ### The design as agreed, and the choices behind it
 
 Written down before any of it was built, and kept because the reasoning is the

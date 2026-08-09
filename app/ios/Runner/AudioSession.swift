@@ -179,13 +179,47 @@ final class AudioSession {
     let session = AVAudioSession.sharedInstance()
     try session.setCategory(
       .playAndRecord,
-      // `.voiceChat` would be the obvious mode for a voice app, and it brings
-      // the system's own voice processing with it. This app already does echo
-      // cancellation and noise suppression itself, with settings the user has
-      // tuned by ear, and a second canceller underneath them is exactly the
-      // kind of thing that produces artefacts nobody can locate. `.default`
-      // leaves the pipeline as the only thing processing the signal.
-      mode: .default,
+      // **An experiment, running since 2026-08-09.** This was `.default`, and
+      // the reasoning for that is worth keeping because it may still be right:
+      // this app does its own echo cancellation and noise suppression, tuned
+      // by ear, and a second canceller underneath them is the kind of thing
+      // that produces artefacts nobody can locate.
+      //
+      // What changed is a comparison. The same music, in Helmet, is suppressed
+      // markedly better on Android than on an iPhone — and the mechanism looks
+      // like this line. Android's capture goes through cpal's AAudio backend,
+      // which sets no input preset, so AAudio applies its default of
+      // `VOICE_RECOGNITION` and Google's noise suppression runs *before* our
+      // chain sees a sample. On iOS `.default` gave us a genuinely raw
+      // microphone, so Helmet was doing the whole job alone. The platforms
+      // were never doing the same work, and only one of us chose that.
+      //
+      // So: `.voiceChat`, which brings Apple's voice processing in and makes
+      // the two platforms comparable. One variable, deliberately — our own AEC
+      // is left running, because turning both knobs at once would leave no way
+      // to attribute the result.
+      //
+      // What to watch, in this order:
+      //
+      //  * music in Helmet, against the same clip on Android — the thing this
+      //    is for;
+      //  * echo, which is where a second canceller does its damage. Two AECs
+      //    fighting sounds like a voice that pumps or goes hollow, and if that
+      //    appears, ours is the one to switch off next;
+      //  * the AGC. Apple's normalises level, and this app's own gate and floor
+      //    tracker read level. `docs/MUSIC_GATE.md` records that quieter music
+      //    used to land in a lighter profile, so a system AGC lifting quiet
+      //    music is exactly the input that could bring that back.
+      //
+      // Also worth reading off the engine log: `.voiceChat` can hand back a
+      // different input rate and channel count from `.default`. The chain
+      // resamples, so it is not a fault — but it is the sort of change that
+      // moves several numbers at once, and it is written down in the log at
+      // the moment the streams open.
+      //
+      // Revert to `.default` if any of the last two turn up. The comparison is
+      // the point, not the mode.
+      mode: .voiceChat,
       options: [
         // Helmet intercoms are HFP devices. Without this they are not offered
         // as an input at all, and the phone quietly records from its own

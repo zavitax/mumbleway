@@ -277,6 +277,10 @@ pub struct CaptureProcessor {
     tilt: Biquad,
     /// Blocks since `Auto` last changed its mind.
     auto_dwell: u32,
+    /// Blocks since the microphone last heard anything much.
+    ///
+    /// Only ever gates going *lighter*. See [`AUTO_CALM_BLOCKS`].
+    auto_calm: u32,
     /// The background level *before* the chain touches it.
     ///
     /// Separate from [`Self::floor`], which tracks the signal after
@@ -347,6 +351,42 @@ const AUTO_DWELL_BLOCKS: u32 = 500;
 /// what a steady speed produces.
 const AUTO_HYSTERESIS_DB: f32 = 4.0;
 
+/// How long the microphone must hear next to nothing before `Auto` is allowed
+/// to choose a *lighter* profile. 15 seconds.
+///
+/// Asymmetric on purpose, and the asymmetry is the whole point. Going more
+/// aggressive costs some naturalness; going lighter costs whatever is in the
+/// room going out on the wire, and `Light` was measured to suppress music
+/// barely at all -- 73.3% of blocks transmitted against `Helmet`'s 13.8%.
+///
+/// It also fixes a case that was measured and is worse than it sounds. `Auto`
+/// chooses on level, so *quieter* music lands in a lighter profile: the same
+/// clip attenuated 10 dB moved from `Helmet` to `Standard` and its transmitted
+/// share went **up**, 28.7% to 47.2%. Loud music was handled best. Requiring
+/// real quiet before lightening removes that inversion, because music playing
+/// at any level is not quiet.
+const AUTO_CALM_BLOCKS: u32 = 1_500;
+
+/// Below this the microphone is hearing a room rather than a road, and it is
+/// the same bar `Light` itself has to clear.
+const AUTO_CALM_DB: f32 = -55.0;
+
+/// How hard a profile works, for comparing two of them.
+///
+/// `Off` is not reachable from `Auto` and sorts lowest so the ordering is
+/// total; the enum's own order is not this, and relying on it would be a
+/// silent bug the first time a variant moved.
+fn aggressiveness(p: NoiseProfile) -> u8 {
+    match p {
+        NoiseProfile::Off => 0,
+        NoiseProfile::Light => 1,
+        NoiseProfile::Standard => 2,
+        NoiseProfile::Helmet => 3,
+        NoiseProfile::Auto => 2,
+    }
+}
+
+
 impl CaptureProcessor {
     pub fn new(profile: NoiseProfile) -> Self {
         let (open_db, close_db) = profile.gate_db();
@@ -362,6 +402,7 @@ impl CaptureProcessor {
             effective,
             tilt: Biquad::low_pass(SAMPLE_RATE as f32, AUTO_TILT_HZ, 0.707),
             auto_dwell: 0,
+            auto_calm: 0,
             // Slower than the transmit-side tracker. This one is deciding what
             // kind of place the rider is in, which changes over minutes, not
             // whether the current block is speech.
@@ -412,6 +453,7 @@ impl CaptureProcessor {
         }
         self.profile = profile;
         self.auto_dwell = 0;
+        self.auto_calm = 0;
         let effective = if profile == NoiseProfile::Auto {
             // Keep whatever is in force and let the chooser move from there.
             // Snapping to a default would throw away a correct answer the
@@ -473,6 +515,14 @@ impl CaptureProcessor {
         if self.profile != NoiseProfile::Auto {
             return;
         }
+        // Counted every block, before the dwell gate returns: how long the room
+        // has been quiet is a property of the room, not of how often we look.
+        if floor_db < AUTO_CALM_DB {
+            self.auto_calm = self.auto_calm.saturating_add(1);
+        } else {
+            self.auto_calm = 0;
+        }
+
         self.auto_dwell = self.auto_dwell.saturating_add(1);
         if self.auto_dwell < AUTO_DWELL_BLOCKS {
             return;
@@ -497,8 +547,24 @@ impl CaptureProcessor {
             NoiseProfile::Helmet
         };
 
+        // Going lighter needs more than a threshold: it needs the microphone to
+        // have heard next to nothing for a while. Anything playing in the room
+        // keeps the floor up and keeps the heavier profile in force, which is
+        // the case level alone gets backwards.
+        let want = if aggressiveness(want) < aggressiveness(self.effective)
+            && self.auto_calm < AUTO_CALM_BLOCKS
+        {
+            self.effective
+        } else {
+            want
+        };
+
         if want != self.effective {
             self.auto_dwell = 0;
+            // A profile change is a fresh start for the quiet run. Otherwise
+            // one calm stretch could be spent twice, stepping down two profiles
+            // on the strength of a single quiet period.
+            self.auto_calm = 0;
             self.apply_effective(want);
         }
     }

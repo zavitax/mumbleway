@@ -404,6 +404,39 @@ it: sustained energy with the VAD saying no speech is a much better "pick
 Helmet" signal than anything measured here, and it reuses the model from the
 step below instead of adding a second one. Worth folding into step 4.
 
+### Built: Auto may only lighten after 15 s of quiet
+
+The one change from all of this that is in the code. `reconsider()` now counts
+how long the raw floor has been below −55 dB and refuses to choose a *lighter*
+profile until that reaches 15 seconds. Going heavier is unchanged.
+
+The asymmetry is the point: going more aggressive costs some naturalness, going
+lighter costs whatever is in the room going onto the wire, and `Light` was
+measured to suppress music barely at all. Music playing at any level is not
+quiet, so it can no longer talk `Auto` downwards.
+
+Measured on the attenuation sweep, against the same figures before the change:
+
+| Music level | Before | After |
+|---|---|---|
+| −17 dBFS | 28.7% (Helmet) | 28.7% (Helmet) |
+| −27 dBFS | 47.2% (Standard) | **47.2% (Standard)** |
+| −37 dBFS | 21.9% | 18.3% |
+| −47 dBFS | 36.4% (Light) | **29.2% (Standard)** |
+
+**And it costs nothing on speech**: the labelled clip is unchanged at 81.7%
+recall and 72.7% precision, because a rider talking keeps the floor up and so
+never qualified to lighten anyway.
+
+**It does not fix the −27 dBFS case, and that is a different fault.** The
+ratchet only blocks going lighter; at that level `Auto` never escalates to
+Helmet in the first place, because the tracked floor sits near −50 dB while the
+music is at −27. The floor tracker under-reads music, which is its own problem
+and is not addressed here.
+
+So this is a guard, not the fix. It removes the inversion at the quiet end and
+leaves the middle alone.
+
 ### The plan
 
 Ordered so that each step is worth doing even if the next is never taken.

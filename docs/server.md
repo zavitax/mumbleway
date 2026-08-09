@@ -166,7 +166,7 @@ which is why the app's <em>Identity</em> setting is worth keeping.</p>
          alt="The add-server form: display name, address, port, username and an
               optional password, with shortcuts to browse public servers, import
               a file or scan a QR code."
-         width="560" height="1217" loading="lazy" decoding="async">
+         width="560" height="883" loading="lazy" decoding="async">
     <figcaption>Type it once, or scan the QR code the app makes.</figcaption>
   </figure>
   <figure>

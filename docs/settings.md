@@ -45,7 +45,7 @@ the app says so, rather than offering a control that could do nothing.
   <figure>
     <img src="{{ '/assets/img/shots/set-testmic.webp' | relative_url }}"
          alt="The test microphone row with its switch off."
-         width="560" height="218" loading="lazy" decoding="async">
+         width="560" height="150" loading="lazy" decoding="async">
     <figcaption>Hear yourself exactly as the far end does.</figcaption>
   </figure>
 </div>
@@ -61,7 +61,7 @@ suppression, gate and levelling. The fastest way to judge a profile.
   <figure>
     <img src="{{ '/assets/img/shots/set-echo.webp' | relative_url }}"
          alt="The echo cancellation row, switched on."
-         width="560" height="225" loading="lazy" decoding="async">
+         width="560" height="177" loading="lazy" decoding="async">
     <figcaption>On by default. Worth it with speakers, not with a headset.</figcaption>
   </figure>
 </div>
@@ -95,7 +95,7 @@ the noise chain.
   <figure>
     <img src="{{ '/assets/img/shots/set-buffer.webp' | relative_url }}"
          alt="The incoming audio buffer slider at 200 ms, with the paragraph explaining what raising it does."
-         width="560" height="395" loading="lazy" decoding="async">
+         width="560" height="212" loading="lazy" decoding="async">
     <figcaption>200 ms by default, and the app raises it by itself on a poor link.</figcaption>
   </figure>
 </div>
@@ -119,7 +119,7 @@ Otherwise leave it alone.
   <figure>
     <img src="{{ '/assets/img/shots/set-roomtone.webp' | relative_url }}"
          alt="The room tone row, switched on."
-         width="560" height="315" loading="lazy" decoding="async">
+         width="560" height="148" loading="lazy" decoding="async">
     <figcaption>Cosmetic, and only on what you hear.</figcaption>
   </figure>
 </div>
@@ -134,7 +134,7 @@ It applies to what you hear, never to what you send.
   <figure>
     <img src="{{ '/assets/img/shots/set-testspk.webp' | relative_url }}"
          alt="The test speakers row with a play button."
-         width="560" height="234" loading="lazy" decoding="async">
+         width="560" height="95" loading="lazy" decoding="async">
     <figcaption>A short tone on whichever output is selected.</figcaption>
   </figure>
 </div>
@@ -166,7 +166,7 @@ then has a harder problem to solve than it needed to.
   <figure>
     <img src="{{ '/assets/img/shots/set-speakervol.webp' | relative_url }}"
          alt="The speaker volume slider at +0 dB."
-         width="560" height="200" loading="lazy" decoding="async">
+         width="560" height="82" loading="lazy" decoding="async">
     <figcaption>Incoming voices only.</figcaption>
   </figure>
 </div>

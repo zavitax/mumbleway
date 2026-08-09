@@ -49,7 +49,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-testmic.webp' | relative_url }}"
          alt="Строка проверки микрофона с выключенным переключателем."
-         width="560" height="218" loading="lazy" decoding="async">
+         width="560" height="150" loading="lazy" decoding="async">
     <figcaption>Услышать себя ровно так, как слышит собеседник.</figcaption>
   </figure>
 </div>
@@ -66,7 +66,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-echo.webp' | relative_url }}"
          alt="Строка подавления эха, переключатель включён."
-         width="560" height="225" loading="lazy" decoding="async">
+         width="560" height="177" loading="lazy" decoding="async">
     <figcaption>Включено по умолчанию. Нужно с динамиками, не нужно в гарнитуре.</figcaption>
   </figure>
 </div>
@@ -100,7 +100,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-buffer.webp' | relative_url }}"
          alt="Ползунок буфера входящего звука на 200 мс и абзац о том, что даёт его увеличение."
-         width="560" height="395" loading="lazy" decoding="async">
+         width="560" height="212" loading="lazy" decoding="async">
     <figcaption>200 мс по умолчанию; на плохой связи приложение поднимает его само.</figcaption>
   </figure>
 </div>
@@ -124,7 +124,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-roomtone.webp' | relative_url }}"
          alt="Строка эффекта помещения, переключатель включён."
-         width="560" height="315" loading="lazy" decoding="async">
+         width="560" height="148" loading="lazy" decoding="async">
     <figcaption>Косметика, и только на то, что слышите вы.</figcaption>
   </figure>
 </div>
@@ -140,7 +140,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-testspk.webp' | relative_url }}"
          alt="Строка проверки динамиков с кнопкой воспроизведения."
-         width="560" height="234" loading="lazy" decoding="async">
+         width="560" height="95" loading="lazy" decoding="async">
     <figcaption>Короткий тон на выбранном выходе.</figcaption>
   </figure>
 </div>
@@ -172,7 +172,7 @@ description: Что делает каждая настройка и какие �
   <figure>
     <img src="{{ '/assets/img/shots/set-speakervol.webp' | relative_url }}"
          alt="Ползунок громкости динамиков на +0 дБ."
-         width="560" height="200" loading="lazy" decoding="async">
+         width="560" height="82" loading="lazy" decoding="async">
     <figcaption>Только для входящих голосов.</figcaption>
   </figure>
 </div>

@@ -213,6 +213,26 @@ one, which is the same reason the app records its own capture input.
   report an English locale for an undeclared language whatever the phone is set
   to, so a complete translation is simply never asked for. A test asserts this.
 
+## Say when a device is not accelerating
+
+Anything that runs a model has to report, on every platform, whether the
+accelerated path was actually built — and say so where a rider can see it, with
+the measured per-frame cost beside it. Two of these are shipped and one is
+queued (`docs/ENHANCER_GPU.md`).
+
+**Claim only what is checkable.** Core ML decides per operation whether to use
+the Neural Engine, the GPU or the CPU and reports none of it, so the honest
+statement is *the accelerated path was or was not built* — never "an NPU is
+doing this". The classifier's note reports milliseconds from the device rather
+than warning about battery, after an earlier draft asserted a cost nobody had
+measured and the real figure turned out to be 2.4 ms.
+
+**A delegate can take the process down, not throw.** TFLite's GPU delegate
+segfaulted inside `TfLiteInterpreterAllocateTensors` on an Adreno 506; a Dart
+`try`/`catch` around it never ran. Anything that opts into hardware needs a flag
+written before the attempt and cleared after, because nothing else survives a
+SIGSEGV.
+
 ## Measurement discipline
 
 Several plans in this repository were disproved by their own acceptance tests

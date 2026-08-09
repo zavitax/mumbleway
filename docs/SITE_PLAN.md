@@ -370,6 +370,18 @@ speech in a quiet room are properties a motorcycle also has, and every feature
 the chain currently computes is measured downstream of the one RNNoise decision
 it would have to disagree with.
 
+### The enhancer on the GPU — designed, not built
+
+Written up in **`docs/ENHANCER_GPU.md`**: three rungs (GPU, CPU, bypass), the
+crash-flag mechanism the fallback needs because a native SIGSEGV leaves no
+`catch` to run, and the requirement that **every platform says when
+acceleration is not in use** — including macOS and Windows, where it never is.
+
+The measurements for and against are in that file. The short version: the CPU
+path's worst frame already exceeds 10 ms on a desktop, so acceleration is
+justified; and TFLite's GPU delegate segfaulted the app on the exact phone that
+needs it, so it is not obviously the way.
+
 ### TFLite in the app — designed, not built
 
 **Asked after 2026-08-09: "I don't see the music classifier state among the

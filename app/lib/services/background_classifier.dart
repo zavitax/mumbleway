@@ -107,6 +107,17 @@ class BackgroundClassifier {
   double get lastScore => _lastScore;
   double _lastScore = 0;
 
+  /// How long the last inference took, in milliseconds.
+  ///
+  /// Shown rather than described. What an inference costs is the one thing
+  /// about this feature nobody can look up — it depends on the phone, the
+  /// delegate and what else is running — and a number measured on the rider's
+  /// own device beats any sentence written here. Measured on a Mac through the
+  /// same model and runtime it is 2.4 ms, which is why the panel reports the
+  /// cost rather than warning about it.
+  double get lastInferenceMs => _lastInferenceMs;
+  double _lastInferenceMs = 0;
+
   /// Called when anything above changes, so the panel can redraw.
   VoidCallback? onChanged;
 
@@ -212,7 +223,10 @@ class BackgroundClassifier {
     try {
       // Flat in, `[1, 521]` out — the model's own shapes, checked at load.
       final output = List.filled(classes, 0.0).reshape([1, classes]);
+      final started = DateTime.now();
       await isolate.run(window.samples, output);
+      _lastInferenceMs =
+          DateTime.now().difference(started).inMicroseconds / 1000.0;
       final score = ((output[0] as List)[musicIndex] as num).toDouble();
       _lastScore = score;
       final noisy = score >= bar;

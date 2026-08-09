@@ -525,6 +525,21 @@ The separation is total: the negative clip never fires at any bar down to 0.05.
 threshold on a plateau is robust, one on a slope is tuned to the clips it was
 picked on.
 
+**The negative side is now confirmed on somebody else's corpus.**
+`yamnet_threshold.py --librispeech` scores 40 speakers of `dev-clean`, each a
+different voice in a different room recorded on different equipment, none of it
+ours:
+
+| | n frames | ≥0.05 | ≥0.10 | ≥0.30 |
+|---|---|---|---|---|
+| LibriSpeech, 40 speakers | 342 | 0.3% | **0.0%** | **0.0%** |
+
+So "one speaker, one room" is answered for false positives: at the shipped bar,
+clean speech fired **zero times in 342 frames**. It says nothing about the
+positive side — for that there is no substitute for another genre in another
+room, and the tool now takes any file on the command line so that a new clip is
+one command rather than an edit.
+
 **Hardware acceleration: asked for, attempted, and mostly refused.**
 
 The app asks for Core ML on iOS and the GPU delegate on Android, and falls back
@@ -558,11 +573,36 @@ this", only that the accelerated path was or was not built. Core ML decides per
 operation whether to use the Neural Engine, the GPU or the CPU and reports none
 of it, so anything stronger would be a claim the code cannot check.
 
-**What is still unmeasured** is the thing the design said to measure:
-per-inference CPU and battery on a real phone, where the delegate may well
-attach. Given finding 1, the honest expectation is a partial offload rather
-than a large win, and the CPU number matters more than it looked like it would.
-The corpus is also still one genre, one speaker, one room.
+**An inference costs 2.4 ms, and that retires the worry.** Measured on Apple
+Silicon by driving this exact model through this exact runtime with `ctypes` —
+CPU only, XNNPACK, no delegate — averaged over 20 invocations. At one inference
+every two seconds that is **0.12% of one core**. A sanity check came with it: a
+440 Hz tone scores `Sine wave` 0.996, `Musical instrument` 0.012, `Music` 0.000,
+which is the whole graph including the FFT front end behaving correctly.
+
+So the first draft of the panel's note — which told riders it "costs battery on
+a long ride" — was overstating a cost nobody had measured. It now reports the
+milliseconds from the rider's own device instead, which is both honest and more
+use: a slow phone shows a big number and a fast one shows the truth.
+
+**macOS can run it, and it would be CPU-only.** The `tflite_flutter` package
+already contains `libtensorflowlite_c-mac.dylib`: universal x86_64 + arm64,
+`@rpath` install name, adhoc-signed, and depending on nothing but libSystem,
+CoreFoundation and libc++. It loads, and the model runs on it. But its symbol
+table has **no `TfLiteCoreMlDelegateCreate` and no `TfLiteGpuDelegateV2Create`**
+— only XNNPACK. So macOS would be CPU-only by construction, at the 2.4 ms
+above, on a TFLite **2.11.0** runtime three years older than the LiteRT the
+Android side pulls.
+
+What stops it being switched on is not capability: the podspec ships the dylib
+with `vendored_libraries` commented out, so wiring it up means overriding a
+third-party podspec and shipping a community-built binary through the Mac App
+Store. That is a decision about supply chain and store risk, not about whether
+it works — it does.
+
+**What is still unmeasured**: per-inference cost on a *phone*, where the
+delegate may attach and where finding 1 says the win will be partial anyway.
+And the positive side of the corpus is still one genre, one room.
 
 ### The design as agreed, and the choices behind it
 

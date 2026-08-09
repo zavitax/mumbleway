@@ -347,7 +347,6 @@ class AppState extends ChangeNotifier {
   static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
-  static const _prefsBackgroundClassifier = 'mumbleway.backgroundClassifier';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
   static const _prefsSettingStamps = 'mumbleway.settingStamps';
@@ -721,7 +720,6 @@ class AppState extends ChangeNotifier {
       jitterBufferMs = _clampJitter(v);
     }
     reverb = prefs.getBool(_prefsReverb) ?? true;
-    backgroundClassifier = prefs.getBool(_prefsBackgroundClassifier) ?? true;
     final guard = prefs.getInt(_prefsFeedbackGuard);
     if (guard != null &&
         guard >= 0 &&
@@ -2122,16 +2120,6 @@ class AppState extends ChangeNotifier {
     await prefs.setBool(_prefsReverb, value);
   }
 
-  /// Whether the background classifier may run.
-  ///
-  /// On by default, and only ever consulted where the model can actually run —
-  /// see [BackgroundClassifier.supportedHere]. The switch exists because the
-  /// honest answer to "what does this cost" depends on the phone: with an
-  /// accelerator behind it the inference is small, and without one it is the
-  /// CPU every two seconds for the whole ride. A rider on a phone with no
-  /// accelerator is told so in Diagnostics and can turn it off here.
-  bool backgroundClassifier = true;
-
   /// Runs the model, or does not. Owned here because it has to keep working
   /// with every screen closed and the phone in a pocket, which is most of a
   /// ride.
@@ -2147,7 +2135,6 @@ class AppState extends ChangeNotifier {
     final want =
         _audioActive &&
         noise == NoiseSetting.auto &&
-        backgroundClassifier &&
         BackgroundClassifier.supportedHere;
     if (want == classifier.running) return;
     if (want) {
@@ -2155,14 +2142,6 @@ class AppState extends ChangeNotifier {
     } else {
       unawaited(classifier.stop());
     }
-  }
-
-  Future<void> setBackgroundClassifier({required bool value}) async {
-    backgroundClassifier = value;
-    _syncClassifier();
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefsBackgroundClassifier, value);
   }
 
   /// Levels incoming speakers towards a common loudness.

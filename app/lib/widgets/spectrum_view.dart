@@ -151,10 +151,11 @@ class _SpectrumViewState extends State<SpectrumView>
 
 /// Says when the classifier is running without an accelerator behind it.
 ///
-/// **A warning rather than a failure.** It works either way; what changes is
-/// who pays. With Core ML or the GPU delegate an inference is small, and on
-/// plain CPU it is the processor every two seconds for the whole ride, which on
-/// a long one is battery a rider would rather have spent on the ride.
+/// **A note, not a failure**, and it reports rather than warns. The same model
+/// and runtime were timed at 2.4 ms an inference on a Mac, which at one every
+/// two seconds is a tenth of a percent of a core — so an earlier draft of this
+/// widget, which told riders it "costs battery on a long ride", was overstating
+/// a cost nobody had measured. It now shows the number from *this* device.
 ///
 /// What it claims is deliberately narrow: *the accelerated path was not
 /// built*. Core ML decides per operation whether to use the Neural Engine, the
@@ -172,7 +173,15 @@ class _ClassifierNote extends StatelessWidget {
     if (!BackgroundClassifier.supportedHere) {
       message = l.diagClassifierUnavailable;
     } else if (classifier.onCpuOnly) {
-      message = l.diagClassifierOnCpu;
+      // The cost, measured here, rather than an adjective. An earlier draft
+      // said it "costs battery on a long ride"; then the same model and
+      // runtime were timed at 2.4 ms an inference, which at one every two
+      // seconds is a tenth of a percent of a core. Saying a number lets a
+      // rider on a slow phone see a big one and a rider on a fast one see the
+      // truth, instead of both reading the same warning.
+      message = l.diagClassifierOnCpu(
+        classifier.lastInferenceMs.toStringAsFixed(0),
+      );
     } else {
       return const SizedBox.shrink();
     }

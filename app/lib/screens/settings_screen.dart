@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/button_controller.dart';
-import '../services/background_classifier.dart';
 import '../services/cloud_sync.dart';
 import '../services/noise_profiles.dart';
 import '../services/overlay.dart';
@@ -117,7 +116,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-          const _ClassifierTile(),
 
           const Divider(height: 32),
           _SectionHeader(l.feedbackGuard),
@@ -482,34 +480,6 @@ class _SyncTile extends StatelessWidget {
           ],
         );
     }
-  }
-}
-
-/// The switch that lets a rider stop the classifier running.
-///
-/// Sits under the profile list rather than in its own section, because it is
-/// about *Automatic* and means nothing under the other four. Hidden entirely
-/// where the model cannot run at all — on desktop there is nothing to turn off,
-/// and a switch that does nothing is worse than an absent one.
-class _ClassifierTile extends StatelessWidget {
-  const _ClassifierTile();
-
-  @override
-  Widget build(BuildContext context) {
-    if (!BackgroundClassifier.supportedHere) return const SizedBox.shrink();
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.graphic_eq),
-      title: Text(l.backgroundClassifier),
-      subtitle: Text(l.backgroundClassifierBody),
-      isThreeLine: true,
-      value: state.backgroundClassifier,
-      // Left tappable under every profile, even though it only has an effect
-      // under Automatic. Greying it out would hide the explanation at exactly
-      // the moment somebody is reading the list to decide.
-      onChanged: (v) => state.setBackgroundClassifier(value: v),
-    );
   }
 }
 

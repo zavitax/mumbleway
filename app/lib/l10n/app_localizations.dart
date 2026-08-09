@@ -1030,7 +1030,7 @@ abstract class L {
   /// No description provided for @noiseAutoBody.
   ///
   /// In en, this message translates to:
-  /// **'Listens to the background and picks one of the settings above, changing at most every few seconds. Useful when one ride covers a quiet car park and a motorway.'**
+  /// **'Listens to the background and picks one of the settings above. On a phone it also runs a small sound classifier: when it hears engine, wind or music it takes the helmet setting straight away and holds it for fifteen seconds after they stop. Going back down is slower — fifteen seconds of quiet to leave the helmet setting, and a minute more to reach the lightest. Useful when one ride covers a quiet car park and a motorway.'**
   String get noiseAutoBody;
 
   /// No description provided for @micAlwaysOn.
@@ -2251,18 +2251,6 @@ abstract class L {
   /// **'Auto is using'**
   String get diagAutoProfile;
 
-  /// No description provided for @backgroundClassifier.
-  ///
-  /// In en, this message translates to:
-  /// **'Detect background noise'**
-  String get backgroundClassifier;
-
-  /// No description provided for @backgroundClassifierBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Listens for engine, wind and music and holds the helmet profile while they last. Runs only under Automatic. Turn it off if Diagnostics says it is running on the processor.'**
-  String get backgroundClassifierBody;
-
   /// No description provided for @diagStageBackground.
   ///
   /// In en, this message translates to:
@@ -2272,8 +2260,8 @@ abstract class L {
   /// No description provided for @diagClassifierOnCpu.
   ///
   /// In en, this message translates to:
-  /// **'No accelerator on this device, so the background detector runs on the processor. It works, and it costs battery on a long ride.'**
-  String get diagClassifierOnCpu;
+  /// **'No accelerator here, so background detection runs on the processor — {ms} ms per check, once every two seconds.'**
+  String diagClassifierOnCpu(String ms);
 
   /// No description provided for @diagClassifierUnavailable.
   ///

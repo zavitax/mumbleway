@@ -277,9 +277,11 @@ pub struct CaptureProcessor {
     tilt: Biquad,
     /// Blocks since `Auto` last changed its mind.
     auto_dwell: u32,
-    /// Blocks since the microphone last heard anything much.
+    /// Blocks the level has continuously wanted something lighter than what is
+    /// in force.
     ///
-    /// Only ever gates going *lighter*. See [`AUTO_CALM_BLOCKS`].
+    /// Only ever gates going *lighter*, and by how far. See
+    /// [`AUTO_COOLDOWN_STANDARD_BLOCKS`].
     auto_calm: u32,
     /// The classifier's last word: the background is loud and structured.
     ///
@@ -362,34 +364,66 @@ const AUTO_DWELL_BLOCKS: u32 = 500;
 /// what a steady speed produces.
 const AUTO_HYSTERESIS_DB: f32 = 4.0;
 
-/// How long the microphone must hear next to nothing before `Auto` is allowed
-/// to choose a *lighter* profile. 15 seconds.
+/// How long the level must keep asking for something lighter before `Auto`
+/// dials down, per step.
 ///
-/// Asymmetric on purpose, and the asymmetry is the whole point. Going more
+/// **Asymmetric on purpose, and the asymmetry is the whole point.** Going more
 /// aggressive costs some naturalness; going lighter costs whatever is in the
 /// room going out on the wire, and `Light` was measured to suppress music
-/// barely at all -- 73.3% of blocks transmitted against `Helmet`'s 13.8%.
+/// barely at all — 73.3% of blocks transmitted against `Helmet`'s 13.8%. So
+/// the further down a step goes the longer it waits: fifteen seconds to leave
+/// `Helmet` for `Standard`, a minute to reach `Light`.
 ///
-/// It also fixes a case that was measured and is worse than it sounds. `Auto`
-/// chooses on level, so *quieter* music lands in a lighter profile: the same
-/// clip attenuated 10 dB moved from `Helmet` to `Standard` and its transmitted
-/// share went **up**, 28.7% to 47.2%. Loud music was handled best. Requiring
-/// real quiet before lightening removes that inversion, because music playing
-/// at any level is not quiet.
-const AUTO_CALM_BLOCKS: u32 = 1_500;
+/// The counter is "how long has the level wanted something lighter than what
+/// is in force", not "how long has it been silent". An earlier version
+/// required the floor below −55 dB for *any* dial-down, which made the step
+/// from `Helmet` to `Standard` unreachable in a room the level itself called
+/// `Standard` — the counter could only run in conditions that already implied
+/// `Light`.
+///
+/// What the old rule bought was protection against a measured inversion: `Auto`
+/// chooses on level, so *quieter* music landed in a lighter profile, and the
+/// same clip attenuated 10 dB moved from `Helmet` to `Standard` with its
+/// transmitted share going **up**, 28.7% to 47.2%. That job now belongs to the
+/// classifier, which detects the music itself and holds `Helmet` — a real
+/// measurement instead of a level heuristic. **With the classifier switched
+/// off, or on a platform that cannot run it, this protection is weaker than it
+/// was.** See `docs/MUSIC_GATE.md`.
+const AUTO_COOLDOWN_STANDARD_BLOCKS: u32 = 1_500;
+const AUTO_COOLDOWN_LIGHT_BLOCKS: u32 = 6_000;
 
-/// Below this the microphone is hearing a room rather than a road, and it is
-/// the same bar `Light` itself has to clear.
-const AUTO_CALM_DB: f32 = -55.0;
+/// How long the level has to keep wanting lighter before `Auto` moves to `to`.
+fn cooldown_blocks(to: NoiseProfile) -> u32 {
+    match to {
+        NoiseProfile::Light => AUTO_COOLDOWN_LIGHT_BLOCKS,
+        _ => AUTO_COOLDOWN_STANDARD_BLOCKS,
+    }
+}
+
+/// One profile lighter, and no further.
+///
+/// Dialling down is a staircase, not a jump. A room that goes straight from a
+/// motorway to silence still passes through `Standard` on the way to `Light`,
+/// serving each step its own cooldown — fifteen seconds and then a minute — so
+/// the minute is spent in `Standard` rather than in `Helmet`. Going *up* is not
+/// stepped: escalating is the cheap direction and waiting to climb it is how a
+/// rider gets caught out.
+fn one_step_lighter(from: NoiseProfile) -> NoiseProfile {
+    match from {
+        NoiseProfile::Helmet => NoiseProfile::Standard,
+        // `Off` is never chosen by `Auto`, so `Light` is the bottom.
+        _ => NoiseProfile::Light,
+    }
+}
 
 /// How long `Helmet` is held after the classifier last said the background was
 /// loud and structured. 15 seconds.
 ///
-/// A minimum rather than an exact span. Once it expires the calm ratchet still
-/// applies, so lightening additionally needs [`AUTO_CALM_BLOCKS`] of real
-/// quiet — the two compose, and the effect is that a rider who pulls up at
-/// lights keeps the profile that was working until the road has actually been
-/// silent for a while.
+/// A minimum rather than an exact span. Once it expires the dial-down cooldown
+/// still applies, so leaving `Helmet` additionally needs fifteen seconds of the
+/// level itself asking — the two compose, and the effect is that a rider who
+/// pulls up at lights keeps the profile that was working until the road has
+/// actually gone quiet.
 ///
 /// The hold is the whole reason a classifier is safe to use here. A single
 /// inference is wrong sometimes; to *release* Helmet the classifier has to be
@@ -564,9 +598,30 @@ impl CaptureProcessor {
         if self.profile != NoiseProfile::Auto {
             return;
         }
-        // Counted every block, before the dwell gate returns: how long the room
-        // has been quiet is a property of the room, not of how often we look.
-        if floor_db < AUTO_CALM_DB {
+        // Hysteresis applied in the direction that resists *leaving* whatever
+        // is in force, so a floor sitting on a boundary stays put instead of
+        // switching back and forth every five seconds for the whole ride.
+        let bias = |limit: f32, quieter: NoiseProfile| -> f32 {
+            if self.effective == quieter {
+                limit + AUTO_HYSTERESIS_DB
+            } else {
+                limit - AUTO_HYSTERESIS_DB
+            }
+        };
+
+        // What the level alone would choose, computed every block rather than
+        // only when the dwell lets us act. The cooldown below counts how long
+        // the room has wanted something lighter, and that has to be a property
+        // of the room rather than of how often we happen to look at it.
+        let by_level = if floor_db < bias(-55.0, NoiseProfile::Light) && low_share < 0.35 {
+            NoiseProfile::Light
+        } else if floor_db < bias(-40.0, NoiseProfile::Standard) {
+            NoiseProfile::Standard
+        } else {
+            NoiseProfile::Helmet
+        };
+
+        if aggressiveness(by_level) < aggressiveness(self.effective) {
             self.auto_calm = self.auto_calm.saturating_add(1);
         } else {
             self.auto_calm = 0;
@@ -600,42 +655,27 @@ impl CaptureProcessor {
             return;
         }
 
-        // Hysteresis applied in the direction that resists *leaving* whatever
-        // is in force, so a floor sitting on a boundary stays put instead of
-        // switching back and forth every five seconds for the whole ride.
-        let bias = |limit: f32, quieter: NoiseProfile| -> f32 {
-            if self.effective == quieter {
-                limit + AUTO_HYSTERESIS_DB
-            } else {
-                limit - AUTO_HYSTERESIS_DB
-            }
-        };
-
-        let want = if floor_db < bias(-55.0, NoiseProfile::Light) && low_share < 0.35 {
-            NoiseProfile::Light
-        } else if floor_db < bias(-40.0, NoiseProfile::Standard) {
-            NoiseProfile::Standard
-        } else {
-            NoiseProfile::Helmet
-        };
-
-        // Going lighter needs more than a threshold: it needs the microphone to
-        // have heard next to nothing for a while. Anything playing in the room
-        // keeps the floor up and keeps the heavier profile in force, which is
-        // the case level alone gets backwards.
-        // And nothing takes Helmet away while the classifier's hold is
-        // running, whatever the floor says. This is the second half of the
-        // 15 s rule: the first half took the profile, this one keeps it.
+        // Nothing takes Helmet away while the classifier's hold is running,
+        // whatever the level says. This is the second half of the 15 s rule:
+        // the first half took the profile, this one keeps it.
         let want = if self.music_hold > 0 {
             NoiseProfile::Helmet
         } else {
-            want
+            by_level
         };
 
-        let want = if aggressiveness(want) < aggressiveness(self.effective)
-            && self.auto_calm < AUTO_CALM_BLOCKS
-        {
-            self.effective
+        // Dialling down goes one step at a time, and each step has its own
+        // patience: fifteen seconds to leave Helmet for Standard, then a full
+        // minute in Standard before Light. Light barely suppresses anything,
+        // so arriving there wrongly is the expensive mistake and it is the one
+        // worth being slow about.
+        let want = if aggressiveness(want) < aggressiveness(self.effective) {
+            let step = one_step_lighter(self.effective);
+            if self.auto_calm < cooldown_blocks(step) {
+                self.effective
+            } else {
+                step
+            }
         } else {
             want
         };
@@ -1279,6 +1319,81 @@ mod tests {
             p.process(&mut block);
         }
         (p.effective_profile(), p.music_hold_active())
+    }
+
+    /// Starts on `from`, then feeds `seconds` of a quiet room and reports where
+    /// `Auto` ended up.
+    ///
+    /// The room is quiet enough that the level wants `Light` throughout, so
+    /// what the result measures is purely how long the cooldowns made it wait.
+    fn dials_down_to(from: NoiseProfile, seconds: usize) -> NoiseProfile {
+        let len = SAMPLE_RATE as usize * seconds;
+        let quiet = crate::audio::testsig::white(len, 0.0005, 21);
+        let mut p = CaptureProcessor::new(from);
+        p.set_profile(NoiseProfile::Auto);
+        for chunk in quiet.chunks_exact(FRAME_SIZE) {
+            let mut block = chunk.to_vec();
+            p.process(&mut block);
+        }
+        p.effective_profile()
+    }
+
+    #[test]
+    fn leaving_helmet_waits_fifteen_seconds() {
+        // Below the cooldown it must still be Helmet; above it, Standard. Not
+        // Light: that step has its own, longer wait, and skipping straight
+        // there would mean one quiet stretch spent twice.
+        assert_eq!(
+            dials_down_to(NoiseProfile::Helmet, 12),
+            NoiseProfile::Helmet
+        );
+        assert_eq!(
+            dials_down_to(NoiseProfile::Helmet, 25),
+            NoiseProfile::Standard,
+            "fifteen seconds of quiet did not get us out of Helmet"
+        );
+    }
+
+    #[test]
+    fn reaching_light_takes_a_full_minute() {
+        // The expensive mistake. `Light` barely suppresses anything -- 73.3% of
+        // music transmitted against Helmet's 13.8% -- so arriving there wrongly
+        // is the one worth being slow about.
+        assert_ne!(
+            dials_down_to(NoiseProfile::Standard, 45),
+            NoiseProfile::Light,
+            "reached Light well inside its minute"
+        );
+        assert_eq!(
+            dials_down_to(NoiseProfile::Standard, 75),
+            NoiseProfile::Light,
+            "a minute of quiet still did not reach Light"
+        );
+    }
+
+    #[test]
+    fn the_cooldown_counts_the_room_wanting_lighter_not_silence() {
+        // The bug the per-step rule replaced. The old counter only ran while
+        // the floor was below -55 dB, which is the bar `Light` itself has to
+        // clear -- so the step from Helmet to Standard could only be taken in
+        // conditions that already implied Light, and in an ordinary room it
+        // was unreachable. This asserts the middle case works: a room the
+        // level calls `Standard` must be able to leave `Helmet`.
+        let len = SAMPLE_RATE as usize * 25;
+        // Loud enough that the floor sits above the Light bar, quiet enough
+        // that it sits below the Helmet one.
+        let room = crate::audio::testsig::white(len, 0.006, 23);
+        let mut p = CaptureProcessor::new(NoiseProfile::Helmet);
+        p.set_profile(NoiseProfile::Auto);
+        for chunk in room.chunks_exact(FRAME_SIZE) {
+            let mut block = chunk.to_vec();
+            p.process(&mut block);
+        }
+        assert_ne!(
+            p.effective_profile(),
+            NoiseProfile::Helmet,
+            "stuck in Helmet in a room the level does not call a helmet"
+        );
     }
 
     #[test]

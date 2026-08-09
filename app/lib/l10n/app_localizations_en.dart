@@ -510,7 +510,7 @@ class LEn extends L {
 
   @override
   String get noiseAutoBody =>
-      'Listens to the background and picks one of the settings above, changing at most every few seconds. Useful when one ride covers a quiet car park and a motorway.';
+      'Listens to the background and picks one of the settings above. On a phone it also runs a small sound classifier: when it hears engine, wind or music it takes the helmet setting straight away and holds it for fifteen seconds after they stop. Going back down is slower — fifteen seconds of quiet to leave the helmet setting, and a minute more to reach the lightest. Useful when one ride covers a quiet car park and a motorway.';
 
   @override
   String get micAlwaysOn => 'Always on';
@@ -1215,18 +1215,12 @@ class LEn extends L {
   String get diagAutoProfile => 'Auto is using';
 
   @override
-  String get backgroundClassifier => 'Detect background noise';
-
-  @override
-  String get backgroundClassifierBody =>
-      'Listens for engine, wind and music and holds the helmet profile while they last. Runs only under Automatic. Turn it off if Diagnostics says it is running on the processor.';
-
-  @override
   String get diagStageBackground => 'Background';
 
   @override
-  String get diagClassifierOnCpu =>
-      'No accelerator on this device, so the background detector runs on the processor. It works, and it costs battery on a long ride.';
+  String diagClassifierOnCpu(String ms) {
+    return 'No accelerator here, so background detection runs on the processor — $ms ms per check, once every two seconds.';
+  }
 
   @override
   String get diagClassifierUnavailable =>

@@ -11,9 +11,18 @@ The target is **"the background is loud and structured"**, not "music" -- see
 positive, which is the correction that retired the earlier false-positive
 reading.
 
-    python yamnet_threshold.py
+    python yamnet_threshold.py                  # the ride corpus
+    python yamnet_threshold.py --librispeech    # and 40 clean-speech negatives
+    python yamnet_threshold.py foo.wav bar.raw  # anything else, as positives
+
+`--librispeech` is the answer to "one speaker, one room" on the negative side:
+`dev-clean` is hundreds of speakers recorded by somebody else, and every frame
+of it should score near zero. It cannot say anything about the positive side —
+for that there is no substitute for another genre, and another room.
 """
 import os
+import subprocess
+import sys
 import zipfile
 
 import numpy as np
@@ -46,6 +55,44 @@ def to16k(x):
     return x[:n].reshape(-1, 3).mean(axis=1).astype(np.float32)
 
 
+def load(path):
+    """Reads a clip at 16 kHz mono, whatever it started as.
+
+    The corpus `.raw` files are 48 kHz f32 and go through the app's own
+    decimation; anything else is handed to ffmpeg, which resamples properly.
+    That difference is deliberate — the corpus has to match what the app will
+    see, and an outside file only has to be right.
+    """
+    if path.endswith('.raw'):
+        return to16k(np.fromfile(path, dtype='<f4'))
+    out = subprocess.run(
+        ['ffmpeg', '-v', 'quiet', '-i', path, '-ac', '1', '-ar', '16000',
+         '-f', 'f32le', '-'],
+        stdout=subprocess.PIPE, check=True).stdout
+    return np.frombuffer(out, dtype='<f4')
+
+
+def librispeech(root, want=40):
+    """A spread of `dev-clean` utterances, one per speaker where possible."""
+    base = os.path.join(root, 'LibriSpeech', 'dev-clean')
+    if not os.path.isdir(base):
+        return []
+    picked = []
+    for speaker in sorted(os.listdir(base)):
+        sdir = os.path.join(base, speaker)
+        if not os.path.isdir(sdir):
+            continue
+        for chapter in sorted(os.listdir(sdir)):
+            cdir = os.path.join(sdir, chapter)
+            flacs = sorted(f for f in os.listdir(cdir) if f.endswith('.flac'))
+            if flacs:
+                picked.append(os.path.join(cdir, flacs[0]))
+                break
+        if len(picked) >= want:
+            break
+    return picked
+
+
 def main():
     from ai_edge_litert.interpreter import Interpreter
     names = labels()
@@ -56,19 +103,39 @@ def main():
     inp = it.get_input_details()[0]['index']
     out = it.get_output_details()[0]['index']
 
+    def score(x):
+        s = []
+        for i in range(0, len(x) - FRAME + 1, FRAME):
+            it.set_tensor(inp, x[i:i + FRAME])
+            it.invoke()
+            s.append(it.get_tensor(out)[0][music])
+        return np.array(s)
+
+    args = [a for a in sys.argv[1:] if not a.startswith('--')]
     scored = []
     for title, rel, wanted in CLIPS:
         p = os.path.join(RIDES, rel.replace('/', os.sep))
         if not os.path.exists(p):
             print('%-18s missing' % title)
             continue
-        x = to16k(np.fromfile(p, dtype='<f4'))
-        s = []
-        for i in range(0, len(x) - FRAME + 1, FRAME):
-            it.set_tensor(inp, x[i:i + FRAME])
-            it.invoke()
-            s.append(it.get_tensor(out)[0][music])
-        scored.append((title, wanted, np.array(s)))
+        scored.append((title, wanted, score(load(p))))
+
+    # Hundreds of speakers, recorded by somebody else, in rooms none of this
+    # was tuned in. Pooled into one row: what matters is whether *any* frame of
+    # clean speech crosses the bar, not which utterance it came from.
+    if '--librispeech' in sys.argv:
+        files = librispeech(RIDES)
+        if not files:
+            print('LibriSpeech not found under %s' % RIDES)
+        else:
+            pooled = [score(load(f)) for f in files]
+            pooled = [p for p in pooled if len(p)]
+            if pooled:
+                scored.append(('LibriSpeech x%d' % len(pooled), False,
+                               np.concatenate(pooled)))
+
+    for path in args:
+        scored.append((os.path.basename(path)[:18], True, score(load(path))))
 
     head = '%-18s %-8s %5s  ' % ('clip', 'wanted', 'n')
     head += '  '.join('>=%.2f' % b for b in BARS)

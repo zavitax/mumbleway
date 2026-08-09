@@ -11,19 +11,34 @@ import '../src/rust/api/mumbleway.dart';
 /// says any of this, so it is stated in one place rather than assumed in
 /// several.
 const int kRecordingRate = 48000;
+
+/// Samples per decision-log row. One 10 ms block, the same one the chain works
+/// in — the `.csv` has a row per block and the audio has no marker in it, so
+/// this is the only thing tying the two together.
+const int kRecordingBlock = 480;
 const int _bytesPerSample = 2;
 
 /// Peaks for drawing a recording, and the length it was measured over.
 class Waveform {
-  const Waveform(this.minima, this.maxima, this.duration);
+  const Waveform(this.minima, this.maxima, this.duration, this.transmitted);
 
   /// One entry per bucket, in the range -1..1.
   final Float32List minima;
   final Float32List maxima;
   final Duration duration;
 
+  /// Whether any of the bucket went on the wire, from the `.csv` beside the
+  /// audio. Empty when there is no log to read.
+  ///
+  /// *Any*, not *most*: the question a listener has is "was I heard here", and
+  /// a bucket covering a second of audio with one transmitted block in it is a
+  /// second in which they were heard.
+  final Uint8List transmitted;
+
   int get buckets => maxima.length;
   bool get isEmpty => maxima.isEmpty;
+  bool wasSent(int bucket) =>
+      bucket < transmitted.length && transmitted[bucket] != 0;
 }
 
 /// Reads a `.s16` and reduces it to per-bucket extremes.
@@ -43,7 +58,8 @@ Future<Waveform> _scan(List<Object> args) async {
   final length = await file.length();
   final total = length ~/ _bytesPerSample;
   if (total == 0) {
-    return Waveform(Float32List(0), Float32List(0), Duration.zero);
+    return Waveform(
+        Float32List(0), Float32List(0), Duration.zero, Uint8List(0));
   }
 
   final minima = Float32List(buckets);
@@ -80,8 +96,63 @@ Future<Waveform> _scan(List<Object> args) async {
     minima,
     maxima,
     Duration(milliseconds: (total * 1000 / kRecordingRate).round()),
+    await _transmitted(path, buckets, total),
   );
 }
+
+/// Which buckets went on the wire, from the decision log beside the audio.
+///
+/// Returns an empty list when there is no log, which the painter reads as "no
+/// information" rather than as "nothing was sent". Those are different, and
+/// colouring a whole recording as untransmitted because its `.csv` was never
+/// sent would be a confident lie.
+Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
+  final log = File('${audioPath.substring(0, audioPath.length - 4)}.csv');
+  if (!await log.exists()) return Uint8List(0);
+  final out = Uint8List(buckets);
+  final perBucket = (total / buckets).ceil();
+  try {
+    var block = 0;
+    for (final line in await log.readAsLines()) {
+      // The first line is a comment and the second is the header. Skipping by
+      // content rather than by count: a plain reader that takes the comment as
+      // the header is a mistake this project has already made once, offline.
+      if (line.isEmpty || line.startsWith('#')) continue;
+      final comma = line.indexOf(',');
+      if (comma <= 0) continue;
+      final first = int.tryParse(line.substring(0, comma));
+      if (first == null) continue; // the header row
+      final rest = line.substring(comma + 1);
+      final next = rest.indexOf(',');
+      if (next <= 0) continue;
+      if (rest.substring(0, next) == '1') {
+        // Each row is one block of `kRecordingBlock` samples.
+        final start = first * kRecordingBlock;
+        final a = (start ~/ perBucket).clamp(0, buckets - 1);
+        final b = ((start + kRecordingBlock - 1) ~/ perBucket)
+            .clamp(0, buckets - 1);
+        for (var i = a; i <= b; i++) {
+          out[i] = 1;
+        }
+      }
+      block++;
+    }
+    if (block == 0) return Uint8List(0);
+  } on Exception {
+    // A log that cannot be read is no log. The waveform is still worth drawing.
+    return Uint8List(0);
+  }
+  return out;
+}
+
+/// The scan, reachable from a test.
+///
+/// Exposed because the interesting half of it is reading the decision log, and
+/// that needs no engine, no audio device and no isolate to exercise — only two
+/// files on disk.
+@visibleForTesting
+Future<Waveform> scanForTest(String path, int buckets) =>
+    _scan(<Object>[path, buckets]);
 
 /// Plays a diagnostic recording back through the engine's own output.
 ///
@@ -158,7 +229,7 @@ class RecordingPlayer extends ChangeNotifier {
     final path = _path;
     if (path == null) {
       return Future.value(
-        Waveform(Float32List(0), Float32List(0), Duration.zero),
+        Waveform(Float32List(0), Float32List(0), Duration.zero, Uint8List(0)),
       );
     }
     return compute(_scan, <Object>[path, buckets]);

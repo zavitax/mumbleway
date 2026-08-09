@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import '../services/recording_archive.dart';
 import '../services/recording_player.dart';
 import '../state/app_state.dart';
+import '../theme.dart';
 
 /// The glyph each platform draws for sharing.
 ///
@@ -508,7 +510,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
 /// One gesture rather than a slider under a picture: the picture *is* the
 /// control, so a tap goes there and a drag scrubs, which is what everybody
 /// already expects of a waveform.
-class _Scrubber extends StatelessWidget {
+class _Scrubber extends StatefulWidget {
   const _Scrubber({
     required this.wave,
     required this.progress,
@@ -520,26 +522,126 @@ class _Scrubber extends StatelessWidget {
   final ValueChanged<double> onSeek;
 
   @override
+  State<_Scrubber> createState() => _ScrubberState();
+}
+
+class _ScrubberState extends State<_Scrubber> {
+  /// 1 shows the whole recording; 64 shows a sixty-fourth of it.
+  double _zoom = 1;
+
+  /// Fraction of the recording at the left edge.
+  double _left = 0;
+
+  double _zoomAtGestureStart = 1;
+
+  static const double _maxZoom = 64;
+
+  double get _span => 1 / _zoom;
+
+  void _clamp() {
+    _zoom = _zoom.clamp(1.0, _maxZoom);
+    _left = _left.clamp(0.0, (1 - _span).clamp(0.0, 1.0));
+  }
+
+  /// Keeps the playhead on screen as it moves.
+  ///
+  /// Only when the playhead itself moved. Doing it on every rebuild would drag
+  /// the view back under a listener who had just scrolled somewhere to look at
+  /// it, which is the opposite of what zoom is for.
+  @override
+  void didUpdateWidget(_Scrubber old) {
+    super.didUpdateWidget(old);
+    if (old.progress != widget.progress) _follow();
+  }
+
+  void _follow() {
+    if (_zoom <= 1) return;
+    final p = widget.progress;
+    if (p >= _left && p <= _left + _span) return;
+    setState(() {
+      _left = p - _span / 2;
+      _clamp();
+    });
+  }
+
+  /// Zooms about a point, keeping whatever is under it under it.
+  void _zoomBy(double factor, double focalFraction) {
+    setState(() {
+      final before = _left + focalFraction * _span;
+      _zoom = (_zoom * factor).clamp(1.0, _maxZoom);
+      _left = before - focalFraction * _span;
+      _clamp();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, box) {
-        void seek(Offset local) =>
-            onSeek((local.dx / box.maxWidth).clamp(0.0, 1.0));
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (d) => seek(d.localPosition),
-          onHorizontalDragStart: (d) => seek(d.localPosition),
-          onHorizontalDragUpdate: (d) => seek(d.localPosition),
-          child: CustomPaint(
-            painter: _WavePainter(
-              wave: wave,
-              progress: progress,
-              played: scheme.primary,
-              unplayed: scheme.outlineVariant,
-              head: scheme.error,
+        final w = box.maxWidth;
+        double fractionAt(double dx) =>
+            (_left + (dx / w).clamp(0.0, 1.0) * _span).clamp(0.0, 1.0);
+        void seek(Offset local) => widget.onSeek(fractionAt(local.dx));
+
+        return Listener(
+          // Desktop. A wheel with a modifier held is the zoom gesture Windows
+          // and Linux users already have everywhere; a trackpad pinch arrives
+          // as its own event on macOS and needs no modifier.
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent) {
+              final keys = HardwareKeyboard.instance;
+              if (keys.isControlPressed || keys.isMetaPressed) {
+                _zoomBy(event.scrollDelta.dy > 0 ? 0.85 : 1.18,
+                    (event.localPosition.dx / w).clamp(0.0, 1.0));
+              } else if (_zoom > 1) {
+                // Unmodified, it pans, which is the only thing left for it to
+                // mean once the view is narrower than the recording.
+                setState(() {
+                  _left += event.scrollDelta.dy / w * _span;
+                  _clamp();
+                });
+              }
+            } else if (event is PointerScaleEvent) {
+              _zoomBy(event.scale,
+                  (event.localPosition.dx / w).clamp(0.0, 1.0));
+            }
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (d) => seek(d.localPosition),
+            // Scale rather than a drag recogniser, because the two conflict and
+            // scale can do both: one finger is a scrub, two are a pinch.
+            onScaleStart: (d) {
+              _zoomAtGestureStart = _zoom;
+              if (d.pointerCount < 2) seek(d.localFocalPoint);
+            },
+            onScaleUpdate: (d) {
+              if (d.pointerCount >= 2) {
+                setState(() {
+                  final f = (d.localFocalPoint.dx / w).clamp(0.0, 1.0);
+                  final before = _left + f * _span;
+                  _zoom = (_zoomAtGestureStart * d.scale).clamp(1.0, _maxZoom);
+                  _left = before - f * _span - d.focalPointDelta.dx / w * _span;
+                  _clamp();
+                });
+              } else {
+                seek(d.localFocalPoint);
+              }
+            },
+            child: CustomPaint(
+              painter: _WavePainter(
+                wave: widget.wave,
+                progress: widget.progress,
+                left: _left,
+                span: _span,
+                played: scheme.primary,
+                unplayed: scheme.outlineVariant,
+                sent: StatusColors.connected,
+                head: scheme.error,
+              ),
+              size: Size.infinite,
             ),
-            size: Size.infinite,
           ),
         );
       },
@@ -551,21 +653,24 @@ class _WavePainter extends CustomPainter {
   _WavePainter({
     required this.wave,
     required this.progress,
+    required this.left,
+    required this.span,
     required this.played,
     required this.unplayed,
+    required this.sent,
     required this.head,
   });
 
   final Waveform wave;
-  final double progress;
-  final Color played, unplayed, head;
+  final double progress, left, span;
+  final Color played, unplayed, sent, head;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (wave.isEmpty) return;
     final mid = size.height / 2;
-    final step = size.width / wave.buckets;
-    final headX = size.width * progress;
+    double xOf(double fraction) => (fraction - left) / span * size.width;
+    final headX = xOf(progress);
 
     // A hairline at zero, so a stretch the gate closed reads as silence rather
     // than as a gap in the drawing.
@@ -577,10 +682,19 @@ class _WavePainter extends CustomPainter {
         ..strokeWidth = 1,
     );
 
+    // Only the buckets in view, so zooming in costs less work rather than more.
+    final first = (left * wave.buckets).floor().clamp(0, wave.buckets - 1);
+    final last = ((left + span) * wave.buckets).ceil().clamp(0, wave.buckets);
+    final step = size.width / (wave.buckets * span);
     final paint = Paint()..strokeWidth = step > 1.6 ? step - 0.8 : step;
-    for (var i = 0; i < wave.buckets; i++) {
-      final x = i * step + step / 2;
-      paint.color = x <= headX ? played : unplayed;
+    for (var i = first; i < last; i++) {
+      final x = xOf(i / wave.buckets) + step / 2;
+      // Green says it went out. That is the question a listener is actually
+      // asking of a diagnostic recording — not "how loud was I" but "was I
+      // heard" — so it takes precedence over the played/unplayed shading.
+      paint.color = wave.wasSent(i)
+          ? (x <= headX ? sent : sent.withValues(alpha: 0.55))
+          : (x <= headX ? played : unplayed);
       // Always at least a hairline: a bucket of pure silence should still show
       // that the recording continues through it.
       final top = mid - (wave.maxima[i] * mid).clamp(0.5, mid);
@@ -599,5 +713,8 @@ class _WavePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WavePainter old) =>
-      old.progress != progress || !identical(old.wave, wave);
+      old.progress != progress ||
+      old.left != left ||
+      old.span != span ||
+      !identical(old.wave, wave);
 }

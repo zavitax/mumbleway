@@ -521,11 +521,15 @@ being suggested, grey when the classifier is not running, which it will not be
 whenever the panel is shut. It needs a `UiStage` id, a localised label in both
 ARB files, and the same `if (state.diagnosticsOpen)` gating as the analyser.
 
-**What must be measured before it ships**, because none of it is known yet:
-per-inference CPU on a real phone, the battery cost of the tap, and whether the
-0.5 score on speech-over-music is stable enough to threshold — that clip sits
-exactly on the fence at p50, which is the one number in the table above that
-should worry anyone.
+**What must be measured before it ships**: per-inference CPU on a real phone,
+and the battery cost of the tap. Neither is known.
+
+**The 0.5 on speech-over-music is not a concern**, though an earlier draft here
+said it was. Nobody talks continuously, so the frames between sentences carry
+the same loud background and score like the music-only clip; and a single frame
+never decides anything on its own, because the 15 s calm ratchet is what governs
+coming back down. The classifier only has to be right *sometimes* to hold
+Helmet, and wrong *continuously for fifteen seconds* to release it.
 
 ### The plan
 

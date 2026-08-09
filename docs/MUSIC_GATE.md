@@ -168,6 +168,55 @@ ear — which `core/tests/road.rs` already reads (`speech_spans`). **That is now
 the cheapest remaining step, and it would turn every figure above into an
 acceptance test.**
 
+### Provenance: the music came from the room, not from the phone
+
+Both clips were made with music playing on **2.1 computer speakers**, picked up
+acoustically by the microphone. Two consequences, and the second is the larger.
+
+**Ducking never applied, so it is not what these clips measure.** `.duckOthers`
+and `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` govern audio played by other apps on
+the same device. Music in the room is not that. The question at the top of this
+file is therefore not answered by either recording — it is out of scope for
+them, which is different from being ruled out.
+
+**And the road fault is a different case.** A rider's music plays *from the
+phone*, through the same route the intercom uses, where ducking does apply and
+where the level is whatever survives it. These clips model loud music in a room.
+That is the same class of provenance problem `core/tests/road.rs` records in its
+header — four recordings scored before anyone noticed they came from the phone's
+microphone rather than the headset's — and it is worth stating before these
+numbers are quoted at the road report.
+
+### Quieter music leaks more, because Auto reads level
+
+Attenuating the music-only clip and re-running the chain tests that directly,
+since Auto chooses on the tracked raw floor and Helmet is what does the
+rejecting:
+
+| Music level | Auto picks | Transmitted |
+|---|---|---|
+| −17 dBFS (as recorded) | **Helmet** | 28.7% |
+| −27 dBFS | Standard | **47.2%** |
+| −37 dBFS | Standard | 21.9% |
+| −47 dBFS | **Light** | **36.4%** |
+
+**It is not monotonic, and the loudest case is the best handled.** Ten dB
+quieter is nearly twice as bad, because Auto drops out of Helmet into Standard;
+thirty dB quieter is worse again, because it drops into Light. `Off` sits at
+80.2% at every level, unchanged — the level-only path compares against a floor
+that scales with the signal, so it cannot see a change of gain at all.
+
+So the recording that prompted all of this **caught the chain at its best**. The
+case the rider actually reported — their own music, ducked, therefore quieter —
+lands in exactly the profiles where music is barely suppressed.
+
+*Caveat on the method:* scaling a recording is not the same as recording quieter
+music. The gain is applied to the microphone's own noise as well, so the SNR is
+preserved where a genuinely quieter source would have had a worse one. What the
+sweep shows exactly is the **profile selection**, which depends on absolute
+level; the transmitted shares within each profile are indicative rather than
+measured-from-life.
+
 ### What this leaves
 
 Two directions, and they are not the same size.
@@ -267,6 +316,12 @@ the mic to reproduce the fault on purpose — so the number is consistent with a
 ducking failure without being evidence of one. **Ask how the clip was made, or
 capture one where the answer is known.** It remains the cheapest thing here by a
 wide margin.
+
+**Asked and answered, 2026-08-09: the music came from computer speakers**, so
+ducking never applied to either clip and they cannot speak to it. See
+*[Provenance](#provenance-the-music-came-from-the-room-not-from-the-phone)*.
+Ruling it out still needs a recording made with the music playing **from the
+phone**, which is the case the rider reported.
 
 ## Candidates, if it is ducking
 

@@ -386,7 +386,6 @@ fn aggressiveness(p: NoiseProfile) -> u8 {
     }
 }
 
-
 impl CaptureProcessor {
     pub fn new(profile: NoiseProfile) -> Self {
         let (open_db, close_db) = profile.gate_db();

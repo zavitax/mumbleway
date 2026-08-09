@@ -688,6 +688,45 @@ So: the most promising measurement in this file, one integration cost worth
 knowing (10 ms), and two things still unproven — intelligibility, and more than
 one clip.
 
+### Built 2026-08-09: DeepFilterNet at the head of the chain
+
+`core/src/audio/deepfilter.rs`, running before anything else touches the audio.
+
+Three things decided it, and none of them was the plan:
+
+- **The low-latency model has `lookahead 0`.** The standard DFN3 needs two
+  frames and so would cost 10 ms; `default-model-ll` costs **nothing**. It also
+  happens to be the only one that loads — the standard model fails inside tract
+  0.21.4 with `duplicate name /convt3/Conv.bias`, which is the sort of thing
+  that decides an architecture and could not have been predicted from a table.
+- **3.55 ms worst frame**, release Rust on a desktop, zero of 200 frames over
+  the 10 ms budget.
+- **It cross-compiles to every Android ABI**, because tract is pure Rust. That
+  is the property the YAMNet classifier does not have, and the reason this one
+  lives in `core` beside the chain instead of in Dart.
+
+**Placement is after the raw taps and before everything else.** Every stage
+below reads a level — the floor tracker, the gate, the AGC, the profile chooser
+— so enhancing later would leave them all reading the old one. Enhancing
+*earlier* would rewrite what the recorder and the analyser's microphone trace
+show, and those have to stay the microphone or no measurement taken from them
+means anything.
+
+**It switches itself off rather than stuttering.** A hundred consecutive frames
+over 10 ms and it goes pass-through for the session, with a warning. A model
+that cannot keep up does not degrade gracefully — it misses every deadline, and
+a missed deadline is a click in somebody's helmet. The diagnostics dot tells the
+three states apart: enhancing, gave up on this device, or never loaded.
+
+**Attenuation is capped at 24 dB.** DeepFilterNet will take a background down by
+60 dB if asked, and a voice arriving out of complete silence is what listeners
+call "robotic" even when every word is intact — the same finding
+`docs/RECORDING.md` records about the gate. Not yet tuned on a bike.
+
+**Watch the echo canceller.** The enhancer is in front of it, so the AEC now
+adapts on a signal something else has already altered. If echo behaviour
+changes, that is the first place to look.
+
 ### The platforms were never running the same chain — live experiment
 
 Reported 2026-08-09: **the same music in `Helmet` is suppressed markedly better

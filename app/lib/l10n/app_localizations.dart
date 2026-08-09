@@ -2311,6 +2311,12 @@ abstract class L {
   /// **'Not sending'**
   String get diagTraceSentIdle;
 
+  /// No description provided for @diagStageEnhancer.
+  ///
+  /// In en, this message translates to:
+  /// **'Enhancer'**
+  String get diagStageEnhancer;
+
   /// No description provided for @diagStageEcho.
   ///
   /// In en, this message translates to:

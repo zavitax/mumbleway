@@ -482,6 +482,7 @@
   "diagTracePreGate": "После подавления",
   "diagTraceSentLive": "Передаётся",
   "diagTraceSentIdle": "Не передаётся",
+  "diagStageEnhancer": "Очистка",
   "diagStageEcho": "Эхо",
   "diagStageSuppressor": "Подавление шума",
   "diagStageVoice": "Голос распознан",

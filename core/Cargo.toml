@@ -12,6 +12,43 @@ name = "mumbleway_core"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
+# --- speech enhancement ----------------------------------------------------
+# DeepFilterNet 3, at the head of the capture chain.
+#
+# From git rather than crates.io: the published `deep_filter` stopped at 0.2.5
+# in July 2022, which is the DFN1/2 era. DFN3 lives only in the repository, so
+# this is pinned to a commit rather than a version.
+#
+# `default-features = false` drops `vorbis` and `flac`, which exist for the
+# crate's own file-reading binaries and would pull audio decoders this project
+# already has no use for. What is kept is `tract` -- a pure-Rust inference
+# engine, so there is no native runtime to cross-compile for five targets, the
+# thing that confined the YAMNet classifier to Dart -- and the embedded DFN3
+# weights, which are dual-licensed MIT and Apache-2.0 like the code.
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", rev = "d375b2d8309e0935d165700c91da9de862a99c31", default-features = false, features = [
+    "tract",
+    "default-model-ll",
+] }
+
+# Pinned, and not tidiness: `deep_filter` asks for `tract-hir = "^0.21.4"`,
+# which resolves forward to 0.21.14 — and 0.21.14 removed `Graph::symbol_table`
+# and changed several signatures, so the crate does not compile against it.
+# 0.21.4 is what DeepFilterNet's own Cargo.lock uses. Declared here rather than
+# left to `cargo update --precise`, because a pin that only exists in a lock
+# file is one `cargo update` away from being gone.
+#
+# Nothing in this project calls tract directly. These entries exist to hold the
+# version, and can go when `deep_filter` catches up.
+tract-core = "=0.21.4"
+tract-hir = "=0.21.4"
+tract-onnx = "=0.21.4"
+tract-pulse = "=0.21.4"
+
+# The array type `deep_filter`'s own API takes and returns. Version matched to
+# what it resolves, so the two are the same `Array2` rather than two identical
+# ones the compiler will not accept for each other.
+ndarray = "0.15"
+
 # --- async runtime / networking -------------------------------------------
 tokio = { version = "1", features = [
     "rt-multi-thread", "net", "time", "sync", "macros", "io-util",

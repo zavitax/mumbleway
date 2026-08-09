@@ -600,6 +600,7 @@
   "diagTracePreGate": "After suppression",
   "diagTraceSentLive": "Sending",
   "diagTraceSentIdle": "Not sending",
+  "diagStageEnhancer": "Enhancer",
   "diagStageEcho": "Echo",
   "diagStageSuppressor": "Suppressor",
   "diagStageVoice": "Voice detected",

@@ -1414,6 +1414,24 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             value: 0.0,
         },
         UiStage {
+            id: "enhancer".into(),
+            // Three states worth telling apart. Green: enhancing. Red: it
+            // loaded and then gave up because this phone could not return a
+            // frame inside 10 ms, which is a fact about the device and the one
+            // a rider would report. Grey: it never loaded at all, which is a
+            // build problem rather than theirs.
+            state: if c.enhancer_on {
+                StageState::Good
+            } else if c.enhancer_gave_up {
+                StageState::Bad
+            } else {
+                StageState::Off
+            },
+            // Worst frame in milliseconds, against a 10 ms budget. The mean
+            // would hide exactly the frame that matters.
+            value: c.enhancer_worst_us as f32 / 1000.0,
+        },
+        UiStage {
             id: "background".into(),
             // Grey when nothing is classifying, which is a real and common
             // state — desktop, the setting off, or a profile chosen by hand —

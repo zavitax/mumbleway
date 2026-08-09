@@ -1248,6 +1248,9 @@ class LEn extends L {
   String get diagTraceSentIdle => 'Not sending';
 
   @override
+  String get diagStageEnhancer => 'Enhancer';
+
+  @override
   String get diagStageEcho => 'Echo';
 
   @override

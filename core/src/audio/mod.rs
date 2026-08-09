@@ -1,7 +1,8 @@
-﻿//! Audio capture, processing, coding and playback.
+//! Audio capture, processing, coding and playback.
 
 pub mod aec;
 pub mod codec;
+pub mod deepfilter;
 pub mod dehiss;
 pub mod denoise;
 pub mod dsp;
@@ -19,6 +20,7 @@ pub mod testsig;
 pub mod waveform;
 
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};
+pub use deepfilter::Enhancer;
 pub use denoise::{CaptureProcessor, NoiseProfile};
 pub use engine::{AudioConfig, AudioCue, AudioEngine, AudioShared, ChainStatus, TransmitMode};
 pub use jitter::{SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES};

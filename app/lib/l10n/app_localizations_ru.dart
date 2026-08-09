@@ -1244,6 +1244,9 @@ class LRu extends L {
   String get diagTraceSentIdle => 'Не передаётся';
 
   @override
+  String get diagStageEnhancer => 'Очистка';
+
+  @override
   String get diagStageEcho => 'Эхо';
 
   @override

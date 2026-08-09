@@ -437,6 +437,7 @@ class _ChainDots extends StatelessWidget {
   /// translated, and a message built in the engine would be the one string a
   /// translator could not reach.
   String _label(L l, UiStage stage) => switch (stage.id) {
+    'enhancer' => l.diagStageEnhancer,
     'aec' => l.diagStageEcho,
     'rnnoise' => l.diagStageSuppressor,
     'vad' => l.diagStageVoice,

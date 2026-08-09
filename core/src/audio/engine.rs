@@ -28,6 +28,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
+use super::deepfilter::Enhancer;
 use super::dehiss::{DehissMode, Expander, SpectralSubtractor};
 use super::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE, SAMPLE_RATE};
 use super::dsp::{interleaved_to_mono, Reverb};
@@ -88,6 +89,16 @@ pub struct ChainStatus {
     /// De-hiss and feedback-guard modes, as their indices.
     pub dehiss_mode: u8,
     pub feedback_mode: u8,
+    /// The speech enhancer at the head of the chain: whether it is running,
+    /// and the worst frame it has seen in microseconds.
+    ///
+    /// Two states worth telling apart and one number. It can be off because
+    /// the model never loaded, or off because it could not keep up and
+    /// switched itself off — the first is a broken build, the second is a
+    /// phone, and a rider reporting either wants to be told which.
+    pub enhancer_on: bool,
+    pub enhancer_gave_up: bool,
+    pub enhancer_worst_us: u32,
     /// The background classifier is holding `Helmet` in force.
     ///
     /// Published so the panel can say *why* the profile is what it is. Helmet
@@ -113,6 +124,9 @@ impl Default for ChainStatus {
             noise_floor_db: -100.0,
             activation_threshold_db: -100.0,
             profile: 0,
+            enhancer_on: false,
+            enhancer_gave_up: false,
+            enhancer_worst_us: 0,
             music_hold: false,
             transmit_mode: 0,
             dehiss_mode: 0,
@@ -2235,6 +2249,10 @@ where
     // ring, filled with a mean of three per sample.
     let mut waveform = WaveformTap::new();
     let mut waveform_at = 0u64;
+    // Built here, on the worker's own thread, before the first block: loading
+    // the model takes tens of milliseconds and must not happen between two
+    // deadlines.
+    let mut enhancer = Enhancer::new();
     let mut encoder = match VoiceEncoder::new(config.quality) {
         Ok(e) => e,
         Err(e) => {
@@ -2323,6 +2341,23 @@ where
                 // window as if it were now.
                 waveform.reset();
             }
+
+            // **The first thing that touches the audio.**
+            //
+            // After the raw taps above and before everything else, which is
+            // the only placement that works. Every stage below reads a level
+            // -- the floor tracker, the gate, the AGC, the profile chooser --
+            // so enhancing later would leave all of them reading the old one;
+            // and enhancing *earlier* would rewrite what the recorder and the
+            // analyser's microphone trace show, which have to stay the
+            // microphone or no measurement made from them means anything.
+            //
+            // It is in front of the echo canceller too, which is worth
+            // watching: the AEC adapts against a reference of what was played,
+            // and it is now adapting on a signal something else has already
+            // altered. `docs/MUSIC_GATE.md` records this as the thing to check
+            // if echo behaviour changes.
+            enhancer.process(&mut block);
 
             // Take the matching stretch of what was played, so the canceller
             // has a reference for this block. Short-fill with silence rather
@@ -2560,6 +2595,9 @@ where
                 dehiss_mode: shared.dehiss_mode(),
                 feedback_mode: shared.feedback_mode() as u8,
                 music_hold: processor.music_hold_active(),
+                enhancer_on: enhancer.active(),
+                enhancer_gave_up: enhancer.gave_up(),
+                enhancer_worst_us: enhancer.timing().0,
             });
 
             // Loopback monitoring: hear exactly what would be transmitted.

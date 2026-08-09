@@ -678,13 +678,15 @@ than in Dart. ONNX export is also supported and splits into
 there is a Rust ONNX-Runtime implementation in the wild. Either way the number
 above is the pessimistic one and it already fits.
 
-**Licence check before any of this ships**: the crate is MIT/Apache-2.0, which
-is compatible with this app's GPL v3 — but the *model weights* carry their own
-terms and have not been read yet.
+**Licence: clear.** The crate is MIT/Apache-2.0 and **the pretrained weights
+are dual-licensed MIT and Apache-2.0 as well**, so both are compatible with this
+app's GPL v3. Apache-2.0 wants attribution, which means an entry in
+`docs/licences.md` — the same obligation the YAMNet classifier carries and which
+was missed when that shipped.
 
 So: the most promising measurement in this file, one integration cost worth
-knowing (10 ms), and three things still unproven — intelligibility, more than
-one clip, and the model licence.
+knowing (10 ms), and two things still unproven — intelligibility, and more than
+one clip.
 
 ### The platforms were never running the same chain — live experiment
 

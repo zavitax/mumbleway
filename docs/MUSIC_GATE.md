@@ -318,6 +318,61 @@ recording that it is useless here: at its most aggressive setting it still calls
 **45.8% of pure music speech**, and its AUC of 0.578 is close enough to a coin
 that no threshold rescues it.
 
+### Detecting music to drive the profile — tried, and it fails on a bike
+
+A better idea than gating, and worth recording why it did not work rather than
+leaving the next person to have it again.
+
+The reasoning was sound on every count. The profile *is* what decides this
+(Helmet 13.8% against Light 73.3%), Auto picks by level and therefore gets
+quiet music wrong, and a profile hint is a far safer place to be wrong than the
+transmit gate — Auto already has dwell and hysteresis to absorb it. It also
+opens the one axis none of the five failed features touched: **they all judged a
+10 ms block, and music is structure over seconds.** A single slice of a guitar
+and of a vowel look alike, which is why RNNoise votes for both.
+
+So `tools/vad/music_detect.py` scores 4-second windows on the raw microphone:
+**beat**, the strongest envelope periodicity between 0.3 s and 2 s, and **tonal
+persistence**, how much of the spectrum holds still. Against 253 s of music and
+292 s of real helmet audio:
+
+```
+beat    AUC 0.579
+tonal   AUC 0.537
+both    AUC 0.610
+```
+
+Coins. And the breakdown says why, which is the part worth keeping:
+
+```
+beat, music vs speech_road          0.869   <- separates music from a talker
+beat, music vs noise_road           0.390   <- inverted
+beat, music vs rides without music  0.225   <- strongly inverted
+```
+
+**On a motorcycle the background is a machine, and a machine is more periodic
+than music.** Engine firing and tyre roar give an envelope periodicity of 0.62
+median where the music scores 0.36. Tonal persistence goes the same way: steady
+engine noise holds its partials *perfectly still* (median 1.00) where music,
+which changes chord, scores 0.83.
+
+Both features do separate music from speech. Neither separates music from the
+noise a rider is actually sitting in, and that is the discrimination the profile
+decision needs. It is the same trap `core/src/audio/pitch.rs` already documents
+from the other side — the pitch search had to exclude 30–60 Hz precisely because
+an engine is periodic — arrived at again by a different route.
+
+**Six hand-built features have now failed against this fault.** Every one of
+them was reasonable, and the pattern is consistent enough to state: the signal
+properties that distinguish music from speech in a quiet room are properties a
+motorcycle also has.
+
+**What survives is the placement, not the detector.** Driving the *profile*
+rather than the gate is still the lower-risk move, and a neural VAD can drive
+it: sustained energy with the VAD saying no speech is a much better "pick
+Helmet" signal than anything measured here, and it reuses the model from the
+step below instead of adding a second one. Worth folding into step 4.
+
 ### The plan
 
 Ordered so that each step is worth doing even if the next is never taken.

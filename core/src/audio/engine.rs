@@ -2539,6 +2539,8 @@ where
                     // Filled in once this block's audio has reached the
                     // transmit decision, which is not this iteration.
                     transmitting: false,
+                    mode: 0,
+                    muted: false,
                     samples,
                     speaking: analysis.speaking,
                     gate_open: analysis.gate_open,
@@ -2672,6 +2674,13 @@ where
                 if let Some(mut entry) = pending_record.pop_front() {
                     pending_samples -= entry.samples.len();
                     entry.transmitting = allowed;
+                    // Stamped here rather than at capture, with `transmitting`
+                    // and for the same reason: these are the two settings that
+                    // can make `allowed` false whatever the chain measured, so
+                    // they belong against the decision, not against the audio
+                    // 80 ms earlier that the decision was made about.
+                    entry.mode = mode as u8;
+                    entry.muted = shared.is_muted();
                     shared.record_block(entry);
                 }
             }
@@ -2851,6 +2860,8 @@ mod tests {
             floor_db: -40.0,
             harmonicity: 0.8,
             modulation: 0.5,
+            mode: 0,
+            muted: false,
         });
         assert!(!shared.is_diagnostic_recording());
     }
@@ -2881,6 +2892,8 @@ mod tests {
                 floor_db: -45.0,
                 harmonicity: 0.6,
                 modulation: 0.4,
+                mode: 0,
+                muted: false,
             });
         }
 

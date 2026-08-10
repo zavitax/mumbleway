@@ -77,6 +77,22 @@ pub struct Recorded {
     pub floor_db: f32,
     pub harmonicity: f32,
     pub modulation: f32,
+    /// The two settings that can override every measurement above, recorded
+    /// against the same block they acted on.
+    ///
+    /// **Added because a recording arrived that nobody could explain.** An
+    /// Android ride came back with `speaking` at 64.9%, `gate_open` at 66.4%
+    /// and `transmitting` at exactly zero on all 1,316 blocks — a waveform with
+    /// no green in it at all, which reads as a fault in the drawing. It was
+    /// not: the chain had been told not to send. But only two things do that,
+    /// and the log recorded neither, so *which* of them could not be answered
+    /// from the file. That is the same gap the input gain left, and it cost the
+    /// same thing: an argument where a column would have done.
+    ///
+    /// `mode` is [`super::engine::TransmitMode`] as its index — 0 voice
+    /// activated, 1 push to talk, 2 continuous.
+    pub mode: u8,
+    pub muted: bool,
 }
 
 enum Message {
@@ -176,10 +192,14 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
     let log_path = dir.join(format!("{stem}-{index:03}.csv"));
     let mut log = BufWriter::new(File::create(log_path)?);
     // A header, because the alternative is a column order remembered wrongly.
+    // New columns go on the end, never in the middle. Readers that find them
+    // by name keep working; readers that count commas keep working; and the
+    // recordings already sitting on people's phones stay readable by both.
     writeln!(
         log,
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
-         block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,modulation"
+         block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,\
+         modulation,mode,muted"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -217,7 +237,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
 
         let _ = writeln!(
             sink.log,
-            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3}",
+            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{}",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -228,6 +248,8 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.floor_db,
             block.harmonicity,
             block.modulation,
+            block.mode,
+            block.muted as u8,
         );
         block_index += 1;
 
@@ -275,7 +297,40 @@ mod tests {
             floor_db: -40.0,
             harmonicity: 0.5,
             modulation: 0.4,
+            mode: 0,
+            muted: false,
         }
+    }
+
+    /// The header names every column it writes, and writes every column it
+    /// names.
+    ///
+    /// Cheap, and it is the thing a reader written months from now depends on:
+    /// two of these columns were added after recordings were already on
+    /// people's phones, and a header that drifted from the rows would make
+    /// every one of them silently mean something else.
+    #[test]
+    fn the_header_and_the_rows_agree_on_how_many_columns_there_are() {
+        let dir = std::env::temp_dir().join(format!("mw-hdr-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        {
+            let rec = DiagnosticRecorder::start(&dir, "columns", 48_000).unwrap();
+            rec.push(block(true));
+            rec.push(block(false));
+        }
+        let log = fs::read_to_string(dir.join("columns-000.csv")).unwrap();
+        let mut lines = log.lines().filter(|l| !l.starts_with('#') && !l.is_empty());
+        let header: Vec<&str> = lines.next().unwrap().split(',').collect();
+        assert!(header.contains(&"mode"), "header lost the mode column");
+        assert!(header.contains(&"muted"), "header lost the muted column");
+        for row in lines {
+            assert_eq!(
+                row.split(',').count(),
+                header.len(),
+                "a row has a different number of columns than the header: {row}"
+            );
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

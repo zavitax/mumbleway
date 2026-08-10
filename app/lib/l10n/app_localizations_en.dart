@@ -941,6 +941,18 @@ class LEn extends L {
       'Nothing in this recording was transmitted';
 
   @override
+  String get diagPreviewNoneMuted =>
+      'None of this went out: the microphone was muted.';
+
+  @override
+  String get diagPreviewNonePushToTalk =>
+      'None of this went out: push-to-talk was set, and the button was not pressed.';
+
+  @override
+  String get diagPreviewNoneUnexplained =>
+      'None of this went out. The recording is still worth sending — the log says why.';
+
+  @override
   String get diagPreviewShare => 'Share this recording';
 
   @override

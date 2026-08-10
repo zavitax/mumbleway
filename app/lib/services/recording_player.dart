@@ -101,36 +101,78 @@ Future<Waveform> _scan(List<Object> args) async {
   );
 }
 
-/// The transmit decision for every 10 ms block, in file order.
+/// Why a recording has nothing green in it, when it has nothing green in it.
 ///
-/// Empty when there is no log, and every caller must read that as "no
-/// information" rather than as "nothing was sent". Those are different: it
-/// would colour a whole recording as untransmitted, and refuse to play a note
-/// of it in speech-only mode, on the strength of a `.csv` that was simply
-/// never written.
+/// **Added because a waveform with no green reads as a broken drawing.** An
+/// Android ride came back with `speaking` at 64.9% and `transmitting` at
+/// exactly zero: nothing was wrong with the colour, the chain had been told
+/// not to send. Only two settings do that, and until they were logged the file
+/// could not say which — so the panel could only show grey and leave the
+/// reader to guess at a fault that was not there.
+enum NothingSent {
+  /// Something went out. There is nothing to explain.
+  some,
+
+  /// The microphone was muted for most of it.
+  muted,
+
+  /// Push to talk, and the button was never pressed.
+  pushToTalk,
+
+  /// The log does not say. Either it predates the two columns that would
+  /// answer it, or the gate simply never opened — which is itself a finding.
+  unexplained,
+}
+
+/// The transmit decision for every 10 ms block, and why there were none.
+class Decisions {
+  const Decisions(this.sent, this.reason);
+
+  /// Empty when there is no log, and every caller must read that as "no
+  /// information" rather than as "nothing was sent". Those are different: it
+  /// would colour a whole recording as untransmitted, and refuse to play a
+  /// note of it in speech-only mode, on the strength of a `.csv` that was
+  /// simply never written.
+  final Uint8List sent;
+  final NothingSent reason;
+
+  static final none = Decisions(Uint8List(0), NothingSent.some);
+
+  bool get anySent => sent.any((f) => f != 0);
+}
+
+/// Reads the decision log beside a recording.
 ///
-/// **One list feeds both the green on the waveform and the speech-only
-/// transport**, so what a listener sees and what they hear cannot drift apart.
-/// Two readers of the same file, agreeing today, is a thing that stops being
-/// true quietly.
-Future<Uint8List> _blockFlags(String audioPath) async {
+/// **One reader serves the green on the waveform, the speech-only transport
+/// and the note under it**, so what a listener sees, what they hear and what
+/// they are told cannot drift apart. Three parsers of one file, agreeing
+/// today, is a thing that stops being true quietly.
+Future<Decisions> _decisions(String audioPath) async {
   final log = File('${audioPath.substring(0, audioPath.length - 4)}.csv');
-  if (!await log.exists()) return Uint8List(0);
-  final out = <int>[];
+  if (!await log.exists()) return Decisions.none;
+
+  final sent = <int>[];
+  var muted = 0, pushToTalk = 0;
+  // Found by name, not by position. Two columns were added after recordings
+  // were already on people's phones, and a reader that counts commas would
+  // give every one of those older files a different meaning.
+  var sentAt = -1, modeAt = -1, mutedAt = -1;
+
   try {
     for (final line in await log.readAsLines()) {
       // The first line is a comment and the second is the header. Skipping by
       // content rather than by count: a plain reader that takes the comment as
       // the header is a mistake this project has already made once, offline.
       if (line.isEmpty || line.startsWith('#')) continue;
-      final comma = line.indexOf(',');
-      if (comma <= 0) continue;
-      if (int.tryParse(line.substring(0, comma)) == null) {
-        continue; // the header row
+      final parts = line.split(',');
+      if (parts.isEmpty) continue;
+      if (int.tryParse(parts.first) == null) {
+        sentAt = parts.indexOf('transmitting');
+        modeAt = parts.indexOf('mode');
+        mutedAt = parts.indexOf('muted');
+        continue;
       }
-      final rest = line.substring(comma + 1);
-      final next = rest.indexOf(',');
-      if (next <= 0) continue;
+      if (sentAt < 0 || sentAt >= parts.length) continue;
       // The row's position in the file, not what its first column says.
       //
       // **The two disagree, and it shipped.** A recording rotates to a new
@@ -146,18 +188,35 @@ Future<Uint8List> _blockFlags(String audioPath) async {
       // The writer is fixed as well. Counting rows is what repairs the
       // recordings already sitting on people's phones, and rows are one per
       // block in file order by construction, so it is also less to trust.
-      out.add(rest.substring(0, next) == '1' ? 1 : 0);
+      sent.add(parts[sentAt] == '1' ? 1 : 0);
+      if (mutedAt >= 0 && mutedAt < parts.length && parts[mutedAt] == '1') {
+        muted++;
+      }
+      // 1 is push to talk, from `TransmitMode`'s declaration order.
+      if (modeAt >= 0 && modeAt < parts.length && parts[modeAt] == '1') {
+        pushToTalk++;
+      }
     }
   } on Exception {
     // A log that cannot be read is no log. The waveform is still worth drawing.
-    return Uint8List(0);
+    return Decisions.none;
   }
-  return Uint8List.fromList(out);
+
+  if (sent.isEmpty) return Decisions.none;
+  final flags = Uint8List.fromList(sent);
+  if (flags.any((f) => f != 0)) return Decisions(flags, NothingSent.some);
+  // Most of it, not all: a rider who unmutes for the last two seconds and
+  // still sends nothing was muted for the recording in every sense that
+  // matters to somebody looking at it.
+  final half = sent.length ~/ 2;
+  if (muted > half) return Decisions(flags, NothingSent.muted);
+  if (pushToTalk > half) return Decisions(flags, NothingSent.pushToTalk);
+  return Decisions(flags, NothingSent.unexplained);
 }
 
 /// Which buckets went on the wire, for drawing.
 Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
-  final flags = await _blockFlags(audioPath);
+  final flags = (await _decisions(audioPath)).sent;
   if (flags.isEmpty) return Uint8List(0);
   final out = Uint8List(buckets);
   final perBucket = (total / buckets).ceil();
@@ -185,7 +244,7 @@ Future<Waveform> scanForTest(String path, int buckets) =>
 
 /// The per-block decisions, reachable from a test.
 @visibleForTesting
-Future<Uint8List> blockFlagsForTest(String path) => _blockFlags(path);
+Future<Decisions> decisionsForTest(String path) => _decisions(path);
 
 /// A stretch of the file handed to the engine in one push.
 ///
@@ -245,6 +304,7 @@ class RecordingPlayer extends ChangeNotifier {
   Uint8List _blocks = Uint8List(0);
   bool _anySent = false;
   bool _speechOnly = false;
+  NothingSent _nothingSent = NothingSent.some;
 
   /// What has been handed to the engine and not yet heard, in file order.
   final List<_Chunk> _chunks = [];
@@ -262,6 +322,9 @@ class RecordingPlayer extends ChangeNotifier {
   /// fault, but "play only the transmitted parts" of it is silence, so the
   /// control says so by being unavailable rather than by playing nothing.
   bool get canSkipSilence => _anySent;
+
+  /// Why nothing went out, when nothing did. [NothingSent.some] otherwise.
+  NothingSent get nothingSent => _nothingSent;
 
   /// Whether playback is skipping everything the gate rejected.
   bool get speechOnly => _speechOnly;
@@ -322,8 +385,10 @@ class RecordingPlayer extends ChangeNotifier {
     _atSeek = 0;
     _pushed = 0;
     _finished = false;
-    _blocks = await compute(_blockFlags, path);
-    _anySent = _blocks.any((b) => b != 0);
+    final decisions = await compute(_decisions, path);
+    _blocks = decisions.sent;
+    _nothingSent = decisions.reason;
+    _anySent = decisions.anySent;
     if (!_anySent) _speechOnly = false;
     notifyListeners();
   }
@@ -410,6 +475,7 @@ class RecordingPlayer extends ChangeNotifier {
     _totalSamples = 0;
     _blocks = Uint8List(0);
     _anySent = false;
+    _nothingSent = NothingSent.some;
     _finished = false;
     notifyListeners();
   }

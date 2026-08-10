@@ -942,6 +942,17 @@ class LRu extends L {
   String get diagPreviewSentOnlyNone => 'Из этой записи ничего не передавалось';
 
   @override
+  String get diagPreviewNoneMuted => 'Ничего не ушло: микрофон был выключен.';
+
+  @override
+  String get diagPreviewNonePushToTalk =>
+      'Ничего не ушло: был выбран режим «по кнопке», а кнопку не нажимали.';
+
+  @override
+  String get diagPreviewNoneUnexplained =>
+      'Ничего не ушло. Запись всё равно стоит отправить — в журнале видно, почему.';
+
+  @override
   String get diagPreviewShare => 'Отправить эту запись';
 
   @override

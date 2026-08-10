@@ -1807,6 +1807,24 @@ abstract class L {
   /// **'Nothing in this recording was transmitted'**
   String get diagPreviewSentOnlyNone;
 
+  /// Shown under a waveform with no transmitted parts, when the decision log says the microphone was muted
+  ///
+  /// In en, this message translates to:
+  /// **'None of this went out: the microphone was muted.'**
+  String get diagPreviewNoneMuted;
+
+  /// Shown under a waveform with no transmitted parts, when the mode was push-to-talk throughout
+  ///
+  /// In en, this message translates to:
+  /// **'None of this went out: push-to-talk was set, and the button was not pressed.'**
+  String get diagPreviewNonePushToTalk;
+
+  /// Shown under a waveform with no transmitted parts when the log does not say why, either because it predates the mode and muted columns or because the gate never opened
+  ///
+  /// In en, this message translates to:
+  /// **'None of this went out. The recording is still worth sending — the log says why.'**
+  String get diagPreviewNoneUnexplained;
+
   /// Tooltip on the share button in the listen-back sheet
   ///
   /// In en, this message translates to:

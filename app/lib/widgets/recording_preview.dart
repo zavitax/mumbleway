@@ -471,6 +471,44 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                               onSeek: _player.seekToFraction,
                             ),
                     ),
+                    // Why there is no green, when there is none.
+                    //
+                    // **A waveform with nothing green in it reads as a fault
+                    // in the drawing**, and it took a device, a decision log
+                    // and an afternoon to establish that it was not one: the
+                    // ride had `speaking` at 64.9% and `transmitting` at
+                    // exactly zero, because the chain had been told not to
+                    // send. Nothing on screen said so. This is one line and it
+                    // replaces that whole investigation.
+                    if (!_loading && _player.nothingSent != NothingSent.some)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 14,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                switch (_player.nothingSent) {
+                                  NothingSent.muted => l.diagPreviewNoneMuted,
+                                  NothingSent.pushToTalk =>
+                                    l.diagPreviewNonePushToTalk,
+                                  _ => l.diagPreviewNoneUnexplained,
+                                },
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     const SizedBox(height: 6),
                     Row(
                       children: [

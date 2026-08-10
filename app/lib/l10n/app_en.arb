@@ -414,6 +414,18 @@
     "description": "Tooltip on the same control when it is on, saying what pressing it does next"
   },
   "diagPreviewSentOnlyNone": "Nothing in this recording was transmitted",
+  "diagPreviewNoneMuted": "None of this went out: the microphone was muted.",
+  "@diagPreviewNoneMuted": {
+    "description": "Shown under a waveform with no transmitted parts, when the decision log says the microphone was muted"
+  },
+  "diagPreviewNonePushToTalk": "None of this went out: push-to-talk was set, and the button was not pressed.",
+  "@diagPreviewNonePushToTalk": {
+    "description": "Shown under a waveform with no transmitted parts, when the mode was push-to-talk throughout"
+  },
+  "diagPreviewNoneUnexplained": "None of this went out. The recording is still worth sending — the log says why.",
+  "@diagPreviewNoneUnexplained": {
+    "description": "Shown under a waveform with no transmitted parts when the log does not say why, either because it predates the mode and muted columns or because the gate never opened"
+  },
   "@diagPreviewSentOnlyNone": {
     "description": "Tooltip on the same control when it is unavailable, either because the recording has no decision log or because nothing in it went out"
   },

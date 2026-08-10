@@ -23,8 +23,16 @@ void main() {
   /// `firstBlock` is where the log's block column starts, which is not always
   /// zero: recordings made before the rotation fix carry on counting from the
   /// previous file, and those files are on people's phones.
+  ///
+  /// `mode` and `muted` are the columns added after the Android ride that
+  /// transmitted nothing; `legacy` writes a log without them, which is what
+  /// every recording made before them looks like.
   Future<String> write(int blocks, Set<int> sent,
-      {bool log = true, int firstBlock = 0}) async {
+      {bool log = true,
+      int firstBlock = 0,
+      int mode = 0,
+      bool muted = false,
+      bool legacy = false}) async {
     final audio = File('${dir.path}/r.s16');
     final pcm = Int16List(blocks * kRecordingBlock);
     for (var i = 0; i < pcm.length; i++) {
@@ -34,10 +42,11 @@ void main() {
     if (log) {
       final rows = StringBuffer('# mumbleway diagnostic capture\n'
           'block,transmitting,speaking,gate_open,vad,snr_db,level_db,'
-          'floor_db,harmonicity,modulation\n');
+          'floor_db,harmonicity,modulation${legacy ? '' : ',mode,muted'}\n');
       for (var b = 0; b < blocks; b++) {
         rows.writeln('${firstBlock + b},${sent.contains(b) ? 1 : 0}'
-            ',0,0,0.5,10,-40,-60,0.5,0.4');
+            ',0,0,0.5,10,-40,-60,0.5,0.4'
+            '${legacy ? '' : ',$mode,${muted ? 1 : 0}'}');
       }
       await File('${dir.path}/r.csv').writeAsString(rows.toString());
     }
@@ -107,7 +116,7 @@ void main() {
     // shown two ways. They are computed from one list for that reason, and
     // this is the assertion that says so.
     final path = await write(100, {for (var i = 40; i < 60; i++) i});
-    final flags = await blockFlagsForTest(path);
+    final flags = (await decisionsForTest(path)).sent;
     expect(flags.length, 100);
     expect(flags[39], 0);
     expect(flags[40], 1);
@@ -120,6 +129,72 @@ void main() {
           .any((f) => f != 0);
       expect(w.wasSent(b), any, reason: 'bucket $b');
     }
+  });
+
+  group('why a recording has no green in it', () {
+    // The bug this exists for was not a bug. An Android ride came back with
+    // 64.9% of blocks marked as speech and not one marked as transmitted, and
+    // an all-grey waveform reads as a broken drawing. It was the chain being
+    // told not to send — but the log recorded neither of the two settings that
+    // do that, so the file could not say so and it took a device to find out.
+
+    test('a muted microphone says so', () async {
+      final path = await write(50, const {}, muted: true);
+      final d = await decisionsForTest(path);
+      expect(d.anySent, isFalse);
+      expect(d.reason, NothingSent.muted);
+    });
+
+    test('push to talk with the button up says so', () async {
+      // 1 is push to talk, from TransmitMode's declaration order.
+      final path = await write(50, const {}, mode: 1);
+      final d = await decisionsForTest(path);
+      expect(d.reason, NothingSent.pushToTalk);
+    });
+
+    test('a log from before the columns admits it does not know', () async {
+      // Those recordings are on people's phones. Guessing a reason for them
+      // would be worse than the grey it replaces.
+      final path = await write(50, const {}, legacy: true);
+      final d = await decisionsForTest(path);
+      expect(d.sent.length, 50, reason: 'the old columns still read');
+      expect(d.reason, NothingSent.unexplained);
+    });
+
+    test('a gate that simply never opened is not blamed on a setting',
+        () async {
+      // Voice activated, not muted, and nothing got through. That is a real
+      // finding about the gate and must not be reported as a mistake by the
+      // rider.
+      final path = await write(50, const {});
+      expect((await decisionsForTest(path)).reason, NothingSent.unexplained);
+    });
+
+    test('nothing is explained when something was sent', () async {
+      final path = await write(50, {1, 2, 3}, muted: true);
+      final d = await decisionsForTest(path);
+      expect(d.anySent, isTrue);
+      expect(d.reason, NothingSent.some,
+          reason: 'there is nothing to explain when audio went out');
+    });
+
+    test('the columns are found by name, not by position', () async {
+      // Two columns were added after recordings were already on phones. A
+      // reader that counts commas would give every one of those files a
+      // different meaning; this asserts the header is what is trusted.
+      final audio = File('${dir.path}/r.s16');
+      await audio.writeAsBytes(Int16List(4 * kRecordingBlock).buffer
+          .asUint8List());
+      await File('${dir.path}/r.csv').writeAsString(
+        '# mumbleway diagnostic capture\n'
+        'block,muted,mode,transmitting\n'
+        '0,1,0,0\n1,1,0,0\n2,1,0,0\n3,1,0,0\n',
+      );
+      final d = await decisionsForTest(audio.path);
+      expect(d.sent.length, 4);
+      expect(d.anySent, isFalse);
+      expect(d.reason, NothingSent.muted);
+    });
   });
 
   group('skipping to what was transmitted', () {

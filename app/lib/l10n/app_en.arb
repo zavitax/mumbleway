@@ -425,7 +425,35 @@
   "@diagPreviewSentOnlyOff": {
     "description": "Tooltip on the same control when it is on, saying what pressing it does next"
   },
+  "diagBlockCost": "Where a block's 10 ms goes",
+  "@diagBlockCost": {
+    "description": "Title of the group breaking one capture block down by stage"
+  },
+  "diagStageInput": "Input and taps",
+  "diagStageEnhancer": "Speech enhancer",
+  "diagStageSuppression": "Suppression",
+  "diagStageFeedback": "Feedback guard",
+  "diagStageDehiss": "De-hiss",
+  "diagStageTransmit": "Transmit decision",
+  "diagStageEncode": "Encode",
+  "diagBlockUnattributed": "Not in any stage",
+  "@diagBlockUnattributed": {
+    "description": "The part of a block no stage was timing: scheduling, mostly. A large value means the worker is being interrupted rather than running slowly"
+  },
+  "diagBlockTotal": "Whole block, mean / worst",
+  "diagBlockBacklog": "Waiting to be processed, mean / worst",
+  "@diagBlockBacklog": {
+    "description": "How much captured audio was queued when a block started. A backlog that grows means the chain cannot keep up"
+  },
   "diagPreviewSentOnlyNone": "Nothing in this recording was transmitted",
+  "diagPreviewChain": "Play through the noise chain, to hear what the others hear",
+  "@diagPreviewChain": {
+    "description": "Tooltip on the control that runs playback through the capture chain, when it is off"
+  },
+  "diagPreviewChainOff": "Play the microphone as it was recorded",
+  "@diagPreviewChainOff": {
+    "description": "Tooltip on the same control when it is on, saying what pressing it does next"
+  },
   "diagPreviewNoneMuted": "None of this went out: the microphone was muted.",
   "@diagPreviewNoneMuted": {
     "description": "Shown under a waveform with no transmitted parts, when the decision log says the microphone was muted"

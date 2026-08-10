@@ -949,8 +949,48 @@ class LEn extends L {
   String get diagPreviewSentOnlyOff => 'Play the whole recording';
 
   @override
+  String get diagBlockCost => 'Where a block\'s 10 ms goes';
+
+  @override
+  String get diagStageInput => 'Input and taps';
+
+  @override
+  String get diagStageEnhancer => 'Enhancer';
+
+  @override
+  String get diagStageSuppression => 'Suppression';
+
+  @override
+  String get diagStageFeedback => 'Feedback';
+
+  @override
+  String get diagStageDehiss => 'De-hiss';
+
+  @override
+  String get diagStageTransmit => 'To the server';
+
+  @override
+  String get diagStageEncode => 'Encode';
+
+  @override
+  String get diagBlockUnattributed => 'Not in any stage';
+
+  @override
+  String get diagBlockTotal => 'Whole block, mean / worst';
+
+  @override
+  String get diagBlockBacklog => 'Waiting to be processed, mean / worst';
+
+  @override
   String get diagPreviewSentOnlyNone =>
       'Nothing in this recording was transmitted';
+
+  @override
+  String get diagPreviewChain =>
+      'Play through the noise chain, to hear what the others hear';
+
+  @override
+  String get diagPreviewChainOff => 'Play the microphone as it was recorded';
 
   @override
   String get diagPreviewNoneMuted =>
@@ -1288,9 +1328,6 @@ class LEn extends L {
   String get diagTraceSentIdle => 'Not sending';
 
   @override
-  String get diagStageEnhancer => 'Enhancer';
-
-  @override
   String get diagStageEcho => 'Echo';
 
   @override
@@ -1307,12 +1344,6 @@ class LEn extends L {
 
   @override
   String get diagStageHiss => 'Hiss';
-
-  @override
-  String get diagStageFeedback => 'Feedback';
-
-  @override
-  String get diagStageTransmit => 'To the server';
 
   @override
   String get website => 'Website';

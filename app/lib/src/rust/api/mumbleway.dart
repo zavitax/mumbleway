@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `process_usage`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -162,6 +162,15 @@ UiDiagnostics audioDiagnostics() =>
 
 void resetAudioGlitches() =>
     RustLib.instance.api.crateApiMumblewayResetAudioGlitches();
+
+/// Where a capture block's time goes.
+///
+/// Free and always current, like [`audio_chain_status`]: the worker keeps these
+/// totals whether or not anybody is reading, because a cost that is only
+/// measured while a panel is open is measured under different conditions than
+/// the ones being complained about.
+UiStageCosts audioStageCosts() =>
+    RustLib.instance.api.crateApiMumblewayAudioStageCosts();
 
 /// The latest analyser frame, and an ask for the next one.
 ///
@@ -447,6 +456,27 @@ int previewPush({required List<double> samples}) =>
 /// for it: the queue drains at the speaker's rate, and a timer counting
 /// forwards from "play" would run ahead the moment the device buffered.
 int previewQueued() => RustLib.instance.api.crateApiMumblewayPreviewQueued();
+
+/// The same, but through the capture chain, so a listener hears what the
+/// others would have heard rather than what the microphone picked up.
+///
+/// Sync, and cheap: the chain lives on a thread of its own and this only hands
+/// the samples over. The first call starts that thread, which then spends
+/// seconds loading a model on a low-end phone — but it does that on its own
+/// time, and [`preview_queued`] counts what it is holding, so the transport
+/// waits for it instead of pushing the whole file at an empty queue.
+int previewPushProcessed({required List<double> samples}) => RustLib
+    .instance
+    .api
+    .crateApiMumblewayPreviewPushProcessed(samples: samples);
+
+/// Throws away the preview chain, so the next listen starts clean.
+///
+/// Every stage in it adapts, and a seek jumps to unrelated audio: without
+/// this, a noise floor learned from a motorway would be applied to a stretch
+/// of speech in a room.
+void previewResetChain() =>
+    RustLib.instance.api.crateApiMumblewayPreviewResetChain();
 
 /// Stops a preview, and is also how a seek starts.
 void previewClear() => RustLib.instance.api.crateApiMumblewayPreviewClear();
@@ -1200,6 +1230,105 @@ class UiStage {
           id == other.id &&
           state == other.state &&
           value == other.value;
+}
+
+class UiStageCost {
+  /// Stable identifier, for the panel to localise. Never shown raw.
+  final String id;
+  final double meanUs;
+  final int worstUs;
+
+  const UiStageCost({
+    required this.id,
+    required this.meanUs,
+    required this.worstUs,
+  });
+
+  @override
+  int get hashCode => id.hashCode ^ meanUs.hashCode ^ worstUs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiStageCost &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          meanUs == other.meanUs &&
+          worstUs == other.worstUs;
+}
+
+/// What one capture block costs, stage by stage, in microseconds.
+///
+/// **The measurement that says whether a slow stage is slow.** These are wall
+/// clock, so a stage that the operating system descheduled mid-block is charged
+/// for the wait — which on a four-core phone running a UI, an audio callback
+/// and this worker is a large effect. [`Self::unattributed_us`] is what
+/// separates the two: it is the part of the block that no stage was holding a
+/// stopwatch on, so a big number there means the worker is being interrupted
+/// rather than running slowly, and making a stage cheaper will not help.
+///
+/// This is why the enhancer's own guard was misleading. It measured only
+/// itself, saw frames over 10 ms, and concluded the model could not keep up —
+/// when the same model measured alone on the same phone comes in at 6.2 ms.
+class UiStageCosts {
+  /// One entry per stage, in the order the chain runs them.
+  final List<UiStageCost> stages;
+
+  /// The whole iteration, mean and worst, in microseconds.
+  final double blockMeanUs;
+  final int blockWorstUs;
+
+  /// The part of the block no stage accounted for: scheduling, mostly.
+  final double unattributedUs;
+
+  /// Captured audio waiting for the worker when a block started, in ms.
+  ///
+  /// The consequence rather than a cost. A backlog that climbs is a chain
+  /// that cannot keep up, and it says so before a sample is dropped.
+  final double backlogMeanMs;
+  final double backlogWorstMs;
+
+  /// How many blocks these are averaged over. Zero means nothing has run.
+  final BigInt blocks;
+
+  /// The block budget, so the panel does not have to know it.
+  final int budgetUs;
+
+  const UiStageCosts({
+    required this.stages,
+    required this.blockMeanUs,
+    required this.blockWorstUs,
+    required this.unattributedUs,
+    required this.backlogMeanMs,
+    required this.backlogWorstMs,
+    required this.blocks,
+    required this.budgetUs,
+  });
+
+  @override
+  int get hashCode =>
+      stages.hashCode ^
+      blockMeanUs.hashCode ^
+      blockWorstUs.hashCode ^
+      unattributedUs.hashCode ^
+      backlogMeanMs.hashCode ^
+      backlogWorstMs.hashCode ^
+      blocks.hashCode ^
+      budgetUs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiStageCosts &&
+          runtimeType == other.runtimeType &&
+          stages == other.stages &&
+          blockMeanUs == other.blockMeanUs &&
+          blockWorstUs == other.blockWorstUs &&
+          unattributedUs == other.unattributedUs &&
+          backlogMeanMs == other.backlogMeanMs &&
+          backlogWorstMs == other.backlogWorstMs &&
+          blocks == other.blocks &&
+          budgetUs == other.budgetUs;
 }
 
 class UiStats {

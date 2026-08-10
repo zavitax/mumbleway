@@ -378,6 +378,43 @@ void main() {
         );
       });
 
+      testWidgets('the chain control is amber and always offered',
+          (tester) async {
+        // It needs no decision log — it re-runs the processing rather than
+        // reading what was decided — so unlike the green control it is
+        // available on any recording, including one where nothing went out.
+        final ride = Directory.systemTemp.createTempSync('mumbleway-chain');
+        addTearDown(() {
+          try {
+            ride.deleteSync(recursive: true);
+          } catch (_) {}
+        });
+        writeRide(ride, '20260810-1041-000', 40, 0);
+
+        await tester.pumpWidget(harness(state, ride));
+        await tester.tap(find.text('open'));
+        await beat(tester);
+        await realWork(tester);
+
+        final off = find.byIcon(Icons.graphic_eq_outlined);
+        expect(off, findsOneWidget);
+        final button = find.ancestor(of: off, matching: find.byType(IconButton));
+        expect(tester.widget<IconButton>(button).onPressed, isNotNull);
+
+        await tester.tap(off);
+        await beat(tester);
+
+        final on = find.byIcon(Icons.graphic_eq);
+        expect(on, findsOneWidget);
+        expect(
+          tester.widget<IconButton>(
+            find.ancestor(of: on, matching: find.byType(IconButton)),
+          ).color,
+          StatusColors.connecting,
+          reason: 'amber: it is not a claim about what reached the wire',
+        );
+      });
+
       testWidgets('is unavailable when nothing was transmitted',
           (tester) async {
         // A ride where the gate never opened is a real outcome, not a fault.

@@ -11,6 +11,7 @@ pub mod feedback;
 pub mod jitter;
 pub mod modulation;
 pub mod pitch;
+pub mod preview;
 pub mod quality;
 pub mod record;
 pub mod resample;

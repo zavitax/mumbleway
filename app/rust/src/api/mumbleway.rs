@@ -1208,7 +1208,90 @@ pub fn reset_audio_glitches() -> anyhow::Result<()> {
     // The input peak is a running maximum, so Reset has to clear it too or it
     // reports the loudest thing that ever happened for the rest of the session.
     app.shared.reset_input_peak();
+    // Likewise the stage costs: they carry a worst-ever per stage, so without
+    // this the panel would keep reporting one bad block from an hour ago.
+    app.shared.reset_stage_timings();
     Ok(())
+}
+
+/// What one capture block costs, stage by stage, in microseconds.
+///
+/// **The measurement that says whether a slow stage is slow.** These are wall
+/// clock, so a stage that the operating system descheduled mid-block is charged
+/// for the wait — which on a four-core phone running a UI, an audio callback
+/// and this worker is a large effect. [`Self::unattributed_us`] is what
+/// separates the two: it is the part of the block that no stage was holding a
+/// stopwatch on, so a big number there means the worker is being interrupted
+/// rather than running slowly, and making a stage cheaper will not help.
+///
+/// This is why the enhancer's own guard was misleading. It measured only
+/// itself, saw frames over 10 ms, and concluded the model could not keep up —
+/// when the same model measured alone on the same phone comes in at 6.2 ms.
+#[derive(Debug, Clone)]
+pub struct UiStageCosts {
+    /// One entry per stage, in the order the chain runs them.
+    pub stages: Vec<UiStageCost>,
+    /// The whole iteration, mean and worst, in microseconds.
+    pub block_mean_us: f32,
+    pub block_worst_us: u32,
+    /// The part of the block no stage accounted for: scheduling, mostly.
+    pub unattributed_us: f32,
+    /// Captured audio waiting for the worker when a block started, in ms.
+    ///
+    /// The consequence rather than a cost. A backlog that climbs is a chain
+    /// that cannot keep up, and it says so before a sample is dropped.
+    pub backlog_mean_ms: f32,
+    pub backlog_worst_ms: f32,
+    /// How many blocks these are averaged over. Zero means nothing has run.
+    pub blocks: u64,
+    /// The block budget, so the panel does not have to know it.
+    pub budget_us: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiStageCost {
+    /// Stable identifier, for the panel to localise. Never shown raw.
+    pub id: String,
+    pub mean_us: f32,
+    pub worst_us: u32,
+}
+
+/// Where a capture block's time goes.
+///
+/// Free and always current, like [`audio_chain_status`]: the worker keeps these
+/// totals whether or not anybody is reading, because a cost that is only
+/// measured while a panel is open is measured under different conditions than
+/// the ones being complained about.
+#[frb(sync)]
+pub fn audio_stage_costs() -> anyhow::Result<UiStageCosts> {
+    use mumbleway_core::audio::timing::{Stage, STAGE_NAMES};
+    let t = app()?.shared.stage_timings();
+    let order = [
+        Stage::Input,
+        Stage::Enhancer,
+        Stage::Suppression,
+        Stage::Feedback,
+        Stage::Dehiss,
+        Stage::Transmit,
+        Stage::Encode,
+    ];
+    Ok(UiStageCosts {
+        stages: order
+            .iter()
+            .map(|s| UiStageCost {
+                id: STAGE_NAMES[*s as usize].to_string(),
+                mean_us: t.mean_us(*s),
+                worst_us: t.worst_us(*s),
+            })
+            .collect(),
+        block_mean_us: t.block_mean_us(),
+        block_worst_us: t.block_worst_us(),
+        unattributed_us: t.unattributed_us(),
+        backlog_mean_ms: t.backlog_mean_ms(),
+        backlog_worst_ms: t.backlog_worst_ms(),
+        blocks: t.blocks(),
+        budget_us: 10_000,
+    })
 }
 
 /// One frame of the capture-chain analyser.
@@ -2192,6 +2275,30 @@ pub fn preview_push(samples: Vec<f32>) -> anyhow::Result<u32> {
 #[frb(sync)]
 pub fn preview_queued() -> anyhow::Result<u32> {
     Ok(app()?.shared.preview_queued() as u32)
+}
+
+/// The same, but through the capture chain, so a listener hears what the
+/// others would have heard rather than what the microphone picked up.
+///
+/// Sync, and cheap: the chain lives on a thread of its own and this only hands
+/// the samples over. The first call starts that thread, which then spends
+/// seconds loading a model on a low-end phone — but it does that on its own
+/// time, and [`preview_queued`] counts what it is holding, so the transport
+/// waits for it instead of pushing the whole file at an empty queue.
+#[frb(sync)]
+pub fn preview_push_processed(samples: Vec<f32>) -> anyhow::Result<u32> {
+    Ok(app()?.shared.preview_push_processed(&samples) as u32)
+}
+
+/// Throws away the preview chain, so the next listen starts clean.
+///
+/// Every stage in it adapts, and a seek jumps to unrelated audio: without
+/// this, a noise floor learned from a motorway would be applied to a stretch
+/// of speech in a room.
+#[frb(sync)]
+pub fn preview_reset_chain() -> anyhow::Result<()> {
+    app()?.shared.preview_reset_chain();
+    Ok(())
 }
 
 /// Stops a preview, and is also how a seek starts.

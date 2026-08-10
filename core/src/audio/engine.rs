@@ -36,6 +36,7 @@ use super::feedback::{FeedbackGuard, FeedbackMode};
 use super::jitter::{
     SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES, SILENT_DB,
 };
+use super::preview::PreviewChain;
 use super::record::{DiagnosticRecorder, Recorded};
 use super::resample::Resampler;
 use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
@@ -601,6 +602,22 @@ pub struct AudioShared {
     /// so a flapping connection cannot stack up tones, and doing that to a
     /// preview would cut it off every time something beeped.
     preview_queue: Mutex<VecDeque<f32>>,
+    /// The way in to a second capture chain, for hearing a recording as the
+    /// far end would.
+    ///
+    /// **A thread rather than a field, and not by choice**: `DfTract` holds
+    /// `Rc`s, so a chain cannot be `Send` and cannot live in shared state at
+    /// all. It turns out to be the better shape anyway — the model load is
+    /// seconds on a low-end phone, and it now happens on a thread of its own
+    /// instead of wherever the first caller came from.
+    preview_tx: Mutex<Option<std::sync::mpsc::Sender<Vec<f32>>>>,
+    /// Samples handed to that thread and not yet turned into output. Counted
+    /// as still-to-be-heard, so the transport paces itself against the chain's
+    /// latency instead of reading an empty queue and pushing the whole file.
+    preview_inflight: AtomicUsize,
+    /// Bumped on every reset, so a worker that is mid-block when a listener
+    /// seeks cannot push what it was working on into the new position.
+    preview_generation: AtomicU64,
 
     /// Copy of what was most recently handed to the output device, used as the
     /// echo canceller's reference.
@@ -772,6 +789,46 @@ fn render_segments(segments: &[(f32, u32)], amplitude: f32) -> Vec<f32> {
     out
 }
 
+/// Runs previewed audio through a capture chain of its own.
+///
+/// Owns the chain outright, because `DfTract` holds `Rc`s and cannot be shared
+/// between threads at all. Ends when the sender is dropped — which is what
+/// [`AudioShared::preview_reset_chain`] does — or when a newer generation has
+/// taken over.
+fn preview_worker(
+    shared: Arc<AudioShared>,
+    rx: std::sync::mpsc::Receiver<Vec<f32>>,
+    generation: u64,
+) {
+    let mut chain = PreviewChain::new(shared.noise_profile());
+    let mut out: Vec<f32> = Vec::with_capacity(FRAME_SIZE * 8);
+
+    while let Ok(input) = rx.recv() {
+        let handed = input.len();
+        // Checked before the work and again before the queue: a listener who
+        // seeks while a block is in flight must not hear where they were.
+        if shared.preview_generation.load(Ordering::Acquire) != generation {
+            break;
+        }
+        chain.set_profile(shared.noise_profile());
+        out.clear();
+        chain.process(&input, &mut out);
+
+        if shared.preview_generation.load(Ordering::Acquire) == generation {
+            let mut q = shared.preview_queue.lock();
+            let room = MAX_QUEUED_OUTPUT_SAMPLES.saturating_sub(q.len());
+            let take = room.min(out.len());
+            q.extend(out[..take].iter().copied());
+        }
+        // Whatever happened to it, it is no longer in flight. Leaving this
+        // standing would leave the transport believing there was audio coming
+        // and stop it feeding for the rest of the session.
+        shared
+            .preview_inflight
+            .fetch_sub(handed.min(shared.preview_inflight.load(Ordering::Acquire)), Ordering::AcqRel);
+    }
+}
+
 /// Bounds on the user-adjustable gains, in dB.
 pub const MIN_INPUT_GAIN_DB: f32 = -20.0;
 pub const MAX_INPUT_GAIN_DB: f32 = 30.0;
@@ -838,6 +895,9 @@ impl AudioShared {
             active_speakers: AtomicU32::new(0),
             cue_queue: Mutex::new(VecDeque::new()),
             preview_queue: Mutex::new(VecDeque::new()),
+            preview_tx: Mutex::new(None),
+            preview_inflight: AtomicUsize::new(0),
+            preview_generation: AtomicU64::new(0),
             echo_reference: Mutex::new(VecDeque::new()),
             device_request: Mutex::new((None, None)),
             device_generation: AtomicU64::new(0),
@@ -1397,7 +1457,73 @@ impl AudioShared {
     /// minus this, which is the only honest way to say where the playhead is:
     /// the queue drains at the speaker's rate, not at a timer's.
     pub fn preview_queued(&self) -> usize {
-        self.preview_queue.lock().len()
+        // Including what the preview chain still has, which is why this is not
+        // simply the queue's length. With the chain on, its work is part of
+        // the distance between the transport and the ear, and a transport that
+        // could not see it would read an empty queue and push the whole file.
+        self.preview_queue.lock().len() + self.preview_inflight.load(Ordering::Acquire)
+    }
+
+    /// The same, but through the capture chain first.
+    ///
+    /// Cheap here: the samples go to a thread that owns the chain, and this
+    /// returns as soon as they are handed over. The first call starts that
+    /// thread, which then spends seconds loading a model on a low-end phone —
+    /// during which this keeps accepting and [`Self::preview_queued`] keeps
+    /// reporting them as outstanding, so the transport waits instead of
+    /// reading an empty queue and pushing the whole file at it.
+    ///
+    /// Returns what it accepted of the *input*. Up to one block of that stays
+    /// inside the chain waiting for the rest of itself, so the playhead can
+    /// read at most 10 ms ahead of the ear — bounded, and it comes back on the
+    /// next call.
+    pub fn preview_push_processed(self: &Arc<Self>, samples: &[f32]) -> usize {
+        let mut guard = self.preview_tx.lock();
+        if guard.is_none() {
+            let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
+            let shared = Arc::clone(self);
+            let generation = self.preview_generation.load(Ordering::Acquire);
+            match std::thread::Builder::new()
+                .name("mw-preview".into())
+                .spawn(move || preview_worker(shared, rx, generation))
+            {
+                Ok(_) => *guard = Some(tx),
+                Err(e) => {
+                    // Nothing to be done about it, and silence with a reason
+                    // in the log beats a transport that spins for ever
+                    // pushing at a thread that does not exist.
+                    tracing::warn!("could not start the preview chain: {e}");
+                    return 0;
+                }
+            }
+        }
+        let Some(tx) = guard.as_ref() else {
+            return 0;
+        };
+        self.preview_inflight
+            .fetch_add(samples.len(), Ordering::AcqRel);
+        if tx.send(samples.to_vec()).is_err() {
+            self.preview_inflight
+                .fetch_sub(samples.len(), Ordering::AcqRel);
+            *guard = None;
+            return 0;
+        }
+        samples.len()
+    }
+
+    /// Throws the preview chain away, so the next listen starts clean.
+    ///
+    /// Every stage in it adapts — the noise floor, the AGC, the enhancer's
+    /// recurrent state — and a seek is a jump to unrelated audio. Carrying the
+    /// adaptation across one would apply a floor learned from a motorway to a
+    /// stretch of speech in a room.
+    pub fn preview_reset_chain(&self) {
+        // The generation moves first. A worker part way through a block is
+        // holding audio for where the listener *was*, and pushing it after the
+        // seek would play a moment they have just decided not to hear.
+        self.preview_generation.fetch_add(1, Ordering::AcqRel);
+        *self.preview_tx.lock() = None;
+        self.preview_inflight.store(0, Ordering::Release);
     }
 
     /// Stop, and seek — both are this, since seeking is throwing away what was

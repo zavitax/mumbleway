@@ -951,7 +951,47 @@ class LRu extends L {
   String get diagPreviewSentOnlyOff => 'Проигрывать запись целиком';
 
   @override
+  String get diagBlockCost => 'На что уходят 10 мс блока';
+
+  @override
+  String get diagStageInput => 'Вход и отводы';
+
+  @override
+  String get diagStageEnhancer => 'Очистка';
+
+  @override
+  String get diagStageSuppression => 'Шумоподавление';
+
+  @override
+  String get diagStageFeedback => 'Обратная связь';
+
+  @override
+  String get diagStageDehiss => 'Подавление шипения';
+
+  @override
+  String get diagStageTransmit => 'На сервер';
+
+  @override
+  String get diagStageEncode => 'Кодирование';
+
+  @override
+  String get diagBlockUnattributed => 'Вне этапов';
+
+  @override
+  String get diagBlockTotal => 'Блок целиком, среднее / худшее';
+
+  @override
+  String get diagBlockBacklog => 'Ожидает обработки, среднее / худшее';
+
+  @override
   String get diagPreviewSentOnlyNone => 'Из этой записи ничего не передавалось';
+
+  @override
+  String get diagPreviewChain =>
+      'Проигрывать через шумоподавление — так, как слышат остальные';
+
+  @override
+  String get diagPreviewChainOff => 'Проигрывать микрофон так, как он записан';
 
   @override
   String get diagPreviewNoneMuted => 'Ничего не ушло: микрофон был выключен.';
@@ -1282,9 +1322,6 @@ class LRu extends L {
   String get diagTraceSentIdle => 'Не передаётся';
 
   @override
-  String get diagStageEnhancer => 'Очистка';
-
-  @override
   String get diagStageEcho => 'Эхо';
 
   @override
@@ -1301,12 +1338,6 @@ class LRu extends L {
 
   @override
   String get diagStageHiss => 'Шипение';
-
-  @override
-  String get diagStageFeedback => 'Обратная связь';
-
-  @override
-  String get diagStageTransmit => 'На сервер';
 
   @override
   String get website => 'Сайт';

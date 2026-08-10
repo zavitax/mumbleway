@@ -559,6 +559,34 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                               ? l.diagPreviewSentOnlyOff
                               : l.diagPreviewSentOnly,
                         ),
+                        // And what it sounded like, beside which parts went.
+                        //
+                        // Two separate questions, deliberately: the green
+                        // control answers *which stretches* from the decision
+                        // log — what the chain decided on the day — and this
+                        // one answers *what they sounded like*, by running the
+                        // audio through a chain now. Turn both on and what is
+                        // left is what the far end got.
+                        //
+                        // Amber rather than green, because it is not a claim
+                        // about the wire. Green means "this went out"; this
+                        // means "this is the treatment it had".
+                        IconButton(
+                          onPressed: () =>
+                              _player.setThroughChain(!_player.throughChain),
+                          icon: Icon(
+                            _player.throughChain
+                                ? Icons.graphic_eq
+                                : Icons.graphic_eq_outlined,
+                          ),
+                          iconSize: 20,
+                          color: _player.throughChain
+                              ? StatusColors.connecting
+                              : null,
+                          tooltip: _player.throughChain
+                              ? l.diagPreviewChainOff
+                              : l.diagPreviewChain,
+                        ),
                         // Delete beside the transport control, share at the far
                         // end. That is the card's rule and the reason is the
                         // same: the button that destroys the only copy and the

@@ -105,6 +105,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiStage> dco_decode_list_ui_stage(dynamic raw);
 
   @protected
+  List<UiStageCost> dco_decode_list_ui_stage_cost(dynamic raw);
+
+  @protected
   List<UiUser> dco_decode_list_ui_user(dynamic raw);
 
   @protected
@@ -184,6 +187,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiStage dco_decode_ui_stage(dynamic raw);
+
+  @protected
+  UiStageCost dco_decode_ui_stage_cost(dynamic raw);
+
+  @protected
+  UiStageCosts dco_decode_ui_stage_costs(dynamic raw);
 
   @protected
   UiStats dco_decode_ui_stats(dynamic raw);
@@ -296,6 +305,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiStage> sse_decode_list_ui_stage(SseDeserializer deserializer);
 
   @protected
+  List<UiStageCost> sse_decode_list_ui_stage_cost(SseDeserializer deserializer);
+
+  @protected
   List<UiUser> sse_decode_list_ui_user(SseDeserializer deserializer);
 
   @protected
@@ -383,6 +395,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiStage sse_decode_ui_stage(SseDeserializer deserializer);
+
+  @protected
+  UiStageCost sse_decode_ui_stage_cost(SseDeserializer deserializer);
+
+  @protected
+  UiStageCosts sse_decode_ui_stage_costs(SseDeserializer deserializer);
 
   @protected
   UiStats sse_decode_ui_stats(SseDeserializer deserializer);
@@ -526,6 +544,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_list_ui_stage(List<UiStage> self, SseSerializer serializer);
 
   @protected
+  void sse_encode_list_ui_stage_cost(
+    List<UiStageCost> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ui_user(List<UiUser> self, SseSerializer serializer);
 
   @protected
@@ -629,6 +653,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_stage(UiStage self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_stage_cost(UiStageCost self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_stage_costs(UiStageCosts self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_stats(UiStats self, SseSerializer serializer);

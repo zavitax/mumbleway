@@ -1819,11 +1819,89 @@ abstract class L {
   /// **'Play the whole recording'**
   String get diagPreviewSentOnlyOff;
 
+  /// Title of the group breaking one capture block down by stage
+  ///
+  /// In en, this message translates to:
+  /// **'Where a block\'s 10 ms goes'**
+  String get diagBlockCost;
+
+  /// No description provided for @diagStageInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Input and taps'**
+  String get diagStageInput;
+
+  /// No description provided for @diagStageEnhancer.
+  ///
+  /// In en, this message translates to:
+  /// **'Enhancer'**
+  String get diagStageEnhancer;
+
+  /// No description provided for @diagStageSuppression.
+  ///
+  /// In en, this message translates to:
+  /// **'Suppression'**
+  String get diagStageSuppression;
+
+  /// No description provided for @diagStageFeedback.
+  ///
+  /// In en, this message translates to:
+  /// **'Feedback'**
+  String get diagStageFeedback;
+
+  /// No description provided for @diagStageDehiss.
+  ///
+  /// In en, this message translates to:
+  /// **'De-hiss'**
+  String get diagStageDehiss;
+
+  /// No description provided for @diagStageTransmit.
+  ///
+  /// In en, this message translates to:
+  /// **'To the server'**
+  String get diagStageTransmit;
+
+  /// No description provided for @diagStageEncode.
+  ///
+  /// In en, this message translates to:
+  /// **'Encode'**
+  String get diagStageEncode;
+
+  /// The part of a block no stage was timing: scheduling, mostly. A large value means the worker is being interrupted rather than running slowly
+  ///
+  /// In en, this message translates to:
+  /// **'Not in any stage'**
+  String get diagBlockUnattributed;
+
+  /// No description provided for @diagBlockTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole block, mean / worst'**
+  String get diagBlockTotal;
+
+  /// How much captured audio was queued when a block started. A backlog that grows means the chain cannot keep up
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to be processed, mean / worst'**
+  String get diagBlockBacklog;
+
   /// Tooltip on the same control when it is unavailable, either because the recording has no decision log or because nothing in it went out
   ///
   /// In en, this message translates to:
   /// **'Nothing in this recording was transmitted'**
   String get diagPreviewSentOnlyNone;
+
+  /// Tooltip on the control that runs playback through the capture chain, when it is off
+  ///
+  /// In en, this message translates to:
+  /// **'Play through the noise chain, to hear what the others hear'**
+  String get diagPreviewChain;
+
+  /// Tooltip on the same control when it is on, saying what pressing it does next
+  ///
+  /// In en, this message translates to:
+  /// **'Play the microphone as it was recorded'**
+  String get diagPreviewChainOff;
 
   /// Shown under a waveform with no transmitted parts, when the decision log says the microphone was muted
   ///
@@ -2377,12 +2455,6 @@ abstract class L {
   /// **'Not sending'**
   String get diagTraceSentIdle;
 
-  /// No description provided for @diagStageEnhancer.
-  ///
-  /// In en, this message translates to:
-  /// **'Enhancer'**
-  String get diagStageEnhancer;
-
   /// No description provided for @diagStageEcho.
   ///
   /// In en, this message translates to:
@@ -2418,18 +2490,6 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Hiss'**
   String get diagStageHiss;
-
-  /// No description provided for @diagStageFeedback.
-  ///
-  /// In en, this message translates to:
-  /// **'Feedback'**
-  String get diagStageFeedback;
-
-  /// No description provided for @diagStageTransmit.
-  ///
-  /// In en, this message translates to:
-  /// **'To the server'**
-  String get diagStageTransmit;
 
   /// Menu item opening the app’s own website in a browser.
   ///

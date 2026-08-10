@@ -50,6 +50,9 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   /// Where the chain stands, for the one counter measured before it runs.
   UiChainStatus? _chain;
 
+  /// Where a block's time goes.
+  UiStageCosts? _costs;
+
   void _refresh() {
     if (!mounted) return;
     try {
@@ -58,6 +61,10 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       // publishes it every block whether anybody is reading. The input peak
       // rides on it.
       final chain = audioChainStatus();
+      // Likewise kept whether or not anybody is looking, and for a stronger
+      // reason: a cost only measured while a panel is open is measured under
+      // different load than the one being complained about.
+      final costs = audioStageCosts();
       final was = _previous;
       setState(() {
         // Rates from deltas: the counters are cumulative precisely so the
@@ -73,6 +80,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         _previous = now;
         _audio = now;
         _chain = chain;
+        _costs = costs;
       });
     } catch (_) {
       // The engine is not up; nothing to report.
@@ -84,6 +92,21 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
     _tick?.cancel();
     super.dispose();
   }
+
+  /// The core names stages by a stable id; the label is this side's business.
+  ///
+  /// A `switch` rather than a map lookup so a stage added in Rust and not here
+  /// fails to compile rather than showing a rider `de-hiss`.
+  static String _stageLabel(L l, String id) => switch (id) {
+    'input' => l.diagStageInput,
+    'enhancer' => l.diagStageEnhancer,
+    'suppression' => l.diagStageSuppression,
+    'feedback' => l.diagStageFeedback,
+    'de-hiss' => l.diagStageDehiss,
+    'transmit' => l.diagStageTransmit,
+    'encode' => l.diagStageEncode,
+    _ => id,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +282,53 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                             ],
                           ),
                         ],
+                        // Where a block's 10 ms actually goes.
+                        //
+                        // **The measurement that would have saved a day.** The
+                        // enhancer carried the only stopwatch in the chain, so
+                        // when blocks ran late it was the only stage that could
+                        // be blamed — and it switched itself off for the
+                        // session on that evidence. Measured alone on the phone
+                        // it was reported from, the model fits the budget with
+                        // room to spare. Every stage carries a clock now, and
+                        // the two rows at the bottom are what stop this being
+                        // read the same wrong way: `unattributed` is the part
+                        // of the block no stage was timing, and a backlog that
+                        // climbs is the chain losing whatever the stages say.
+                        if ((_costs?.blocks ?? BigInt.zero) > BigInt.zero)
+                          _Group(
+                            title: l.diagBlockCost,
+                            rows: [
+                              for (final s in _costs!.stages)
+                                _Row(
+                                  _stageLabel(l, s.id),
+                                  '${(s.meanUs / 1000).toStringAsFixed(2)} ms',
+                                  // Amber on a stage that is on its own more
+                                  // than a third of the budget: not a fault,
+                                  // but the place to look first.
+                                  bad: s.meanUs > _costs!.budgetUs / 3,
+                                ),
+                              _Row(
+                                l.diagBlockUnattributed,
+                                '${(_costs!.unattributedUs / 1000).toStringAsFixed(2)} ms',
+                              ),
+                              _Row(
+                                l.diagBlockTotal,
+                                '${(_costs!.blockMeanUs / 1000).toStringAsFixed(2)} ms'
+                                ' / ${(_costs!.blockWorstUs / 1000).toStringAsFixed(1)}',
+                                bad: _costs!.blockMeanUs > _costs!.budgetUs,
+                              ),
+                              _Row(
+                                l.diagBlockBacklog,
+                                '${_costs!.backlogMeanMs.toStringAsFixed(0)} ms'
+                                ' / ${_costs!.backlogWorstMs.toStringAsFixed(0)}',
+                                // One block of slack is normal; a queue that
+                                // sits deep is the chain not keeping up, and it
+                                // says so before anything is dropped.
+                                bad: _costs!.backlogMeanMs > 20,
+                              ),
+                            ],
+                          ),
                         for (final server in state.servers)
                           if (state.runtimeFor(server.id).isLive)
                             _Group(

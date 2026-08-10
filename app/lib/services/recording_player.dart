@@ -304,6 +304,7 @@ class RecordingPlayer extends ChangeNotifier {
   Uint8List _blocks = Uint8List(0);
   bool _anySent = false;
   bool _speechOnly = false;
+  bool _throughChain = false;
   NothingSent _nothingSent = NothingSent.some;
 
   /// What has been handed to the engine and not yet heard, in file order.
@@ -328,6 +329,14 @@ class RecordingPlayer extends ChangeNotifier {
 
   /// Whether playback is skipping everything the gate rejected.
   bool get speechOnly => _speechOnly;
+
+  /// Whether playback is going through a capture chain on the way out.
+  ///
+  /// **The recording is the microphone**, deliberately — the recorder takes
+  /// its copy above the enhancer. That is the right file to keep and the wrong
+  /// one to answer *"is this what the others hear?"* with, and answering it
+  /// otherwise means two devices and two accounts.
+  bool get throughChain => _throughChain;
 
   /// Where the playhead is, in samples, as heard rather than as sent.
   ///
@@ -453,6 +462,22 @@ class RecordingPlayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Plays through a capture chain, or straight out of the file.
+  ///
+  /// The two toggles compose and are deliberately separate questions.
+  /// [setSpeechOnly] answers *which stretches went out*, from the decision log
+  /// — what the chain actually decided on the day. This answers *what they
+  /// sounded like*. Turn both on and what is left is what the far end got.
+  void setThroughChain(bool value) {
+    if (_throughChain == value) return;
+    _throughChain = value;
+    if (_handle != null) {
+      _restartFrom(_positionSamples);
+      if (_playing) _feed();
+    }
+    notifyListeners();
+  }
+
   /// Throws away what was queued and reads again from [samples].
   void _restartFrom(int samples) {
     _clearEngine();
@@ -483,6 +508,10 @@ class RecordingPlayer extends ChangeNotifier {
   void _clearEngine() {
     try {
       previewClear();
+      // And the chain with it. Every stage in it adapts, and a seek is a jump
+      // to unrelated audio: without this, a noise floor learned from a
+      // motorway would be applied to a stretch of speech in a room.
+      previewResetChain();
     } catch (_) {
       // No engine to clear. Nothing was playing either.
     }
@@ -544,7 +573,9 @@ class RecordingPlayer extends ChangeNotifier {
 
       final int accepted;
       try {
-        accepted = previewPush(samples: samples);
+        accepted = _throughChain
+            ? previewPushProcessed(samples: samples)
+            : previewPush(samples: samples);
       } catch (_) {
         pause();
         return;

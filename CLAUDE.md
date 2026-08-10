@@ -138,6 +138,36 @@ anything with non-ASCII text, check it decodes — and note that a garbled
 *console* rendering is not evidence of a garbled file, because the terminal
 decodes with the system codepage too.
 
+## Configure CMake with Ninja on Windows, not the Visual Studio generator
+
+```
+cmake -G Ninja ...        # ninja ships in C:\Android\sdk\cmake\3.22.1\bin
+```
+
+**Under `-G "Visual Studio 17 2022"` a CMake dependency can open a File Explorer
+dialog on the developer's screen, once per configure**, and it looks like a
+broken build while being nothing of the kind.
+
+The path is worth knowing because nothing about it is greppable. Eigen — pulled
+in by TensorFlow Lite, and by anything else that wants it — runs
+`include(CMakeDetermineFortranCompiler)` **unconditionally** at
+`eigen/CMakeLists.txt:584`, purely to pick a default for `EIGEN_BUILD_BLAS` and
+`EIGEN_BUILD_LAPACK`. Under the Visual Studio generator CMake's Fortran probe is
+not a compile but a *project file*, `CompilerIdFortran.vfproj`, in the Intel
+Visual Fortran format. With no Intel Fortran installed and no `.vfproj`
+association — `assoc .vfproj` answers "File association not found" — launching it
+falls through to ShellExecute and Windows asks the user what to open it with.
+
+Nothing is wrong: the answer is "there is no Fortran compiler", which is correct
+and wanted. Under Ninja the same probe is an ordinary source compile that fails
+quietly. `-DCMAKE_Fortran_COMPILER=NOTFOUND` short-circuits it too.
+
+It is configure-time only, so a parked build stops producing them by itself.
+
+The Android cross-build already sets `CMAKE_GENERATOR_aarch64_linux_android` to
+Ninja for its own reasons; this is the same instruction for every other CMake
+build on this platform.
+
 ## Verification, before saying something works
 
 ```bash

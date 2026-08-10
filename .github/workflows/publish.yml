@@ -606,6 +606,75 @@ jobs:
             --clientId "${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}" `
             --clientSecret "${{ secrets.AZURE_AD_APPLICATION_SECRET }}"
 
+      # Refuse to submit over a submission that is still being certified.
+      #
+      # **A submission in flight blocks the next one**, and pushing anyway is
+      # not a no-op: at best the call is refused, at worst it replaces a
+      # package that was part way through certification and the clock starts
+      # again. Certification takes hours to days, so this is easy to do by
+      # accident — a second release the same afternoon is all it takes.
+      #
+      # **An allow-list, not a block-list, and it fails closed.** Only a status
+      # that is recognisably finished lets the submission through. A block-list
+      # of in-flight states would silently pass anything Microsoft adds later,
+      # which is exactly the failure this exists to prevent; and an
+      # unrecognised or unreadable status stops the job rather than guessing.
+      #
+      # There is no override input on purpose. The escape hatch is the one that
+      # already exists: the package is attached to this run, and if the Store
+      # says something is in flight then Partner Center is where a human should
+      # be looking before adding another.
+      #
+      # **It declines rather than fails.** A submission in certification is the
+      # ordinary state of things for hours to days after every release, and
+      # failing the run for it would paint every Android internal release in
+      # that window red — which teaches people to stop reading red. The other
+      # three stores in this workflow have nothing to do with it and did their
+      # job. So the step reports `ready`, the submission is skipped, and the
+      # warning says why.
+      - name: Refuse to submit over one in certification
+        id: settled
+        if: >-
+          env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          (github.event_name == 'push' || inputs.microsoft_store)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $raw = (msstore submission status "$env:STORE_PRODUCT_ID" 2>&1 | Out-String)
+          # Spectre.Console colours its tables; the escape codes would defeat
+          # every match below.
+          $status = $raw -replace '\x1b\[[0-9;]*m', ''
+          Write-Output "--- msstore submission status ---"
+          Write-Output $status.Trim()
+          Write-Output "---------------------------------"
+
+          # Finished, one way or the other: either the last submission is live,
+          # or there has never been one. Anything else is either in flight or
+          # is a state a person should look at before adding to it.
+          $settled = 'Published|None|Unpublished'
+          # Named so the message can say which one, rather than "not settled".
+          $inFlight = 'PendingCommit|CommitStarted|CommitFailed|PreProcessing|' +
+                      'PreProcessingFailed|Certification|CertificationFailed|' +
+                      'PendingPublication|Publishing|PublishFailed|Release|ReleaseFailed'
+
+          if ($status -match "\b($inFlight)\b") {
+            $what = $Matches[1]
+            "ready=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Output "::warning::The Store still has a submission at '$what', and one in flight blocks the next -- so this build was not sent. Wait for it to settle and run this again; the package is attached to this run if it needs to go in by hand."
+            exit 0
+          }
+          if ($status -match "\b($settled)\b") {
+            "ready=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Output "the last submission is settled ($($Matches[1])); safe to submit"
+            exit 0
+          }
+          # Declines closed. An unrecognised status is far more likely to be a
+          # new state than a finished one, and the cost of guessing wrong is a
+          # certification run somebody has to unpick.
+          "ready=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output "::warning::Could not tell whether a submission is in flight -- the status above matched nothing known, so this build was not sent. Check Partner Center; if the Store has added a status, add it to the list in publish.yml."
+          exit 0
+
       # The store package by name, not the first `.msix` in the folder.
       #
       # Both packages are built into the same directory and only one of them is
@@ -615,6 +684,7 @@ jobs:
       # reads like a broken workflow. `docs/RELEASING.md` has the full story.
       - name: Submit to the Microsoft Store
         if: >-
+          steps.settled.outputs.ready == 'true' &&
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
           (github.event_name == 'push' || inputs.microsoft_store)
         working-directory: app
@@ -633,7 +703,8 @@ jobs:
       # to certification, which takes hours to days and can still come back.
       - name: What happens next
         if: >-
-          success() && env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          success() && steps.settled.outputs.ready == 'true' &&
+          env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
           (github.event_name == 'push' || inputs.microsoft_store)
         shell: pwsh
         run: |

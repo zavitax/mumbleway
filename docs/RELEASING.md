@@ -546,6 +546,31 @@ Store permanently trailing and never finishing a review.
 A green job means *submitted*, not *published*. The Store keeps showing the old
 version until certification passes.
 
+#### It will not submit over one in certification
+
+Before uploading, the job asks the Store what state the last submission is in
+and declines if anything is still moving — `Certification`, `Publishing`,
+`CommitStarted` and the rest. Pushing anyway is not harmless: at best the call
+is refused, at worst it replaces a package part way through certification and
+the clock starts again.
+
+Two choices in how it does that, both deliberate:
+
+- **It declines rather than fails.** A submission in certification is the
+  ordinary state for hours to days after every release, and failing the run for
+  it would paint every Android internal release in that window red — which
+  teaches people to stop reading red. The other three stores are unaffected and
+  do their job; the MSIX job warns and skips.
+- **It allows on a list of finished states, not on a list of busy ones.** An
+  unrecognised status stops the submission rather than passing it, because a
+  status nobody has seen before is far more likely to be a new state than a
+  finished one. If the Store adds one, the warning says so and the list in
+  `publish.yml` needs the addition.
+
+There is no override input. The escape hatch is the one that already exists —
+the package is attached to the run, and if the Store says something is in
+flight, Partner Center is where somebody should be looking before adding to it.
+
 #### One thing to decide once and not revisit
 
 Once a submission has been created through the API, **editing that submission by

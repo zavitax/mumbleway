@@ -61,48 +61,59 @@ use super::relief::Relief;
 /// again — what a device can run does not change between calls, and paying for
 /// the probe twice would be paying to learn the same thing.
 ///
-/// `u8::MAX` means "not probed", which is distinct from "probed and found
-/// fine": the first should leave the ladder alone, and the second is a
-/// measurement worth keeping.
+/// Stored as **index + 1**, so 0 can mean "nothing known yet" while still
+/// letting the update below be a plain numeric maximum. The obvious sentinel,
+/// `u8::MAX`, is larger than every real rung and would have made "only ever
+/// deeper" compare the wrong way round.
 ///
-/// **Written once per process and never again.** The rung a device landed on
-/// is a fact about that device, and a second probe measuring a busier or idler
-/// moment would move it — which would mean a rider's chain quietly changing
-/// character mid-session, in either direction, for a reason nothing on screen
-/// could explain. The ladder may still fall further at runtime; what cannot
-/// happen is this decision being *revisited*. Restarting the app is the only
-/// way to take a fresh measurement, and that is deliberate.
-static PROBED: AtomicU8 = AtomicU8::new(NOT_PROBED);
-const NOT_PROBED: u8 = u8::MAX;
+/// # It only ever deepens
+///
+/// The ladder's rule is that a rung given up is a fact about this device for
+/// the rest of the session, and it never climbs back. That rule was being
+/// broken by something outside the ladder: `run_worker` owns its
+/// `ReliefLadder` as a local, and the worker restarts every time the devices
+/// reopen — which is **per call**. So a phone that struggled its way down to
+/// `NoRnnoise` during one conversation began the next one back wherever the
+/// probe had left it, and had to spend another six seconds of somebody's
+/// speech rediscovering the same thing.
+///
+/// So this is the floor, and everything that learns something writes to it:
+/// the startup probe when it lands, and the ladder every time it gives a rung
+/// up. A worker starts at whichever is deeper. Nothing can raise it — not a
+/// second probe, not a new call, not the engine being stopped and started —
+/// and only restarting the app clears it.
+static DEEPEST: AtomicU8 = AtomicU8::new(0);
 
-/// Records where the probe landed, unless it has already landed somewhere.
+/// Records a rung reached, if it is deeper than anything reached before.
 ///
-/// Returns what is in force afterwards, which is the first answer rather than
-/// this one when a second probe ran anyway.
-fn remember(rung: Relief) -> Relief {
-    match PROBED.compare_exchange(
-        NOT_PROBED,
-        rung.index(),
-        Ordering::Relaxed,
-        Ordering::Relaxed,
-    ) {
-        Ok(_) => rung,
-        // Somebody got there first. Theirs stands.
-        Err(existing) => Relief::from_index(existing).unwrap_or(rung),
+/// Returns what is in force afterwards, which is the deeper of the two — so a
+/// caller that reports the return value cannot claim to have raised the floor.
+pub fn record_rung(rung: Relief) -> Relief {
+    let want = rung.index() + 1;
+    let mut seen = DEEPEST.load(Ordering::Relaxed);
+    loop {
+        if seen >= want {
+            // Already at least this deep. Theirs stands.
+            return Relief::from_index(seen - 1).unwrap_or(rung);
+        }
+        match DEEPEST.compare_exchange_weak(seen, want, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return rung,
+            Err(actual) => seen = actual,
+        }
     }
 }
 
-/// The rung a worker should start at, or `None` if nothing has been measured.
-pub fn probed_start() -> Option<Relief> {
-    match PROBED.load(Ordering::Relaxed) {
-        NOT_PROBED => None,
-        i => Relief::from_index(i),
+/// The rung a worker should start at, or `None` while nothing is known.
+pub fn start_rung() -> Option<Relief> {
+    match DEEPEST.load(Ordering::Relaxed) {
+        0 => None,
+        i => Relief::from_index(i - 1),
     }
 }
 
-/// Forgets the measurement, so the next probe is taken fresh. For tests.
+/// Forgets everything learned, as an app restart would. For tests.
 pub fn forget() {
-    PROBED.store(NOT_PROBED, Ordering::Relaxed);
+    DEEPEST.store(0, Ordering::Relaxed);
 }
 
 /// The deadline the probe dials to, in microseconds.
@@ -236,9 +247,9 @@ fn measure(
 pub fn probe(budget_us: u32) -> Probed {
     let got = measure_ladder(budget_us);
     Probed {
-        // The first answer of the process wins, which is what makes the
-        // decision unrepeatable rather than merely unrepeated.
-        rung: remember(got.rung),
+        // Never shallower than anything already reached, so a probe cannot
+        // undo a rung an earlier call gave up.
+        rung: record_rung(got.rung),
         ..got
     }
 }
@@ -319,39 +330,54 @@ mod tests {
         );
     }
 
-    /// The rung a launch lands on is settled once, and a later probe cannot
-    /// move it.
+    /// The floor only ever deepens: nothing can put a rider back on a rung
+    /// their device has already been taken off.
     ///
-    /// **This is a requirement rather than an optimisation.** The ladder may
-    /// still fall further while a call runs — that is its job — but the
-    /// starting point must not be re-decided, in either direction, because a
-    /// second measurement taken at a busier or idler moment would change a
-    /// rider's chain mid-session with nothing on screen to explain it. Only
-    /// restarting the app takes a fresh measurement.
+    /// **The direction is the whole rule.** Degrading further at runtime is
+    /// expected and allowed — the ladder does that whenever a device turns out
+    /// to be worse than it looked. What must never happen is the other way:
+    /// no probe, no new call, and no stop-and-start of the engine may raise
+    /// this. Only restarting the app clears it.
     ///
     /// One test, because the static is process-wide and two tests asserting
     /// against it would race each other by construction.
     #[test]
-    fn where_a_launch_lands_is_settled_once() {
+    fn the_floor_deepens_and_never_lifts() {
         forget();
-        assert_eq!(probed_start(), None, "unprobed is not a rung");
+        assert_eq!(start_rung(), None, "nothing learned yet is not a rung");
 
-        // A generous budget lands at the top.
+        // A probe lands somewhere.
         assert_eq!(probe(u32::MAX).rung, Relief::None);
-        assert_eq!(probed_start(), Some(Relief::None));
+        assert_eq!(start_rung(), Some(Relief::None));
 
-        // A second probe, however harsh, is measured and then ignored: it
-        // reports what is in force rather than what it just found.
+        // Runtime finds the device worse than the probe did. That is allowed,
+        // and it is what the ladder does on a hard call.
+        assert_eq!(record_rung(Relief::NoRnnoise), Relief::NoRnnoise);
+        assert_eq!(start_rung(), Some(Relief::NoRnnoise));
+
+        // Now nothing may lift it. Not a shallower rung reported by anything…
         assert_eq!(
-            probe(0).rung,
-            Relief::None,
-            "a later probe moved a decision that was already made"
+            record_rung(Relief::EnhancerReduced),
+            Relief::NoRnnoise,
+            "a shallower rung raised the floor"
         );
-        assert_eq!(probed_start(), Some(Relief::None));
+        assert_eq!(start_rung(), Some(Relief::NoRnnoise));
 
-        // And the only way back is the one a restart gives.
+        // …and not a whole second probe, however generous the moment it caught.
+        assert_eq!(
+            probe(u32::MAX).rung,
+            Relief::NoRnnoise,
+            "a second probe put the rider back on a rung they had lost"
+        );
+        assert_eq!(start_rung(), Some(Relief::NoRnnoise));
+
+        // Deeper still is fine, all the way to the bottom.
+        assert_eq!(record_rung(Relief::EnhancerOff), Relief::EnhancerOff);
+        assert_eq!(start_rung(), Some(Relief::EnhancerOff));
+
+        // And only a restart clears it.
         forget();
-        assert_eq!(probed_start(), None);
+        assert_eq!(start_rung(), None);
     }
 
     /// Every rung has to survive the trip through an atomic and the FFI, or a

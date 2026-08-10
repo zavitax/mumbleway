@@ -2571,7 +2571,7 @@ where
     // here, instead of building the expensive one and then rebuilding it
     // between two deadlines on the first block that misses.
     let mut enhancer = Enhancer::new();
-    if super::probe::probed_start().is_some_and(|r| r.simple_model()) {
+    if super::probe::start_rung().is_some_and(|r| r.simple_model()) {
         enhancer.use_simple_model();
     }
     let mut encoder = match VoiceEncoder::new(config.quality) {
@@ -2598,7 +2598,7 @@ where
     // Started where the startup probe left it, when there was one. The ladder
     // still owns everything after that and still only falls — see
     // `super::probe`.
-    let mut relief = match super::probe::probed_start() {
+    let mut relief = match super::probe::start_rung() {
         Some(rung) => {
             tracing::info!(
                 "starting at relief rung {} from the startup probe",
@@ -3205,6 +3205,12 @@ where
             // the whole block rather than from any stage's own stopwatch. See
             // `audio::relief` for the order and the measurements behind it.
             if let Some(rung) = relief.note_block(block_us) {
+                // Into the process-wide floor, so this survives the worker.
+                // The worker is per device-open, which is per call — without
+                // this, everything a hard conversation taught the ladder was
+                // forgotten the moment the devices closed, and the next call
+                // spent another six seconds learning it again.
+                super::probe::record_rung(rung);
                 tracing::warn!(
                     "the capture chain could not return a block inside {} ms; \
                      giving up {rung:?} for this session",

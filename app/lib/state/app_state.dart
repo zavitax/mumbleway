@@ -635,15 +635,6 @@ class AppState extends ChangeNotifier {
       maxServers = maxConcurrentServers();
       gainRange = gainLimits();
 
-      // Ask this device what it can run, before a rider finds out mid-sentence.
-      //
-      // **Not awaited.** It takes seconds on a slow phone, and nothing here
-      // depends on the answer: it only decides which rung the ladder starts at,
-      // and the engine reads that when the devices next open — which is per
-      // call, not now. Awaiting it would hold the first frame for the length of
-      // a measurement whose whole point is that the rider never notices it.
-      unawaited(probeChain());
-
       _events = appEvents().listen(
         onEvent,
         onError: (Object e) {
@@ -699,6 +690,8 @@ class AppState extends ChangeNotifier {
       _resumeProbing();
 
       _ready = true;
+      // Last, and then only once the app has gone quiet — see [_probeWhenIdle].
+      _probeWhenIdle();
     } catch (e) {
       _startupError = e.toString();
     } finally {
@@ -2150,13 +2143,41 @@ class AppState extends ChangeNotifier {
 
   Timer? _reliefTimer;
   bool _chainDegraded = false;
+  bool _probed = false;
+  Timer? _probeTimer;
+
+  /// How long the app is left alone before it is measured.
+  ///
+  /// **The probe competes with whatever else is running, and it cannot tell the
+  /// difference.** It times the chain against a wall clock, so any CPU the app
+  /// is still spending on its own startup — the engine opening, the server list
+  /// loading, iCloud syncing, the first frames rasterising — is charged to the
+  /// chain and dials the rider down a rung they did not need to lose. Startup
+  /// is exactly when a phone is busiest, which makes the obvious moment to
+  /// measure the worst one.
+  static const Duration _probeSettle = Duration(seconds: 5);
+
+  /// Measures once the app has finished opening and nothing else is running.
+  ///
+  /// Two conditions, and the second one is why this is a method rather than a
+  /// delay: the devices must be shut. A call in progress means the real capture
+  /// chain is already running every 10 ms, and measuring a second copy of it
+  /// against a wall clock would report roughly double. So a probe that arrives
+  /// during a call is dropped and retried when the devices close — see
+  /// [_syncReliefWatch], which is called on both transitions.
+  void _probeWhenIdle() {
+    if (_probed || _probeTimer != null) return;
+    _probeTimer = Timer(_probeSettle, () {
+      _probeTimer = null;
+      unawaited(_probeChain());
+    });
+  }
+
   /// Measures the chain against the block deadline and dials the ladder.
   ///
-  /// **Once per launch, off the platform thread**, which is what the
-  /// non-`sync` bridge call buys: it loads the model and runs several hundred
-  /// blocks, and doing that on the UI thread would freeze the app while it
-  /// opened. Nothing waits for it — the result only decides where the ladder
-  /// starts, and the engine reads that when it next opens the devices.
+  /// **Off the platform thread**, which is what the non-`sync` bridge call
+  /// buys: it loads the model and runs several hundred blocks, and doing that
+  /// on the UI thread would freeze the app.
   ///
   /// Failure is not an error worth showing. A device that cannot even be
   /// measured gets the behaviour it had before this existed: the ladder starts
@@ -2166,7 +2187,13 @@ class AppState extends ChangeNotifier {
   /// them into the app's own log as it finishes, which is where a rider can
   /// read them back and quote them. Holding a second copy in the state would be
   /// a field with no reader.
-  Future<void> probeChain() async {
+  Future<void> _probeChain() async {
+    if (_probed) return;
+    if (_audioActive) {
+      // Not now, and not never: the devices closing re-arms this.
+      return;
+    }
+    _probed = true;
     try {
       if ((await audioProbeChain()).relief > 0) {
         // The warning icon, before the first call rather than during it.
@@ -2201,6 +2228,10 @@ class AppState extends ChangeNotifier {
     }
     _reliefTimer?.cancel();
     _reliefTimer = null;
+    // The devices just closed, which is the condition the probe was waiting
+    // for if a call beat it to the start. Costs nothing when it has already
+    // run — see [_probeWhenIdle].
+    _probeWhenIdle();
     // Deliberately **not** clearing the flag. What was given up is a fact
     // about this device for the rest of the session — the ladder never climbs
     // back — so clearing it when a call ends would hide the warning at exactly
@@ -3110,6 +3141,7 @@ class AppState extends ChangeNotifier {
     _syncTimer?.cancel();
     _pingTimer?.cancel();
     _reliefTimer?.cancel();
+    _probeTimer?.cancel();
     _audioRelease?.cancel();
     _lifecycle?.dispose();
     _events?.cancel();

@@ -91,15 +91,25 @@ Four rungs, one step per hundred consecutive missed deadlines, measured rather
 than guessed. The rung sets `max_db_df_thresh` — a public field on `DfTract`, so
 a step costs one assignment with no rebuild and no allocation.
 
-| Rung | `max_df` | Cost on the A3s | Worst clip | Voice over music |
-|---|---|---|---|---|
-| Full | 20 | 6.29 ms | 27.0 dB | 14.1 dB |
-| Reduced | 0 | 4.62 ms | 24.2 dB | **15.7 dB** |
-| ERB only | −15 | 4.34 ms | 22.1 dB | 15.9 dB |
-| Bypassed | — | 0 | — | — |
+| Rung | `max_df` | Mean on the A3s | Worst frame | Worst clip | Voice over music |
+|---|---|---|---|---|---|
+| Full | 20 | 6.29 ms | 8.98 ms | 27.0 dB | 14.1 dB |
+| Reduced | 0 | 4.62 ms | 9.08 ms | 24.2 dB | **15.7 dB** |
+| ERB only | −15 | 3.94 ms | **5.79 ms** | 22.1 dB | 15.9 dB |
+| Bypassed | — | 0 | 0 | — | — |
 
 Separation is speech-to-gap in dB across the ride corpus, measured by
 `dfbench --log <the .csv>`.
+
+**The worst-frame column is the one the guard reacts to**, and it is worth
+reading before assuming `Reduced` is the fix. `Reduced` cuts the mean by a
+quarter and leaves the tail exactly where it was: the frames that run both
+decoders still run both decoders, there are just fewer of them. Only `ErbOnly`
+stops the DF decoder running at all, and that is where the tail halves.
+
+So the ladder is not three shades of the same thing. `Reduced` buys headroom in
+the average, which is what stops a chain overrunning on aggregate; `ErbOnly`
+buys headroom in the tail, which is what stops a single frame clicking.
 
 **Stepping down is not purely a loss.** On voice over music — the clip this
 model was adopted for — `Reduced` separates *better* than `Full`. The DF decoder

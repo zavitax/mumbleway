@@ -94,12 +94,18 @@ const MAX_DF_DB: f32 = 20.0;
 /// than guessed. Separation is speech-to-gap in dB across the ride corpus, and
 /// the cost is that phone's mean frame:
 ///
-/// | Rung | `max_df` | Cost there | Separation, worst clip | Best clip |
-/// |---|---|---|---|---|
-/// | [`Effort::Full`] | 20 | 6.29 ms | 27.0 dB | 14.1 dB |
-/// | [`Effort::Reduced`] | 0 | 4.62 ms | 24.2 dB | **15.7 dB** |
-/// | [`Effort::ErbOnly`] | −15 | 4.34 ms | 22.1 dB | 15.9 dB |
-/// | [`Effort::Bypassed`] | — | 0 | none | none |
+/// | Rung | `max_df` | Mean there | Worst frame | Separation, worst clip | Best clip |
+/// |---|---|---|---|---|---|
+/// | [`Effort::Full`] | 20 | 6.29 ms | 8.98 ms | 27.0 dB | 14.1 dB |
+/// | [`Effort::Reduced`] | 0 | 4.62 ms | 9.08 ms | 24.2 dB | **15.7 dB** |
+/// | [`Effort::ErbOnly`] | −15 | 3.94 ms | **5.79 ms** | 22.1 dB | 15.9 dB |
+/// | [`Effort::Bypassed`] | — | 0 | 0 | none | none |
+///
+/// **The worst frame is the column that matters to the guard**, and it is the
+/// one that does not improve until the bottom rung: `Reduced` cuts the mean by
+/// a quarter and leaves the tail where it was, because the frames that run
+/// both decoders still run both decoders — there are simply fewer of them.
+/// `ErbOnly` is where the DF decoder stops running at all, and the tail halves.
 ///
 /// **Stepping down is not purely a loss.** On voice over music — the clip this
 /// model was adopted for — `Reduced` separates *better* than `Full`: 15.7 dB

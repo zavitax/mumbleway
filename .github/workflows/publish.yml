@@ -523,6 +523,43 @@ jobs:
       # so the app has to exist and be live first — which it now is. Note also
       # that Microsoft supports this route for *free* products only; MumbleWay
       # is free, and a paid tier would mean going back to the manual form.
+      # Half-configured must not look like unconfigured.
+      #
+      # The submission is gated on the product ID, so a repository with none of
+      # these secrets skips it in silence, which is right. But somebody who has
+      # just registered an Entra application and set three of the five gets the
+      # same silence, and a run that says nothing is indistinguishable from a
+      # run that worked. That happened on the first attempt here.
+      #
+      # A warning rather than an error: having none of them is legitimate, and
+      # having some of them is almost certainly a half-finished setup.
+      - name: Check the submission secrets
+        if: env.MSIX_PUBLISHER != '' && (github.event_name == 'push' || inputs.microsoft_store)
+        shell: pwsh
+        env:
+          TENANT: ${{ secrets.AZURE_AD_TENANT_ID }}
+          CLIENT: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+          SELLER: ${{ secrets.MSIX_SELLER_ID }}
+        run: |
+          # Names only. None of the values is printed, and the check is
+          # emptiness rather than shape.
+          $needed = [ordered]@{
+            'AZURE_AD_TENANT_ID'             = $env:TENANT
+            'AZURE_AD_APPLICATION_CLIENT_ID' = $env:CLIENT
+            'AZURE_AD_APPLICATION_SECRET'    = $env:SECRET
+            'MSIX_SELLER_ID'                 = $env:SELLER
+            'MSIX_STORE_PRODUCT_ID'          = $env:STORE_PRODUCT_ID
+          }
+          $missing = @($needed.Keys | Where-Object { [string]::IsNullOrWhiteSpace($needed[$_]) })
+          if ($missing.Count -eq 0) {
+            Write-Output "all five submission secrets are set"
+          } elseif ($missing.Count -eq $needed.Count) {
+            Write-Output "::notice::No Store submission secrets are set - building the package only. See docs/RELEASING.md section 4f."
+          } else {
+            Write-Output "::warning::Store submission is half configured and will be skipped. Missing: $($missing -join ', '). See docs/RELEASING.md section 4f."
+          }
+
       - name: Set up the Store CLI
         if: >-
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&

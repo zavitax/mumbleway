@@ -58,12 +58,55 @@
 //! has just bought 36 ms back, so a device could take this and still be ahead
 //! of where it was this morning.
 //!
-//! **Not switched, because the quality side is unmeasured.** The two models
-//! differ in more than latency: the plain one may use future context and could
-//! separate *better* rather than worse. Nobody has run the separation numbers,
-//! and "3× cheaper" is not a reason to change what a rider hears on an
-//! assumption. The measurement to run is `core/tests/onset_survival.rs`'s
-//! separation column and `dfbench` on the OPPO, against both features.
+//! ## And the quality side, measured
+//!
+//! `core/tests/onset_survival.rs`, 24 dB cap, three rides:
+//!
+//! | Ride | | DFN3-ll | plain |
+//! |---|---|---|---|
+//! | iPhone, quiet | separation | **4.6 dB** | 3.3 dB |
+//! | | cut from the vowel | −5.8 | **−11.8** |
+//! | voice over music | separation | **14.1 dB** | 13.4 dB |
+//! | | cut from the vowel | −1.5 | −2.2 |
+//! | road | separation | 18.6 dB | **20.3 dB** |
+//! | | cut from the vowel | −10.0 | **−14.1** |
+//!
+//! **The plain model is not worse, it is more aggressive**, and the vowel row
+//! is where that shows: it takes 4 to 6 dB more out of the speech. Where the
+//! background is loud enough that removing more of it wins — the road — that
+//! nets better separation. Where it is not, it nets worse, because what is
+//! being removed is the rider.
+//!
+//! Which is the same shape as [`Effort::Reduced`] separating *better* than
+//! `Full` on voice over music, recorded above and for the same reason: at the
+//! top of its range this model spends its capacity on the speech.
+//!
+//! So it is a real trade and not a free 3×: **cheaper, later, and harder on
+//! quiet voices.** Still not switched, because on the quiet ride — a rider
+//! talking normally in still air — it is the worse of the two on both axes
+//! that matter there.
+//!
+//! ## Where it would be worth having
+//!
+//! **As a rung, not as a default.** A device that cannot keep up currently
+//! gives up the enhancer altogether at the bottom of the ladder, losing the
+//! thing that turns 1.5 dB of separation into 16. Swapping to a model that
+//! costs a third as much and still separates within about a decibel is plainly
+//! a better last resort than switching it off.
+//!
+//! What stops it today is that the model is chosen by a **Cargo feature**, so
+//! there is one in the binary. `DfParams::from_bytes` takes bytes, so embedding
+//! both and picking at load is possible; it costs 7.6 MB of app size, and it is
+//! the shape of the work if the OPPO still struggles at the bottom rung.
+//!
+//! ## What nearly made all of this wrong
+//!
+//! The plain model holds **two frames of look-ahead** where the ll variant
+//! holds none, so its output lags its input by 20 ms. The first run of this
+//! comparison ignored that and compared `enh[i]` against `raw[i]` — which
+//! overlaps a three-block onset window with its own subject by two thirds and
+//! reported a *smaller* onset penalty for the more aggressive model. See
+//! [`Enhancer::model_lookahead`], which the harness now reads.
 //!
 //! # It must never make things worse than not being here
 //!
@@ -626,6 +669,18 @@ impl Enhancer {
     /// Which rung it is on. [`Effort::Full`] unless a phone made it step down.
     pub fn effort(&self) -> Effort {
         self.effort
+    }
+
+    /// Frames of look-ahead the model itself holds, so its output lags its
+    /// input by that much.
+    ///
+    /// **Zero for the low-latency variant this ships, and 2 for the plain one.**
+    /// Any measurement that compares the enhancer's output against its input
+    /// has to shift by this or it compares different moments: at 2 frames a
+    /// 3-block onset window overlaps its own subject by one block, which is
+    /// enough to reverse the result. See `core/tests/onset_survival.rs`.
+    pub fn model_lookahead(&self) -> usize {
+        self.model.as_ref().map_or(0, |m| m.lookahead)
     }
 
     /// The model's own signal-to-noise estimate for the last frame, in dB.

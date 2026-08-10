@@ -223,6 +223,16 @@ fn onset_survival() {
             speaking.push(a.speaking);
         }
 
+        // **The model's own delay, which is not always zero.**
+        //
+        // `DeepFilterNet3_ll` — what ships — has a look-ahead of 0, so its
+        // output frame is its input frame and every index below lines up. The
+        // plain `DeepFilterNet3` holds 2 frames, so `enh[i]` is the enhancement
+        // of `raw[i - 2]`. Comparing them at the same index across a 3-block
+        // onset window overlaps the window with its own subject by two thirds,
+        // which is enough to reverse the answer — and it did, on the first run
+        // of the model comparison, before this existed.
+        let lag = enhancer.model_lookahead();
         // For each opening, the window immediately before it — the audio the
         // look-ahead exists to rescue.
         // **The comparison, not the window.** Averaging the whole 160 ms before
@@ -267,16 +277,22 @@ fn onset_survival() {
             }
             openings += 1;
             for j in i.saturating_sub(ONSET)..i {
+                let Some(&e) = enh_hf.get(j + lag) else {
+                    continue;
+                };
                 on_raw += raw_hf[j];
-                on_enh += enh_hf[j];
+                on_enh += e;
                 on_n += 1;
                 if relax[j] > 0.0 {
                     on_hit += 1;
                 }
             }
             for j in i..(i + VOWEL).min(speaking.len()) {
+                let Some(&e) = enh_hf.get(j + lag) else {
+                    continue;
+                };
                 vo_raw += raw_hf[j];
-                vo_enh += enh_hf[j];
+                vo_enh += e;
                 vo_n += 1;
                 if relax[j] > 0.0 {
                     vo_hit += 1;
@@ -289,7 +305,11 @@ fn onset_survival() {
         // microphone became 16 dB; whatever the cap costs shows here.
         let (mut sp, mut spn, mut gp, mut gpn) = (0.0f64, 0u64, 0.0f64, 0u64);
         for (i, &want) in labels.iter().enumerate() {
-            let Some(&e) = enh_wide.get(i) else { break };
+            // Labels are stamped at capture, so the enhanced block they
+            // describe is `lag` later. Same correction as the windows above.
+            let Some(&e) = enh_wide.get(i + lag) else {
+                break;
+            };
             if want {
                 sp += e;
                 spn += 1;

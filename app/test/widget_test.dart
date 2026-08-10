@@ -691,10 +691,19 @@ void main() {
         isEmpty,
         reason: 'drawn by the window but never sent, so stuck in English',
       );
+      // **Checked one way only, like the Android test below.** It used to be
+      // both, on the reasoning that a phrase nobody draws is dead weight. That
+      // stopped being true when Android grew a close button: it builds its
+      // window by hand and needs a label for it, while the iOS frame's close
+      // button belongs to the system Picture in Picture chrome and carries the
+      // system's own label. So a phrase can legitimately be sent for one
+      // platform and unused by the other, and asserting otherwise would force
+      // an unused string into the Swift to satisfy a test.
+      final androidOnly = {'pipClose'};
       expect(
-        sent.difference(drawn),
+        sent.difference(drawn).difference(androidOnly),
         isEmpty,
-        reason: 'sent to the window but never drawn',
+        reason: 'sent to the window but never drawn on either platform',
       );
     });
 

@@ -484,6 +484,7 @@ class AppState extends ChangeNotifier {
       'pipNoise': l.pipNoise,
       'pipOpen': l.pipOpen,
       'pipTalk': l.pipTalk,
+      'pipClose': l.pipClose,
       'pipHandsFreeVoice': l.pipHandsFreeVoice,
       'pipHandsFreeAlways': l.pipHandsFreeAlways,
       'pipSpeaking': l.pipSpeaking,

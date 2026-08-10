@@ -628,6 +628,10 @@
   "pipNoise": "noise",
   "pipOpen": "open",
   "pipTalk": "talk",
+  "pipClose": "Hide this window",
+  "@pipClose": {
+    "description": "Accessibility label for the close button on the Android floating call window. It hides the window until the rider opens the app and leaves it again; it does not end the call or turn the feature off"
+  },
   "pipHandsFreeVoice": "hands-free · voice activated",
   "pipHandsFreeAlways": "hands-free · always on",
   "pipSpeaking": "SPEAKING",

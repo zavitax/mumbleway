@@ -290,7 +290,14 @@ class OverlayService : Service() {
             // Showing and hiding the window leaves the service running, so
             // going back into the app does not tear down the audio engine.
             ACTION_SHOW_WINDOW -> addOverlay()
-            ACTION_HIDE_WINDOW -> removeOverlay()
+            ACTION_HIDE_WINDOW -> {
+                // Sent when the app comes to the front, which is also the
+                // gesture that un-dismisses the window: a rider who put it away
+                // and then came back into the app gets it again next time they
+                // leave. See [dismissed].
+                dismissed = false
+                removeOverlay()
+            }
             ACTION_SET_CALL_ACTIVE ->
                 setCallActive(intent.getBooleanExtra(EXTRA_CALL_ACTIVE, false))
         }
@@ -423,8 +430,28 @@ class OverlayService : Service() {
         resources.displayMetrics,
     ).toInt()
 
+    /**
+     * The rider put the window away with its close button.
+     *
+     * **Not the same as switching the feature off**, which is a setting and
+     * lives in the app. This is "not right now": it lasts until they go back
+     * into the app, and the next time they leave it the window returns. That
+     * is how the iOS Picture in Picture frame behaves, and a rider who uses
+     * both phones should not have to learn two answers to the same gesture.
+     *
+     * Deliberately not persisted. A window dismissed on one ride reappearing
+     * on the next is the forgiving direction: the alternative is a rider who
+     * tapped it once wondering for a week where the talk button went.
+     */
+    private var dismissed = false
+
+    private fun dismissWindow() {
+        dismissed = true
+        removeOverlay()
+    }
+
     private fun addOverlay() {
-        if (root != null) return
+        if (root != null || dismissed) return
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
 
@@ -470,6 +497,17 @@ class OverlayService : Service() {
         // decision to make stopped, in the app.
         val mute = pill("\uD83C\uDFA4")
         val deafen = pill("\uD83D\uDD0A")
+        // Puts the window away without touching the call, matching the close
+        // button on the iOS Picture in Picture frame. Furthest from TALK on
+        // purpose: it is the one control here whose effect a rider cannot undo
+        // from this window, since dismissing it removes the thing they would
+        // undo it with.
+        //
+        // A multiplication sign rather than a letter x, which is narrow and
+        // sits low; this is the glyph every close button on the platform uses.
+        val close = pill("\u00D7").apply {
+            contentDescription = phrase("pipClose", "Hide this window")
+        }
 
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -488,6 +526,13 @@ class OverlayService : Service() {
             )
             addView(
                 deafen,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { leftMargin = dp(6) },
+            )
+            addView(
+                close,
                 LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -545,6 +590,7 @@ class OverlayService : Service() {
 
         mute.setOnClickListener { onToggleMute?.invoke() }
         deafen.setOnClickListener { onToggleDeafen?.invoke() }
+        close.setOnClickListener { dismissWindow() }
         // Tapping the card anywhere that is not a control brings the app back.
         // Without this the window is a dead end: it is the only thing on screen
         // and there is no way through it to the rest of the app. `DragHandler`

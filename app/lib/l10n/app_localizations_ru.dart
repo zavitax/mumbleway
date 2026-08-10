@@ -1180,6 +1180,9 @@ class LRu extends L {
   String get pipTalk => 'говорить';
 
   @override
+  String get pipClose => 'Скрыть это окно';
+
+  @override
   String get pipHandsFreeVoice => 'без рук · по голосу';
 
   @override

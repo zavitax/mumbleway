@@ -460,6 +460,7 @@
   "pipNoise": "шум",
   "pipOpen": "порог",
   "pipTalk": "говорить",
+  "pipClose": "Скрыть это окно",
   "pipHandsFreeVoice": "без рук · по голосу",
   "pipHandsFreeAlways": "без рук · всегда включён",
   "pipSpeaking": "ГОВОРЯТ",

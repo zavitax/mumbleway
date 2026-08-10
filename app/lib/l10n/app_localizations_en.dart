@@ -1189,6 +1189,9 @@ class LEn extends L {
   String get pipTalk => 'talk';
 
   @override
+  String get pipClose => 'Hide this window';
+
+  @override
   String get pipHandsFreeVoice => 'hands-free · voice activated';
 
   @override

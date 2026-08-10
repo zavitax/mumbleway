@@ -2221,6 +2221,12 @@ abstract class L {
   /// **'talk'**
   String get pipTalk;
 
+  /// Accessibility label for the close button on the Android floating call window. It hides the window until the rider opens the app and leaves it again; it does not end the call or turn the feature off
+  ///
+  /// In en, this message translates to:
+  /// **'Hide this window'**
+  String get pipClose;
+
   /// No description provided for @pipHandsFreeVoice.
   ///
   /// In en, this message translates to:

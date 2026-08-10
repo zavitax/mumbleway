@@ -3110,6 +3110,8 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_inputClipped = <u64>::sse_decode(deserializer);
         let mut var_effectiveProfile =
             <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
+        let mut var_disabledStages = <Vec<String>>::sse_decode(deserializer);
+        let mut var_relief = <u32>::sse_decode(deserializer);
         let mut var_enhancerEffort = <u32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiChainStatus {
             stages: var_stages,
@@ -3122,6 +3124,8 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             input_peak_db: var_inputPeakDb,
             input_clipped: var_inputClipped,
             effective_profile: var_effectiveProfile,
+            disabled_stages: var_disabledStages,
+            relief: var_relief,
             enhancer_effort: var_enhancerEffort,
         };
     }
@@ -3891,6 +3895,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.input_peak_db.into_into_dart().into_dart(),
             self.input_clipped.into_into_dart().into_dart(),
             self.effective_profile.into_into_dart().into_dart(),
+            self.disabled_stages.into_into_dart().into_dart(),
+            self.relief.into_into_dart().into_dart(),
             self.enhancer_effort.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -4731,6 +4737,8 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <f32>::sse_encode(self.input_peak_db, serializer);
         <u64>::sse_encode(self.input_clipped, serializer);
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);
+        <Vec<String>>::sse_encode(self.disabled_stages, serializer);
+        <u32>::sse_encode(self.relief, serializer);
         <u32>::sse_encode(self.enhancer_effort, serializer);
     }
 }

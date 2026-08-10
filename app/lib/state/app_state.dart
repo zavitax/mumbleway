@@ -1627,6 +1627,7 @@ class AppState extends ChangeNotifier {
 
     _audioActive = true;
     _syncClassifier();
+    _syncReliefWatch();
     notifyListeners();
     return null;
   }
@@ -1649,6 +1650,7 @@ class AppState extends ChangeNotifier {
       await AudioSessionBridge.instance.deactivate();
       _audioActive = false;
       _syncClassifier();
+    _syncReliefWatch();
       notifyListeners();
     });
   }
@@ -2136,6 +2138,52 @@ class AppState extends ChangeNotifier {
   /// with every screen closed and the phone in a pocket, which is most of a
   /// ride.
   final classifier = BackgroundClassifier();
+
+  Timer? _reliefTimer;
+  bool _chainDegraded = false;
+
+  /// Whether the performance ladder has switched any capture stage off.
+  ///
+  /// **Watched outside the diagnostics panel on purpose.** The panel is where
+  /// the detail lives, and a rider whose voice has quietly got worse has no
+  /// reason to open it — so the toolbar icon has to be able to say that
+  /// something is wrong before anyone goes looking. It is a `#[frb(sync)]`
+  /// read of state the worker publishes every block anyway, so watching it
+  /// costs a comparison every two seconds.
+  bool get chainDegraded => _chainDegraded;
+
+  /// Polls only while the devices are open, because the ladder can only step
+  /// while blocks are being processed.
+  void _syncReliefWatch() {
+    if (_audioActive) {
+      _reliefTimer ??= Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _pollRelief(),
+      );
+      _pollRelief();
+      return;
+    }
+    _reliefTimer?.cancel();
+    _reliefTimer = null;
+    // Deliberately **not** clearing the flag. What was given up is a fact
+    // about this device for the rest of the session — the ladder never climbs
+    // back — so clearing it when a call ends would hide the warning at exactly
+    // the moment a rider stops talking and goes looking for why they sounded
+    // wrong.
+  }
+
+  void _pollRelief() {
+    final bool degraded;
+    try {
+      degraded = audioChainStatus().relief > 0;
+    } catch (_) {
+      // No engine. Nothing has been given up that this can know about.
+      return;
+    }
+    if (degraded == _chainDegraded) return;
+    _chainDegraded = degraded;
+    notifyListeners();
+  }
 
   /// Starts or stops the classifier to match the current conditions.
   ///
@@ -2723,6 +2771,7 @@ class AppState extends ChangeNotifier {
     // ignored -- stopped, because an inference every two seconds is a real
     // cost and nobody should pay it for an answer that will not be read.
     _syncClassifier();
+    _syncReliefWatch();
     await _persist();
     notifyListeners();
   }
@@ -3019,6 +3068,7 @@ class AppState extends ChangeNotifier {
     endDiagnosticRecording();
     _syncTimer?.cancel();
     _pingTimer?.cancel();
+    _reliefTimer?.cancel();
     _audioRelease?.cancel();
     _lifecycle?.dispose();
     _events?.cancel();

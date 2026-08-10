@@ -803,6 +803,21 @@ class UiChainStatus {
   /// arrived at.
   final NoiseSetting effectiveProfile;
 
+  /// Stage ids the performance ladder has switched off on this device.
+  ///
+  /// **A stage that is not running reports the same greys and zeroes as one
+  /// that is running with nothing to do**, so without this the panel cannot
+  /// tell a quiet chain from a crippled one — and neither can a rider. The
+  /// ids match [`UiStage::id`]; the panel strikes those names through.
+  ///
+  /// Ids rather than a rung number, because the mapping from rung to stages
+  /// is the ladder's business and it will change as rungs are added.
+  final List<String> disabledStages;
+
+  /// How far down the whole-chain ladder this device has gone. 0 is nothing
+  /// given up; the panel uses it only to decide whether to warn at all.
+  final int relief;
+
   /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
   /// 3 bypassed.
   ///
@@ -823,6 +838,8 @@ class UiChainStatus {
     required this.inputPeakDb,
     required this.inputClipped,
     required this.effectiveProfile,
+    required this.disabledStages,
+    required this.relief,
     required this.enhancerEffort,
   });
 
@@ -838,6 +855,8 @@ class UiChainStatus {
       inputPeakDb.hashCode ^
       inputClipped.hashCode ^
       effectiveProfile.hashCode ^
+      disabledStages.hashCode ^
+      relief.hashCode ^
       enhancerEffort.hashCode;
 
   @override
@@ -855,6 +874,8 @@ class UiChainStatus {
           inputPeakDb == other.inputPeakDb &&
           inputClipped == other.inputClipped &&
           effectiveProfile == other.effectiveProfile &&
+          disabledStages == other.disabledStages &&
+          relief == other.relief &&
           enhancerEffort == other.enhancerEffort;
 }
 

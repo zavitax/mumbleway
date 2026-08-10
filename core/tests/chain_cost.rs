@@ -31,6 +31,7 @@ use mumbleway_core::audio::deepfilter::Enhancer;
 use mumbleway_core::audio::dehiss::Expander;
 use mumbleway_core::audio::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE};
 use mumbleway_core::audio::feedback::{FeedbackGuard, FeedbackMode};
+use mumbleway_core::audio::relief::Relief;
 use mumbleway_core::audio::timing::{Lap, Stage, StageTimings, STAGES, STAGE_NAMES};
 
 #[test]
@@ -70,7 +71,36 @@ fn chain_cost() {
     }
     eprintln!("enhancer: {:?}", enhancer.effort());
 
+    // `MW_RELIEF` walks the whole-chain ladder instead, which is the one that
+    // ships: it drives the enhancer's rungs *and* the cheap stages, in the
+    // order `audio::relief` gives. `MW_EFFORT` above stays for asking about
+    // the enhancer on its own.
+    let relief = {
+        let mut r = Relief::None;
+        let steps: u32 = std::env::var("MW_RELIEF")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        for _ in 0..steps {
+            match r.weaker() {
+                Some(next) => r = next,
+                None => break,
+            }
+        }
+        r
+    };
+    if relief != Relief::None {
+        eprintln!("relief: {relief:?}");
+        for _ in 0..relief.enhancer_rungs() {
+            if enhancer.effort().index() < relief.enhancer_rungs() {
+                enhancer.step_down();
+            }
+        }
+        eprintln!("enhancer: {:?} (from the ladder)", enhancer.effort());
+    }
+
     let mut processor = CaptureProcessor::new(profile);
+    processor.set_relief(relief.skip_pitch(), relief.skip_rnnoise());
     let mut guard = FeedbackGuard::new(FeedbackMode::HowlGuard);
     // The same shape the de-hiss setting uses; the exact numbers only move the
     // gain it applies, not what it costs.
@@ -104,7 +134,9 @@ fn chain_cost() {
         let analysis = processor.process_with_reference(&mut block, &echo_ref);
         timings.record(Stage::Suppression, lap.split());
 
-        guard.process(&mut block, &echo_ref);
+        if !relief.skip_feedback() {
+            guard.process(&mut block, &echo_ref);
+        }
         timings.record(Stage::Feedback, lap.split());
 
         expander.process(&mut block, analysis.level_db, analysis.noise_floor_db);

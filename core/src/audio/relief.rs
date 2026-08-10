@@ -1,0 +1,247 @@
+//! Giving up chain stages, in order, to meet the block deadline.
+//!
+//! # Why there is a second ladder
+//!
+//! The enhancer has one of its own ([`super::deepfilter::Effort`]) and it is
+//! the big lever: on the phone this was built for, the enhancer is **88% of a
+//! block** and everything else together is 0.78 ms. So this ladder cannot
+//! rescue a device on its own, and it is not meant to.
+//!
+//! **It is currency for keeping the enhancer one rung higher.** At `ErbOnly`
+//! the block measures 8.12–8.37 ms worst against a 10 ms budget — inside, and
+//! not comfortably. Spending a few tenths of a millisecond of stages that
+//! measurably contribute little buys the headroom to hold `Reduced`, and the
+//! enhancer does more for intelligibility per millisecond than anything else
+//! in the chain.
+//!
+//! # The order is measured, not guessed
+//!
+//! From the first unclipped ride, scoring how well each feature separates
+//! transmitted blocks from untransmitted ones (Mann-Whitney AUC, 0.5 being a
+//! coin toss):
+//!
+//! | Feature | AUC | What that means here |
+//! |---|---|---|
+//! | `level_db` | **0.878** | the gate's best single input, and it is free |
+//! | `snr_db` | 0.779 | derived from the level and the floor |
+//! | `vad` (RNNoise) | 0.767 | *worse* than the level it would be dropped for |
+//! | `harmonicity` (pitch) | **0.564** | barely better than a coin toss |
+//!
+//! **The order is by quality given up, not by milliseconds gained**, and those
+//! turn out to be almost opposite. Measured on the OPPO A3s:
+//!
+//! | Rung | Saves | AUC it costs |
+//! |---|---|---|
+//! | pitch search | **0.052 ms** | 0.564 |
+//! | feedback guard | 0.194 ms | — (nothing, on a headset) |
+//! | RNNoise | **0.295 ms** | 0.767 |
+//!
+//! So the pitch search goes first because it is the cheapest quality to sell,
+//! **not** because it is expensive — an earlier draft of this file claimed it
+//! was "the second most expensive thing in suppression", which was read off
+//! the code and is wrong: it is the least expensive thing on the ladder, at
+//! 13% of suppression against RNNoise's 76%. Selling it buys almost nothing,
+//! and that is the point of selling it first.
+//!
+//! RNNoise goes late but not last, because DeepFilterNet now sits in front of
+//! it and has already removed most of what RNNoise existed to remove — its
+//! remaining unique contribution is a VAD that the level beats.
+//!
+//! All three together are **0.54 ms**. That is the whole budget of this
+//! ladder, against an enhancer rung worth 1.9 ms, so nothing here rescues a
+//! device on its own — see above.
+//!
+//! # What is deliberately not on the ladder
+//!
+//! - **The rumble filter and speech band.** Nearly free, and *everything*
+//!   downstream measures through them — the floor tracker, the gate, the AGC.
+//!   Dropping them would not lose filtering, it would corrupt every threshold.
+//! - **The limiter**, which is what stops clipped audio reaching the wire.
+//! - **The input peak counter**, which is the instrument that cost an evening.
+//! - **The gate itself**, which is the feature.
+//! - **Opus.** A fixed cost for a fixed frame size, already the cheapest
+//!   speech configuration, and it carries hand-written NEON where `tract` does
+//!   not.
+
+/// One rung of the whole-chain ladder.
+///
+/// The enhancer's rungs are interleaved with the cheap ones rather than run
+/// after them, because `Effort::Reduced` costs very little — on voice over
+/// music it measured *better* than full effort — and is worth reaching for
+/// before RNNoise is given up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Relief {
+    /// Everything runs.
+    None,
+    /// The pitch search is skipped. AUC 0.564.
+    NoPitch,
+    /// The feedback guard is skipped. It does nothing on a headset, where
+    /// there is no acoustic path from the speaker back to the microphone.
+    NoFeedback,
+    /// The enhancer drops to `Effort::Reduced`.
+    EnhancerReduced,
+    /// RNNoise is skipped; the gate runs on level and SNR alone.
+    NoRnnoise,
+    /// The enhancer drops to `Effort::ErbOnly`.
+    EnhancerLight,
+    /// The enhancer is bypassed. The bottom.
+    EnhancerOff,
+}
+
+impl Relief {
+    /// The next rung down, or `None` at the bottom.
+    pub fn weaker(self) -> Option<Relief> {
+        Some(match self {
+            Relief::None => Relief::NoPitch,
+            Relief::NoPitch => Relief::NoFeedback,
+            Relief::NoFeedback => Relief::EnhancerReduced,
+            Relief::EnhancerReduced => Relief::NoRnnoise,
+            Relief::NoRnnoise => Relief::EnhancerLight,
+            Relief::EnhancerLight => Relief::EnhancerOff,
+            Relief::EnhancerOff => return None,
+        })
+    }
+
+    /// How far down the ladder this is, for the panel and the log.
+    pub fn index(self) -> u8 {
+        match self {
+            Relief::None => 0,
+            Relief::NoPitch => 1,
+            Relief::NoFeedback => 2,
+            Relief::EnhancerReduced => 3,
+            Relief::NoRnnoise => 4,
+            Relief::EnhancerLight => 5,
+            Relief::EnhancerOff => 6,
+        }
+    }
+
+    pub fn skip_pitch(self) -> bool {
+        self >= Relief::NoPitch
+    }
+
+    pub fn skip_feedback(self) -> bool {
+        self >= Relief::NoFeedback
+    }
+
+    pub fn skip_rnnoise(self) -> bool {
+        self >= Relief::NoRnnoise
+    }
+
+    /// How many rungs the enhancer should have given up by now.
+    pub fn enhancer_rungs(self) -> u8 {
+        match self {
+            Relief::EnhancerOff => 3,
+            Relief::EnhancerLight => 2,
+            Relief::NoRnnoise | Relief::EnhancerReduced => 1,
+            _ => 0,
+        }
+    }
+}
+
+/// Consecutive blocks over the deadline before a rung is given up.
+///
+/// One second's worth, matching the enhancer's own guard: long enough that a
+/// scheduler hiccup costs nothing, short enough that a device which cannot
+/// manage is not allowed to ruin a whole ride.
+pub const STEP_DOWN_AFTER: u32 = 100;
+
+/// The deadline a whole block has to be returned in, in microseconds.
+pub const BUDGET_US: u32 = 10_000;
+
+/// Tracks the ladder and decides when to give up the next rung.
+///
+/// **Driven by the whole block, not by any one stage.** The enhancer used to
+/// judge itself on its own stopwatch, which is how a model measured at 6.2 ms
+/// against a 10 ms budget came to switch itself off: it carried the only clock
+/// in the chain, so it was the only stage that could be blamed for a late
+/// block. The deadline belongs to the block, so the decision does too.
+#[derive(Debug, Default)]
+pub struct ReliefLadder {
+    level: Option<Relief>,
+    run_of_overruns: u32,
+}
+
+impl ReliefLadder {
+    pub fn level(&self) -> Relief {
+        self.level.unwrap_or(Relief::None)
+    }
+
+    /// Feeds one block's wall-clock cost in. Returns the new rung when it
+    /// stepped, so the caller can say so once rather than every block.
+    pub fn note_block(&mut self, us: u32) -> Option<Relief> {
+        if us <= BUDGET_US {
+            self.run_of_overruns = 0;
+            return None;
+        }
+        self.run_of_overruns += 1;
+        if self.run_of_overruns < STEP_DOWN_AFTER {
+            return None;
+        }
+        self.run_of_overruns = 0;
+        let next = self.level().weaker()?;
+        self.level = Some(next);
+        Some(next)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_walks_down_one_rung_at_a_time_and_stops_at_the_bottom() {
+        let mut ladder = ReliefLadder::default();
+        assert_eq!(ladder.level(), Relief::None);
+
+        let expected = [
+            Relief::NoPitch,
+            Relief::NoFeedback,
+            Relief::EnhancerReduced,
+            Relief::NoRnnoise,
+            Relief::EnhancerLight,
+            Relief::EnhancerOff,
+        ];
+        for want in expected {
+            for _ in 0..STEP_DOWN_AFTER - 1 {
+                assert_eq!(ladder.note_block(BUDGET_US + 1), None);
+            }
+            assert_eq!(ladder.note_block(BUDGET_US + 1), Some(want));
+        }
+        // The bottom is the bottom.
+        for _ in 0..STEP_DOWN_AFTER * 2 {
+            assert_eq!(ladder.note_block(BUDGET_US + 1), None);
+        }
+        assert_eq!(ladder.level(), Relief::EnhancerOff);
+    }
+
+    #[test]
+    fn one_block_inside_the_budget_forgives_the_run() {
+        // A run, not a total: a scheduler hiccup must not cost quality on a
+        // device that is coping.
+        let mut ladder = ReliefLadder::default();
+        for _ in 0..STEP_DOWN_AFTER * 10 {
+            assert_eq!(ladder.note_block(BUDGET_US + 1), None);
+            assert_eq!(ladder.note_block(BUDGET_US), None);
+        }
+        assert_eq!(ladder.level(), Relief::None);
+    }
+
+    #[test]
+    fn each_rung_gives_up_everything_the_ones_above_it_did() {
+        // The panel draws a stage as disabled from these, so a rung that
+        // forgot one would show a stage as running while it was not.
+        let mut previous = Relief::None;
+        let mut rung = Relief::None;
+        while let Some(next) = rung.weaker() {
+            assert!(next.skip_pitch() >= previous.skip_pitch());
+            assert!(next.skip_feedback() >= previous.skip_feedback());
+            assert!(next.skip_rnnoise() >= previous.skip_rnnoise());
+            assert!(next.enhancer_rungs() >= previous.enhancer_rungs());
+            assert_eq!(next.index(), previous.index() + 1);
+            previous = next;
+            rung = next;
+        }
+        assert_eq!(rung, Relief::EnhancerOff);
+        assert_eq!(rung.enhancer_rungs(), 3);
+    }
+}

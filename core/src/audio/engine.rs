@@ -38,6 +38,7 @@ use super::jitter::{
 };
 use super::preview::PreviewChain;
 use super::record::{DiagnosticRecorder, Recorded};
+use super::relief::{self, ReliefLadder};
 use super::resample::Resampler;
 use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
 use super::timing::{Lap, Stage, StageTimings};
@@ -101,6 +102,14 @@ pub struct ChainStatus {
     pub enhancer_on: bool,
     pub enhancer_gave_up: bool,
     pub enhancer_worst_us: u32,
+    /// How far down the whole-chain performance ladder this device has gone —
+    /// [`super::relief::Relief::index`]. 0 means nothing has been given up.
+    ///
+    /// **Published so the panel can strike through what is no longer running.**
+    /// A stage that has been given up looks identical to one that is working
+    /// from every other number here, and a rider who cannot see it has no way
+    /// to tell a quiet chain from a crippled one.
+    pub relief: u8,
     /// Which rung the enhancer is on — [`super::deepfilter::Effort::index`].
     ///
     /// **Published because a rider comparing two phones cannot otherwise tell
@@ -137,6 +146,7 @@ impl Default for ChainStatus {
             enhancer_gave_up: false,
             enhancer_worst_us: 0,
             enhancer_effort: 0,
+            relief: 0,
             music_hold: false,
             transmit_mode: 0,
             dehiss_mode: 0,
@@ -2507,6 +2517,9 @@ where
     // lock per block instead of one per stage, and the accumulator is never
     // read half-updated.
     let mut timings = StageTimings::default();
+    // What this device has had to give up to meet the deadline. Owned here
+    // because the deadline is the block's, not any one stage's.
+    let mut relief = ReliefLadder::default();
 
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
@@ -2767,7 +2780,14 @@ where
             // reference: the guard's whole job is the part that could not be
             // modelled and subtracted.
             guard.set_mode(shared.feedback_mode());
-            guard.process(&mut block, &echo_ref);
+            // Given up second by the performance ladder, because on a headset
+            // there is no acoustic path from the speaker back to the
+            // microphone and this is doing nothing at all. On a speakerphone
+            // it is insurance against howl — which is why it is given up
+            // before RNNoise but after the pitch search, rather than first.
+            if !relief.level().skip_feedback() {
+                guard.process(&mut block, &echo_ref);
+            }
             timings.record(Stage::Feedback, lap.split());
 
             // De-hissing last of the reductions, and before the level is
@@ -2930,6 +2950,7 @@ where
                 enhancer_gave_up: enhancer.gave_up(),
                 enhancer_worst_us: enhancer.timing().0,
                 enhancer_effort: enhancer.effort().index(),
+                relief: relief.level().index(),
             });
 
             // Loopback monitoring: hear exactly what would be transmitted.
@@ -3010,11 +3031,24 @@ where
             // disagree by is time nothing here is holding a stopwatch on —
             // which on a busy phone is most of the story, and is the difference
             // between a stage that is slow and a worker that is being starved.
-            timings.block(
-                block_started.elapsed().as_micros().min(u32::MAX as u128) as u32,
-                backlog_ms,
-            );
+            let block_us = block_started.elapsed().as_micros().min(u32::MAX as u128) as u32;
+            timings.block(block_us, backlog_ms);
             shared.publish_stage_timings(timings);
+
+            // The one place that decides what to give up, and it decides from
+            // the whole block rather than from any stage's own stopwatch. See
+            // `audio::relief` for the order and the measurements behind it.
+            if let Some(rung) = relief.note_block(block_us) {
+                tracing::warn!(
+                    "the capture chain could not return a block inside {} ms; \
+                     giving up {rung:?} for this session",
+                    relief::BUDGET_US / 1000
+                );
+                processor.set_relief(rung.skip_pitch(), rung.skip_rnnoise());
+                while enhancer.effort().index() < rung.enhancer_rungs() {
+                    enhancer.step_down();
+                }
+            }
         }
 
         // Cues are not drained here. The output callback mixes them over the

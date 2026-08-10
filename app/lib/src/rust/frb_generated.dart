@@ -2658,8 +2658,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 11)
-      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2671,7 +2671,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputPeakDb: dco_decode_f_32(arr[7]),
       inputClipped: dco_decode_u_64(arr[8]),
       effectiveProfile: dco_decode_noise_setting(arr[9]),
-      enhancerEffort: dco_decode_u_32(arr[10]),
+      disabledStages: dco_decode_list_String(arr[10]),
+      relief: dco_decode_u_32(arr[11]),
+      enhancerEffort: dco_decode_u_32(arr[12]),
     );
   }
 
@@ -3414,6 +3416,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_inputPeakDb = sse_decode_f_32(deserializer);
     var var_inputClipped = sse_decode_u_64(deserializer);
     var var_effectiveProfile = sse_decode_noise_setting(deserializer);
+    var var_disabledStages = sse_decode_list_String(deserializer);
+    var var_relief = sse_decode_u_32(deserializer);
     var var_enhancerEffort = sse_decode_u_32(deserializer);
     return UiChainStatus(
       stages: var_stages,
@@ -3426,6 +3430,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputPeakDb: var_inputPeakDb,
       inputClipped: var_inputClipped,
       effectiveProfile: var_effectiveProfile,
+      disabledStages: var_disabledStages,
+      relief: var_relief,
       enhancerEffort: var_enhancerEffort,
     );
   }
@@ -4177,6 +4183,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_32(self.inputPeakDb, serializer);
     sse_encode_u_64(self.inputClipped, serializer);
     sse_encode_noise_setting(self.effectiveProfile, serializer);
+    sse_encode_list_String(self.disabledStages, serializer);
+    sse_encode_u_32(self.relief, serializer);
     sse_encode_u_32(self.enhancerEffort, serializer);
   }
 

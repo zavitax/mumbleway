@@ -1759,6 +1759,18 @@ abstract class L {
   /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
   String diagRecordingShared(int count, int archives);
 
+  /// Tooltip on the toolbar diagnostics button once it has turned into a warning
+  ///
+  /// In en, this message translates to:
+  /// **'Parts of the noise chain are switched off'**
+  String get diagChainDegradedShort;
+
+  /// Warning shown in diagnostics when the performance ladder has disabled one or more capture chain stages, telling the rider quality is affected and suggesting a faster device
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not process audio fast enough, so parts of the noise chain have been switched off — they are crossed out above. Your voice still goes out, but it will sound worse than it would on a faster phone. A more powerful device would run the whole chain.'**
+  String get diagChainDegraded;
+
   /// Label for the row naming which effort rung the speech enhancer is running at
   ///
   /// In en, this message translates to:

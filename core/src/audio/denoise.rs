@@ -17,7 +17,7 @@ use super::dsp::{
     rms, to_dbfs, Agc, Biquad, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
 };
 use super::modulation::ModulationTracker;
-use super::pitch::PitchTracker;
+use super::pitch::{Pitch, PitchTracker};
 
 /// RNNoise works on fixed 10 ms blocks at 48 kHz.
 pub const FRAME_SIZE: usize = DenoiseState::FRAME_SIZE;
@@ -324,6 +324,11 @@ pub struct CaptureProcessor {
     /// Whether the block is periodic at a human pitch — the one thing in this
     /// chain that is not a measure of level.
     pitch: PitchTracker,
+    /// Stages the performance ladder has given up. Set from the worker, which
+    /// owns the ladder because the deadline belongs to the whole block rather
+    /// than to any one stage in it. See [`super::relief`].
+    skip_pitch: bool,
+    skip_rnnoise: bool,
     /// Whether the recent loudness is moving at a talking rate. Measured and
     /// published; nothing is decided by it.
     modulation: ModulationTracker,
@@ -488,6 +493,8 @@ impl CaptureProcessor {
             // Capacity now so the copy in `process` never reallocates.
             pre_gate: Vec::with_capacity(FRAME_SIZE),
             pitch: PitchTracker::new(),
+            skip_pitch: false,
+            skip_rnnoise: false,
             modulation: ModulationTracker::new(),
             hangover: 0,
         }
@@ -530,6 +537,16 @@ impl CaptureProcessor {
     }
 
     /// Swaps the profile, rebuilding only what depends on it.
+    /// Tells the chain which stages the performance ladder has given up.
+    ///
+    /// Only ever called with more skipped than before — the ladder never
+    /// climbs — but nothing here depends on that, so a caller that unset one
+    /// would simply get the stage back.
+    pub fn set_relief(&mut self, skip_pitch: bool, skip_rnnoise: bool) {
+        self.skip_pitch = skip_pitch;
+        self.skip_rnnoise = skip_rnnoise;
+    }
+
     pub fn set_profile(&mut self, profile: NoiseProfile) {
         if profile == self.profile {
             return;
@@ -778,7 +795,14 @@ impl CaptureProcessor {
         }
 
         // 2. RNNoise. It expects samples scaled to the i16 range, not -1..1.
-        let vad = if self.effective == NoiseProfile::Off {
+        //
+        // `skip_rnnoise` is the performance ladder giving it up, and takes the
+        // same path as `Off` — which is why that path is worth having had
+        // already. What is lost is the network's VAD, and the loss is smaller
+        // than it looks: measured on the first unclipped ride it separates
+        // transmitted blocks from untransmitted ones at AUC 0.767, against
+        // 0.878 for the level the gate also has. The better feature survives.
+        let vad = if self.effective == NoiseProfile::Off || self.skip_rnnoise {
             self.denoised.copy_from_slice(block);
             // Without the network we have no speech probability, so fall back to
             // a level-based guess and let the gate decide.
@@ -801,8 +825,27 @@ impl CaptureProcessor {
         // search is looking for. RNNoise has already removed most of it, and
         // it removes it *without* knowing whether a voice was there, so this
         // is not circular.
-        let voice = self.pitch.analyse(&self.denoised);
-        let pitch_says_speech = voice.harmonicity >= self.effective.voiced_threshold();
+        //
+        // First thing the performance ladder gives up, because it is the
+        // cheapest *quality* to sell: measured on the first unclipped ride,
+        // harmonicity separates transmitted blocks from untransmitted ones at
+        // AUC 0.564, barely better than a coin toss.
+        //
+        // It is not sold because it is expensive. On the OPPO it costs
+        // **0.052 ms**, 13% of this function against RNNoise's 76%, so giving
+        // it up buys very little — which is exactly why it goes first.
+        let voice = if self.skip_pitch {
+            Pitch::NONE
+        } else {
+            self.pitch.analyse(&self.denoised)
+        };
+        // `Pitch::NONE` scores zero, which would read as "certainly not
+        // speech" and withhold the voiced relief below on every block. That is
+        // the correct reading of *no information* here: the relief exists to
+        // lift suppression where a voice is unambiguous, and without the
+        // search nothing is unambiguous.
+        let pitch_says_speech =
+            !self.skip_pitch && voice.harmonicity >= self.effective.voiced_threshold();
 
         // 4. Blend, so lighter profiles keep some natural room tone — and lift
         // some of the suppression back off on a block that is unambiguously a

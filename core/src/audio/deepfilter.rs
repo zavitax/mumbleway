@@ -164,20 +164,15 @@ impl Effort {
     }
 }
 
-/// Consecutive missed deadlines before the enhancer gives up a rung.
-///
-/// One second's worth. Long enough that a scheduler hiccup or a cold cache
-/// does not cost quality on a phone that is coping, short enough that a phone
-/// which simply cannot manage is not allowed to ruin a whole ride.
-///
 /// **It steps down, and never back up.** Climbing again would need the same
 /// hysteresis argument the profile chooser needed, and it would be settled by
 /// the same measurement that pushed it down in the first place — so a device
 /// on the edge would oscillate, and every change of rung is audible. A rung is
-/// treated as a fact about this device for the rest of the session, which is
-/// what the old all-or-nothing guard already assumed and is the one part of it
-/// worth keeping.
-const STEP_DOWN_AFTER: u32 = 100;
+/// treated as a fact about this device for the rest of the session.
+///
+/// *When* to step is decided in [`super::relief`], from the whole block's
+/// wall clock rather than this stage's — see [`Enhancer::process`].
+const _: () = ();
 
 /// Speech enhancement in front of everything else.
 pub struct Enhancer {
@@ -320,18 +315,14 @@ impl Enhancer {
         if us > BUDGET_US {
             self.overruns = self.overruns.saturating_add(1);
             self.run_of_overruns += 1;
-            // **It gives up a rung rather than the whole feature.** A missed
-            // deadline is a click in somebody's helmet, so it cannot simply
-            // stutter on -- but the old guard went straight from everything to
-            // nothing, and on the phone this was reported from the model was
-            // measured at 6.2 ms a frame against a 10 ms budget. It was never
-            // the model on its own that did not fit.
-            //
-            // A run, not a total: one slow frame is a scheduler hiccup, and a
-            // hundred in a row is a device that will not manage this rung.
-            if self.run_of_overruns >= STEP_DOWN_AFTER {
-                self.step_down();
-            }
+            // **Counted, and no longer acted on.** This used to step the rung
+            // down by itself, and that is exactly how a model measured at
+            // 6.2 ms against a 10 ms budget came to switch itself off on the
+            // phone it was reported from: the enhancer carried the only
+            // stopwatch in the chain, so it was the only stage that could be
+            // blamed for a late block. The deadline belongs to the block, so
+            // the decision now belongs to the worker — see `audio::relief`.
+            // The counters stay because the panel reports them.
         } else {
             self.run_of_overruns = 0;
         }
@@ -360,15 +351,10 @@ impl Enhancer {
         }
         match next {
             Effort::Bypassed => tracing::warn!(
-                "DeepFilterNet could not keep up even at its lowest setting; \
-                 the chain runs without it for this session"
+                "DeepFilterNet stepped down to its lowest setting and the chain \
+                 still could not keep up; it runs without the enhancer now"
             ),
-            other => tracing::warn!(
-                "DeepFilterNet could not keep up ({} consecutive frames over {} ms); \
-                 stepping down to {other:?}",
-                STEP_DOWN_AFTER,
-                BUDGET_US / 1000
-            ),
+            other => tracing::warn!("DeepFilterNet stepping down to {other:?}"),
         }
     }
 

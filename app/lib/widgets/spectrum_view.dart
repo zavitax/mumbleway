@@ -309,6 +309,38 @@ class _EnhancerEffort extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
               ),
             ),
+          // The whole-chain warning, once, under the rung it belongs to.
+          //
+          // **Separate from the rung line on purpose.** The rung is a fact
+          // about one stage; this is the consequence for the rider, and it is
+          // the only place the app says out loud that the sound is worse than
+          // the app can otherwise make it. It names a device rather than a
+          // setting because there is no setting — the ladder is not a
+          // preference and cannot be turned off.
+          if (status.relief > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 15,
+                    color: StatusColors.connecting,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      l.diagChainDegraded,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -666,7 +698,12 @@ class _ChainDots extends StatelessWidget {
       runSpacing: 8,
       children: [
         for (final stage in status.stages)
-          _Dot(label: _label(l, stage), state: stage.state, value: stage.value),
+          _Dot(
+            label: _label(l, stage),
+            state: stage.state,
+            value: stage.value,
+            disabled: status.disabledStages.contains(stage.id),
+          ),
       ],
     );
   }
@@ -690,23 +727,39 @@ class _ChainDots extends StatelessWidget {
 }
 
 class _Dot extends StatelessWidget {
-  const _Dot({required this.label, required this.state, required this.value});
+  const _Dot({
+    required this.label,
+    required this.state,
+    required this.value,
+    this.disabled = false,
+  });
 
   final String label;
   final StageState state;
   final double value;
+
+  /// Switched off by the performance ladder, rather than idle.
+  ///
+  /// **The distinction the strike-through exists for.** A stage that is not
+  /// running publishes the same greys and zeroes as one that is running with
+  /// nothing to do, so without this a crippled chain and a quiet one look
+  /// identical — which is precisely the class of blind spot that cost this
+  /// project an evening over the input meter.
+  final bool disabled;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     // The app's own status vocabulary, so a dot here means what a dot means
     // everywhere else in the interface.
-    final colour = switch (state) {
-      StageState.good => StatusColors.connected,
-      StageState.warn => StatusColors.connecting,
-      StageState.bad => StatusColors.failed,
-      StageState.off => scheme.onSurfaceVariant.withValues(alpha: 0.35),
-    };
+    final colour = disabled
+        ? StatusColors.connecting
+        : switch (state) {
+            StageState.good => StatusColors.connected,
+            StageState.warn => StatusColors.connecting,
+            StageState.bad => StatusColors.failed,
+            StageState.off => scheme.onSurfaceVariant.withValues(alpha: 0.35),
+          };
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -714,12 +767,23 @@ class _Dot extends StatelessWidget {
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(color: colour, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            // Hollow when it is not running: a filled dot says "this stage has
+            // an opinion", and a stage that has been switched off does not.
+            color: disabled ? null : colour,
+            border: disabled ? Border.all(color: colour, width: 1.5) : null,
+            shape: BoxShape.circle,
+          ),
         ),
         const SizedBox(width: 5),
         Text(
           label,
-          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+          style: TextStyle(
+            fontSize: 11,
+            color: disabled ? StatusColors.connecting : scheme.onSurfaceVariant,
+            decoration: disabled ? TextDecoration.lineThrough : null,
+            decorationColor: disabled ? StatusColors.connecting : null,
+          ),
         ),
       ],
     );

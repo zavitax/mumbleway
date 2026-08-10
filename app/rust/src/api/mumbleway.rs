@@ -1383,6 +1383,19 @@ pub struct UiChainStatus {
     /// doing" is answered and the answer should not depend on how it was
     /// arrived at.
     pub effective_profile: NoiseSetting,
+    /// Stage ids the performance ladder has switched off on this device.
+    ///
+    /// **A stage that is not running reports the same greys and zeroes as one
+    /// that is running with nothing to do**, so without this the panel cannot
+    /// tell a quiet chain from a crippled one — and neither can a rider. The
+    /// ids match [`UiStage::id`]; the panel strikes those names through.
+    ///
+    /// Ids rather than a rung number, because the mapping from rung to stages
+    /// is the ladder's business and it will change as rungs are added.
+    pub disabled_stages: Vec<String>,
+    /// How far down the whole-chain ladder this device has gone. 0 is nothing
+    /// given up; the panel uses it only to decide whether to warn at all.
+    pub relief: u32,
     /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
     /// 3 bypassed.
     ///
@@ -1578,6 +1591,35 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         noise_floor_db: c.noise_floor_db,
         activation_threshold_db: c.activation_threshold_db,
         effective_profile: from_profile_index(c.profile),
+        // Which dot to strike through, from the rung. The pitch search has no
+        // dot of its own — it feeds the voiced relief rather than a decision a
+        // rider can see — so it is named in the warning text instead.
+        disabled_stages: {
+            use mumbleway_core::audio::relief::Relief;
+            let rung = match c.relief {
+                1 => Relief::NoPitch,
+                2 => Relief::NoFeedback,
+                3 => Relief::EnhancerReduced,
+                4 => Relief::NoRnnoise,
+                5 => Relief::EnhancerLight,
+                6 => Relief::EnhancerOff,
+                _ => Relief::None,
+            };
+            let mut off: Vec<String> = Vec::new();
+            if rung.skip_feedback() {
+                off.push("feedback".into());
+            }
+            if rung.skip_rnnoise() {
+                off.push("rnnoise".into());
+            }
+            // Only when it is genuinely not running. The middle rungs still
+            // enhance, and striking the name through would say otherwise.
+            if c.enhancer_gave_up {
+                off.push("enhancer".into());
+            }
+            off
+        },
+        relief: c.relief as u32,
         enhancer_effort: c.enhancer_effort as u32,
         input_peak_db: {
             let (peak, _) = shared.input_peak();

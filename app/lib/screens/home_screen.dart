@@ -61,11 +61,23 @@ class HomeScreen extends StatelessWidget {
         ),
         actions: [
           const LanguageButton(),
+          // Turns into a warning when the chain has had to give something up.
+          //
+          // **The panel cannot be the only place this is said.** A rider whose
+          // voice has quietly got worse has no reason to open diagnostics, so
+          // the one control that leads there has to be able to say that
+          // something is wrong before anybody goes looking for it.
           IconButton(
-            tooltip: l.diagnostics,
+            tooltip: state.chainDegraded ? l.diagChainDegradedShort : l.diagnostics,
             onPressed: state.toggleDiagnostics,
-            icon: const Icon(Icons.monitor_heart_outlined),
-            color: state.diagnosticsOpen
+            icon: Icon(
+              state.chainDegraded
+                  ? Icons.warning_amber_rounded
+                  : Icons.monitor_heart_outlined,
+            ),
+            color: state.chainDegraded
+                ? StatusColors.connecting
+                : state.diagnosticsOpen
                 ? Theme.of(context).colorScheme.primary
                 : null,
           ),

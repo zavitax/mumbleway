@@ -14,6 +14,7 @@ pub mod pitch;
 pub mod preview;
 pub mod quality;
 pub mod record;
+pub mod relief;
 pub mod resample;
 pub mod spectrum;
 pub mod stretch;

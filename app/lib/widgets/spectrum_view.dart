@@ -230,8 +230,17 @@ class _ClassifierNote extends StatelessWidget {
 /// amber dot says something changed; this says what, and it is the one line a
 /// support conversation actually needs.
 ///
-/// Nothing at full effort — a note that says "working normally" on every
-/// device teaches people to stop reading the panel.
+/// **The rung is always named, including at full effort.** An earlier version
+/// showed nothing while the enhancer was coping, reasoning that a note saying
+/// "working normally" on every device teaches people to stop reading the
+/// panel. That reasoning is right about *prose* and wrong about *state*: a
+/// diagnostics panel is read to find out what the chain is doing, and a rider
+/// who cannot see the rung cannot tell a device running at full effort from
+/// one whose ladder has not been built into the version they installed.
+///
+/// So the rung is a value beside a label, the way `Auto is using Helmet` is —
+/// and the sentence explaining *why* it stepped down still appears only when
+/// it has.
 class _EnhancerEffort extends StatelessWidget {
   const _EnhancerEffort({required this.status});
 
@@ -241,32 +250,65 @@ class _EnhancerEffort extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
-    final message = switch (status.enhancerEffort) {
+    final effort = status.enhancerEffort;
+
+    final name = switch (effort) {
+      1 => l.diagEnhancerRungReduced,
+      2 => l.diagEnhancerRungLight,
+      3 => l.diagEnhancerRungOff,
+      _ => l.diagEnhancerRungFull,
+    };
+    // Amber once it has given something up, red when it has given up
+    // everything, and the ordinary text colour while it is coping — so the
+    // row is legible at a glance without shouting on a device that is fine.
+    final colour = switch (effort) {
+      0 => null,
+      3 => StatusColors.failed,
+      _ => StatusColors.connecting,
+    };
+    final why = switch (effort) {
       1 => l.diagEnhancerReduced,
       2 => l.diagEnhancerErbOnly,
       3 => l.diagEnhancerBypassed,
       _ => null,
     };
-    if (message == null) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.speed,
-            size: 15,
-            color: status.enhancerEffort == 3
-                ? StatusColors.failed
-                : StatusColors.connecting,
+          Row(
+            children: [
+              Icon(
+                Icons.speed,
+                size: 14,
+                color: colour ?? scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                l.diagEnhancerEffort,
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                name,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: colour,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+          if (why != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 20),
+              child: Text(
+                why,
+                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -292,10 +334,39 @@ class _ClassifierTop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = L.of(context);
     final classifier = AppStateScope.of(context).classifier;
     final top = classifier.top;
-    if (top.isEmpty) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
+
+    if (top.isEmpty) {
+      // **An empty list has to say why it is empty.** The model runs only
+      // under Automatic, and only while the devices are open — so a rider who
+      // opens the panel between calls sees nothing here, which is
+      // indistinguishable from a version that never had this. One line beats
+      // a silence that reads as a missing feature.
+      if (!classifier.running) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 11,
+              height: 11,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.6,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              l.diagClassifierListening,
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),

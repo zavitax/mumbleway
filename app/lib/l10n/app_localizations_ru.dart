@@ -917,6 +917,24 @@ class LRu extends L {
   }
 
   @override
+  String get diagEnhancerEffort => 'Очиститель речи';
+
+  @override
+  String get diagEnhancerRungFull => 'Полностью';
+
+  @override
+  String get diagEnhancerRungReduced => 'Сокращённо';
+
+  @override
+  String get diagEnhancerRungLight => 'Облегчённо';
+
+  @override
+  String get diagEnhancerRungOff => 'Выключен';
+
+  @override
+  String get diagClassifierListening => 'Слушаем фон…';
+
+  @override
   String get diagEnhancerReduced =>
       'Устройство не успевало, и очиститель речи сбавил обороты. Он по-прежнему работает, но самая глубокая фильтрация остаётся только там, где она нужнее всего.';
 

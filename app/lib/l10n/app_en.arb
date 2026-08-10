@@ -400,6 +400,30 @@
       }
     }
   },
+  "diagEnhancerEffort": "Enhancer",
+  "@diagEnhancerEffort": {
+    "description": "Label for the row naming which effort rung the speech enhancer is running at"
+  },
+  "diagEnhancerRungFull": "Full",
+  "diagEnhancerRungReduced": "Reduced",
+  "diagEnhancerRungLight": "Light",
+  "diagEnhancerRungOff": "Off",
+  "@diagEnhancerRungFull": {
+    "description": "The speech enhancer is doing all the work it can"
+  },
+  "@diagEnhancerRungReduced": {
+    "description": "The speech enhancer stepped down one rung: deepest filtering only where most needed"
+  },
+  "@diagEnhancerRungLight": {
+    "description": "The speech enhancer is running its light stage only; the deepest filtering never runs"
+  },
+  "@diagEnhancerRungOff": {
+    "description": "The speech enhancer has been bypassed entirely for this session"
+  },
+  "diagClassifierListening": "Listening to the background…",
+  "@diagClassifierListening": {
+    "description": "Shown where the top background classes go, while the model is running but has not produced a result yet"
+  },
   "diagEnhancerReduced": "This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.",
   "@diagEnhancerReduced": {
     "description": "Shown in diagnostics when the speech enhancer has dropped to its reduced setting because the device missed the block deadline"

@@ -1759,6 +1759,42 @@ abstract class L {
   /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
   String diagRecordingShared(int count, int archives);
 
+  /// Label for the row naming which effort rung the speech enhancer is running at
+  ///
+  /// In en, this message translates to:
+  /// **'Enhancer'**
+  String get diagEnhancerEffort;
+
+  /// The speech enhancer is doing all the work it can
+  ///
+  /// In en, this message translates to:
+  /// **'Full'**
+  String get diagEnhancerRungFull;
+
+  /// The speech enhancer stepped down one rung: deepest filtering only where most needed
+  ///
+  /// In en, this message translates to:
+  /// **'Reduced'**
+  String get diagEnhancerRungReduced;
+
+  /// The speech enhancer is running its light stage only; the deepest filtering never runs
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get diagEnhancerRungLight;
+
+  /// The speech enhancer has been bypassed entirely for this session
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get diagEnhancerRungOff;
+
+  /// Shown where the top background classes go, while the model is running but has not produced a result yet
+  ///
+  /// In en, this message translates to:
+  /// **'Listening to the background…'**
+  String get diagClassifierListening;
+
   /// Shown in diagnostics when the speech enhancer has dropped to its reduced setting because the device missed the block deadline
   ///
   /// In en, this message translates to:

@@ -915,6 +915,24 @@ class LEn extends L {
   }
 
   @override
+  String get diagEnhancerEffort => 'Enhancer';
+
+  @override
+  String get diagEnhancerRungFull => 'Full';
+
+  @override
+  String get diagEnhancerRungReduced => 'Reduced';
+
+  @override
+  String get diagEnhancerRungLight => 'Light';
+
+  @override
+  String get diagEnhancerRungOff => 'Off';
+
+  @override
+  String get diagClassifierListening => 'Listening to the background…';
+
+  @override
   String get diagEnhancerReduced =>
       'This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.';
 

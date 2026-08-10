@@ -2633,7 +2633,12 @@ where
             });
 
             let block_index = shared.next_block_index();
-            let analysing = shared.spectrum_wanted(block_index);
+            // Given up by the performance ladder before the enhancer is, and
+            // given up *here* rather than only on screen: the panel asking for
+            // frames is what makes these transforms happen at all, so refusing
+            // them in the core is what actually saves the work. The panel puts
+            // a message where the analyser was.
+            let analysing = shared.spectrum_wanted(block_index) && !relief.level().skip_analyser();
             if analysing {
                 analyser.push(TAP_RAW, &block);
             }

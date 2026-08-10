@@ -915,6 +915,10 @@ class LEn extends L {
   }
 
   @override
+  String get diagAnalyserGivenUp =>
+      'The analyser is switched off. This device could not process audio fast enough, and drawing it was costing more than the voice could spare.';
+
+  @override
   String get diagChainReduced =>
       'This device could not process audio fast enough, so the noise chain is doing less work than it would otherwise. Your voice still goes out, but it will sound worse than it would on a faster phone.';
 

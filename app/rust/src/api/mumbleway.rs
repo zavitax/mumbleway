@@ -1333,6 +1333,24 @@ pub enum StageState {
     Bad,
 }
 
+/// The rung a step count names.
+///
+/// **Walked rather than matched on an index.** The mapping from number to rung
+/// is the ladder's business and has already changed twice; a `match` here drew
+/// the wrong thing the first time the order moved, and there is no compiler
+/// error for a stale number. Walking asks the ladder itself.
+fn rung_at(steps: u8) -> mumbleway_core::audio::relief::Relief {
+    use mumbleway_core::audio::relief::Relief;
+    let mut rung = Relief::None;
+    for _ in 0..steps {
+        match rung.weaker() {
+            Some(next) => rung = next,
+            None => break,
+        }
+    }
+    rung
+}
+
 /// One stage of the capture chain.
 ///
 /// Carries no prose. The panel is fully localised, and a message composed in
@@ -1396,6 +1414,16 @@ pub struct UiChainStatus {
     /// How far down the whole-chain ladder this device has gone. 0 is nothing
     /// given up; the panel uses it only to decide whether to warn at all.
     pub relief: u32,
+    /// Parts of this panel the ladder has switched off, before it would give
+    /// up the enhancer.
+    ///
+    /// **Booleans rather than a rung number.** The mapping from rung to
+    /// consequence is the ladder's business and has already changed twice; a
+    /// panel that re-derived it from an index drew the wrong thing the first
+    /// time the order moved.
+    pub analyser_disabled: bool,
+    pub classifier_top_disabled: bool,
+    pub live_dots_disabled: bool,
     /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
     /// 3 bypassed.
     ///
@@ -1595,17 +1623,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         // dot of its own — it feeds the voiced relief rather than a decision a
         // rider can see — so it is named in the warning text instead.
         disabled_stages: {
-            use mumbleway_core::audio::relief::Relief;
-            // Walked rather than matched on an index, so this cannot drift
-            // out of step with the ladder's own order — which it already
-            // would have, once.
-            let mut rung = Relief::None;
-            for _ in 0..c.relief {
-                match rung.weaker() {
-                    Some(next) => rung = next,
-                    None => break,
-                }
-            }
+            let rung = rung_at(c.relief);
             let mut off: Vec<String> = Vec::new();
             if rung.skip_feedback() {
                 off.push("feedback".into());
@@ -1621,6 +1639,9 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             off
         },
         relief: c.relief as u32,
+        analyser_disabled: rung_at(c.relief).skip_analyser(),
+        classifier_top_disabled: rung_at(c.relief).skip_classifier_top(),
+        live_dots_disabled: rung_at(c.relief).skip_live_dots(),
         enhancer_effort: c.enhancer_effort as u32,
         input_peak_db: {
             let (peak, _) = shared.input_peak();

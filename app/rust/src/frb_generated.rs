@@ -3112,6 +3112,9 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         let mut var_disabledStages = <Vec<String>>::sse_decode(deserializer);
         let mut var_relief = <u32>::sse_decode(deserializer);
+        let mut var_analyserDisabled = <bool>::sse_decode(deserializer);
+        let mut var_classifierTopDisabled = <bool>::sse_decode(deserializer);
+        let mut var_liveDotsDisabled = <bool>::sse_decode(deserializer);
         let mut var_enhancerEffort = <u32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiChainStatus {
             stages: var_stages,
@@ -3126,6 +3129,9 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             effective_profile: var_effectiveProfile,
             disabled_stages: var_disabledStages,
             relief: var_relief,
+            analyser_disabled: var_analyserDisabled,
+            classifier_top_disabled: var_classifierTopDisabled,
+            live_dots_disabled: var_liveDotsDisabled,
             enhancer_effort: var_enhancerEffort,
         };
     }
@@ -3897,6 +3903,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.effective_profile.into_into_dart().into_dart(),
             self.disabled_stages.into_into_dart().into_dart(),
             self.relief.into_into_dart().into_dart(),
+            self.analyser_disabled.into_into_dart().into_dart(),
+            self.classifier_top_disabled.into_into_dart().into_dart(),
+            self.live_dots_disabled.into_into_dart().into_dart(),
             self.enhancer_effort.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -4739,6 +4748,9 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);
         <Vec<String>>::sse_encode(self.disabled_stages, serializer);
         <u32>::sse_encode(self.relief, serializer);
+        <bool>::sse_encode(self.analyser_disabled, serializer);
+        <bool>::sse_encode(self.classifier_top_disabled, serializer);
+        <bool>::sse_encode(self.live_dots_disabled, serializer);
         <u32>::sse_encode(self.enhancer_effort, serializer);
     }
 }

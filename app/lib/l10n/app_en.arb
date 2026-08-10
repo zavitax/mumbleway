@@ -400,6 +400,10 @@
       }
     }
   },
+  "diagAnalyserGivenUp": "The analyser is switched off. This device could not process audio fast enough, and drawing it was costing more than the voice could spare.",
+  "@diagAnalyserGivenUp": {
+    "description": "Shown in place of the spectrum analyser once the performance ladder has switched it off to keep the speech enhancer running"
+  },
   "diagChainReduced": "This device could not process audio fast enough, so the noise chain is doing less work than it would otherwise. Your voice still goes out, but it will sound worse than it would on a faster phone.",
   "@diagChainReduced": {
     "description": "Warning shown when the performance ladder has reduced the enhancer but not yet switched any stage off, so nothing is crossed out in the dots above"

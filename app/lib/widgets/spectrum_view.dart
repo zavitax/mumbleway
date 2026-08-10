@@ -97,7 +97,7 @@ class _SpectrumViewState extends State<SpectrumView>
   /// peak all move every block and none of them is drawn here; including them
   /// would rebuild the dots twenty times a second again, which is the whole
   /// thing being avoided.
-  static String _signature(UiChainStatus? c) {
+  static String _signature(UiChainStatus? c, {required bool frozen}) {
     if (c == null) return '';
     final b = StringBuffer()
       ..write(c.effectiveProfile.index)
@@ -108,11 +108,17 @@ class _SpectrumViewState extends State<SpectrumView>
       ..write('/')
       ..writeAll(c.disabledStages, ',')
       ..write('/');
-    for (final s in c.stages) {
-      b
-        ..write(s.id)
-        ..write(s.state.index)
-        ..write(';');
+    // **The rung above always stays in.** Freezing the dots must not freeze
+    // the warnings, or the rung that stops them following the audio would also
+    // hide the rung after it — and the last one is the enhancer being switched
+    // off, which is the single thing a rider most needs to see.
+    if (!frozen) {
+      for (final s in c.stages) {
+        b
+          ..write(s.id)
+          ..write(s.state.index)
+          ..write(';');
+      }
     }
     return b.toString();
   }
@@ -122,10 +128,15 @@ class _SpectrumViewState extends State<SpectrumView>
     UiSpectrum? spectrum;
     UiChainStatus? chain;
     try {
-      // This call is the ask. Not calling it is how the engine finds out to
-      // stop.
-      spectrum = audioSpectrum();
+      // The chain status is free and always current, so it is read first — it
+      // is what says whether the analyser is still allowed to run.
       chain = audioChainStatus();
+      // **Not calling this is how the engine stops.** The ask is what makes
+      // the transforms happen, and it expires by itself half a second later,
+      // so a rung that gives the analyser up simply stops asking. The core
+      // refuses as well, and both matter: the core's refusal saves the
+      // transforms, and this saves the bridge crossing and the repaint.
+      spectrum = chain.analyserDisabled ? null : audioSpectrum();
     } catch (_) {
       // The engine is not up. Nothing to draw, and nothing to complain about.
       spectrum = null;
@@ -149,12 +160,19 @@ class _SpectrumViewState extends State<SpectrumView>
     _stalledNow.value = _sinceNewFrame > 20;
     _transmitting.value = spectrum?.transmitting ?? false;
 
-    final signature = _signature(chain);
+    final signature = _signature(chain, frozen: _dotsFrozen);
     if (signature != _chainSignature) {
       _chainSignature = signature;
       _chain.value = chain;
     }
   }
+
+  /// Whether the dots are still allowed to follow the audio.
+  ///
+  /// Read from the last published status rather than the incoming one, so the
+  /// rung that switches this off does not also switch off the update that
+  /// would have shown it happening.
+  bool get _dotsFrozen => _chain.value?.liveDotsDisabled ?? false;
 
   /// **Reads no changing state itself**, so this method runs once and the
   /// pieces below it update independently. In particular it must not touch
@@ -188,7 +206,14 @@ class _SpectrumViewState extends State<SpectrumView>
         RepaintBoundary(
           child: SizedBox(
             height: 120,
-            child: _SpectrumBody(spectrum: _spectrum, stalled: _stalledNow),
+            child: ValueListenableBuilder<UiChainStatus?>(
+              valueListenable: _chain,
+              builder: (context, chain, child) =>
+                  (chain?.analyserDisabled ?? false)
+                  ? const _AnalyserGivenUp()
+                  : child!,
+              child: _SpectrumBody(spectrum: _spectrum, stalled: _stalledNow),
+            ),
           ),
         ),
         const SizedBox(height: 10),
@@ -218,8 +243,12 @@ class _SpectrumViewState extends State<SpectrumView>
               // rebuilds it directly rather than waiting for the chain to
               // move.
               //
-              // ignore: prefer_const_constructors
-              _ClassifierTop(),
+              // Given up one rung after the analyser. The model keeps running
+              // — `Auto` reads its verdict and the profile depends on it — so
+              // this is the three rows of display and nothing else.
+              if (!(chain?.classifierTopDisabled ?? false))
+                // ignore: prefer_const_constructors
+                _ClassifierTop(),
               if (chain != null) _ChainDots(status: chain),
               if (chain != null) _EnhancerEffort(status: chain),
               // Not `const`: it reads the classifier's state, and a const
@@ -230,6 +259,55 @@ class _SpectrumViewState extends State<SpectrumView>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Stands where the analyser was, once the ladder has given it up.
+///
+/// **The analyser is the most expensive thing on this panel** — three
+/// transforms per third block in the core and a continuously repainting canvas
+/// above them — so on a device that cannot return a block inside 10 ms it is
+/// the last diagnostic worth keeping and the first one worth spending. A blank
+/// box would read as a broken analyser, which is the one thing it must not:
+/// the analyser is what a rider opens this panel to look at.
+class _AnalyserGivenUp extends StatelessWidget {
+  const _AnalyserGivenUp();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: StatusColors.connecting.withValues(alpha: 0.4),
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 16,
+            color: StatusColors.connecting,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              l.diagAnalyserGivenUp,
+              style: TextStyle(
+                fontSize: 11,
+                color: StatusColors.connecting,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

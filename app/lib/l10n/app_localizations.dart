@@ -1759,6 +1759,12 @@ abstract class L {
   /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
   String diagRecordingShared(int count, int archives);
 
+  /// Shown in place of the spectrum analyser once the performance ladder has switched it off to keep the speech enhancer running
+  ///
+  /// In en, this message translates to:
+  /// **'The analyser is switched off. This device could not process audio fast enough, and drawing it was costing more than the voice could spare.'**
+  String get diagAnalyserGivenUp;
+
   /// Warning shown when the performance ladder has reduced the enhancer but not yet switched any stage off, so nothing is crossed out in the dots above
   ///
   /// In en, this message translates to:

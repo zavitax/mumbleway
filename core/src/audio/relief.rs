@@ -126,6 +126,31 @@ pub enum Relief {
     NoFeedback,
     /// RNNoise is skipped; the gate runs on level and SNR alone.
     NoRnnoise,
+
+    // --- the diagnostics panel's own costs --------------------------------
+    //
+    // **These take nothing at all from the audio.** They are the last things
+    // given up before the enhancer because the panel is only expensive while
+    // it is *open*, and a rider with it open is deliberately looking at
+    // something — so it earns its keep right up to the point where the
+    // alternative is losing the enhancer altogether. After that it does not.
+    //
+    // Measured with the engine running on the emulator, the open panel is
+    // about 45 percentage points of CPU against 103 for the chain alone. Most
+    // of that is the analyser: three FFTs per third block in the core and a
+    // continuously repainting `CustomPaint` above it. The two rungs after it
+    // are much smaller and are here for completeness rather than for the
+    // milliseconds.
+    /// The spectrum analyser stops computing, in the core as well as on
+    /// screen. The panel says why in its place.
+    NoAnalyser,
+    /// The classifier's top three classes stop being shown. The model still
+    /// runs — `Auto` reads its verdict — so this is the display only.
+    NoClassifierTop,
+    /// The chain dots stop following the audio. Warnings and the rung keep
+    /// updating, or this rung could hide the one after it.
+    NoLiveDots,
+
     /// The enhancer is bypassed. The last resort, and the bottom.
     EnhancerOff,
 }
@@ -139,7 +164,10 @@ impl Relief {
             Relief::EnhancerLight => Relief::NoPitch,
             Relief::NoPitch => Relief::NoFeedback,
             Relief::NoFeedback => Relief::NoRnnoise,
-            Relief::NoRnnoise => Relief::EnhancerOff,
+            Relief::NoRnnoise => Relief::NoAnalyser,
+            Relief::NoAnalyser => Relief::NoClassifierTop,
+            Relief::NoClassifierTop => Relief::NoLiveDots,
+            Relief::NoLiveDots => Relief::EnhancerOff,
             Relief::EnhancerOff => return None,
         })
     }
@@ -153,8 +181,27 @@ impl Relief {
             Relief::NoPitch => 3,
             Relief::NoFeedback => 4,
             Relief::NoRnnoise => 5,
-            Relief::EnhancerOff => 6,
+            Relief::NoAnalyser => 6,
+            Relief::NoClassifierTop => 7,
+            Relief::NoLiveDots => 8,
+            Relief::EnhancerOff => 9,
         }
+    }
+
+    /// The spectrum analyser has been given up — in the core, not only on
+    /// screen. Three transforms a block stop being computed at all.
+    pub fn skip_analyser(self) -> bool {
+        self >= Relief::NoAnalyser
+    }
+
+    /// The classifier's top three classes are no longer shown.
+    pub fn skip_classifier_top(self) -> bool {
+        self >= Relief::NoClassifierTop
+    }
+
+    /// The chain dots no longer follow the audio.
+    pub fn skip_live_dots(self) -> bool {
+        self >= Relief::NoLiveDots
     }
 
     pub fn skip_pitch(self) -> bool {
@@ -177,8 +224,10 @@ impl Relief {
         match self {
             Relief::None => 0,
             Relief::EnhancerReduced => 1,
-            Relief::EnhancerLight | Relief::NoPitch | Relief::NoFeedback | Relief::NoRnnoise => 2,
             Relief::EnhancerOff => 3,
+            // Everything between holds the enhancer at `ErbOnly`. That is what
+            // all of these rungs exist to buy.
+            _ => 2,
         }
     }
 }
@@ -246,6 +295,9 @@ mod tests {
             Relief::NoPitch,
             Relief::NoFeedback,
             Relief::NoRnnoise,
+            Relief::NoAnalyser,
+            Relief::NoClassifierTop,
+            Relief::NoLiveDots,
             Relief::EnhancerOff,
         ];
         for want in expected {
@@ -283,6 +335,9 @@ mod tests {
             assert!(next.skip_pitch() >= previous.skip_pitch());
             assert!(next.skip_feedback() >= previous.skip_feedback());
             assert!(next.skip_rnnoise() >= previous.skip_rnnoise());
+            assert!(next.skip_analyser() >= previous.skip_analyser());
+            assert!(next.skip_classifier_top() >= previous.skip_classifier_top());
+            assert!(next.skip_live_dots() >= previous.skip_live_dots());
             assert!(next.enhancer_rungs() >= previous.enhancer_rungs());
             assert_eq!(next.index(), previous.index() + 1);
             previous = next;

@@ -560,6 +560,24 @@ jobs:
             Write-Output "::warning::Store submission is half configured and will be skipped. Missing: $($missing -join ', '). See docs/RELEASING.md section 4f."
           }
 
+          # The seller ID is a number, and the CLI parses it as one.
+          #
+          # `msstore reconfigure` answers a non-numeric seller ID with an
+          # unhandled `System.FormatException` out of `RetrieveSellerId`, and
+          # because the value is masked in the log the exception reads
+          # `The input string '***' was not in a correct format` -- which names
+          # neither the setting nor the problem. That cost the first attempt.
+          #
+          # Partner Center invites it, too: the page lists "Publisher ID" and
+          # "Seller ID" side by side and only the second is numeric.
+          if ($missing -notcontains 'MSIX_SELLER_ID' -and $env:SELLER.Trim() -notmatch '^\d+$') {
+            # No backticks in the message: this is a double-quoted PowerShell
+            # string, where a backtick is the escape character and would be
+            # eaten silently.
+            Write-Output "::error::MSIX_SELLER_ID must be the numeric Seller ID from Partner Center - Account settings - Identifiers. It is not all digits, so the msstore CLI fails parsing it. The Publisher ID on the same page is a different value and is not this one."
+            exit 1
+          }
+
       - name: Set up the Store CLI
         if: >-
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&

@@ -38,9 +38,9 @@ and does not need bumping to publish. Both stores reject a build number they
 have seen before, and the rejection arrives *after* the build, so the number has
 to rise on its own — `run_number` only ever goes up.
 
-### Apple rate-limits uploads per app per day
+### App Store Connect allows six uploads per app per *hour*
 
-Six publishes in one day exhausted it, and the seventh came back:
+Not per day, whatever it says. The seventh publish in an hour comes back:
 
 ```
 Error Domain=IrisAPI Code=-19241  code=90382
@@ -48,16 +48,21 @@ Upload limit reached. The upload limit for your application has been
 reached. Please wait 1 day and try again.
 ```
 
-**TestFlight and Mac App Store fail; Google Play and Windows carry on.** So a
-run goes half red, and the half that is red is the half that cannot be retried
-today. Nothing is broken and nothing needs fixing — but the builds do not exist
-on Apple's side, which is exactly the sort of thing that reads as "published"
-in a summary and is not.
+**"Please wait 1 day" is wrong and it is Apple's own text.** The window is an
+hour, and believing the message costs a day of releases: this was recorded here
+as a daily limit, and the observation that should have caught it was already in
+hand — the limit was hit at 09:16 and the next publish went green at 11:07,
+which no daily quota permits.
 
-So batch Apple-affecting work rather than publishing per commit, and **do not
-publish a change that ships no app code at all** — a documentation edit, a
-benchmark harness, a test — because the quota it spends is quota an actual fix
-will want later the same day.
+**TestFlight and Mac App Store fail; Google Play and Windows carry on.** So a
+run goes half red, and the red half is the half that will not retry for a
+while. Nothing is broken and nothing needs fixing — but the builds do not exist
+on Apple's side, which is exactly the sort of thing that reads as "published"
+in a summary and is not. Check the jobs, not the run.
+
+So an hour's patience clears it. Still worth not spending uploads on a change
+that ships no app code — a documentation edit, a benchmark harness, a test —
+because six in an hour is easy to reach on a busy afternoon.
 
 ### Check the secrets exist before claiming a publish happened
 

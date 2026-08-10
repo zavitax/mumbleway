@@ -115,6 +115,8 @@
 //! enhancer becomes a pass-through rather than an error: a rider whose phone
 //! cannot load it should lose the improvement, not the call.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use anyhow::Result;
 // The package is `deep_filter`; its library is named `df`. Importing by the
 // package name is the obvious mistake and the compiler's message for it names
@@ -124,6 +126,42 @@ use ndarray::{Array2, ArrayView2, ArrayViewMut2};
 
 /// Samples per frame. The model's, and the same as the chain's `FRAME_SIZE`.
 pub const HOP: usize = 480;
+
+/// Whether a rider has asked for the cheap model outright.
+///
+/// # Why this is a setting and not a rung
+///
+/// [`super::relief::Relief::SimpleModel`] sits at the bottom of the ladder, so
+/// reaching it means everything above has already been given up — the pitch
+/// search, the feedback guard, RNNoise, the panel. That is the right order for
+/// a device discovering its limits, and the wrong shape entirely for somebody
+/// who simply wants the cheap model: the whole point is to spend the three
+/// times cheaper enhancer on *keeping* the rest of the chain.
+///
+/// So this is orthogonal. It picks the model; the ladder still decides
+/// everything else, still starts where the floor says, and still falls if the
+/// device turns out not to manage even this.
+///
+/// **And it makes the probe measure the truth.** The probe builds its chain
+/// through [`Enhancer::new`] like the worker does, so with this set it times
+/// the cheap model — which is the arrangement that will actually run. Without
+/// that, a rider who picked this setting would be dialled down by a
+/// measurement of an enhancer they had already declined.
+///
+/// A process-wide static rather than a field, because the probe runs before
+/// `AudioShared` exists and the preview chain builds its own enhancer.
+static FORCE_SIMPLE: AtomicBool = AtomicBool::new(false);
+
+/// Asks for the cheap model, or stops asking. Takes effect on the next
+/// enhancer built, and on the running one within a block.
+pub fn set_force_simple_model(on: bool) {
+    FORCE_SIMPLE.store(on, Ordering::Relaxed);
+}
+
+/// Whether the cheap model has been asked for outright.
+pub fn force_simple_model() -> bool {
+    FORCE_SIMPLE.load(Ordering::Relaxed)
+}
 
 /// How much it may attenuate, in dB.
 ///
@@ -568,7 +606,12 @@ impl Enhancer {
     /// Public so the sweep can run against the shipping code rather than a
     /// copy of it. Nothing in the app calls this.
     pub fn with_atten_lim(atten_lim_db: f32) -> Self {
-        let model = match Self::build_with(atten_lim_db) {
+        // Honoured here rather than by the callers, so that *every* path gets
+        // it — the worker, the probe, and the listen sheet's preview chain.
+        // A rider who asked for the cheap model and heard the expensive one in
+        // chain playback would have no way to tell which was which.
+        let simple = force_simple_model();
+        let model = match Self::build_from(atten_lim_db, simple) {
             Ok(m) => Some(Box::new(m)),
             Err(e) => {
                 // With the reason. "It did not load" is not something anybody
@@ -593,7 +636,7 @@ impl Enhancer {
             onset_lim_db: ONSET_ATTEN_LIM_DB,
             onset: OnsetGuard::new(),
             onset_guard: true,
-            simple: false,
+            simple,
         }
     }
 
@@ -652,10 +695,6 @@ impl Enhancer {
     /// the other has nowhere to get it. `core/models/README.md` has the
     /// provenance, the licence, and why there is no smaller way.
     const SIMPLE_MODEL: &'static [u8] = include_bytes!("../../models/DeepFilterNet3_onnx.tar.gz");
-
-    fn build_with(atten_lim_db: f32) -> Result<DfTract> {
-        Self::build_from(atten_lim_db, false)
-    }
 
     fn build_from(atten_lim_db: f32, simple: bool) -> Result<DfTract> {
         // Mono. Every route this app records from is one channel by the time
@@ -717,20 +756,33 @@ impl Enhancer {
     /// A failure leaves the current model in place, which is the safe
     /// direction: the rider keeps the enhancer they had.
     pub fn use_simple_model(&mut self) {
-        if self.simple {
+        self.set_simple_model(true);
+    }
+
+    /// Swaps the model in either direction.
+    ///
+    /// The ladder only ever asks for the cheap one, and never asks twice. The
+    /// *setting* can go both ways, because a rider may turn it off — and doing
+    /// so mid-call costs the same graph rebuild as turning it on, which is the
+    /// price of a deliberate action rather than of something happening to them.
+    pub fn set_simple_model(&mut self, simple: bool) {
+        if self.simple == simple || self.model.is_none() {
             return;
         }
-        match Self::build_from(self.base_lim_db, true) {
+        match Self::build_from(self.base_lim_db, simple) {
             Ok(m) => {
                 self.model = Some(Box::new(m));
-                self.simple = true;
+                self.simple = simple;
                 self.applied_lim_db = self.base_lim_db;
                 self.onset = OnsetGuard::new();
-                tracing::info!("swapped to the plain DFN3 model to meet the deadline");
+                tracing::info!(
+                    "swapped to the {} DFN3 model",
+                    if simple { "plain" } else { "low-latency" }
+                );
             }
             Err(e) => {
                 tracing::warn!(
-                    "could not load the plain DFN3 model ({e:#}); keeping the current one"
+                    "could not load the other DFN3 model ({e:#}); keeping the current one"
                 );
             }
         }
@@ -986,6 +1038,51 @@ mod tests {
         assert!(e.simple_model());
     }
 
+    /// The setting picks the model and touches nothing else.
+    ///
+    /// **That orthogonality is the requirement.** `Relief::SimpleModel` is the
+    /// bottom rung, so reaching it means the pitch search, the feedback guard,
+    /// RNNoise and the panel have all already gone. A rider asking for the
+    /// cheap model wants the opposite: to spend what it saves on *keeping*
+    /// those. If this ever became a rung, choosing it would silently switch off
+    /// half the chain.
+    ///
+    /// Serial with the other tests that touch the flag, because it is
+    /// process-wide by necessity — see `FORCE_SIMPLE`.
+    #[test]
+    fn asking_for_the_cheap_model_does_not_touch_the_ladder() {
+        set_force_simple_model(false);
+        let plain = Enhancer::new();
+        if !plain.active() {
+            set_force_simple_model(false);
+            return; // no model in this build
+        }
+        assert!(!plain.simple_model());
+        assert_eq!(plain.effort(), Effort::Full);
+
+        // Asked for: every enhancer built afterwards uses it, including the
+        // probe's and the listen sheet's.
+        set_force_simple_model(true);
+        let forced = Enhancer::new();
+        assert!(forced.simple_model(), "the setting was not honoured");
+        // And the effort rung is untouched — this is a model choice, not a
+        // step down the ladder.
+        assert_eq!(
+            forced.effort(),
+            Effort::Full,
+            "asking for the cheap model gave up enhancer effort as well"
+        );
+
+        // It goes both ways, because a rider can change their mind.
+        let mut back = Enhancer::new();
+        back.set_simple_model(false);
+        assert!(!back.simple_model());
+        assert_eq!(back.model_lookahead(), 0, "not the low-latency model again");
+
+        set_force_simple_model(false);
+        assert!(!Enhancer::new().simple_model());
+    }
+
     #[test]
     fn the_model_loads_and_its_hop_is_our_block() {
         // The whole integration rests on this: if the model's hop were not
@@ -993,7 +1090,7 @@ mod tests {
         // latency argument would change with it.
         // Built directly rather than through `Enhancer::new`, which swallows
         // the reason by design -- here the reason is the whole point.
-        let built = Enhancer::build_with(ATTEN_LIM_DB);
+        let built = Enhancer::build_from(ATTEN_LIM_DB, false);
         assert!(
             built.is_ok(),
             "the embedded DFN3 model did not load: {:#}",

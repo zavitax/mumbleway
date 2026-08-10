@@ -1882,6 +1882,30 @@ pub fn play_participant_cue(joined: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Asks for the cheap speech-enhancement model outright.
+///
+/// **Not an engine setting, which is why it takes no `app()`.** It has to be
+/// set before the startup probe runs, and the probe runs while the app is
+/// opening — before any engine exists. It is read by every enhancer built
+/// afterwards: the worker's, the probe's, and the listen sheet's preview
+/// chain.
+///
+/// Orthogonal to the performance ladder on purpose. The ladder's own
+/// `SimpleModel` rung sits at the bottom, below giving up the pitch search,
+/// RNNoise and the panel; a rider choosing this wants the opposite — to spend
+/// what the cheaper model saves on *keeping* those. See
+/// `mumbleway_core::audio::deepfilter`.
+#[frb(sync)]
+pub fn set_simple_model(on: bool) -> anyhow::Result<()> {
+    mumbleway_core::audio::deepfilter::set_force_simple_model(on);
+    Ok(())
+}
+
+#[frb(sync)]
+pub fn is_simple_model() -> anyhow::Result<bool> {
+    Ok(mumbleway_core::audio::deepfilter::force_simple_model())
+}
+
 /// A short room tail under incoming voices, so a gated talker does not stop
 /// like a switch being thrown.
 #[frb(sync)]

@@ -202,6 +202,14 @@
   "identityFingerprint": "Your certificate fingerprint",
   "reverb": "Room tone",
   "reverbBody": "Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.",
+  "simpleModel": "Light noise model",
+  "@simpleModel": {
+    "description": "Title of the setting that forces the cheaper speech-enhancement model"
+  },
+  "simpleModelBody": "Runs a smaller speech cleaner that costs a third as much to run. On a slow phone this keeps the rest of the noise chain working instead of it being switched off piece by piece. It is a little harsher on quiet speech, and adds 20 ms of delay.",
+  "@simpleModelBody": {
+    "description": "Explains the trade behind the light noise model setting: cheaper to run and keeps the rest of the chain, at the cost of being harder on quiet voices and adding latency"
+  },
   "echoCancellation": "Echo cancellation",
   "echoCancellationBody": "Removes what the speakers play back out of the microphone. Leave it on when using speakers; on a headset there is no echo to cancel and it can only take away.",
   "noiseCancellation": "Noise cancellation",

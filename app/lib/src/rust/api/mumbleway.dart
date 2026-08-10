@@ -290,6 +290,24 @@ void clearLogs() => RustLib.instance.api.crateApiMumblewayClearLogs();
 void playParticipantCue({required bool joined}) =>
     RustLib.instance.api.crateApiMumblewayPlayParticipantCue(joined: joined);
 
+/// Asks for the cheap speech-enhancement model outright.
+///
+/// **Not an engine setting, which is why it takes no `app()`.** It has to be
+/// set before the startup probe runs, and the probe runs while the app is
+/// opening — before any engine exists. It is read by every enhancer built
+/// afterwards: the worker's, the probe's, and the listen sheet's preview
+/// chain.
+///
+/// Orthogonal to the performance ladder on purpose. The ladder's own
+/// `SimpleModel` rung sits at the bottom, below giving up the pitch search,
+/// RNNoise and the panel; a rider choosing this wants the opposite — to spend
+/// what the cheaper model saves on *keeping* those. See
+/// `mumbleway_core::audio::deepfilter`.
+void setSimpleModel({required bool on_}) =>
+    RustLib.instance.api.crateApiMumblewaySetSimpleModel(on_: on_);
+
+bool isSimpleModel() => RustLib.instance.api.crateApiMumblewayIsSimpleModel();
+
 /// A short room tail under incoming voices, so a gated talker does not stop
 /// like a switch being thrown.
 void setReverb({required bool on_}) =>

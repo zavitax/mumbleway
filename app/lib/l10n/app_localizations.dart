@@ -937,6 +937,18 @@ abstract class L {
   /// **'Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.'**
   String get reverbBody;
 
+  /// Title of the setting that forces the cheaper speech-enhancement model
+  ///
+  /// In en, this message translates to:
+  /// **'Light noise model'**
+  String get simpleModel;
+
+  /// Explains the trade behind the light noise model setting: cheaper to run and keeps the rest of the chain, at the cost of being harder on quiet voices and adding latency
+  ///
+  /// In en, this message translates to:
+  /// **'Runs a smaller speech cleaner that costs a third as much to run. On a slow phone this keeps the rest of the noise chain working instead of it being switched off piece by piece. It is a little harsher on quiet speech, and adds 20 ms of delay.'**
+  String get simpleModelBody;
+
   /// No description provided for @echoCancellation.
   ///
   /// In en, this message translates to:

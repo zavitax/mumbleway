@@ -455,6 +455,13 @@ class LEn extends L {
       'Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.';
 
   @override
+  String get simpleModel => 'Light noise model';
+
+  @override
+  String get simpleModelBody =>
+      'Runs a smaller speech cleaner that costs a third as much to run. On a slow phone this keeps the rest of the noise chain working instead of it being switched off piece by piece. It is a little harsher on quiet speech, and adds 20 ms of delay.';
+
+  @override
   String get echoCancellation => 'Echo cancellation';
 
   @override

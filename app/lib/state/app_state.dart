@@ -347,6 +347,7 @@ class AppState extends ChangeNotifier {
   static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
+  static const _prefsSimpleModel = 'mumbleway.simpleModel';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
   static const _prefsSettingStamps = 'mumbleway.settingStamps';
@@ -734,6 +735,11 @@ class AppState extends ChangeNotifier {
       jitterBufferMs = _clampJitter(v);
     }
     reverb = prefs.getBool(_prefsReverb) ?? true;
+    simpleModel = prefs.getBool(_prefsSimpleModel) ?? false;
+    // Into the core immediately, and before the probe: it decides which model
+    // every enhancer built afterwards loads, and the probe has to time the
+    // arrangement that will really run rather than one the rider declined.
+    setSimpleModel(on_: simpleModel);
     final guard = prefs.getInt(_prefsFeedbackGuard);
     if (guard != null &&
         guard >= 0 &&
@@ -2134,6 +2140,27 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsReverb, value);
+  }
+
+  /// Runs the light speech-enhancement model instead of the full one.
+  ///
+  /// Off by default: on a rider talking normally in still air the full model
+  /// is the better of the two, and the light one takes 4 to 6 dB more out of
+  /// the speech. It is here for phones that cannot afford the full one, where
+  /// the alternative is the performance ladder taking the rest of the chain
+  /// apart instead — see `core/src/audio/deepfilter.rs`.
+  bool simpleModel = false;
+
+  Future<void> setSimpleModelEnabled({required bool value}) async {
+    simpleModel = value;
+    // Takes effect on the running chain within a block, and on every enhancer
+    // built afterwards. Changing it mid-call rebuilds the model once, which is
+    // the cost of a deliberate action rather than something happening to a
+    // rider unasked.
+    setSimpleModel(on_: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsSimpleModel, value);
   }
 
   /// Runs the model, or does not. Owned here because it has to keep working

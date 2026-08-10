@@ -3229,6 +3229,20 @@ where
                     enhancer.step_down();
                 }
             }
+
+            // The setting, which is not the ladder and does not move with it:
+            // it chooses the model and leaves every other stage alone. Read
+            // every block because a rider can change it mid-call; it is one
+            // relaxed load, and the rebuild behind it only happens when the
+            // answer differs from what is loaded.
+            //
+            // Guarded by the rung rather than written as its `else`, because a
+            // device that walked all the way down to `SimpleModel` on its own
+            // must stay there whatever the setting says. The ladder does not
+            // climb, and a setting must not climb it on the ladder's behalf.
+            if !relief.level().simple_model() {
+                enhancer.set_simple_model(super::deepfilter::force_simple_model());
+            }
         }
 
         // Cues are not drained here. The output callback mixes them over the

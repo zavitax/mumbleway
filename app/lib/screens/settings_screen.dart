@@ -321,6 +321,7 @@ class _DeviceSection extends StatelessWidget {
         ],
         const _MonitorTile(),
         const _EchoCancellationTile(),
+        const _SimpleModelTile(),
         const _NormaliseTile(),
         const _JitterBufferTile(),
         const _ReverbTile(),
@@ -480,6 +481,32 @@ class _SyncTile extends StatelessWidget {
           ],
         );
     }
+  }
+}
+
+/// Runs the light speech-enhancement model instead of the full one.
+///
+/// **Off by default, and worded as a trade rather than as a quality knob.** On
+/// a rider talking normally in still air the full model is the better of the
+/// two; the light one is three times cheaper and takes 4 to 6 dB more out of
+/// the speech. It is here for phones that cannot afford the full one, where
+/// the alternative is the performance ladder taking the rest of the chain
+/// apart instead.
+class _SimpleModelTile extends StatelessWidget {
+  const _SimpleModelTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: const Icon(Icons.speed),
+      title: Text(l.simpleModel),
+      subtitle: Text(l.simpleModelBody),
+      isThreeLine: true,
+      value: state.simpleModel,
+      onChanged: (v) => state.setSimpleModelEnabled(value: v),
+    );
   }
 }
 

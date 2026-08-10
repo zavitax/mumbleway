@@ -155,13 +155,13 @@ impl NoiseProfile {
     /// words" a rider hears, and it is not the transmit decision — the
     /// decision had already said yes.
     ///
-    /// # Unresolved, with the measurement that found it
+    /// # Why there is no longer a number here worth reading
     ///
     /// A rider listening through the chain reported Helmet cutting into words.
-    /// `core/tests/profile_recall.rs` says why, from the chain's own state and
-    /// no labels at all: **the gate throws away most of the blocks the
-    /// transmit decision accepted**, because the level it judges them by no
-    /// longer resembles the threshold it judges them against.
+    /// `core/tests/profile_recall.rs` said why, from the chain's own state and
+    /// no labels at all: **the gate was throwing away most of the blocks the
+    /// transmit decision had accepted**, because the level it judged them by
+    /// no longer resembled the threshold it judged them against.
     ///
     /// | Ride | Profile | Decision accepted | Gate vetoed | Level it judged |
     /// |---|---|---|---|---|
@@ -170,34 +170,52 @@ impl NoiseProfile {
     /// | music | `Helmet` | 42.1% | **67.9%** | **−51.1 dBFS** |
     /// | road | `Helmet` | 26.6% | **98.6%** | **−69.9 dBFS** |
     ///
-    /// Helmet judges accepted speech 11 dB under its bar on one ride and 30 dB
-    /// under it on another. The thresholds climb with the profile while the
-    /// output level falls, and DeepFilterNet took a further 7 to 11 dB out of
-    /// the speech in front of all of it.
+    /// The thresholds climbed with the profile while the output level fell,
+    /// and DeepFilterNet then took a further 7 to 11 dB out of the speech in
+    /// front of all of it. **A fixed dBFS threshold cannot survive that** — the
+    /// same Helmet profile measures −51.1 dBFS on one ride and −69.9 on
+    /// another, so no single number is right for both, and lowering them all
+    /// (tried, measured) still left Helmet vetoing 47% on the second ride.
     ///
-    /// **Two fixes were tried and neither is shipped.** Lowering each
-    /// threshold under its profile's measured output took Helmet's recall from
-    /// 63.2% to 96.5% and its precision from 99.9% to 53.2%. Anchoring the
-    /// threshold to the tracked floor removed the veto altogether — 0.3% — and
-    /// left precision at 44%. On a voice-over-music ride that difference is
-    /// the music going out with the words, and `docs/MUSIC_GATE.md` is the
-    /// record of that being unsolved.
+    /// So the gate is anchored to the tracked noise floor instead, by
+    /// [`Self::gate_margin_db`], and asks the only question it can answer
+    /// without being recalibrated every time something upstream changes: **is
+    /// this above the background?** These remain only as the value before the
+    /// first block sets a real one, and for `Off`, where nothing is suppressed
+    /// and nothing is tracked.
     ///
-    /// **And the yardstick will not settle it.** Precision and recall here are
-    /// measured against the `speaking` column of the recording's own log —
-    /// which this code produced. The old configuration scoring 99.9% precision
-    /// against labels it generated is close to tautological. Choosing a
-    /// threshold needs labels this chain did not write: hand-marked speech on
-    /// a Helmet ride, or the rider's ear on the transmitted-only playback.
-    ///
-    /// So the numbers below are unchanged, and they are known to be wrong
-    /// rather than believed to be right.
+    /// **What this cost, and who decided it was worth paying.** Removing the
+    /// veto takes Helmet from 63.2% recall to 97.9% and its precision from
+    /// 99.9% to 44% against the recording's own `speaking` column — on a
+    /// voice-over-music ride, that difference is music going out with the
+    /// words. Those figures cannot adjudicate it: the labels were written by
+    /// this code, so the old settings scoring 99.9% against them is close to
+    /// tautological. The rider listened to the transmitted-only playback and
+    /// judged the leakage acceptable against the words being cut. That is a
+    /// label this chain did not write, and it is the one this rests on.
     fn gate_db(self) -> (f32, f32) {
         match self {
             NoiseProfile::Off => (-90.0, -95.0),
-            NoiseProfile::Light => (-52.0, -60.0),
-            NoiseProfile::Standard | NoiseProfile::Auto => (-46.0, -54.0),
-            NoiseProfile::Helmet => (-40.0, -48.0),
+            // Overwritten from the floor on every block, before the gate is
+            // asked anything.
+            _ => (-52.0, -60.0),
+        }
+    }
+
+    /// How far above the tracked noise floor the gate opens, in dB.
+    ///
+    /// Below [`Self::snr_margin_db`] on purpose, and the gap is the design:
+    /// the transmit decision uses the wider margin to decide whether a phrase
+    /// *starts*, and the gate uses this narrower one to decide whether audio
+    /// is still passing. A gate at the same margin would shut on the quiet
+    /// middle of a word that the decision's own hangover was holding open —
+    /// which is the fault above, arrived at from the other side.
+    fn gate_margin_db(self) -> f32 {
+        match self {
+            NoiseProfile::Off => 0.0,
+            NoiseProfile::Light => 0.0,
+            NoiseProfile::Standard | NoiseProfile::Auto => 2.0,
+            NoiseProfile::Helmet => 4.0,
         }
     }
 
@@ -1100,6 +1118,26 @@ impl CaptureProcessor {
         // that it has stopped updating — costs more than it saves.
         self.pre_gate.clear();
         self.pre_gate.extend_from_slice(block);
+
+        // The threshold follows the background, every block.
+        //
+        // It used to be a fixed dBFS number per profile, and that cannot work
+        // in a chain whose own output level is what it judges: the level moves
+        // with the profile, and DeepFilterNet moved it again by another 7 to
+        // 11 dB. Measured on two real rides, the same Helmet profile produced
+        // −51.1 dBFS on one and −69.9 on the other against a threshold of −40
+        // for both — throwing away 67.9% and 98.6% of the blocks the transmit
+        // decision had already accepted. That is what "it cuts into words"
+        // was, and it was not the decision doing it.
+        //
+        // `Off` keeps its fixed pair: nothing is suppressed there, the floor
+        // tracker is measuring the room rather than the chain's residue, and
+        // the gate must not interfere with audio that is meant to be untouched.
+        if self.effective != NoiseProfile::Off {
+            let open_db = noise_floor_db + self.effective.gate_margin_db();
+            self.gate.open_db = open_db;
+            self.gate.close_db = open_db - 8.0;
+        }
 
         let gate_open = self.gate.process(block, gate_level);
 

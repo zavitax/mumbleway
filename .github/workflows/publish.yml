@@ -568,8 +568,10 @@ jobs:
           # `The input string '***' was not in a correct format` -- which names
           # neither the setting nor the problem. That cost the first attempt.
           #
-          # Partner Center invites it, too: the page lists "Publisher ID" and
-          # "Seller ID" side by side and only the second is numeric.
+          # Partner Center invites it, too. The Seller ID is under *Legal info*
+          # and nowhere near the *Identifiers* page that Microsoft's own setup
+          # doc points at -- and Identifiers does hold a Publisher ID, which
+          # looks like a plausible answer and is not numeric.
           if ($missing -notcontains 'MSIX_SELLER_ID' -and $env:SELLER.Trim() -notmatch '^\d+$') {
             # No backticks in the message: this is a double-quoted PowerShell
             # string, where a backtick is the escape character and would be

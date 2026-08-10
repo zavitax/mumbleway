@@ -944,45 +944,6 @@ impl Default for Enhancer {
 mod tests {
     use super::*;
 
-    /// Serialises the tests that care which model is loaded.
-    ///
-    /// `FORCE_SIMPLE` is process-wide by necessity — it has to reach the
-    /// worker, the probe and the listen sheet's preview chain, none of which
-    /// share an object with the setting. `cargo test` runs these on as many
-    /// threads as the machine has, so without this one test's
-    /// `set_force_simple_model(true)` lands in the middle of another test's
-    /// `Enhancer::new()`, which then quietly builds the cheap model.
-    ///
-    /// **That is not hypothetical and it is not a flake to retry.** It passed
-    /// on this machine and failed on CI on the same commit, purely on thread
-    /// ordering — `assertion failed: !e.simple_model()`, in a test that never
-    /// mentions the flag.
-    static SIMPLE_FLAG: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// Holds [`SIMPLE_FLAG`] and puts the flag back on the way out.
-    ///
-    /// The reset is in `Drop` rather than at the end of each test because a
-    /// test that fails *while the flag is set* would otherwise leave it set for
-    /// everything that follows, turning one real failure into a cascade that
-    /// hides it. Poisoning is ignored for the same reason: a panicking test has
-    /// already reported itself, and refusing the lock afterwards would only add
-    /// noise.
-    struct SimpleFlag(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
-
-    impl SimpleFlag {
-        fn take() -> Self {
-            let guard = SIMPLE_FLAG.lock().unwrap_or_else(|e| e.into_inner());
-            set_force_simple_model(false);
-            Self(guard)
-        }
-    }
-
-    impl Drop for SimpleFlag {
-        fn drop(&mut self) {
-            set_force_simple_model(false);
-        }
-    }
-
     /// The guard's shape, without needing the model or a ride.
     ///
     /// Three properties, and each one was a bug before it was a test: it fires
@@ -1050,9 +1011,6 @@ mod tests {
     /// model it claims to be.
     #[test]
     fn the_cheap_model_loads_and_keeps_the_block_geometry() {
-        // Asserts which model came back, so it cannot run beside the test that
-        // moves the process-wide flag. See [`SimpleFlag`].
-        let _flag = SimpleFlag::take();
         let mut e = Enhancer::new();
         if !e.active() {
             return; // no model in this build; nothing to swap
@@ -1090,13 +1048,13 @@ mod tests {
     /// half the chain.
     ///
     /// Serial with the other tests that touch the flag, because it is
-    /// process-wide by necessity — see [`SimpleFlag`], which is what makes
-    /// that true rather than merely intended.
+    /// process-wide by necessity — see `FORCE_SIMPLE`.
     #[test]
     fn asking_for_the_cheap_model_does_not_touch_the_ladder() {
-        let _flag = SimpleFlag::take();
+        set_force_simple_model(false);
         let plain = Enhancer::new();
         if !plain.active() {
+            set_force_simple_model(false);
             return; // no model in this build
         }
         assert!(!plain.simple_model());
@@ -1123,7 +1081,6 @@ mod tests {
 
         set_force_simple_model(false);
         assert!(!Enhancer::new().simple_model());
-        // `_flag` puts it back too, so a failure above cannot leak it either.
     }
 
     /// The same, for the vendored one.

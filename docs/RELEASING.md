@@ -507,15 +507,17 @@ MumbleWay ever has a paid tier, this goes back to the form.
 | `AZURE_AD_TENANT_ID` | Entra admin centre → *Identity* → *Overview* → Tenant ID |
 | `AZURE_AD_APPLICATION_CLIENT_ID` | the app registration's *Application (client) ID* |
 | `AZURE_AD_APPLICATION_SECRET` | the client secret from step 2 |
-| `MSIX_SELLER_ID` | Partner Center → *Account settings* → *Identifiers* → **Seller ID**. Digits only — see below |
+| `MSIX_SELLER_ID` | Partner Center → *Account settings* → **Legal info** → **Seller ID**. Digits only — see below |
 | `MSIX_STORE_PRODUCT_ID` | the product's Store ID, also in its Store listing URL |
 
 `MSIX_STORE_PRODUCT_ID` is the gate: until it is set, the job builds and
 attaches the package exactly as before and submits nothing.
 
-**Seller ID is not Publisher ID.** They sit next to each other on the same
-Identifiers page and only the Seller ID is numeric. Give the CLI the other one
-and it dies with
+**The Seller ID is under *Legal info*, not *Identifiers*.** Microsoft's own
+setup page sends you to "Account settings → Developer settings or Identifiers",
+and it is on neither — *Identifiers* holds the Publisher ID, which looks like a
+plausible answer and is the wrong one. Only the Seller ID is numeric. Give the
+CLI the other and it dies with
 
 ```
 System.FormatException: The input string '***' was not in a correct format.

@@ -213,7 +213,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
         temp.path,
         ...files,
       ]);
-      await SharePlus.instance.share(
+      final shared = SharePlus.instance.share(
         ShareParams(
           files: [
             for (final a in archives) XFile(a, mimeType: 'application/zip'),
@@ -221,6 +221,21 @@ class _PreviewSheetState extends State<_PreviewSheet> {
           subject: 'MumbleWay diagnostic recording ${_stem(path)}',
         ),
       );
+
+      // **The spinner ends here, not when that future does.**
+      //
+      // It covers the packing above, which is this app's work and takes
+      // seconds. What follows is another app's: on Android `share` completes
+      // only when the chooser returns an activity result, and a target that
+      // takes over — Telegram, mail — often never returns one. The rider sends
+      // the file, comes back through recents, and no result is ever delivered.
+      // The future stays pending for the life of the process and the button
+      // stays a spinner, having successfully shared the recording.
+      //
+      // Awaited below all the same, so a real failure still reaches the
+      // snackbar; it simply no longer holds the button hostage.
+      if (mounted) setState(() => _sharing = false);
+      await shared;
       // Not deleted afterwards, for the reason the card records: `share`
       // returns when the sheet closes, and AirDrop and the mail composer go on
       // reading the file after that.

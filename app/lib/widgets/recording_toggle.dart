@@ -269,7 +269,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
         for (final f in files) f.path,
       ]);
 
-      final result = await SharePlus.instance.share(
+      final shared = SharePlus.instance.share(
         ShareParams(
           files: [
             for (final a in archives) XFile(a, mimeType: 'application/zip'),
@@ -277,6 +277,15 @@ class _RecordingToggleState extends State<RecordingToggle> {
           subject: 'MumbleWay diagnostic recording',
         ),
       );
+
+      // **The spinner ends at the handoff.** See the same comment in
+      // `recording_preview.dart`: on Android this future completes only when
+      // the chooser returns an activity result, and a target that takes over
+      // often never returns one, so waiting on it to clear the button leaves a
+      // spinner on screen for the life of the process after a share that
+      // worked.
+      if (mounted) setState(() => _busy = false);
+      final result = await shared;
       // Deliberately not deleted here. `share` returns when the sheet closes,
       // and AirDrop and the mail composer go on reading the file after that —
       // deleting it now would truncate the transfer it was made for. The next

@@ -1,10 +1,44 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 import '../src/rust/api/mumbleway.dart';
+
+/// One of the model's classes and what it scored, for the panel.
+class ClassScore {
+  const ClassScore(this.label, this.score);
+
+  /// The model's own English class name. Not translated, deliberately: these
+  /// are the names YAMNet was trained with and the ones any published table of
+  /// its classes uses, so a translation would make the panel harder to check
+  /// against the model rather than easier.
+  final String label;
+  final double score;
+}
+
+/// The model's label list, read out of the model file itself.
+///
+/// A `.tflite` is a zip, and the MediaPipe build carries its labels inside it —
+/// so there is no second asset that can fall out of step with the weights.
+/// `test/yamnet_labels_test.dart` reads the same list to check the one index
+/// the chain depends on.
+///
+/// Top level and taking bytes, because it runs through [compute]: the archive
+/// is four megabytes and this happens while a call screen is on the front.
+List<String> _labelsFromModel(Uint8List bytes) {
+  final zip = ZipDecoder().decodeBytes(bytes);
+  final list = zip.files.where((f) => f.name.endsWith('.txt'));
+  if (list.isEmpty) return const [];
+  return String.fromCharCodes(list.first.content as List<int>)
+      .split('\n')
+      .map((l) => l.trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+}
 
 /// Listens to the background and tells the chain whether it is loud and
 /// structured, so `Auto` can pick Helmet on evidence rather than on a level.
@@ -111,6 +145,23 @@ class BackgroundClassifier {
   double get lastScore => _lastScore;
   double _lastScore = 0;
 
+  /// The three classes that scored highest last time, highest first.
+  ///
+  /// **Context for a decision made on one number.** The chain reads `Music` and
+  /// nothing else, and a bare score of 0.83 says nothing about whether the
+  /// model heard a stereo or a motorway. Seeing what else it was weighing is
+  /// what makes a surprising profile switch explicable rather than arbitrary —
+  /// and it is how the `Music` class was understood in the first place, when an
+  /// engine at speed turned out to score 0.969 on it.
+  ///
+  /// Empty until the first inference, and whenever the label list could not be
+  /// read.
+  List<ClassScore> get top => _top;
+  List<ClassScore> _top = const [];
+
+  /// The model's class names, or empty if they could not be read.
+  List<String> _labels = const [];
+
   /// How long the last inference took, in milliseconds.
   ///
   /// Shown rather than described. What an inference costs is the one thing
@@ -179,6 +230,17 @@ class BackgroundClassifier {
         throw StateError('unexpected model shape: in $inShape, out $outShape');
       }
 
+      // Names for the panel. Failing to read them is not a reason to give up
+      // the classifier: the chain reads an index, not a name, so everything
+      // that matters still works and only the panel is poorer for it.
+      try {
+        final asset = await rootBundle.load('assets/models/yamnet.tflite');
+        _labels = await compute(_labelsFromModel, asset.buffer.asUint8List());
+      } catch (e) {
+        debugPrint('background classifier: no label list ($e)');
+        _labels = const [];
+      }
+
       // Off the UI isolate. An inference is tens of milliseconds and this runs
       // while a rider is looking at a call screen that must not stutter.
       _isolate = await IsolateInterpreter.create(address: _model!.address);
@@ -207,6 +269,10 @@ class BackgroundClassifier {
     _accelerator = null;
     _lastVerdict = null;
     _lastScore = 0;
+    // Withdrawn with the verdict, for the same reason: a list left on screen
+    // is a claim about what the microphone is hearing right now, and nothing
+    // is listening any more.
+    _top = const [];
     try {
       clearBackgroundNoisy();
     } catch (_) {
@@ -242,8 +308,10 @@ class BackgroundClassifier {
       await isolate.run(window.samples, output);
       _lastInferenceMs =
           DateTime.now().difference(started).inMicroseconds / 1000.0;
-      final score = ((output[0] as List)[musicIndex] as num).toDouble();
+      final scores = (output[0] as List).cast<num>();
+      final score = scores[musicIndex].toDouble();
       _lastScore = score;
+      _top = _highest(scores);
       final noisy = score >= bar;
       _lastVerdict = noisy;
       setBackgroundNoisy(noisy: noisy);
@@ -253,5 +321,25 @@ class BackgroundClassifier {
     } finally {
       _busy = false;
     }
+  }
+
+  /// The three highest-scoring classes, highest first.
+  ///
+  /// A full sort of 521 floats, once every two seconds, which is not worth a
+  /// partial selection to avoid. Falls back to the bare index when there is no
+  /// label list: a number a reader can look up beats an empty row.
+  @visibleForTesting
+  List<ClassScore> highestForTest(List<num> scores) => _highest(scores);
+
+  List<ClassScore> _highest(List<num> scores) {
+    final order = List<int>.generate(scores.length, (i) => i)
+      ..sort((a, b) => scores[b].compareTo(scores[a]));
+    return [
+      for (final i in order.take(3))
+        ClassScore(
+          i < _labels.length ? _labels[i] : 'class $i',
+          scores[i].toDouble(),
+        ),
+    ];
   }
 }

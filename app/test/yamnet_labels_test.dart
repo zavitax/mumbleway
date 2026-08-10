@@ -31,4 +31,21 @@ void main() {
     expect(labels.length, BackgroundClassifier.classes);
     expect(labels[BackgroundClassifier.musicIndex], 'Music');
   });
+
+  test('the panel gets the three highest, highest first', () {
+    // The panel shows what else the model was weighing, so the order is the
+    // whole point: read as "Music is far ahead" or "it is a close-run thing".
+    final scores = List<num>.filled(BackgroundClassifier.classes, 0.0);
+    scores[10] = 0.4;
+    scores[BackgroundClassifier.musicIndex] = 0.9;
+    scores[300] = 0.65;
+    scores[500] = 0.2;
+
+    final top = BackgroundClassifier().highestForTest(scores);
+    expect(top.length, 3);
+    expect(top.map((c) => c.score).toList(), [0.9, 0.65, 0.4]);
+    // No label list on a classifier that was never started, so it falls back
+    // to the index — a number a reader can look up beats an empty row.
+    expect(top.first.label, 'class ${BackgroundClassifier.musicIndex}');
+  });
 }

@@ -144,6 +144,12 @@ class _SpectrumViewState extends State<SpectrumView>
         if (_chain != null &&
             AppStateScope.of(context).noise == NoiseSetting.auto)
           _AutoProfile(profile: _chain!.effectiveProfile),
+        // Directly under it, because it is the evidence behind it. The
+        // classifier only runs under Auto, so this appears and disappears with
+        // the line above without needing the condition repeated.
+        //
+        // ignore: prefer_const_constructors
+        _ClassifierTop(),
         if (_chain != null) _ChainDots(status: _chain!),
         // Not `const`: it reads the classifier's state, and a const child
         // would be built once and never notice the model starting.
@@ -210,6 +216,114 @@ class _ClassifierNote extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// What the classifier is actually hearing, three classes at a time.
+///
+/// **The chain reads one of these 521 numbers and ignores the other 520.** A
+/// bare "Music 0.83" cannot say whether the model heard a stereo, a motorway or
+/// a hairdryer, so a profile switch that surprises a rider has no explanation
+/// available. The other two rows are that explanation — and they are how the
+/// `Music` class was understood in the first place, when an engine at speed
+/// turned out to score 0.969 on it and was read as a false positive until it
+/// was not.
+///
+/// `Music` is drawn in the transmitted green once it is over the bar, so the
+/// row that decides is the row that stands out — and a reader can see the
+/// moment the decision flips rather than inferring it from the profile
+/// changing a beat later.
+class _ClassifierTop extends StatelessWidget {
+  const _ClassifierTop();
+
+  @override
+  Widget build(BuildContext context) {
+    final classifier = AppStateScope.of(context).classifier;
+    final top = classifier.top;
+    if (top.isEmpty) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final c in top)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: _ClassRow(
+                score: c,
+                deciding: c.label == 'Music',
+                over: c.score >= BackgroundClassifier.bar,
+                muted: scheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClassRow extends StatelessWidget {
+  const _ClassRow({
+    required this.score,
+    required this.deciding,
+    required this.over,
+    required this.muted,
+  });
+
+  final ClassScore score;
+  final bool deciding, over;
+  final Color muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = deciding && over ? StatusColors.connected : muted;
+    return Row(
+      children: [
+        SizedBox(
+          width: 108,
+          child: Text(
+            score.label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: colour,
+              fontWeight: deciding ? FontWeight.w700 : FontWeight.w400,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        // A bar as well as a number. Three scores are read against each other
+        // — whether the top one is far ahead or the field is level is the
+        // whole of what this says — and that comparison is a glance at bar
+        // lengths rather than three subtractions.
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: score.score.clamp(0.0, 1.0),
+              minHeight: 4,
+              backgroundColor: muted.withValues(alpha: 0.16),
+              valueColor: AlwaysStoppedAnimation(colour),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 30,
+          child: Text(
+            score.score.toStringAsFixed(2),
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 11,
+              color: colour,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

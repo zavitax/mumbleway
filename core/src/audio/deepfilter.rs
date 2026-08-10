@@ -58,6 +58,123 @@ pub const HOP: usize = 480;
 /// altogether. It is a starting point and it is not yet tuned on a bike.
 const ATTEN_LIM_DB: f32 = 24.0;
 
+/// The cap while a word is starting, in dB.
+///
+/// **This is the fix for swallowed word starts, and the reason it is a separate
+/// number rather than a lower `ATTEN_LIM_DB`.** A rider reported "shalom"
+/// arriving as "alom" and "pishtan" as "ishtan";
+/// `core/tests/onset_survival.rs` found the cause, and it is this stage. An
+/// unvoiced consonant is noise-like and pitchless — exactly what a speech
+/// enhancer is trained to remove — and at the start of an utterance the model's
+/// own SNR estimate is still at the floor because it has been looking at
+/// silence. Measured against the vowel that follows it, on the same speaker in
+/// the same conditions, the model takes 14 to 17 dB more out of the onset.
+///
+/// Lowering `ATTEN_LIM_DB` for the whole session does not fix it, and the sweep
+/// in that test is what says so: the penalty is a *difference* between the
+/// onset and the vowel, and a cap that relaxes both equally leaves the
+/// difference where it was while paying for it in separation everywhere.
+///
+/// Relaxing the cap *only* while a word is starting is the same lever pointed
+/// at the actual asymmetry. On the ride the complaint came from, over a fixed
+/// set of word starts:
+///
+/// | | Onset | Vowel | Penalty | Separation | Relaxed |
+/// |---|---|---|---|---|---|
+/// | 24 dB flat | −23.0 | −5.8 | **−17.2** | 4.6 | — |
+/// | 12 dB flat | −12.7 | −4.8 | −7.9 | 3.7 | — |
+/// | 6 dB flat | −6.9 | −3.5 | −3.4 | **2.5** | — |
+/// | 24 dB + guard | −14.3 | −5.7 | **−8.5** | **4.7** | 10% |
+///
+/// The guard halves the penalty while *keeping* the separation of a 24 dB cap,
+/// where a flat cap that reaches the same penalty costs a quarter of it. 3 dB
+/// is very nearly "pass the microphone through", and that is the intent: for
+/// 50 ms at a word start, stop enhancing.
+const ONSET_ATTEN_LIM_DB: f32 = 3.0;
+
+/// Where the onset detector listens, in Hz.
+///
+/// High, on purpose. The sounds being lost are "sh", "s", "p" and "ch", which
+/// are high-frequency by construction; the things that must *not* open this
+/// window — an engine, a gust, a bassline — are low. Watching the whole band
+/// would fire on all of them and hand the gate 50 ms of under-suppressed noise,
+/// which is the music leakage this project has spent five features failing to
+/// close.
+///
+/// 1500 rather than 3000, measured: 3 kHz clears an engine by more but misses
+/// the low half of a "sh" and the burst of a "p", and came out 2 dB worse on
+/// the penalty at every relaxation tried. Both are far above a firing
+/// fundamental, so the margin 3 kHz buys was not being spent on anything.
+const ONSET_HP_HZ: f32 = 1_500.0;
+
+/// How far the high band must jump above its recent level to count as a start.
+///
+/// 6 dB. At 4 the guard opens on 24% of blocks for no better penalty; at 9 it
+/// misses word starts that follow a breath rather than silence.
+const ONSET_RISE_DB: f32 = 6.0;
+
+/// How loud the high band may already be for the guard to open fully, and where
+/// it stops opening at all, in dB.
+///
+/// **Without this the guard is a net loss on exactly the ride it must not
+/// harm.** Relaxing the cap lets back in whatever the model was removing, so
+/// what it costs depends entirely on how much that was. Measured on two rides
+/// with the same tuning:
+///
+/// | Ride | Enhancer separation | Recall, Helmet | with guard |
+/// |---|---|---|---|
+/// | iPhone, quiet, "shalom" | 4.6 dB | 52.0% | **58.6%** |
+/// | voice over loud music | 14.1 dB | 97.9% | **77.6%** |
+///
+/// **The floor trackers were the obvious suspect and they are innocent.** Both
+/// sit downstream of the enhancer, and the level blocks were being decided at
+/// rose 12 dB, so the reading was that they had learned a floor from the
+/// relaxed blocks and lifted the gate to match — the fault the warm-up already
+/// guards against. Freezing both through the window changed nothing: recall
+/// stayed at 77.6%, the decided level stayed at −39.4 dB.
+///
+/// Splitting the transmit decision in two found it instead. Blocks where
+/// RNNoise agreed with the SNR margin fell from 42.1% to 19.4%, with "VAD says
+/// speech, SNR does not" collapsing from 2.7% to 0.2%. **It is the network.**
+/// Handing a stateful denoiser audio that steps between heavily enhanced and
+/// nearly raw every 50 ms leaves its noise estimate wrong all the time, not
+/// only inside the window.
+///
+/// So the relief is scaled by how loud the band is that it would stop
+/// suppressing. In a quiet room there is nothing to let back in and the guard
+/// opens fully; over loud music it barely opens, and the ride that was already
+/// good is left alone. At the shipping −45, the music ride keeps 94.7% recall
+/// (from 97.9) and gains 11 points of precision, while the ride the complaint
+/// came from gets the penalty above.
+///
+/// **This is a trade and not a free lunch**, and the honest statement of it is
+/// that a loud enough background is a background a rider's word starts will
+/// still be eaten by. Lower `ONSET_QUIET_NONE_DB` to protect the music ride
+/// further at the cost of the fix; raise it for the reverse.
+const ONSET_QUIET_FULL_DB: f32 = -60.0;
+const ONSET_QUIET_NONE_DB: f32 = -45.0;
+
+/// Below this the high band is silence and a "rise" is arithmetic on noise.
+const ONSET_FLOOR_DB: f32 = -65.0;
+
+/// One-pole coefficients for the recent-level envelope, per block.
+///
+/// Deliberately asymmetric, and the *slow* one is upwards. The envelope stands
+/// for "how loud the high band has been lately": it must lag a rise, or there
+/// is no rise left to detect, and it must catch up within a syllable or two so
+/// a whole sentence does not sit in the relaxed state.
+const ONSET_ENV_ATTACK: f32 = 0.03;
+const ONSET_ENV_RELEASE: f32 = 0.25;
+
+/// How fast the relaxation lets go, per block.
+///
+/// Instant on, linear off over five blocks — 50 ms, about the length of a
+/// leading fricative. Stepping the cap back would put a seam in the middle of a
+/// word, which is the artefact this whole change exists to remove; running much
+/// longer than a consonant puts the relief on the vowel, which does not need it
+/// and pays for it in separation.
+const ONSET_RELEASE_PER_BLOCK: f32 = 0.2;
+
 /// The deadline one block has to be returned in, in microseconds.
 const BUDGET_US: u32 = 10_000;
 
@@ -199,6 +316,116 @@ impl Effort {
 /// wall clock rather than this stage's — see [`Enhancer::process`].
 const _: () = ();
 
+/// Watches the high band for the start of a word.
+///
+/// Level only — it never touches the audio. The filtered signal exists to be
+/// measured and is thrown away, so a wrong answer here costs suppression for
+/// 100 ms and can never damage the block.
+struct OnsetGuard {
+    /// Measurement only. Its output is squared and discarded.
+    hp: super::dsp::Biquad,
+    /// See [`ONSET_RISE_DB`], [`ONSET_RELEASE_PER_BLOCK`] and
+    /// [`ONSET_QUIET_FULL_DB`]. Fields rather than constants so the harness can
+    /// sweep them.
+    rise_db: f32,
+    release: f32,
+    quiet_full_db: f32,
+    quiet_none_db: f32,
+    /// Recent high-band level in dB, or `None` until the first block has
+    /// primed it — an envelope starting at zero or at −∞ makes the first block
+    /// of every session either a false onset or an unreachable one.
+    env_db: Option<f32>,
+    /// How far the cap is currently relaxed, 1.0 at an onset falling to 0.
+    relax: f32,
+    /// Whether a fresh onset may fire.
+    ///
+    /// **The edge is the whole point, and leaving it out was measured.** With
+    /// the guard triggering on any block whose high band stood above the
+    /// envelope, the envelope's slow attack kept the condition true for the
+    /// entire first syllable: it fired on 69% of onset blocks and **90% of
+    /// vowel blocks**, relaxing the vowel harder than the consonant and moving
+    /// the penalty 9.0 → 7.9 dB for a full dB of separation. That is the flat
+    /// cap again, wearing a detector. It has to fire once per word start and
+    /// then get out of the way.
+    armed: bool,
+    /// Blocks that ran with the cap relaxed at all. The share of a ride this
+    /// covers is what says whether the window is doing something targeted or
+    /// has quietly become the new cap.
+    relaxed_blocks: u64,
+}
+
+impl OnsetGuard {
+    fn new() -> Self {
+        Self {
+            hp: super::dsp::Biquad::high_pass(48_000.0, ONSET_HP_HZ, 0.707),
+            rise_db: ONSET_RISE_DB,
+            release: ONSET_RELEASE_PER_BLOCK,
+            quiet_full_db: ONSET_QUIET_FULL_DB,
+            quiet_none_db: ONSET_QUIET_NONE_DB,
+            env_db: None,
+            relax: 0.0,
+            armed: true,
+            relaxed_blocks: 0,
+        }
+    }
+
+    /// Looks at one block and returns how far to relax the cap, 0 to 1.
+    ///
+    /// Called before the model runs, on the block the model is about to see.
+    /// The model's lookahead is zero — it is the low-latency variant — so the
+    /// frame this decides for is the frame that comes out.
+    ///
+    /// **A causal detector cannot see the first block of a rise before it has
+    /// arrived**, so the very first 10 ms of a consonant is still processed at
+    /// the full cap. That is the residual, and it is small against losing the
+    /// whole 50–150 ms of it.
+    fn look(&mut self, block: &[f32]) -> f32 {
+        let mut sum = 0.0f32;
+        for &s in block {
+            let h = self.hp.process(s);
+            sum += h * h;
+        }
+        let level_db = 10.0 * (sum / block.len() as f32 + 1e-12).log10();
+
+        match self.env_db {
+            None => self.env_db = Some(level_db),
+            Some(env) => {
+                let rising = level_db > ONSET_FLOOR_DB && level_db - env > self.rise_db;
+                if rising && self.armed {
+                    // Scaled by how quiet the band already was — see
+                    // [`ONSET_QUIET_FULL_DB`]. `env` and not `level_db`: the
+                    // question is how loud the *background* is, and `level_db`
+                    // on this block is the word start itself.
+                    self.relax = ((self.quiet_none_db - env)
+                        / (self.quiet_none_db - self.quiet_full_db))
+                        .clamp(0.0, 1.0);
+                    self.armed = false;
+                } else {
+                    self.relax = (self.relax - self.release).max(0.0);
+                }
+                // Re-armed only once the rise has cleared *and* the window has
+                // closed. Without the second half a long fricative would fire
+                // again on its own tail.
+                if !rising && self.relax == 0.0 {
+                    self.armed = true;
+                }
+                // Updated *after* the test, so a block cannot raise the
+                // envelope past itself and then be measured against it.
+                let a = if level_db > env {
+                    ONSET_ENV_ATTACK
+                } else {
+                    ONSET_ENV_RELEASE
+                };
+                self.env_db = Some(env + a * (level_db - env));
+            }
+        }
+        if self.relax > 0.0 {
+            self.relaxed_blocks += 1;
+        }
+        self.relax
+    }
+}
+
 /// Speech enhancement in front of everything else.
 pub struct Enhancer {
     model: Option<Box<DfTract>>,
@@ -222,6 +449,17 @@ pub struct Enhancer {
     run_of_overruns: u32,
     /// How hard it is allowed to work. Only ever falls. See [`Effort`].
     effort: Effort,
+    /// The cap in force when no word is starting.
+    base_lim_db: f32,
+    /// What was last handed to the model, so an unchanged cap costs no call.
+    applied_lim_db: f32,
+    /// The cap while a word is starting. See [`ONSET_ATTEN_LIM_DB`].
+    onset_lim_db: f32,
+    /// Watches for word starts.
+    onset: OnsetGuard,
+    /// Whether the guard is allowed to act. Only the A/B in
+    /// `core/tests/onset_survival.rs` turns it off.
+    onset_guard: bool,
 }
 
 impl Enhancer {
@@ -267,7 +505,59 @@ impl Enhancer {
             frames: 0,
             run_of_overruns: 0,
             effort: Effort::Full,
+            base_lim_db: atten_lim_db,
+            applied_lim_db: atten_lim_db,
+            onset_lim_db: ONSET_ATTEN_LIM_DB,
+            onset: OnsetGuard::new(),
+            onset_guard: true,
         }
+    }
+
+    /// Turns the word-start guard off, for measuring what it does.
+    ///
+    /// Public for `core/tests/onset_survival.rs`, which needs both sides of the
+    /// comparison from the shipping code rather than from a copy of it. Nothing
+    /// in the app calls this.
+    pub fn set_onset_guard(&mut self, on: bool) {
+        self.onset_guard = on;
+    }
+
+    /// Retunes the word-start guard: where it listens, how big a jump counts,
+    /// how fast it lets go, and how far it relaxes the cap.
+    ///
+    /// Also for the harness. Four constants that interact — a higher corner
+    /// wants a smaller jump, a longer window wants a weaker cap — and tuning
+    /// them one at a time by editing the file and rebuilding is how a local
+    /// minimum gets shipped.
+    pub fn set_onset_tuning(&mut self, hp_hz: f32, rise_db: f32, release: f32, lim_db: f32) {
+        self.onset.hp = super::dsp::Biquad::high_pass(48_000.0, hp_hz, 0.707);
+        self.onset.rise_db = rise_db;
+        self.onset.release = release;
+        self.onset_lim_db = lim_db;
+    }
+
+    /// Where the guard stops opening because the background is too loud to let
+    /// back in. See [`ONSET_QUIET_FULL_DB`]. Also for the harness.
+    pub fn set_onset_quiet(&mut self, full_db: f32, none_db: f32) {
+        self.onset.quiet_full_db = full_db;
+        self.onset.quiet_none_db = none_db;
+    }
+
+    /// How many blocks ran with the cap relaxed, and how many ran at all.
+    ///
+    /// The share is the number to look at: a guard that is open most of the
+    /// time is not a guard, it is a lower cap with extra steps.
+    pub fn onset_relief(&self) -> (u64, u64) {
+        (self.onset.relaxed_blocks, self.frames)
+    }
+
+    /// How far the cap was relaxed for the last block, 0 to 1.
+    ///
+    /// For the harness, which needs to know *where* the guard fired and not
+    /// only how often: "open 40% of the time" reads the same whether it is
+    /// covering every word start or none of them.
+    pub fn onset_relax(&self) -> f32 {
+        self.onset.relax
     }
 
     fn build_with(atten_lim_db: f32) -> Result<DfTract> {
@@ -319,14 +609,39 @@ impl Enhancer {
         if self.effort == Effort::Bypassed {
             return;
         }
-        let Some(model) = self.model.as_mut() else {
+        if self.model.is_none() {
             return;
-        };
+        }
         if block.len() != HOP {
             // The chain is fixed at `FRAME_SIZE`, so this cannot happen from
             // the worker — but a wrong-sized block would panic inside the
             // model, and going quiet is not worth a shape mismatch.
             return;
+        }
+
+        // Before the model, on the block the model is about to see. Deliberately
+        // outside the stopwatch below: this is one biquad and a sum over 480
+        // samples, and folding it into the enhancer's frame time would put it
+        // in the number the performance ladder steps down on.
+        let change = if self.onset_guard {
+            let relax = self.onset.look(block);
+            // Linear in dB, which is where the ear is and where the cap is
+            // expressed. At relax = 1 the model may only pull the frame down by
+            // `ONSET_ATTEN_LIM_DB`.
+            let want = self.base_lim_db + relax * (self.onset_lim_db - self.base_lim_db);
+            if (want - self.applied_lim_db).abs() > 0.01 {
+                self.applied_lim_db = want;
+                Some(want)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let model = self.model.as_mut().expect("checked above");
+        if let Some(want) = change {
+            model.set_atten_lim(want);
         }
 
         self.noisy
@@ -420,6 +735,58 @@ impl Default for Enhancer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The guard's shape, without needing the model or a ride.
+    ///
+    /// Three properties, and each one was a bug before it was a test: it fires
+    /// once per rise rather than continuously, it holds for about a fricative
+    /// rather than a syllable, and it does not open on a loud background.
+    #[test]
+    fn the_word_start_guard_fires_once_and_only_when_there_is_room() {
+        let mut g = OnsetGuard::new();
+        let quiet = vec![0.0f32; HOP];
+        // A block of broadband noise, which is what a leading "sh" looks like
+        // to a level detector. Deterministic rather than random: a test that
+        // fires on a different sample every run cannot bisect.
+        let loud: Vec<f32> = (0..HOP)
+            .map(|i| 0.2 * ((i as f32 * 12.9898).sin() * 43758.547).fract())
+            .collect();
+
+        for _ in 0..50 {
+            g.look(&quiet);
+        }
+        assert_eq!(g.look(&quiet), 0.0, "silence must not open it");
+
+        // The rise fires it, and it then lets go over about five blocks.
+        let first = g.look(&loud);
+        assert!(
+            first > 0.5,
+            "a jump into the high band must open it: {first}"
+        );
+        let mut open = 1;
+        while g.look(&loud) > 0.0 {
+            open += 1;
+            assert!(open < 20, "it never closed while the loud signal continued");
+        }
+        assert!(
+            (4..=7).contains(&open),
+            "the window should be about a fricative long, was {open} blocks"
+        );
+
+        // Over a loud background there is nothing to hand back, so it stays
+        // shut however sharp the rise. See `ONSET_QUIET_NONE_DB`.
+        let mut g = OnsetGuard::new();
+        let background: Vec<f32> = loud.iter().map(|s| s * 0.5).collect();
+        for _ in 0..200 {
+            g.look(&background);
+        }
+        let louder: Vec<f32> = loud.iter().map(|s| s * 4.0).collect();
+        assert_eq!(
+            g.look(&louder),
+            0.0,
+            "it must not relax the cap when the background is loud enough to come back with it"
+        );
+    }
 
     #[test]
     fn the_model_loads_and_its_hop_is_our_block() {

@@ -77,19 +77,63 @@ fn profile_recall() {
     }
 
     println!(
-        "{:<10} {:>7} {:>7} {:>7} {:>6} {:>6} {:>8} {:>7} {:>7}",
-        "profile", "speak%", "both%", "veto%", "runs", "med", "gate-lvl", "recall", "prec"
+        "{:<10} {:>7} {:>7} {:>7} {:>7} {:>7} {:>6} {:>6} {:>8} {:>7} {:>7}",
+        "profile",
+        "speak%",
+        "relax%",
+        "vad-on",
+        "snr-on",
+        "both%",
+        "runs",
+        "med",
+        "gate-lvl",
+        "recall",
+        "prec"
     );
 
-    for profile in [
+    // Each profile twice: with the word-start guard and without.
+    //
+    // **Because separation cannot judge that change and this can.** The guard
+    // relaxes the enhancer for 50 ms at a word start, and the blocks it relaxes
+    // are labelled *gap* by construction — they sit immediately before the
+    // opening. So a speech-against-gaps figure counts the rescued consonant as
+    // leaked noise and reports the fix as a regression. Precision against the
+    // log's labels has the same blind spot in principle, but the question here
+    // is the one that matters on the road: does more get transmitted that
+    // should not?
+    // `MW_QUIET` sweeps where the guard stops opening, as a comma-separated
+    // list of dB. Unset, it runs the shipping value only.
+    let quiet: Vec<Option<f32>> = std::env::var("MW_QUIET")
+        .ok()
+        .map(|s| {
+            s.split(',')
+                .filter_map(|v| v.trim().parse().ok())
+                .map(Some)
+                .collect()
+        })
+        .unwrap_or_else(|| vec![None]);
+
+    let cases = [
         NoiseProfile::Light,
         NoiseProfile::Standard,
         NoiseProfile::Helmet,
-    ] {
+    ]
+    .into_iter()
+    .flat_map(|p| {
+        std::iter::once((p, None))
+            .chain(quiet.iter().map(move |q| (p, Some(*q))))
+            .collect::<Vec<_>>()
+    });
+
+    for (profile, guard) in cases {
         // A fresh chain per profile, and a fresh enhancer with it. Both adapt,
         // and carrying either across would measure the previous profile's
         // noise floor as much as this one's thresholds.
         let mut enhancer = Enhancer::new();
+        enhancer.set_onset_guard(guard.is_some());
+        if let Some(Some(none_db)) = guard {
+            enhancer.set_onset_quiet(none_db - 15.0, none_db);
+        }
         let mut processor = CaptureProcessor::new(profile);
 
         let mut speaking: Vec<bool> = Vec::with_capacity(audio.len() / FRAME_SIZE);
@@ -159,7 +203,10 @@ fn profile_recall() {
             f64::NAN
         };
 
-        let _ = (gaps, vad_only, snr_only, level);
+        // `vetoed` — blocks the transmit decision accepted and the gate's own
+        // absolute threshold then dropped — stayed under 0.5% in every run, so
+        // it is measured and not printed.
+        let _ = (gaps, level, vetoed);
 
         // Recall: of the blocks labelled speech, how many go out. Precision:
         // of the blocks that go out, how many were labelled speech. Recall
@@ -188,16 +235,22 @@ fn profile_recall() {
             }
         };
 
+        // Which half of the decision moved. `both` is the only place speech is
+        // transmitted, so a change there is either the network disagreeing or
+        // the SNR margin, and the two call for opposite fixes.
+        let (relaxed, frames) = enhancer.onset_relief();
         println!(
-            "{:<10} {:>6.1}% {:>6.1}% {:>6.1}% {:>6} {:>6} {:>8.1} {:>6.1}% {:>6.1}%",
-            format!("{profile:?}"),
-            100.0 * speaking.iter().filter(|s| **s).count() as f32 / n,
-            100.0 * both as f32 / n,
-            if both > 0 {
-                100.0 * vetoed as f32 / both as f32
-            } else {
-                0.0
+            "{:<10} {:>6.1}% {:>6.1}% {:>6.1}% {:>6.1}% {:>6.1}% {:>6} {:>6} {:>8.1} {:>6.1}% {:>6.1}%",
+            match guard {
+                None => format!("{profile:?}"),
+                Some(None) => format!("{profile:?}+g"),
+                Some(Some(q)) => format!("{profile:?}+{q:.0}"),
             },
+            100.0 * speaking.iter().filter(|s| **s).count() as f32 / n,
+            100.0 * relaxed as f32 / frames.max(1) as f32,
+            100.0 * vad_only as f32 / n,
+            100.0 * snr_only as f32 / n,
+            100.0 * both as f32 / n,
             runs.len(),
             median,
             if decided > 0 {

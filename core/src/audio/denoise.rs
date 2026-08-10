@@ -826,10 +826,12 @@ impl CaptureProcessor {
         // it removes it *without* knowing whether a voice was there, so this
         // is not circular.
         //
-        // First thing the performance ladder gives up, because it is the
-        // cheapest *quality* to sell: measured on the first unclipped ride,
-        // harmonicity separates transmitted blocks from untransmitted ones at
-        // AUC 0.564, barely better than a coin toss.
+        // The first *stage* the performance ladder gives up, once the enhancer
+        // has already bent as far as it will without being switched off. It
+        // goes before the others because it is the cheapest quality to sell:
+        // measured on the first unclipped ride, harmonicity separates
+        // transmitted blocks from untransmitted ones at AUC 0.564, barely
+        // better than a coin toss.
         //
         // It is not sold because it is expensive. On the OPPO it costs
         // **0.052 ms**, 13% of this function against RNNoise's 76%, so giving

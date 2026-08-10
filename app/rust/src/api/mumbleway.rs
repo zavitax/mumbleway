@@ -1596,15 +1596,16 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         // rider can see — so it is named in the warning text instead.
         disabled_stages: {
             use mumbleway_core::audio::relief::Relief;
-            let rung = match c.relief {
-                1 => Relief::NoPitch,
-                2 => Relief::NoFeedback,
-                3 => Relief::EnhancerReduced,
-                4 => Relief::NoRnnoise,
-                5 => Relief::EnhancerLight,
-                6 => Relief::EnhancerOff,
-                _ => Relief::None,
-            };
+            // Walked rather than matched on an index, so this cannot drift
+            // out of step with the ladder's own order — which it already
+            // would have, once.
+            let mut rung = Relief::None;
+            for _ in 0..c.relief {
+                match rung.weaker() {
+                    Some(next) => rung = next,
+                    None => break,
+                }
+            }
             let mut off: Vec<String> = Vec::new();
             if rung.skip_feedback() {
                 off.push("feedback".into());

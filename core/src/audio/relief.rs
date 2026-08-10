@@ -27,8 +27,11 @@
 //! | `vad` (RNNoise) | 0.767 | *worse* than the level it would be dropped for |
 //! | `harmonicity` (pitch) | **0.564** | barely better than a coin toss |
 //!
-//! **The order is by quality given up, not by milliseconds gained**, and those
-//! turn out to be almost opposite. Measured on the OPPO A3s:
+//! **The enhancer bends before anything else breaks, and is switched off last
+//! of all** — see [`Relief`] for the two costs side by side. Between those two
+//! extremes the cheap stages go in order of quality given up rather than
+//! milliseconds gained, and those turn out to be almost opposite. Measured on
+//! the OPPO A3s:
 //!
 //! | Rung | Saves | AUC it costs |
 //! |---|---|---|
@@ -65,26 +68,65 @@
 
 /// One rung of the whole-chain ladder.
 ///
-/// The enhancer's rungs are interleaved with the cheap ones rather than run
-/// after them, because `Effort::Reduced` costs very little — on voice over
-/// music it measured *better* than full effort — and is worth reaching for
-/// before RNNoise is given up.
+/// # The enhancer bends before anything else breaks
+///
+/// **Its first two rungs come first, and its last one comes last.** That looks
+/// odd beside "the enhancer is 88% of the block" until the two costs are put
+/// side by side:
+///
+/// | Rung | Buys | Costs |
+/// |---|---|---|
+/// | enhancer `Reduced` | **1.9 ms** | ~nothing; on voice over music it measured *better* than full |
+/// | enhancer `ErbOnly` | 0.6 ms, and halves the tail | up to 4.9 dB of separation on a quiet ride |
+/// | pitch, feedback, RNNoise | **0.54 ms together** | a coin-toss feature, headset insurance, and a VAD the level beats |
+/// | enhancer `Bypassed` | 4.3 ms | all of it — the thing that turns 1.5 dB into 16 |
+///
+/// So bending the enhancer is both the cheapest quality and the largest
+/// saving, twice over, before a single other stage is touched. And switching
+/// it off entirely is the largest loss on the chain by a wide margin, so it is
+/// the last thing tried rather than the fourth — every other stage is worth
+/// spending to avoid it.
+///
+/// # What each rung costs a whole block
+///
+/// Measured on the OPPO A3s with `MW_RELIEF` on `core/tests/chain_cost.rs`,
+/// over a clip that is 70% speech, against a 10 ms deadline:
+///
+/// | Rung | Given up | Block mean | Worst |
+/// |---|---|---|---|
+/// | 0 | — | 8.27 ms | 13.63 |
+/// | 1 | enhancer `Reduced` | 6.18 ms | 11.37 |
+/// | 2 | enhancer `ErbOnly` | 5.51 ms | **7.76** |
+/// | 3 | + pitch | 5.50 ms | — |
+/// | 4 | + feedback | 5.30 ms | 7.90 |
+/// | 5 | + RNNoise | 4.80 ms | 7.64 |
+/// | 6 | enhancer off | 0.25 ms | 1.06 |
+///
+/// **Rung 2 is where the worst block first fits**, which is the whole argument
+/// for this order: the enhancer's two bends carry the device inside the
+/// deadline on their own, and the three cheap stages below are the margin that
+/// keeps it there — 0.71 ms of it — rather than the thing that gets it there.
+///
+/// Read the mean, not the worst. A single late block moves the worst column by
+/// milliseconds (rung 3 shows 10.83 in one run and nothing unusual in the
+/// next); the mean is stable across runs and is what the ladder reacts to over
+/// a hundred blocks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Relief {
     /// Everything runs.
     None,
+    /// The enhancer drops to `Effort::Reduced`.
+    EnhancerReduced,
+    /// The enhancer drops to `Effort::ErbOnly`.
+    EnhancerLight,
     /// The pitch search is skipped. AUC 0.564.
     NoPitch,
     /// The feedback guard is skipped. It does nothing on a headset, where
     /// there is no acoustic path from the speaker back to the microphone.
     NoFeedback,
-    /// The enhancer drops to `Effort::Reduced`.
-    EnhancerReduced,
     /// RNNoise is skipped; the gate runs on level and SNR alone.
     NoRnnoise,
-    /// The enhancer drops to `Effort::ErbOnly`.
-    EnhancerLight,
-    /// The enhancer is bypassed. The bottom.
+    /// The enhancer is bypassed. The last resort, and the bottom.
     EnhancerOff,
 }
 
@@ -92,12 +134,12 @@ impl Relief {
     /// The next rung down, or `None` at the bottom.
     pub fn weaker(self) -> Option<Relief> {
         Some(match self {
-            Relief::None => Relief::NoPitch,
+            Relief::None => Relief::EnhancerReduced,
+            Relief::EnhancerReduced => Relief::EnhancerLight,
+            Relief::EnhancerLight => Relief::NoPitch,
             Relief::NoPitch => Relief::NoFeedback,
-            Relief::NoFeedback => Relief::EnhancerReduced,
-            Relief::EnhancerReduced => Relief::NoRnnoise,
-            Relief::NoRnnoise => Relief::EnhancerLight,
-            Relief::EnhancerLight => Relief::EnhancerOff,
+            Relief::NoFeedback => Relief::NoRnnoise,
+            Relief::NoRnnoise => Relief::EnhancerOff,
             Relief::EnhancerOff => return None,
         })
     }
@@ -106,11 +148,11 @@ impl Relief {
     pub fn index(self) -> u8 {
         match self {
             Relief::None => 0,
-            Relief::NoPitch => 1,
-            Relief::NoFeedback => 2,
-            Relief::EnhancerReduced => 3,
-            Relief::NoRnnoise => 4,
-            Relief::EnhancerLight => 5,
+            Relief::EnhancerReduced => 1,
+            Relief::EnhancerLight => 2,
+            Relief::NoPitch => 3,
+            Relief::NoFeedback => 4,
+            Relief::NoRnnoise => 5,
             Relief::EnhancerOff => 6,
         }
     }
@@ -128,12 +170,15 @@ impl Relief {
     }
 
     /// How many rungs the enhancer should have given up by now.
+    ///
+    /// It holds at `ErbOnly` across the three cheap rungs — those exist
+    /// precisely so it does not have to go further.
     pub fn enhancer_rungs(self) -> u8 {
         match self {
+            Relief::None => 0,
+            Relief::EnhancerReduced => 1,
+            Relief::EnhancerLight | Relief::NoPitch | Relief::NoFeedback | Relief::NoRnnoise => 2,
             Relief::EnhancerOff => 3,
-            Relief::EnhancerLight => 2,
-            Relief::NoRnnoise | Relief::EnhancerReduced => 1,
-            _ => 0,
         }
     }
 }
@@ -193,12 +238,14 @@ mod tests {
         let mut ladder = ReliefLadder::default();
         assert_eq!(ladder.level(), Relief::None);
 
+        // The enhancer bends first, the cheap stages go next, and switching
+        // the enhancer off is the last resort.
         let expected = [
+            Relief::EnhancerReduced,
+            Relief::EnhancerLight,
             Relief::NoPitch,
             Relief::NoFeedback,
-            Relief::EnhancerReduced,
             Relief::NoRnnoise,
-            Relief::EnhancerLight,
             Relief::EnhancerOff,
         ];
         for want in expected {

@@ -2780,11 +2780,12 @@ where
             // reference: the guard's whole job is the part that could not be
             // modelled and subtracted.
             guard.set_mode(shared.feedback_mode());
-            // Given up second by the performance ladder, because on a headset
-            // there is no acoustic path from the speaker back to the
-            // microphone and this is doing nothing at all. On a speakerphone
-            // it is insurance against howl — which is why it is given up
-            // before RNNoise but after the pitch search, rather than first.
+            // Given up by the performance ladder, after the enhancer has bent
+            // as far as it will and after the pitch search: on a headset there
+            // is no acoustic path from the speaker back to the microphone and
+            // this is doing nothing at all, but on a speakerphone it is
+            // insurance against howl — which is why it goes before RNNoise and
+            // not before the pitch search.
             if !relief.level().skip_feedback() {
                 guard.process(&mut block, &echo_ref);
             }

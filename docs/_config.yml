@@ -31,6 +31,7 @@ exclude:
   - STORE_DESCRIPTION.md
   - STORE_LISTING.md
   - ENHANCER_GPU.md
+  - ONSET_LATENCY.md
   - SESSION_2026-08-10.md
 
 # Navigation moved to `_data/strings.yml`, where it is keyed by language along

@@ -224,18 +224,25 @@ const IDLE_WAKE: Duration = Duration::from_secs(30);
 /// the vowel before it and falls below the gate while the word is still being
 /// said, so the far end hears the word truncated and waits for the rest.
 ///
-/// **Sized so the listener gets 200 ms of audio after the detector drops, not
-/// so the channel stays open for 200 ms.** Those are different numbers here,
-/// and the difference is [`ONSET_LOOKAHEAD_SAMPLES`]: the envelope is applied
-/// to audio 80 ms older than the decision driving it, so a 200 ms hold
-/// delivers only 120 ms of speech past the last block the detector called
-/// speech. The tail exists to carry a trailing consonant, and a consonant is
-/// audio — so the audio is what gets measured, and the hold is 80 ms longer to
-/// pay for the delay.
+/// **Sized so the listener gets [`VAD_TAIL_MS`] of audio after the detector
+/// drops, not so the channel stays open for that long.** Those are different
+/// numbers here, and the difference is [`ONSET_LOOKAHEAD_MS`]: the envelope is
+/// applied to audio that much older than the decision driving it, so a hold of
+/// exactly the tail length delivers a tail shorter by the look-ahead. The tail
+/// exists to carry a trailing consonant, and a consonant is audio — so the
+/// audio is what gets measured, and the hold is the look-ahead longer to pay
+/// for the delay.
 ///
-/// With [`VAD_FADE_SAMPLES`] the channel is held 280 ms and the far end hears
-/// 200 ms, of which only the last 30 ms is below full level.
-const VAD_HOLD_SAMPLES: usize = SAMPLE_RATE as usize * 250 / 1000;
+/// **Derived rather than written down.** It was a literal 250 ms with a
+/// comment explaining that it was 80 ms more than the tail, which is a
+/// relationship a reader has to re-check by hand and an editor has to
+/// remember. Raising the look-ahead without raising this would have fixed the
+/// start of every phrase by shortening the end of it.
+const VAD_HOLD_SAMPLES: usize =
+    SAMPLE_RATE as usize * (VAD_TAIL_MS + ONSET_LOOKAHEAD_MS - VAD_FADE_MS) / 1000;
+
+/// How much speech the far end hears past the detector's last speech block.
+const VAD_TAIL_MS: usize = 200;
 
 /// And how long it then takes to reach silence.
 ///
@@ -244,7 +251,8 @@ const VAD_HOLD_SAMPLES: usize = SAMPLE_RATE as usize * 250 / 1000;
 /// than the truncation this is fixing. Short, because its job is only to avoid
 /// that click — a long ramp is not a gentler ending, it is speech sent at the
 /// wrong level.
-const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 30 / 1000;
+const VAD_FADE_MS: usize = 30;
+const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * VAD_FADE_MS / 1000;
 
 /// How far the transmit decision runs ahead of the audio it is applied to.
 ///
@@ -258,13 +266,40 @@ const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * 30 / 1000;
 ///
 /// No threshold fixes this, because the fault is not the threshold. It is that
 /// the decision is causal and the sound is not. So the audio is delayed and
-/// the decision is not: everything emitted is 80 ms old, and the gate opening
-/// now opens on audio captured 80 ms ago.
+/// the decision is not.
 ///
-/// 80 ms is enough for a leading fricative, which runs 50–100 ms. It is paid
-/// as one-way latency and **only in voice-activated mode** — push-to-talk and
-/// continuous have no threshold to be late for and are not delayed at all.
-const ONSET_LOOKAHEAD_SAMPLES: usize = SAMPLE_RATE as usize * 80 / 1000;
+/// # 80 ms was reasoned; 160 is measured
+///
+/// The original figure came from "a leading fricative runs 50–100 ms". A rider
+/// then reported word starts on "p", "sh" and "ch" being swallowed, and
+/// `tools/vad/onset_lead.py` measured what the openings on three real rides
+/// actually needed — walking back from each opening through the microphone
+/// signal to where it left its own local background:
+///
+/// | Look-ahead | Openings fully covered | Still clipped, of 69 |
+/// |---|---|---|
+/// | 80 ms | 89.9% | 7 |
+/// | 120 ms | 91.3% | 6 |
+/// | **160 ms** | **94.2%** | **4** |
+/// | 240 ms | 95.7% | 3 |
+/// | 320 ms | 98.6% | 1 |
+///
+/// So roughly one word start in ten was losing its first sound, and 160 ms is
+/// the knee — it nearly halves that for the smallest step. It is *not* a cure:
+/// four openings in sixty-nine are still clipped and the tail of the
+/// distribution runs to 390 ms.
+///
+/// **Going further is the wrong shape.** This is one-way latency paid on every
+/// transmission, for ever, to protect the first tenth of a second of an
+/// utterance — 320 ms here would put mouth-to-ear near half a second, which is
+/// a worse conversation than a clipped consonant. The fix for the tail is to
+/// pay the delay down after the phrase opens rather than carry it always; see
+/// `docs/ONSET_LATENCY.md`.
+///
+/// Paid **only in voice-activated mode** — push-to-talk and continuous have no
+/// threshold to be late for and are not delayed at all.
+const ONSET_LOOKAHEAD_MS: usize = 160;
+const ONSET_LOOKAHEAD_SAMPLES: usize = SAMPLE_RATE as usize * ONSET_LOOKAHEAD_MS / 1000;
 
 /// Frames of incoming audio a loss measurement is taken over.
 ///

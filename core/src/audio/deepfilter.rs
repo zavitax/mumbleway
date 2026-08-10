@@ -29,6 +29,42 @@
 //! It has not been measured on a phone, and until it has, [`Enhancer::process`]
 //! keeps a running worst case that the diagnostics panel shows.
 //!
+//! # Which of the two models, and what the other one would buy
+//!
+//! `deep_filter` ships both DFN3 variants and the choice is a Cargo feature:
+//! `default-model-ll` is what this uses, `default-model` is the plain one.
+//!
+//! Prompted by [AndroidDeepFilterNet](https://github.com/KaleyraVideo/AndroidDeepFilterNet),
+//! which advertises a "~8 MB mobile-optimised model". **It is the plain DFN3**
+//! — the same 7.6 MB archive already sitting in our own dependency — and the
+//! library around it runs the same `tract` inference this does, from prebuilt
+//! `.so` blobs, behind a JNI hop. Its own optimisation notes say the
+//! quantisation that would have been a real win was abandoned because tract
+//! cannot execute quantised ONNX, and the fusion it did ship is what
+//! `declutter()` and `into_optimized()` already do at load — libDF calls both
+//! on all three sub-graphs.
+//!
+//! So there is nothing to adopt, but there is something to *measure*, because
+//! the model behind it is one word away. Same clip, same machine, per frame:
+//!
+//! | Model | Mean | p95 | p99 | Worst | Look-ahead |
+//! |---|---|---|---|---|---|
+//! | **DFN3-ll**, 34.7 MB — ships | 2.63 ms | 6.99 | 9.77 | 43.44 | **0** |
+//! | DFN3 plain, 7.6 MB | **0.88 ms** | 2.31 | 3.83 | 11.60 | 2 frames, **20 ms** |
+//!
+//! **Three times cheaper on the mean and 2.6× on the p99**, which is far more
+//! than the whole rest of the relief ladder can buy — every cheap rung together
+//! is 0.54 ms. The price is 20 ms of algorithmic latency, and [`super::paydown`]
+//! has just bought 36 ms back, so a device could take this and still be ahead
+//! of where it was this morning.
+//!
+//! **Not switched, because the quality side is unmeasured.** The two models
+//! differ in more than latency: the plain one may use future context and could
+//! separate *better* rather than worse. Nobody has run the separation numbers,
+//! and "3× cheaper" is not a reason to change what a rider hears on an
+//! assumption. The measurement to run is `core/tests/onset_survival.rs`'s
+//! separation column and `dfbench` on the OPPO, against both features.
+//!
 //! # It must never make things worse than not being here
 //!
 //! The model is built once, off the audio thread, and if that fails the

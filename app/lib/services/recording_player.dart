@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -100,19 +101,23 @@ Future<Waveform> _scan(List<Object> args) async {
   );
 }
 
-/// Which buckets went on the wire, from the decision log beside the audio.
+/// The transmit decision for every 10 ms block, in file order.
 ///
-/// Returns an empty list when there is no log, which the painter reads as "no
-/// information" rather than as "nothing was sent". Those are different, and
-/// colouring a whole recording as untransmitted because its `.csv` was never
-/// sent would be a confident lie.
-Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
+/// Empty when there is no log, and every caller must read that as "no
+/// information" rather than as "nothing was sent". Those are different: it
+/// would colour a whole recording as untransmitted, and refuse to play a note
+/// of it in speech-only mode, on the strength of a `.csv` that was simply
+/// never written.
+///
+/// **One list feeds both the green on the waveform and the speech-only
+/// transport**, so what a listener sees and what they hear cannot drift apart.
+/// Two readers of the same file, agreeing today, is a thing that stops being
+/// true quietly.
+Future<Uint8List> _blockFlags(String audioPath) async {
   final log = File('${audioPath.substring(0, audioPath.length - 4)}.csv');
   if (!await log.exists()) return Uint8List(0);
-  final out = Uint8List(buckets);
-  final perBucket = (total / buckets).ceil();
+  final out = <int>[];
   try {
-    var block = 0;
     for (final line in await log.readAsLines()) {
       // The first line is a comment and the second is the header. Skipping by
       // content rather than by count: a plain reader that takes the comment as
@@ -126,36 +131,45 @@ Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
       final rest = line.substring(comma + 1);
       final next = rest.indexOf(',');
       if (next <= 0) continue;
-      if (rest.substring(0, next) == '1') {
-        // Where the row sits in this file, not what its first column says.
-        //
-        // **The two disagree, and it shipped.** A recording rotates to a new
-        // pair of files every 16 MB, and the writer's block counter ran on
-        // across the rotation: the second file's log opened at block 17,477
-        // while its own audio opened at sample zero. Every row then pointed
-        // past the end of its own recording and was clamped to the last
-        // bucket, so the tail of a long ride drew with no green at all — and
-        // the tail is what the listen sheet opens first, being the newest
-        // name. The waveform said "none of this was sent" about a ride that
-        // was, which is the one thing this colour must never do.
-        //
-        // The writer is fixed as well. Counting rows is what repairs the
-        // recordings already sitting on people's phones, and rows are one per
-        // block in file order by construction, so it is also less to trust.
-        final start = block * kRecordingBlock;
-        final a = (start ~/ perBucket).clamp(0, buckets - 1);
-        final b = ((start + kRecordingBlock - 1) ~/ perBucket)
-            .clamp(0, buckets - 1);
-        for (var i = a; i <= b; i++) {
-          out[i] = 1;
-        }
-      }
-      block++;
+      // The row's position in the file, not what its first column says.
+      //
+      // **The two disagree, and it shipped.** A recording rotates to a new
+      // pair of files every 16 MB, and the writer's block counter ran on
+      // across the rotation: the second file's log opened at block 17,477
+      // while its own audio opened at sample zero. Every row then pointed past
+      // the end of its own recording and was clamped to the last bucket, so
+      // the tail of a long ride drew with no green at all — and the tail is
+      // what the listen sheet opens first, being the newest name. The waveform
+      // said "none of this was sent" about a ride that was, which is the one
+      // thing this colour must never do.
+      //
+      // The writer is fixed as well. Counting rows is what repairs the
+      // recordings already sitting on people's phones, and rows are one per
+      // block in file order by construction, so it is also less to trust.
+      out.add(rest.substring(0, next) == '1' ? 1 : 0);
     }
-    if (block == 0) return Uint8List(0);
   } on Exception {
     // A log that cannot be read is no log. The waveform is still worth drawing.
     return Uint8List(0);
+  }
+  return Uint8List.fromList(out);
+}
+
+/// Which buckets went on the wire, for drawing.
+Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
+  final flags = await _blockFlags(audioPath);
+  if (flags.isEmpty) return Uint8List(0);
+  final out = Uint8List(buckets);
+  final perBucket = (total / buckets).ceil();
+  for (var block = 0; block < flags.length; block++) {
+    if (flags[block] == 0) continue;
+    final start = block * kRecordingBlock;
+    final a = (start ~/ perBucket).clamp(0, buckets - 1);
+    final b = ((start + kRecordingBlock - 1) ~/ perBucket)
+        .clamp(0, buckets - 1);
+    for (var i = a; i <= b; i++) {
+      out[i] = 1;
+    }
   }
   return out;
 }
@@ -168,6 +182,22 @@ Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
 @visibleForTesting
 Future<Waveform> scanForTest(String path, int buckets) =>
     _scan(<Object>[path, buckets]);
+
+/// The per-block decisions, reachable from a test.
+@visibleForTesting
+Future<Uint8List> blockFlagsForTest(String path) => _blockFlags(path);
+
+/// A stretch of the file handed to the engine in one push.
+///
+/// Kept so the playhead can be turned back into a position in the file. In
+/// ordinary playback there is only ever one of these and it grows; in
+/// speech-only mode there is one per run the gate let through, because the
+/// count of samples pushed is no longer the distance travelled.
+class _Chunk {
+  _Chunk(this.start, this.length);
+  final int start;
+  int length;
+}
 
 /// Plays a diagnostic recording back through the engine's own output.
 ///
@@ -190,6 +220,16 @@ class RecordingPlayer extends ChangeNotifier {
   static const _target = Duration(milliseconds: 350);
   static const _tick = Duration(milliseconds: 80);
 
+  /// Half a hop of raised cosine either side of a splice.
+  ///
+  /// Cutting from one stretch of a recording to another joins two unrelated
+  /// waveforms, and the step between them is a click. That click is an
+  /// artefact of the cut and not something anyone on the far end would ever
+  /// have heard, so removing it is the honest rendering — but it is kept
+  /// short deliberately: a longer fade would soften the abrupt onsets that are
+  /// the whole reason for listening this way.
+  static const _rampSamples = 240; // 5 ms
+
   RandomAccessFile? _handle;
   Timer? _timer;
   String? _path;
@@ -201,13 +241,38 @@ class RecordingPlayer extends ChangeNotifier {
   bool _playing = false;
   bool _finished = false;
 
+  /// The transmit decision per block, or empty when the ride has no log.
+  Uint8List _blocks = Uint8List(0);
+  bool _anySent = false;
+  bool _speechOnly = false;
+
+  /// What has been handed to the engine and not yet heard, in file order.
+  final List<_Chunk> _chunks = [];
+
   String? get path => _path;
   bool get playing => _playing;
   bool get hasFile => _handle != null;
   Duration get duration =>
       Duration(milliseconds: (_totalSamples * 1000 / kRecordingRate).round());
 
+  /// Whether skipping to what was transmitted is a question this recording can
+  /// answer: it needs a decision log, and the log needs something in it.
+  ///
+  /// A ride where nothing was ever transmitted is a real outcome and not a
+  /// fault, but "play only the transmitted parts" of it is silence, so the
+  /// control says so by being unavailable rather than by playing nothing.
+  bool get canSkipSilence => _anySent;
+
+  /// Whether playback is skipping everything the gate rejected.
+  bool get speechOnly => _speechOnly;
+
   /// Where the playhead is, in samples, as heard rather than as sent.
+  ///
+  /// What was pushed minus what is still queued is what has reached the
+  /// speaker. That count is the distance travelled through the *file* only
+  /// while playback is contiguous; in speech-only mode the transport skips, so
+  /// it is walked back through the stretches actually pushed to arrive at a
+  /// position the waveform and the clock can both use.
   int get _positionSamples {
     var queued = 0;
     try {
@@ -215,7 +280,22 @@ class RecordingPlayer extends ChangeNotifier {
     } catch (_) {
       // No engine: nothing is playing, so nothing is outstanding.
     }
-    return (_atSeek + _pushed - queued).clamp(0, _totalSamples);
+    if (_chunks.isEmpty) return _atSeek.clamp(0, _totalSamples);
+    var heard = _pushed - queued;
+    var at = _chunks.first.start;
+    for (final c in _chunks) {
+      if (heard <= 0) {
+        at = c.start;
+        break;
+      }
+      if (heard < c.length) {
+        at = c.start + heard;
+        break;
+      }
+      heard -= c.length;
+      at = c.start + c.length;
+    }
+    return at.clamp(0, _totalSamples);
   }
 
   Duration get position => Duration(
@@ -226,6 +306,11 @@ class RecordingPlayer extends ChangeNotifier {
       _totalSamples == 0 ? 0 : _positionSamples / _totalSamples;
 
   /// Opens a recording without starting it.
+  ///
+  /// The decision log is read here, on an isolate, rather than when the
+  /// speech-only control is first pressed: a long ride's log is half a
+  /// megabyte, the sheet already shows a spinner across this, and a transport
+  /// control that has to think before it does anything reads as a broken one.
   Future<void> open(String path) async {
     await stop();
     final file = File(path);
@@ -237,6 +322,9 @@ class RecordingPlayer extends ChangeNotifier {
     _atSeek = 0;
     _pushed = 0;
     _finished = false;
+    _blocks = await compute(_blockFlags, path);
+    _anySent = _blocks.any((b) => b != 0);
+    if (!_anySent) _speechOnly = false;
     notifyListeners();
   }
 
@@ -266,11 +354,7 @@ class RecordingPlayer extends ChangeNotifier {
     _timer = null;
     // Where the ear got to, not where the reader got to. Anything still queued
     // was never heard and must be read again on resume.
-    final heard = _positionSamples;
-    _clearEngine();
-    _cursor = heard;
-    _atSeek = heard;
-    _pushed = 0;
+    _restartFrom(_positionSamples);
     notifyListeners();
   }
 
@@ -278,14 +362,39 @@ class RecordingPlayer extends ChangeNotifier {
   /// queued belongs to a moment the listener has just decided not to hear.
   void seekTo(int samples) {
     if (_handle == null) return;
-    final target = samples.clamp(0, _totalSamples);
-    _clearEngine();
-    _cursor = target;
-    _atSeek = target;
-    _pushed = 0;
+    _restartFrom(samples.clamp(0, _totalSamples));
     _finished = false;
     if (_playing) _feed();
     notifyListeners();
+  }
+
+  /// Plays only what the gate let through, or all of it.
+  ///
+  /// **This is what the panel exists for.** Judging a gate by ear otherwise
+  /// means two clients, two devices and a rider trying to make sense of their
+  /// own voice coming back at them; here the same question is one button, on
+  /// audio that has the decision beside it.
+  ///
+  /// It re-seeks, for the reason [pause] does: what is queued was read under
+  /// the mode that was in force at the time, and carrying it over would play
+  /// out a stretch the listener has just asked not to hear.
+  void setSpeechOnly(bool value) {
+    if (_speechOnly == value || (value && !_anySent)) return;
+    _speechOnly = value;
+    if (_handle != null) {
+      _restartFrom(_positionSamples);
+      if (_playing) _feed();
+    }
+    notifyListeners();
+  }
+
+  /// Throws away what was queued and reads again from [samples].
+  void _restartFrom(int samples) {
+    _clearEngine();
+    _chunks.clear();
+    _cursor = samples;
+    _atSeek = samples;
+    _pushed = 0;
   }
 
   void seekToFraction(double f) => seekTo((f * _totalSamples).round());
@@ -294,14 +403,13 @@ class RecordingPlayer extends ChangeNotifier {
     _playing = false;
     _timer?.cancel();
     _timer = null;
-    _clearEngine();
+    _restartFrom(0);
     await _handle?.close();
     _handle = null;
     _path = null;
     _totalSamples = 0;
-    _cursor = 0;
-    _atSeek = 0;
-    _pushed = 0;
+    _blocks = Uint8List(0);
+    _anySent = false;
     _finished = false;
     notifyListeners();
   }
@@ -328,27 +436,59 @@ class RecordingPlayer extends ChangeNotifier {
       return;
     }
 
-    final want = (_target.inMilliseconds * kRecordingRate ~/ 1000) - queued;
-    if (want > 0 && _cursor < _totalSamples) {
-      final take = want.clamp(0, _totalSamples - _cursor);
-      final bytes = handle..setPositionSync(_cursor * _bytesPerSample);
-      final raw = bytes.readSync(take * _bytesPerSample);
+    _forget(_pushed - queued);
+
+    // The engine's queue caps at 500 ms and the target is 350, so a push of
+    // `want` is always taken whole. That is what lets the fades below be
+    // applied before the push rather than reconciled against what it accepted.
+    var want = (_target.inMilliseconds * kRecordingRate ~/ 1000) - queued;
+
+    // A loop, because one pass covers one unbroken run of transmitted audio
+    // and a run can be a single block. Ordinary playback goes round once.
+    while (want > 0 && _cursor < _totalSamples) {
+      final from = _nextAudible(_cursor);
+      if (from >= _totalSamples) {
+        _cursor = _totalSamples;
+        break;
+      }
+      final spliced = from != _cursor;
+      _cursor = from;
+      final runEnd = _audibleEnd(_cursor);
+      final take = want < runEnd - _cursor ? want : runEnd - _cursor;
+      if (take <= 0) break;
+
+      handle.setPositionSync(_cursor * _bytesPerSample);
+      final raw = handle.readSync(take * _bytesPerSample);
       final pcm = raw.buffer.asInt16List(
         raw.offsetInBytes,
         raw.lengthInBytes ~/ _bytesPerSample,
       );
+      if (pcm.isEmpty) break;
       final samples = Float32List(pcm.length);
       for (var i = 0; i < pcm.length; i++) {
         samples[i] = pcm[i] / 32768.0;
       }
+
+      // Only at a join, and only where there is really a join: the last run of
+      // a recording ends at its end, which is not a splice and needs no fade.
+      if (spliced) _rampIn(samples);
+      if (_cursor + pcm.length >= runEnd && runEnd < _totalSamples) {
+        _rampOut(samples);
+      }
+
+      final int accepted;
       try {
-        final accepted = previewPush(samples: samples);
-        _cursor += accepted;
-        _pushed += accepted;
+        accepted = previewPush(samples: samples);
       } catch (_) {
         pause();
         return;
       }
+      if (accepted <= 0) break;
+      _note(_cursor, accepted);
+      _cursor += accepted;
+      _pushed += accepted;
+      want -= accepted;
+      if (accepted < pcm.length) break; // engine full; the rest waits
     }
 
     if (_cursor >= _totalSamples && queued == 0) {
@@ -359,6 +499,92 @@ class RecordingPlayer extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  /// The next sample worth playing at or after [from].
+  ///
+  /// Everything, unless speech-only is on. Past the end of the decision log it
+  /// is everything too: a log shorter than its audio is missing information,
+  /// and skipping the tail of a ride on the strength of rows that were never
+  /// written would be silent and wrong.
+  int _nextAudible(int from) {
+    if (!_speechOnly || _blocks.isEmpty) return from;
+    var block = from ~/ kRecordingBlock;
+    while (block < _blocks.length && _blocks[block] == 0) {
+      block++;
+    }
+    final start = block * kRecordingBlock;
+    return start > from ? start : from;
+  }
+
+  /// Where the run containing [from] stops being worth playing.
+  int _audibleEnd(int from) {
+    if (!_speechOnly || _blocks.isEmpty) return _totalSamples;
+    var block = from ~/ kRecordingBlock;
+    if (block >= _blocks.length) return _totalSamples;
+    while (block < _blocks.length && _blocks[block] != 0) {
+      block++;
+    }
+    // Off the end of the log is unknown, not silent — play to the end.
+    if (block >= _blocks.length) return _totalSamples;
+    final end = block * kRecordingBlock;
+    return end < _totalSamples ? end : _totalSamples;
+  }
+
+  /// Records a stretch handed to the engine, merging when it continues the
+  /// last one — which is every push in ordinary playback.
+  void _note(int start, int length) {
+    if (_chunks.isNotEmpty) {
+      final last = _chunks.last;
+      if (last.start + last.length == start) {
+        last.length += length;
+        return;
+      }
+    }
+    _chunks.add(_Chunk(start, length));
+  }
+
+  /// Drops stretches already heard, so a long ride does not accumulate one
+  /// entry per gap for the whole of it. The last is always kept: it is what
+  /// the position is measured from once everything pushed has been played.
+  void _forget(int heard) {
+    while (_chunks.length > 1 && heard >= _chunks.first.length) {
+      heard -= _chunks.first.length;
+      _pushed -= _chunks.first.length;
+      _chunks.removeAt(0);
+    }
+  }
+
+  static void _rampIn(Float32List s) {
+    final n = _rampSamples < s.length ? _rampSamples : s.length;
+    for (var i = 0; i < n; i++) {
+      s[i] *= 0.5 - 0.5 * math.cos(math.pi * i / n);
+    }
+  }
+
+  static void _rampOut(Float32List s) {
+    final n = _rampSamples < s.length ? _rampSamples : s.length;
+    final base = s.length - n;
+    for (var i = 0; i < n; i++) {
+      s[base + i] *= 0.5 + 0.5 * math.cos(math.pi * i / n);
+    }
+  }
+
+  /// The skipping arithmetic, without a file or an engine.
+  ///
+  /// Worth reaching in for: it is the whole of the feature, it is pure, and
+  /// the alternative is asserting it by ear on a device.
+  @visibleForTesting
+  void loadForTest(Uint8List blocks, int totalSamples) {
+    _blocks = blocks;
+    _anySent = blocks.any((b) => b != 0);
+    _totalSamples = totalSamples;
+  }
+
+  @visibleForTesting
+  int nextAudibleForTest(int from) => _nextAudible(from);
+
+  @visibleForTesting
+  int audibleEndForTest(int from) => _audibleEnd(from);
 
   @override
   void dispose() {

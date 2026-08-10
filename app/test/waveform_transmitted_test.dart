@@ -101,4 +101,90 @@ void main() {
       expect(w.wasSent(i), isTrue, reason: 'bucket $i');
     }
   });
+
+  test('the green and the per-block decisions come from one reading', () async {
+    // The waveform's colour and the speech-only transport are the same claim
+    // shown two ways. They are computed from one list for that reason, and
+    // this is the assertion that says so.
+    final path = await write(100, {for (var i = 40; i < 60; i++) i});
+    final flags = await blockFlagsForTest(path);
+    expect(flags.length, 100);
+    expect(flags[39], 0);
+    expect(flags[40], 1);
+    expect(flags[59], 1);
+    expect(flags[60], 0);
+
+    final w = await scanForTest(path, 10);
+    for (var b = 0; b < 10; b++) {
+      final any = [for (var i = b * 10; i < b * 10 + 10; i++) flags[i]]
+          .any((f) => f != 0);
+      expect(w.wasSent(b), any, reason: 'bucket $b');
+    }
+  });
+
+  group('skipping to what was transmitted', () {
+    /// A player with decisions but no file: the arithmetic is what is under
+    /// test, and it needs neither an engine nor audio.
+    RecordingPlayer withBlocks(List<int> flags) {
+      final p = RecordingPlayer();
+      p.loadForTest(
+        Uint8List.fromList(flags),
+        flags.length * kRecordingBlock,
+      );
+      p.setSpeechOnly(true);
+      return p;
+    }
+
+    test('silence in front is skipped, and the run ends where it ends', () {
+      // Ten blocks; only 4, 5 and 6 went out.
+      final p = withBlocks([0, 0, 0, 0, 1, 1, 1, 0, 0, 0]);
+      expect(p.speechOnly, isTrue);
+      expect(p.nextAudibleForTest(0), 4 * kRecordingBlock);
+      expect(p.audibleEndForTest(4 * kRecordingBlock), 7 * kRecordingBlock);
+      // From inside the run, nothing moves and the end is unchanged.
+      expect(p.nextAudibleForTest(5 * kRecordingBlock + 100),
+          5 * kRecordingBlock + 100);
+      expect(p.audibleEndForTest(5 * kRecordingBlock), 7 * kRecordingBlock);
+    });
+
+    test('past the last transmitted block it runs to the end', () {
+      final p = withBlocks([1, 1, 0, 0]);
+      // Nothing further was sent, so there is nowhere left to go. The caller
+      // reads a position at or past the end as "finished".
+      expect(p.nextAudibleForTest(2 * kRecordingBlock),
+          greaterThanOrEqualTo(4 * kRecordingBlock));
+    });
+
+    test('turning it off plays everything again', () {
+      final p = withBlocks([0, 0, 1, 0]);
+      p.setSpeechOnly(false);
+      expect(p.nextAudibleForTest(0), 0);
+      expect(p.audibleEndForTest(0), 4 * kRecordingBlock);
+    });
+
+    test('a recording that transmitted nothing cannot be filtered', () {
+      // Not a fault — a real outcome, and "play only the transmitted parts" of
+      // it is silence. The control is unavailable rather than silent.
+      final p = RecordingPlayer();
+      p.loadForTest(Uint8List.fromList([0, 0, 0]), 3 * kRecordingBlock);
+      expect(p.canSkipSilence, isFalse);
+      p.setSpeechOnly(true);
+      expect(p.speechOnly, isFalse, reason: 'refused, rather than silent');
+    });
+
+    test('audio past the end of the log is played, not skipped', () {
+      // A log shorter than its audio is missing information. Treating the
+      // absent rows as "not transmitted" would silently drop the tail of a
+      // ride, which is the failure the green already has a test against.
+      final p = RecordingPlayer();
+      p.loadForTest(
+        Uint8List.fromList([1, 0]),
+        // Four blocks of audio, two blocks of log.
+        4 * kRecordingBlock,
+      );
+      p.setSpeechOnly(true);
+      expect(p.nextAudibleForTest(kRecordingBlock), 2 * kRecordingBlock);
+      expect(p.audibleEndForTest(2 * kRecordingBlock), 4 * kRecordingBlock);
+    });
+  });
 }

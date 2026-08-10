@@ -357,6 +357,16 @@ class _PreviewSheetState extends State<_PreviewSheet> {
         '.${ms.toString().padLeft(3, '0')}';
   }
 
+  /// `m:ss`, for the length.
+  ///
+  /// The two halves of the readout are read for different reasons, so they are
+  /// not shown to the same precision. The position is a pointer at a moment
+  /// and needs the milliseconds; the length is context and never changes. On a
+  /// narrow phone the four characters this gives back are the difference
+  /// between the row fitting another control and not.
+  static String _length(Duration d) =>
+      '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
@@ -482,6 +492,35 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                               : l.diagPreviewPlay,
                         ),
                         const SizedBox(width: 4),
+                        // Beside play, because it modifies what play does.
+                        //
+                        // **Green, and the same green as the waveform above
+                        // it.** That is not decoration: the bars this plays
+                        // are exactly the bars drawn in that colour, so the
+                        // button says which parts of the picture it means
+                        // without a word of explanation. Outlined when it is
+                        // off, filled when it is on, so the state reads at a
+                        // glance on a phone held at arm's length.
+                        IconButton(
+                          onPressed: _player.canSkipSilence
+                              ? () =>
+                                    _player.setSpeechOnly(!_player.speechOnly)
+                              : null,
+                          icon: Icon(
+                            _player.speechOnly
+                                ? Icons.record_voice_over
+                                : Icons.record_voice_over_outlined,
+                          ),
+                          iconSize: 20,
+                          color: _player.speechOnly
+                              ? StatusColors.connected
+                              : null,
+                          tooltip: !_player.canSkipSilence
+                              ? l.diagPreviewSentOnlyNone
+                              : _player.speechOnly
+                              ? l.diagPreviewSentOnlyOff
+                              : l.diagPreviewSentOnly,
+                        ),
                         // Delete beside the transport control, share at the far
                         // end. That is the card's rule and the reason is the
                         // same: the button that destroys the only copy and the
@@ -509,7 +548,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                           child: Center(
                             child: Text(
                               '${_clock(_player.position)} / '
-                              '${_clock(_player.duration)}',
+                              '${_length(_player.duration)}',
                               style: TextStyle(
                                 fontFeatures: const [
                                   FontFeature.tabularFigures()

@@ -931,6 +931,16 @@ class LEn extends L {
   String get diagPreviewDelete => 'Delete this recording';
 
   @override
+  String get diagPreviewSentOnly => 'Play only what was transmitted';
+
+  @override
+  String get diagPreviewSentOnlyOff => 'Play the whole recording';
+
+  @override
+  String get diagPreviewSentOnlyNone =>
+      'Nothing in this recording was transmitted';
+
+  @override
   String get diagPreviewShare => 'Share this recording';
 
   @override

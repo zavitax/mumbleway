@@ -36,6 +36,20 @@ recording card opens a waveform with a playhead you can drag or tap to scrub.
 It is a recording of your own voice and you should know what is in it. If you
 would rather not send the audio at all, you do not have to — see below.
 
+### Hear what the others heard
+
+The green stretches of the waveform are the parts that went to the server.
+Everything else was recorded but never sent.
+
+The **speaker icon** beside play turns green and plays **only the green
+stretches**, skipping everything the noise gate rejected. That is as close as
+you can get to sitting at the other end of the channel — without a second
+phone, a second account, and trying to judge your own voice coming back at you.
+
+It is the fastest way to answer the question that matters: *was I cut off, or
+did it just sound like it?* If words are missing from this playback, they were
+missing for everyone.
+
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/recording-card-phone.webp' | relative_url }}"

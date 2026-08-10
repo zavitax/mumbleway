@@ -178,8 +178,10 @@ void main() {
       }
     });
 
-    Widget harness(AppState state, Directory dir) => MaterialApp(
+    Widget harness(AppState state, Directory dir, {Locale? locale}) =>
+        MaterialApp(
       theme: buildTheme(Brightness.dark),
+      locale: locale,
       supportedLocales: AppState.supportedLocales,
       localizationsDelegates: const [
         L.delegate,
@@ -309,6 +311,133 @@ void main() {
       await tester.tap(find.byIcon(Icons.close));
       await beat(tester);
       expect(find.text('Listen back'), findsNothing);
+    });
+
+    /// Playing back only what the gate let through.
+    ///
+    /// The point of the control is to judge the gate without two clients and
+    /// two devices, so the thing worth asserting is that it knows when it can
+    /// answer that question and when it cannot — a recording whose log was
+    /// never written, or one where nothing went out, has nothing to filter.
+    group('the transmitted-only control', () {
+      /// A recording with a real decision log, `sent` blocks of which went out.
+      void writeRide(Directory into, String stem, int blocks, int sent) {
+        File('${into.path}/$stem.s16')
+            .writeAsBytesSync(List.filled(blocks * 480 * 2, 0));
+        final rows = StringBuffer(
+          '# mumbleway diagnostic capture\n'
+          'block,transmitting,speaking,gate_open,vad,snr_db,level_db,'
+          'floor_db,harmonicity,modulation\n',
+        );
+        for (var b = 0; b < blocks; b++) {
+          rows.writeln(
+            '$b,${b < sent ? 1 : 0},0,0,0.5,10,-40,-60,0.5,0.4',
+          );
+        }
+        File('${into.path}/$stem.csv').writeAsStringSync(rows.toString());
+      }
+
+      testWidgets('is offered when the ride has decisions in it',
+          (tester) async {
+        final ride = Directory.systemTemp.createTempSync('mumbleway-sent');
+        addTearDown(() {
+          try {
+            ride.deleteSync(recursive: true);
+          } catch (_) {
+            // Windows keeps a handle until the sheet is disposed.
+          }
+        });
+        writeRide(ride, '20260810-1006-000', 200, 60);
+
+        await tester.pumpWidget(harness(state, ride));
+        await tester.tap(find.text('open'));
+        await beat(tester);
+        await realWork(tester);
+
+        final off = find.byIcon(Icons.record_voice_over_outlined);
+        expect(off, findsOneWidget, reason: 'outlined while it is off');
+        expect(
+          tester.widget<IconButton>(
+            find.ancestor(of: off, matching: find.byType(IconButton)),
+          ).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(off);
+        await beat(tester);
+
+        // Filled, and in the same green the waveform draws the transmitted
+        // stretches in — the button says which parts of the picture it means.
+        final on = find.byIcon(Icons.record_voice_over);
+        expect(on, findsOneWidget);
+        expect(
+          tester.widget<IconButton>(
+            find.ancestor(of: on, matching: find.byType(IconButton)),
+          ).color,
+          StatusColors.connected,
+        );
+      });
+
+      testWidgets('is unavailable when nothing was transmitted',
+          (tester) async {
+        // A ride where the gate never opened is a real outcome, not a fault.
+        // "Play only the transmitted parts" of it is silence, so the control
+        // says so by being unavailable rather than by playing nothing at all.
+        final ride = Directory.systemTemp.createTempSync('mumbleway-quiet');
+        addTearDown(() {
+          try {
+            ride.deleteSync(recursive: true);
+          } catch (_) {}
+        });
+        writeRide(ride, '20260810-1007-000', 40, 0);
+
+        await tester.pumpWidget(harness(state, ride));
+        await tester.tap(find.text('open'));
+        await beat(tester);
+        await realWork(tester);
+
+        final icon = find.byIcon(Icons.record_voice_over_outlined);
+        expect(icon, findsOneWidget);
+        expect(
+          tester.widget<IconButton>(
+            find.ancestor(of: icon, matching: find.byType(IconButton)),
+          ).onPressed,
+          isNull,
+        );
+      });
+
+      for (final locale in const [Locale('en'), Locale('ru')]) {
+        testWidgets('fits the row on a 320pt screen in ${locale.languageCode}',
+            (tester) async {
+          // The control was fitted by giving up the milliseconds on the length,
+          // which is only a good trade if the row genuinely fits afterwards.
+          // Four transport controls and a clock is what this row now is, and
+          // 320 logical pixels is the narrowest phone still supported.
+          tester.view.physicalSize = const Size(320, 640);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final ride = Directory.systemTemp.createTempSync('mumbleway-narrow');
+          addTearDown(() {
+            try {
+              ride.deleteSync(recursive: true);
+            } catch (_) {}
+          });
+          writeRide(ride, '20260810-1006-000', 200, 60);
+
+          await tester.pumpWidget(harness(state, ride, locale: locale));
+          await tester.tap(find.text('open'));
+          await beat(tester);
+          await realWork(tester);
+
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: 'the transport row ran off the side of the screen',
+          );
+        });
+      }
     });
   });
 }

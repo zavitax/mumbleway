@@ -1789,6 +1789,24 @@ abstract class L {
   /// **'Delete this recording'**
   String get diagPreviewDelete;
 
+  /// Tooltip on the control that skips everything the gate rejected, when it is off
+  ///
+  /// In en, this message translates to:
+  /// **'Play only what was transmitted'**
+  String get diagPreviewSentOnly;
+
+  /// Tooltip on the same control when it is on, saying what pressing it does next
+  ///
+  /// In en, this message translates to:
+  /// **'Play the whole recording'**
+  String get diagPreviewSentOnlyOff;
+
+  /// Tooltip on the same control when it is unavailable, either because the recording has no decision log or because nothing in it went out
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing in this recording was transmitted'**
+  String get diagPreviewSentOnlyNone;
+
   /// Tooltip on the share button in the listen-back sheet
   ///
   /// In en, this message translates to:

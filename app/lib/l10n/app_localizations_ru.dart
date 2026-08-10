@@ -933,6 +933,15 @@ class LRu extends L {
   String get diagPreviewDelete => 'Удалить эту запись';
 
   @override
+  String get diagPreviewSentOnly => 'Проигрывать только переданное';
+
+  @override
+  String get diagPreviewSentOnlyOff => 'Проигрывать запись целиком';
+
+  @override
+  String get diagPreviewSentOnlyNone => 'Из этой записи ничего не передавалось';
+
+  @override
   String get diagPreviewShare => 'Отправить эту запись';
 
   @override

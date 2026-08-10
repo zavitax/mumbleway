@@ -36,6 +36,7 @@ use super::feedback::{FeedbackGuard, FeedbackMode};
 use super::jitter::{
     SpeakerBuffer, DEFAULT_TARGET_FRAMES, MAX_TARGET_FRAMES, MIN_TARGET_FRAMES, SILENT_DB,
 };
+use super::paydown::Paydown;
 use super::preview::PreviewChain;
 use super::record::{DiagnosticRecorder, Recorded};
 use super::relief::{self, ReliefLadder};
@@ -238,8 +239,13 @@ const IDLE_WAKE: Duration = Duration::from_secs(30);
 /// relationship a reader has to re-check by hand and an editor has to
 /// remember. Raising the look-ahead without raising this would have fixed the
 /// start of every phrase by shortening the end of it.
-const VAD_HOLD_SAMPLES: usize =
-    SAMPLE_RATE as usize * (VAD_TAIL_MS + ONSET_LOOKAHEAD_MS - VAD_FADE_MS) / 1000;
+/// The tail on its own, which is what the hold is built from at each opening.
+///
+/// **This used to be a whole-hold constant** — the tail plus the look-ahead,
+/// less the fade — and it stopped being one when [`super::paydown`] made the
+/// delay vary from 240 ms to 60 within a phrase. The hold is now computed per
+/// opening from what the delay line is actually holding; see the call site.
+const VAD_TAIL_SAMPLES: usize = SAMPLE_RATE as usize * VAD_TAIL_MS / 1000;
 
 /// How much speech the far end hears past the detector's last speech block.
 const VAD_TAIL_MS: usize = 200;
@@ -2571,8 +2577,9 @@ where
     // Voice activation's release envelope; see where they are spent.
     let mut hold_left: usize = 0;
     let mut fade_left: usize = 0;
-    // Voice activation's *attack* protection; see [`ONSET_LOOKAHEAD_SAMPLES`].
-    let mut onset_delay = OnsetDelay::new();
+    // Voice activation's *attack* protection, and the stage that gives the
+    // delay back once a phrase is under way. See [`super::paydown`].
+    let mut onset_delay = Paydown::new();
 
     // Recorded blocks waiting to learn whether they were transmitted. See the
     // release point below for why they cannot be written where they are taken.
@@ -2928,6 +2935,11 @@ where
             } else if !onset_delay.is_empty() {
                 onset_delay.clear();
             }
+            // What the delay line is actually holding right now, which is no
+            // longer a constant — the pay-down drains it from 240 ms towards
+            // 60 during a phrase. The recorder's pairing below reads this
+            // rather than a fixed look-ahead.
+            let held_samples = onset_delay.held_samples();
 
             let allowed = if priming {
                 false
@@ -2948,7 +2960,18 @@ where
                 // short enough that a rider who stops talking is not still
                 // broadcasting a second later.
                 if open {
-                    hold_left = VAD_HOLD_SAMPLES;
+                    // **From the delay line, not from a constant.** The hold is
+                    // sized so the listener gets `VAD_TAIL_MS` of audio after
+                    // the detector drops, and the envelope is applied to audio
+                    // older than the decision driving it — so the hold has to
+                    // be the tail *plus* however far behind the audio is. That
+                    // was a constant while the delay was, and the pay-down
+                    // makes it vary from 240 ms down to 60 within a phrase.
+                    // Leaving it fixed would have delivered a tail between 200
+                    // and 380 ms depending on how far through the sentence the
+                    // rider was — quietly spending airtime the hangover
+                    // measurement says is already 17% of what goes out.
+                    hold_left = VAD_TAIL_SAMPLES + held_samples.saturating_sub(VAD_FADE_SAMPLES);
                     fade_left = VAD_FADE_SAMPLES;
                 }
                 let mut sending = false;
@@ -2979,22 +3002,31 @@ where
             // One recorded block released per iteration, stamped with the
             // decision that was actually made about *its* audio.
             //
-            // In voice-activated mode that decision is eight blocks late: the
-            // look-ahead hands the envelope audio from 80 ms earlier, so what
-            // was just decided applies to what was captured 80 ms ago. Writing
-            // `allowed` against the block that produced it would put every
-            // boundary in the log 80 ms early — the same 80 ms the look-ahead
-            // exists to recover, so the error would look exactly like the fix
-            // working. The queue holds each block back by precisely the delay
-            // its audio was subject to.
+            // In voice-activated mode that decision is late by the look-ahead:
+            // the delay line hands the envelope older audio, so what was just
+            // decided applies to what was captured earlier. Writing `allowed`
+            // against the block that produced it would put every boundary in
+            // the log that far early — the same interval the look-ahead exists
+            // to recover, so the error would look exactly like the fix working.
+            // The queue holds each block back by precisely the delay its audio
+            // was subject to.
             //
-            // The condition mirrors `OnsetDelay::shift`, and is on samples
-            // rather than a block count so it stays right if the capture block
-            // size ever changes.
+            // **Read from the delay line rather than from a constant.** It was
+            // `ONSET_LOOKAHEAD_SAMPLES`, which was correct while the delay was
+            // fixed and is not any more: the pay-down drains it from 240 ms
+            // towards 60 during a phrase, so a constant would drift the log by
+            // up to 180 ms exactly where the interesting boundaries are.
+            //
+            // The pairing is close rather than exact, and the reason is worth
+            // knowing: the pay-down repays by *deleting* pitch periods, so a
+            // few captured blocks never reach the wire at all and their
+            // decision is attributed to a neighbour. The smear is bounded by
+            // the block size. `speaking` is unaffected — it is stamped at
+            // capture from that block's own analysis.
             let ready = mode != TransmitMode::VoiceActivity
                 || pending_record
                     .front()
-                    .is_some_and(|f| pending_samples >= ONSET_LOOKAHEAD_SAMPLES + f.samples.len());
+                    .is_some_and(|f| pending_samples >= held_samples + f.samples.len());
             if ready {
                 if let Some(mut entry) = pending_record.pop_front() {
                     pending_samples -= entry.samples.len();
@@ -3139,6 +3171,7 @@ where
                     relief::BUDGET_US / 1000
                 );
                 processor.set_relief(rung.skip_pitch(), rung.skip_rnnoise());
+                onset_delay.set_enabled(!rung.skip_paydown());
                 while enhancer.effort().index() < rung.enhancer_rungs() {
                     enhancer.step_down();
                 }
@@ -3431,16 +3464,35 @@ mod tests {
     }
 
     #[test]
-    fn the_tail_after_a_sentence_is_200_ms_with_a_30_ms_fade() {
-        // Three constants that only mean anything together, which is the whole
-        // reason for asserting them. The envelope runs on audio that the
-        // look-ahead has already delayed, so what a listener hears after the
-        // detector drops is the hold and fade *minus* that delay. Lengthen the
-        // look-ahead alone and the tail silently shortens by as much; this
-        // fails when that happens, which is the only warning there would be.
+    fn the_tail_after_a_sentence_is_200_ms_at_every_delay_the_paydown_reaches() {
+        // Constants that only mean anything together, which is the whole reason
+        // for asserting them. The envelope runs on audio the delay line has
+        // already held back, so what a listener hears after the detector drops
+        // is the hold and fade *minus* that delay.
+        //
+        // **The delay is no longer one number**, so neither is the check: the
+        // pay-down drains from `LOOKAHEAD_MS` to `FLOOR_MS` during a phrase and
+        // the ladder can pin it at `FALLBACK_MS`. The tail has to come out at
+        // 200 ms at every one of them, or a rider gets a different amount of
+        // their last consonant depending on how far into the sentence they
+        // were. This is the only warning there would be.
+        use super::super::paydown;
         let ms = |n: usize| n * 1000 / SAMPLE_RATE as usize;
-        let delivered = VAD_HOLD_SAMPLES + VAD_FADE_SAMPLES - ONSET_LOOKAHEAD_SAMPLES;
-        assert_eq!(ms(delivered), 200, "audio sent after the detector drops");
+        for held_ms in [
+            paydown::FLOOR_MS,
+            paydown::FALLBACK_MS,
+            paydown::LOOKAHEAD_MS,
+        ] {
+            let held = SAMPLE_RATE as usize * held_ms / 1000;
+            // Exactly the expression the worker uses at an opening.
+            let hold = VAD_TAIL_SAMPLES + held.saturating_sub(VAD_FADE_SAMPLES);
+            let delivered = hold + VAD_FADE_SAMPLES - held;
+            assert_eq!(
+                ms(delivered),
+                200,
+                "audio sent after the detector drops, at {held_ms} ms of delay"
+            );
+        }
         assert_eq!(ms(VAD_FADE_SAMPLES), 30, "linear fade at the very end");
     }
 

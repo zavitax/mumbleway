@@ -10,6 +10,7 @@ pub mod engine;
 pub mod feedback;
 pub mod jitter;
 pub mod modulation;
+pub mod paydown;
 pub mod pitch;
 pub mod preview;
 pub mod quality;

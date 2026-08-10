@@ -119,6 +119,19 @@ pub enum Relief {
     EnhancerReduced,
     /// The enhancer drops to `Effort::ErbOnly`.
     EnhancerLight,
+
+    /// The look-ahead stops being paid down — see [`super::paydown`].
+    ///
+    /// **First of the cheap rungs, because it is the only one that costs no
+    /// audio at all.** Every other rung on this ladder removes something from
+    /// the signal or from what the gate knows about it. This one changes
+    /// nothing a listener can hear: the samples are identical, and what
+    /// degrades is the one-way delay, from a mean of 124 ms back to a flat
+    /// 160 ms — which is exactly what shipped before the pay-down existed. A
+    /// device that cannot afford a pitch search per block gets the latency it
+    /// always had rather than something worse.
+    NoPaydown,
+
     /// The pitch search is skipped. AUC 0.564.
     NoPitch,
     /// The feedback guard is skipped. It does nothing on a headset, where
@@ -151,6 +164,24 @@ pub enum Relief {
     /// updating, or this rung could hide the one after it.
     NoLiveDots,
 
+    /// The background classifier stops running and the profile is pinned to
+    /// whatever is in force.
+    ///
+    /// **The largest single saving on this ladder other than the enhancer, and
+    /// it was not measurable until a device reported it.** The panel's own
+    /// figure from the OPPO A3s is **50 ms per check**, ranging 42–61 — against
+    /// a chain whose whole block budget is 10 ms. It does not run per block, so
+    /// it is not 5 ms of every block; it is a 50 ms stall on one thread
+    /// whenever it fires, on a phone that is already missing deadlines.
+    ///
+    /// [`Relief::NoClassifierTop`] above only stops *displaying* the top three;
+    /// the model still ran, because `Auto` reads its verdict. This stops the
+    /// inference. What is lost is real: `Auto` can no longer notice that the
+    /// background became music or a motorway, so the profile stops adapting and
+    /// holds wherever it was. That is a worse loss than any panel rung and a
+    /// smaller one than losing the enhancer, which is where it sits.
+    NoClassifier,
+
     /// The enhancer is bypassed. The last resort, and the bottom.
     EnhancerOff,
 }
@@ -161,13 +192,15 @@ impl Relief {
         Some(match self {
             Relief::None => Relief::EnhancerReduced,
             Relief::EnhancerReduced => Relief::EnhancerLight,
-            Relief::EnhancerLight => Relief::NoPitch,
+            Relief::EnhancerLight => Relief::NoPaydown,
+            Relief::NoPaydown => Relief::NoPitch,
             Relief::NoPitch => Relief::NoFeedback,
             Relief::NoFeedback => Relief::NoRnnoise,
             Relief::NoRnnoise => Relief::NoAnalyser,
             Relief::NoAnalyser => Relief::NoClassifierTop,
             Relief::NoClassifierTop => Relief::NoLiveDots,
-            Relief::NoLiveDots => Relief::EnhancerOff,
+            Relief::NoLiveDots => Relief::NoClassifier,
+            Relief::NoClassifier => Relief::EnhancerOff,
             Relief::EnhancerOff => return None,
         })
     }
@@ -178,14 +211,29 @@ impl Relief {
             Relief::None => 0,
             Relief::EnhancerReduced => 1,
             Relief::EnhancerLight => 2,
-            Relief::NoPitch => 3,
-            Relief::NoFeedback => 4,
-            Relief::NoRnnoise => 5,
-            Relief::NoAnalyser => 6,
-            Relief::NoClassifierTop => 7,
-            Relief::NoLiveDots => 8,
-            Relief::EnhancerOff => 9,
+            Relief::NoPaydown => 3,
+            Relief::NoPitch => 4,
+            Relief::NoFeedback => 5,
+            Relief::NoRnnoise => 6,
+            Relief::NoAnalyser => 7,
+            Relief::NoClassifierTop => 8,
+            Relief::NoLiveDots => 9,
+            Relief::NoClassifier => 10,
+            Relief::EnhancerOff => 11,
         }
+    }
+
+    /// The look-ahead is no longer paid down; the delay is flat at
+    /// [`super::paydown::FALLBACK_MS`].
+    pub fn skip_paydown(self) -> bool {
+        self >= Relief::NoPaydown
+    }
+
+    /// The background classifier no longer runs at all, and the profile is
+    /// pinned. Distinct from [`Self::skip_classifier_top`], which only stops
+    /// the display.
+    pub fn skip_classifier(self) -> bool {
+        self >= Relief::NoClassifier
     }
 
     /// The spectrum analyser has been given up — in the core, not only on
@@ -292,12 +340,14 @@ mod tests {
         let expected = [
             Relief::EnhancerReduced,
             Relief::EnhancerLight,
+            Relief::NoPaydown,
             Relief::NoPitch,
             Relief::NoFeedback,
             Relief::NoRnnoise,
             Relief::NoAnalyser,
             Relief::NoClassifierTop,
             Relief::NoLiveDots,
+            Relief::NoClassifier,
             Relief::EnhancerOff,
         ];
         for want in expected {

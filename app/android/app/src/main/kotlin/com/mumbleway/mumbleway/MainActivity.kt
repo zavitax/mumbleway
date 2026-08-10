@@ -433,6 +433,27 @@ class MainActivity : FlutterActivity() {
         buttonChannel?.setMethodCallHandler(null)
         logChannel?.setMethodCallHandler(null)
         super.onDestroy()
+        if (isFinishing) {
+            // The same ending as the recents swipe, and for the same reasons —
+            // see `OverlayService.endProcess`.
+            //
+            // **Stopping the service is not leaving.** Only the swipe route
+            // ended the process; this one stopped the foreground service and
+            // returned, and everything the service was declared to keep alive
+            // kept running: the Rust capture worker, the diagnostic recorder,
+            // the encoder and the open sockets, in a cached process with no
+            // interface.
+            //
+            // On a device that cost 8 minutes and read as a chain fault. With
+            // the microphone-typed foreground service gone, Android stops
+            // handing the process microphone data — and hands it *silence*
+            // rather than an error, so nothing failed. The orphaned engine went
+            // on capturing digital zero, wrote three recordings of it, and was
+            // killed by the system 8.5 minutes later for excessive CPU. The
+            // ride it recorded looked exactly like a noise gate that would not
+            // open.
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
     }
 
     /** Hands the app Context to the Rust audio backend. See the call site. */

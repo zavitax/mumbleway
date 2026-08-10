@@ -298,6 +298,13 @@ const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * VAD_FADE_MS / 1000;
 ///
 /// Paid **only in voice-activated mode** — push-to-talk and continuous have no
 /// threshold to be late for and are not delayed at all.
+/// How long the microphone may return bit-exact zero before it is reported.
+///
+/// Two seconds. Long enough that a device switch or a route change passing
+/// through silence does not cry wolf, short enough that a rider who looks at
+/// the panel after a failed call finds it already said so.
+const SILENT_BLOCKS_BEFORE_WARNING: u32 = 200;
+
 const ONSET_LOOKAHEAD_MS: usize = 160;
 const ONSET_LOOKAHEAD_SAMPLES: usize = SAMPLE_RATE as usize * ONSET_LOOKAHEAD_MS / 1000;
 
@@ -2572,6 +2579,9 @@ where
     let mut pending_record: VecDeque<Recorded> = VecDeque::new();
     let mut pending_samples: usize = 0;
 
+    // Consecutive capture blocks that were bit-exact zero. See the check below.
+    let mut silent_blocks: u32 = 0;
+
     let mut mix_scratch = Vec::new();
     let mut mixed = Vec::new();
 
@@ -2751,6 +2761,47 @@ where
             } else {
                 None
             };
+
+            // **Is the microphone still there?**
+            //
+            // Bit-exact zero, not "quiet". A real microphone in a silent room
+            // returns a floor of dither and self-noise tens of dB above this;
+            // a block where every sample is precisely 0.0 is not a quiet room,
+            // it is no microphone at all.
+            //
+            // Worth its own check because the platform does not report it.
+            // Android stops handing a process microphone data when it loses the
+            // state that permits it — a foreground service ending, another app
+            // taking the input — and hands it **silence rather than an error**,
+            // so every call succeeds and every block arrives on time. A ride on
+            // an OPPO recorded 8.5 minutes of digital zero this way, rotating
+            // through three files, and reached us as "the noise gate would not
+            // open". Nothing in the chain could have said otherwise: every
+            // stage below this line was working perfectly on the silence it was
+            // given.
+            //
+            // Warned about once per run of silence rather than per block, and
+            // again when it comes back, so the log carries the two edges and
+            // not thirty thousand lines between them.
+            if block.iter().all(|s| *s == 0.0) {
+                silent_blocks += 1;
+                if silent_blocks == SILENT_BLOCKS_BEFORE_WARNING {
+                    tracing::warn!(
+                        "the microphone has returned digital silence for {} ms — \
+                         nothing downstream of this can transmit",
+                        SILENT_BLOCKS_BEFORE_WARNING * 10
+                    );
+                }
+            } else {
+                if silent_blocks >= SILENT_BLOCKS_BEFORE_WARNING {
+                    tracing::info!(
+                        "the microphone is back after {} ms of digital silence",
+                        silent_blocks * 10
+                    );
+                }
+                silent_blocks = 0;
+            }
+
             timings.record(Stage::Input, lap.split());
 
             // **The first thing that alters the audio, and it goes here.**

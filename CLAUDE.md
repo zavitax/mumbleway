@@ -222,6 +222,22 @@ one, which is the same reason the app records its own capture input.
   The microphone-typed foreground service in `OverlayService` runs for the whole
   session — not only during a call — and shortening its life would break
   recording with no visible symptom.
+- **Leaving the app had two exits and only one of them left.** Swiping the task
+  away reaches `OverlayService.onTaskRemoved`, which stops the service *and*
+  ends the process. Backing out reaches `MainActivity.onDestroy`, which stopped
+  the service and returned — so the Rust capture worker, the recorder, the
+  encoder and the sockets carried on in a cached process with no interface and,
+  now, no microphone-typed service. Android then did exactly what the entry
+  above says: it stopped handing that process microphone data and handed it
+  **digital zero** instead. The engine recorded 8.5 minutes of bit-exact silence
+  across three files before the system killed it for excessive CPU, and it
+  arrived as *"the gate was closed when it should have been open"*. Every stage
+  in the chain was working perfectly on the silence it was given.
+  **A stage that is behaving correctly on bad input looks identical to a stage
+  that is broken**, which is why `run_worker` now warns when the microphone
+  returns bit-exact zero for two seconds. Zero, not "quiet": a real microphone
+  in a silent room sits tens of dB above it, so this cannot fire on a quiet
+  room.
 - **iOS must not be offered A2DP** on a `playAndRecord` session. A2DP is
   output-only; offering it lets iOS take it when music starts and tear the input
   down silently. This was a real bug, reported as "recording only works when

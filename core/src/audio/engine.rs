@@ -823,9 +823,10 @@ fn preview_worker(
         // Whatever happened to it, it is no longer in flight. Leaving this
         // standing would leave the transport believing there was audio coming
         // and stop it feeding for the rest of the session.
-        shared
-            .preview_inflight
-            .fetch_sub(handed.min(shared.preview_inflight.load(Ordering::Acquire)), Ordering::AcqRel);
+        shared.preview_inflight.fetch_sub(
+            handed.min(shared.preview_inflight.load(Ordering::Acquire)),
+            Ordering::AcqRel,
+        );
     }
 }
 
@@ -980,9 +981,9 @@ impl AudioShared {
     /// The consequence rather than a cost: a backlog that climbs is a chain
     /// that cannot keep up, and it says so before a single sample is dropped.
     pub fn capture_backlog_ms(&self) -> f32 {
-        self.capture_queue.try_lock().map_or(0.0, |q| {
-            q.len() as f32 * 1000.0 / SAMPLE_RATE as f32
-        })
+        self.capture_queue
+            .try_lock()
+            .map_or(0.0, |q| q.len() as f32 * 1000.0 / SAMPLE_RATE as f32)
     }
 
     /// Current level per speaker, keyed by [`stream_key`].

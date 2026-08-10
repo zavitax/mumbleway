@@ -609,7 +609,9 @@ mod tests {
                 pair[0]
             );
         }
-        assert!(steps.windows(2).any(|p| p[1].max_df_db() < p[0].max_df_db()));
+        assert!(steps
+            .windows(2)
+            .any(|p| p[1].max_df_db() < p[0].max_df_db()));
 
         // And the model is actually told, rather than the rung being a label.
         let mut e = Enhancer::new();

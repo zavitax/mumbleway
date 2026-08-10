@@ -598,13 +598,11 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                     from,
                     message,
                 }),
-                SessionEvent::Refused { reason, kind } => {
-                    emit(AppEvent::Refused {
-                        server_id,
-                        reason,
-                        kind,
-                    })
-                }
+                SessionEvent::Refused { reason, kind } => emit(AppEvent::Refused {
+                    server_id,
+                    reason,
+                    kind,
+                }),
                 SessionEvent::Stats(s) => emit(AppEvent::Stats(UiStats {
                     server_id,
                     tcp_ping_ms: s.tcp_ping_ms,

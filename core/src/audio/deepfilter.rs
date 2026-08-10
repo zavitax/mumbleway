@@ -1083,6 +1083,24 @@ mod tests {
         assert!(!Enhancer::new().simple_model());
     }
 
+    /// The same, for the vendored one.
+    ///
+    /// **Separate from the tests that swap it in, because those cannot say
+    /// this.** `set_simple_model` keeps the current model when a build fails
+    /// and `Enhancer::new` returns a pass-through — both by design — so a
+    /// vendored file that does not load reaches every one of them as a quiet
+    /// "the swap did not take" with the reason discarded. This is the only
+    /// place that reads the error.
+    #[test]
+    fn the_vendored_model_loads_too() {
+        let built = Enhancer::build_from(ATTEN_LIM_DB, true);
+        assert!(
+            built.is_ok(),
+            "the vendored plain DFN3 did not load: {:#}",
+            built.err().unwrap()
+        );
+    }
+
     #[test]
     fn the_model_loads_and_its_hop_is_our_block() {
         // The whole integration rests on this: if the model's hop were not

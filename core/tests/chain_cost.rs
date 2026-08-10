@@ -172,11 +172,11 @@ fn chain_cost() {
         .map(|i| timings.mean_us(stage_at(i)))
         .sum::<f32>()
         .max(1e-6);
-    for i in 0..STAGES {
+    for (i, name) in STAGE_NAMES.iter().enumerate().take(STAGES) {
         let s = stage_at(i);
         eprintln!(
             "{:<16} {:>9.3} {:>9.3}  {:>5.1}%",
-            STAGE_NAMES[i],
+            name,
             timings.mean_us(s) / 1000.0,
             timings.worst_us(s) as f32 / 1000.0,
             100.0 * timings.mean_us(s) / total,

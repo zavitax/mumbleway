@@ -917,6 +917,10 @@ class LRu extends L {
   }
 
   @override
+  String get diagChainReduced =>
+      'Устройство не успевало обрабатывать звук, поэтому шумоподавление работает не в полную силу. Голос по-прежнему уходит в эфир, но звучит хуже, чем на более быстром телефоне.';
+
+  @override
   String get diagChainDegradedShort => 'Часть шумоподавления отключена';
 
   @override

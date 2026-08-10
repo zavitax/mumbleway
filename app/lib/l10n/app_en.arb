@@ -400,6 +400,10 @@
       }
     }
   },
+  "diagChainReduced": "This device could not process audio fast enough, so the noise chain is doing less work than it would otherwise. Your voice still goes out, but it will sound worse than it would on a faster phone.",
+  "@diagChainReduced": {
+    "description": "Warning shown when the performance ladder has reduced the enhancer but not yet switched any stage off, so nothing is crossed out in the dots above"
+  },
   "diagChainDegradedShort": "Parts of the noise chain are switched off",
   "@diagChainDegradedShort": {
     "description": "Tooltip on the toolbar diagnostics button once it has turned into a warning"

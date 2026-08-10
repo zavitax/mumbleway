@@ -1759,6 +1759,12 @@ abstract class L {
   /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
   String diagRecordingShared(int count, int archives);
 
+  /// Warning shown when the performance ladder has reduced the enhancer but not yet switched any stage off, so nothing is crossed out in the dots above
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not process audio fast enough, so the noise chain is doing less work than it would otherwise. Your voice still goes out, but it will sound worse than it would on a faster phone.'**
+  String get diagChainReduced;
+
   /// Tooltip on the toolbar diagnostics button once it has turned into a warning
   ///
   /// In en, this message translates to:

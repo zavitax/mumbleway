@@ -915,6 +915,10 @@ class LEn extends L {
   }
 
   @override
+  String get diagChainReduced =>
+      'This device could not process audio fast enough, so the noise chain is doing less work than it would otherwise. Your voice still goes out, but it will sound worse than it would on a faster phone.';
+
+  @override
   String get diagChainDegradedShort =>
       'Parts of the noise chain are switched off';
 

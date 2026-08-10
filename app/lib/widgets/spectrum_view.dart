@@ -317,6 +317,11 @@ class _EnhancerEffort extends StatelessWidget {
           // the app can otherwise make it. It names a device rather than a
           // setting because there is no setting — the ladder is not a
           // preference and cannot be turned off.
+          //
+          // Two wordings, because the ladder bends the enhancer before it
+          // switches anything off: for the first two rungs there is nothing
+          // crossed out above, and a message that says there is sends a reader
+          // hunting for something that is not there.
           if (status.relief > 0)
             Padding(
               padding: const EdgeInsets.only(top: 10),
@@ -331,7 +336,9 @@ class _EnhancerEffort extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      l.diagChainDegraded,
+                      status.disabledStages.isEmpty
+                          ? l.diagChainReduced
+                          : l.diagChainDegraded,
                       style: TextStyle(
                         fontSize: 11,
                         color: scheme.onSurfaceVariant,
@@ -703,6 +710,18 @@ class _ChainDots extends StatelessWidget {
             state: stage.state,
             value: stage.value,
             disabled: status.disabledStages.contains(stage.id),
+            // Amber name, not just an amber dot.
+            //
+            // **Most amber on this row is transient and one kind is not.** The
+            // echo canceller goes amber while it converges, the AGC while it
+            // is at its ceiling, the gate while it is closed — all of them
+            // describe this instant and will be green again shortly. The
+            // enhancer's amber says it has *permanently given something up on
+            // this device*, which is the same fact the strike-through carries
+            // one step further on. Colouring the name is what separates the
+            // two: a state you are watching, against a state you are stuck
+            // with.
+            degraded: stage.id == 'enhancer' && status.enhancerEffort > 0,
           ),
       ],
     );
@@ -732,11 +751,19 @@ class _Dot extends StatelessWidget {
     required this.state,
     required this.value,
     this.disabled = false,
+    this.degraded = false,
   });
 
   final String label;
   final StageState state;
   final double value;
+
+  /// Still running, but the performance ladder has taken something off it.
+  ///
+  /// One step short of [disabled], and shown the same way for the same reason
+  /// — an amber name means "this device gave this up", where an amber dot on
+  /// its own only means "this stage is busy right now".
+  final bool degraded;
 
   /// Switched off by the performance ladder, rather than idle.
   ///
@@ -780,7 +807,12 @@ class _Dot extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 11,
-            color: disabled ? StatusColors.connecting : scheme.onSurfaceVariant,
+            color: disabled || degraded
+                ? StatusColors.connecting
+                : scheme.onSurfaceVariant,
+            // Struck through only when it is genuinely not running. A degraded
+            // stage is still doing most of its job, and striking it out would
+            // say otherwise.
             decoration: disabled ? TextDecoration.lineThrough : null,
             decorationColor: disabled ? StatusColors.connecting : null,
           ),

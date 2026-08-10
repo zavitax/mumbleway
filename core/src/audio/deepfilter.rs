@@ -339,7 +339,14 @@ impl Enhancer {
     }
 
     /// Drops to the next rung, or to pass-through at the bottom.
-    fn step_down(&mut self) {
+    ///
+    /// **Public, and only downwards.** The overrun counter drives this in a
+    /// real session and nothing else should — but the rungs have to be
+    /// reachable deliberately to be measured, and `core/tests/chain_cost.rs`
+    /// benchmarks the whole block at each one on the phone. Exposing the step
+    /// rather than a `set_effort` keeps "it only ever falls" true of the type
+    /// rather than true by convention.
+    pub fn step_down(&mut self) {
         let Some(next) = self.effort.weaker() else {
             return;
         };

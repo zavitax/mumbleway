@@ -102,14 +102,41 @@ Separation is speech-to-gap in dB across the ride corpus, measured by
 `dfbench --log <the .csv>`.
 
 **The worst-frame column is the one the guard reacts to**, and it is worth
-reading before assuming `Reduced` is the fix. `Reduced` cuts the mean by a
-quarter and leaves the tail exactly where it was: the frames that run both
-decoders still run both decoders, there are just fewer of them. Only `ErbOnly`
-stops the DF decoder running at all, and that is where the tail halves.
+reading before assuming `Reduced` is the fix. `Reduced` cuts the mean and
+leaves the tail roughly where it was: the frames that run both decoders still
+run both decoders, there are just fewer of them. Only `ErbOnly` stops the DF
+decoder running at all, and that is where the tail halves.
+
+### And as whole blocks, which is what the deadline is about
+
+`MW_EFFORT` on `core/tests/chain_cost.rs` picks the rung, so the same question
+can be asked of a block rather than of the enhancer alone. On the OPPO, **mean
+/ worst in ms**:
+
+| Rung | voice over music | dense speech | worst inside 10 ms? |
+|---|---|---|---|
+| Full | 4.30 / **13.36** | 7.86 / **13.24** | no |
+| Reduced | 4.07 / **11.82** | 5.98 / **11.45** | no |
+| ErbOnly | 3.71 / **8.12** | 5.36 / **8.37** | **yes** |
+| Bypassed | 0.78 / 1.65 | 0.79 / 1.64 | yes |
+
+**Only `ErbOnly` meets the deadline**, on both clips. The two clips disagree
+about the mean — `Reduced` is worth 24% on dense speech and 5% on voice over
+music, because 85% of that clip's frames are zero-masked and never reach the DF
+decoder — and they agree about the tail.
 
 So the ladder is not three shades of the same thing. `Reduced` buys headroom in
-the average, which is what stops a chain overrunning on aggregate; `ErbOnly`
-buys headroom in the tail, which is what stops a single frame clicking.
+the average, which stops a chain overrunning on aggregate and costs almost
+nothing in separation; `ErbOnly` buys headroom in the tail, which is what stops
+a single frame clicking. A device that needs the tail fixed walks to `ErbOnly`
+on its own, one second later than if it had jumped — and that second is the
+price of not spending quality on a device whose *mean* was the only problem.
+
+And note what the bottom two rows say about the rest of the chain: with the
+enhancer bypassed the whole block is **0.78 ms**. Everything else together —
+suppression, feedback, de-hiss, the transmit decision and Opus — is under a
+millisecond on this phone. The enhancer is the chain's cost, and any future
+work on block time is work on the enhancer.
 
 **Stepping down is not purely a loss.** On voice over music — the clip this
 model was adopted for — `Reduced` separates *better* than `Full`. The DF decoder

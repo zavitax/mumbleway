@@ -17,6 +17,12 @@
 //! cargo test --release --test chain_cost -- --ignored --nocapture
 //! ```
 //!
+//! `MW_EFFORT` picks the enhancer's rung — 0 full, 1 reduced, 2 ERB-only,
+//! 3 bypassed — so the ladder can be judged on what it does to a *block*
+//! rather than to the enhancer alone. That distinction is the whole reason the
+//! ladder exists: the enhancer fits the budget on the phone that switched it
+//! off, and the block does not.
+//!
 //! Ignored because it is a measurement, not an assertion. A timing test that
 //! fails on a busy machine teaches people to ignore failures.
 
@@ -51,6 +57,19 @@ fn chain_cost() {
     // question is being asked about.
     let profile = NoiseProfile::Helmet;
     let mut enhancer = Enhancer::new();
+
+    // Reached by stepping, not by setting: the ladder only ever falls, and a
+    // benchmark that could climb it would be measuring something the chain
+    // cannot do.
+    let rungs: u32 = std::env::var("MW_EFFORT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    for _ in 0..rungs {
+        enhancer.step_down();
+    }
+    eprintln!("enhancer: {:?}", enhancer.effort());
+
     let mut processor = CaptureProcessor::new(profile);
     let mut guard = FeedbackGuard::new(FeedbackMode::HowlGuard);
     // The same shape the de-hiss setting uses; the exact numbers only move the

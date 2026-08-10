@@ -35,7 +35,19 @@ import sys
 from pathlib import Path
 
 BLOCK_MS = 10
-LOOKAHEAD_MS = 160
+
+# What the delay line holds at an opening that follows silence — the ring is
+# full there, so this is the lead the second half of a bridge gets. Inside a
+# phrase the pay-down may have drained it below this, so a bridge is at most
+# this wide and sometimes narrower.
+LOOKAHEAD_MS = 240
+
+# **`tail` here is what a listener hears after the detector drops, which is
+# `VAD_TAIL_MS`, not `VAD_HOLD_SAMPLES`.** The two differ by the look-ahead and
+# confusing them is easy: an earlier run of this labelled 330 ms as the shipped
+# value, which is the hold. The shipped tail is 200 ms, so that table compared
+# everything against a configuration that does not exist.
+SHIPPED_TAIL_MS = 200
 
 
 def read(csv):
@@ -183,11 +195,11 @@ def main(root):
     # recorded envelope is narrower than this reconstruction assumes. Read the
     # column against the 330 ms row, not against the seconds above.
     print(
-        f"\n{'hold':>8}{'airtime':>10}{'vs 330':>9}{'runs':>8}{'+runs':>7}"
+        f"\n{'tail':>8}{'airtime':>10}{'vs ships':>10}{'runs':>8}{'+runs':>7}"
         f"{'median run':>12}{'newly split':>13}{'per min':>9}"
     )
     shipped = shipped_runs = shipped_bridged = None
-    for h in (330, 300, 275, 250, 225, 200, 150, 100, 50):
+    for h in (SHIPPED_TAIL_MS, 300, 400, 500, 750, 1000, 1500, 100, 50):
         blocks, nruns, lens = 0, 0, []
         for _, speaking, _ in rides:
             sent = envelope(runs(speaking), len(speaking), h)

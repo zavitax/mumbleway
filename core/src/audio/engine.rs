@@ -217,38 +217,56 @@ const CAPTURE_WATCHDOG: Duration = Duration::from_secs(1);
 /// against a missed signal rather than how work is noticed.
 const IDLE_WAKE: Duration = Duration::from_secs(30);
 
-/// How long voice activation keeps sending at full level after the speech
-/// detector drops.
+/// How much audio the far end hears past the detector's last speech block.
+///
+/// # What it is for
 ///
 /// A threshold lands mid-word. The unvoiced consonant that ends a sentence —
 /// the "t" in "right", an "s", an "f" — carries a fraction of the energy of
 /// the vowel before it and falls below the gate while the word is still being
 /// said, so the far end hears the word truncated and waits for the rest.
 ///
-/// **Sized so the listener gets [`VAD_TAIL_MS`] of audio after the detector
-/// drops, not so the channel stays open for that long.** Those are different
-/// numbers here, and the difference is [`ONSET_LOOKAHEAD_MS`]: the envelope is
-/// applied to audio that much older than the decision driving it, so a hold of
-/// exactly the tail length delivers a tail shorter by the look-ahead. The tail
-/// exists to carry a trailing consonant, and a consonant is audio — so the
-/// audio is what gets measured, and the hold is the look-ahead longer to pay
-/// for the delay.
+/// # Why it is a second and not the 200 ms that carries a consonant
 ///
-/// **Derived rather than written down.** It was a literal 250 ms with a
-/// comment explaining that it was 80 ms more than the tail, which is a
-/// relationship a reader has to re-check by hand and an editor has to
-/// remember. Raising the look-ahead without raising this would have fixed the
-/// start of every phrase by shortening the end of it.
-/// The tail on its own, which is what the hold is built from at each opening.
+/// **Because the detector flaps on quiet speech, and a tail long enough to
+/// carry a consonant is nowhere near long enough to cover that.** A rider
+/// talking softly drops below the bar between syllables, so a phrase arrives
+/// as several fragments and the *Voice detected* dot alternates. Carrying the
+/// trailing "t" is the smaller of the two jobs.
+///
+/// Measured with `tools/vad/hangover.py` over the 10 voice-activated rides in
+/// the corpus — 323 gaps between detected speech runs, 401 s of airtime:
+///
+/// | Tail | Airtime | Transmit runs | Phrases held together |
+/// |---|---|---|---|
+/// | 200 ms — what shipped | 401 s | 151 | — |
+/// | 500 ms | +10.0% | 121 | 30 |
+/// | **1000 ms** | **+22.7%** | **92** | **59** |
+/// | 1500 ms | +32.4% | 71 | 80 |
+///
+/// A second bridges gaps up to 1240 ms once the look-ahead is added, which
+/// reaches p75 of the gap distribution (1260 ms). It closes 59 of the 323
+/// places a phrase currently comes apart, and the median transmission goes
+/// from 1.74 s to 3.61 s — which is the flapping, in the one column that shows
+/// it.
+///
+/// **It is not free and the cost is not the bandwidth.** 22.7% more airtime
+/// matters less than what that airtime contains: after a rider stops talking
+/// the channel now stays open for a full second, so the far end hears a second
+/// of helmet, wind, or whatever is playing. On the voice-over-music ride that
+/// is a second of music per phrase, and `docs/MUSIC_GATE.md` is the record of
+/// how hard that has been to keep out by other means. If music leakage gets
+/// worse after this, **this is the first thing to look at**, and 500 ms is the
+/// obvious half-step.
+const VAD_TAIL_MS: usize = 1000;
+
+/// The tail in samples, which is what the hold is built from at each opening.
 ///
 /// **This used to be a whole-hold constant** — the tail plus the look-ahead,
 /// less the fade — and it stopped being one when [`super::paydown`] made the
 /// delay vary from 240 ms to 60 within a phrase. The hold is now computed per
 /// opening from what the delay line is actually holding; see the call site.
 const VAD_TAIL_SAMPLES: usize = SAMPLE_RATE as usize * VAD_TAIL_MS / 1000;
-
-/// How much speech the far end hears past the detector's last speech block.
-const VAD_TAIL_MS: usize = 200;
 
 /// And how long it then takes to reach silence.
 ///
@@ -3489,7 +3507,7 @@ mod tests {
             let delivered = hold + VAD_FADE_SAMPLES - held;
             assert_eq!(
                 ms(delivered),
-                200,
+                VAD_TAIL_MS,
                 "audio sent after the detector drops, at {held_ms} ms of delay"
             );
         }

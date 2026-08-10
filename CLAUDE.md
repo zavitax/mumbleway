@@ -38,6 +38,27 @@ and does not need bumping to publish. Both stores reject a build number they
 have seen before, and the rejection arrives *after* the build, so the number has
 to rise on its own — `run_number` only ever goes up.
 
+### Apple rate-limits uploads per app per day
+
+Six publishes in one day exhausted it, and the seventh came back:
+
+```
+Error Domain=IrisAPI Code=-19241  code=90382
+Upload limit reached. The upload limit for your application has been
+reached. Please wait 1 day and try again.
+```
+
+**TestFlight and Mac App Store fail; Google Play and Windows carry on.** So a
+run goes half red, and the half that is red is the half that cannot be retried
+today. Nothing is broken and nothing needs fixing — but the builds do not exist
+on Apple's side, which is exactly the sort of thing that reads as "published"
+in a summary and is not.
+
+So batch Apple-affecting work rather than publishing per commit, and **do not
+publish a change that ships no app code at all** — a documentation edit, a
+benchmark harness, a test — because the quota it spends is quota an actual fix
+will want later the same day.
+
 ### Check the secrets exist before claiming a publish happened
 
 Every job is gated and **skips cleanly when its secrets are absent**, which

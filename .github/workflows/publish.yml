@@ -16,6 +16,22 @@ on:
         default: 'internal'
         type: choice
         options: [internal, alpha, beta, production]
+      # Off by default, and that is the whole design of it.
+      #
+      # Every run of this workflow builds an MSIX, and most runs are an internal
+      # Android release nobody wants certified. A Store submission is not like a
+      # Play internal upload: certification takes hours to days, each submission
+      # supersedes the one before it, and a submission in flight blocks the next
+      # one. Submitting on every publish would mean the Store forever trails
+      # whatever was last pushed and never finishes a review.
+      #
+      # So it is asked for, or it is a tag. Both mean somebody decided this
+      # build is a release.
+      microsoft_store:
+        description: 'Also submit the MSIX to the Microsoft Store'
+        required: false
+        default: false
+        type: boolean
 
 env:
   FLUTTER_VERSION: '3.44.8'
@@ -328,14 +344,20 @@ jobs:
   # ---------------------------------------------------------------------------
   # Microsoft Store — MSIX package
   # ---------------------------------------------------------------------------
-  # Partner Center submission needs an Azure AD application tied to the store
-  # account, which is more setup than most projects want. This produces the
-  # package and attaches it; uploading it is a drag-and-drop in Partner Center.
+  # Builds the package always, and submits it when asked. The submission needs a
+  # Microsoft Entra application tied to the store account, so both halves are
+  # gated on their own secrets and skip cleanly without them — the artifact is
+  # still attached to the run, and dragging it into Partner Center by hand
+  # remains a working route.
   msix:
     name: Windows MSIX
     runs-on: windows-latest
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+      # Not a secret in any real sense — the product ID is in the Store
+      # listing's own URL — but it is an account identifier and this repository
+      # is public, so it comes from the same place the rest of them do.
+      STORE_PRODUCT_ID: ${{ secrets.MSIX_STORE_PRODUCT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -478,6 +500,87 @@ jobs:
           name: mumbleway-windows-msix
           path: app/build/windows/x64/runner/Release/*.msix
           if-no-files-found: error
+
+      # -----------------------------------------------------------------------
+      # Partner Center submission
+      # -----------------------------------------------------------------------
+      # The artifact above is uploaded first and unconditionally, so a failed
+      # submission still leaves a package somebody can put in by hand. That is
+      # the same order the other store jobs use and it matters more here: the
+      # Store is the one that can refuse for reasons a build cannot predict.
+      #
+      # Three conditions, all of them deliberate:
+      #
+      #   * `STORE_PRODUCT_ID != ''` keeps this repository buildable by anyone
+      #     without a Partner Center account, the same gate the packaging step
+      #     uses on MSIX_PUBLISHER.
+      #   * asked for, or a tag — see the `microsoft_store` input above.
+      #   * `MSIX_PUBLISHER != ''`, because a sideload package is test-signed
+      #     with the wrong identity and Partner Center would reject it after
+      #     the upload rather than before.
+      #
+      # **This publishes updates only.** The Store API cannot create a product,
+      # so the app has to exist and be live first — which it now is. Note also
+      # that Microsoft supports this route for *free* products only; MumbleWay
+      # is free, and a paid tier would mean going back to the manual form.
+      - name: Set up the Store CLI
+        if: >-
+          env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          (github.event_name == 'push' || inputs.microsoft_store)
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      # `reconfigure` rather than `configure`: the runner is fresh every time,
+      # but `configure` prompts when it finds no existing credentials and a
+      # prompt on a headless runner is a job that hangs until it is cancelled.
+      #
+      # The four values are passed as arguments because that is the only
+      # interface the CLI offers. They are secrets, so they are never echoed —
+      # and note that `msstore` writes them into a credential store on the
+      # runner, which is discarded with the machine.
+      - name: Sign in to Partner Center
+        if: >-
+          env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          (github.event_name == 'push' || inputs.microsoft_store)
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId "${{ secrets.AZURE_AD_TENANT_ID }}" `
+            --sellerId "${{ secrets.MSIX_SELLER_ID }}" `
+            --clientId "${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}" `
+            --clientSecret "${{ secrets.AZURE_AD_APPLICATION_SECRET }}"
+
+      # The store package by name, not the first `.msix` in the folder.
+      #
+      # Both packages are built into the same directory and only one of them is
+      # submittable: the sideload build is test-signed and carries the pubspec
+      # identity. Picking by glob is how the wrong file gets uploaded, and
+      # Partner Center's answer to that is a PublisherDisplayName mismatch that
+      # reads like a broken workflow. `docs/RELEASING.md` has the full story.
+      - name: Submit to the Microsoft Store
+        if: >-
+          env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          (github.event_name == 'push' || inputs.microsoft_store)
+        working-directory: app
+        shell: pwsh
+        run: |
+          $package = "build/windows/x64/runner/Release/mumbleway-store-${{ env.MSIX_VERSION }}.msix"
+          if (-not (Test-Path $package)) {
+            Write-Output "::error::$package was not built. The store package is only produced when MSIX_PUBLISHER is set."
+            exit 1
+          }
+          Write-Output "submitting $(Split-Path $package -Leaf) as version ${{ env.MSIX_VERSION }}"
+          msstore publish $package -id "${{ env.STORE_PRODUCT_ID }}"
+
+      # Said here rather than left for somebody to discover on the dashboard.
+      # A successful submission is not a published app: it is a package handed
+      # to certification, which takes hours to days and can still come back.
+      - name: What happens next
+        if: >-
+          success() && env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          (github.event_name == 'push' || inputs.microsoft_store)
+        shell: pwsh
+        run: |
+          Write-Output "::notice::Submitted ${{ env.MSIX_VERSION }} to the Microsoft Store. Certification takes hours to days; the Store shows the old version until it passes. Watch it in Partner Center, and do not submit again until this one settles -- a submission in flight blocks the next."
 
   # ---------------------------------------------------------------------------
   # Microsoft Store — the Arm64 package

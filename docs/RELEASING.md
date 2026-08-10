@@ -393,7 +393,7 @@ a Store package instead. Both are attached to the run as
 machine — a Store package has no signature until Partner Center gives it one, so
 double-clicking it fails, correctly.
 
-### 4d. The first submission is by hand
+### 4d. The first submission is by hand — and only the first
 
 Download `mumbleway-windows-msix` from the publish run and upload the `.msix` in
 Partner Center → *Packages*. Then the listing: description, screenshots, age
@@ -475,26 +475,69 @@ two cases it can see coming:
   zero, so any pre-1.0 `version:` in `pubspec.yaml` is a hard stop;
 - **any component above 65535**, which is the range the format allows.
 
-### 4f. Automating submissions (not set up)
+### 4f. Automating the submission
 
-Uploading is a drag-and-drop today, deliberately — the workflow produces the
-package and stops. Automating it needs more setup than the other stores:
+**The build was always automated; this is about the upload.** Every publish run
+already produces `mumbleway-store-<version>.msix` with the Partner Center
+identity in it and the version incremented from the run number. What follows
+hands that file to Partner Center instead of a person.
 
-1. Partner Center → *Account settings* → **Tenants** → associate an Azure AD
-   (Entra ID) tenant. Needs global administrator on that directory.
-2. Register an application in it and generate a client secret.
-3. Give that application the **Manager** role in Partner Center.
-4. Collect the tenant id, client id, client secret, seller id and product id.
+**It updates; it cannot create.** No API can reserve a product or make the first
+submission, so 4a and 4d happen once by hand and everything after them can be
+automated. Microsoft supports this route for **free products only** — if
+MumbleWay ever has a paid tier, this goes back to the form.
 
-Two caveats before spending an evening on it. The official
-[`microsoft/store-submission`](https://github.com/microsoft/store-submission)
-action documents the `win32` flow, for `.msi` and `.exe` installers — MSIX
-packages go through the older Store submission API, which is a different set of
-calls. And once a submission has been created through the API, **editing it in
-Partner Center stops it being manageable by the API afterwards**; pick one and
-stay with it.
+#### The account setup, once
 
-None of this is implemented in `publish.yml` and none of it has been tried here.
+1. Partner Center → *Account settings* → **Tenants**: associate a Microsoft
+   Entra tenant, or create one. Needs global administrator on that directory.
+2. Register an application in that tenant
+   (Entra admin centre → *Identity* → *Applications* → **App registrations**),
+   then *Certificates & secrets* → **New client secret**. Copy the value at once
+   — it is shown only on the screen that creates it.
+3. Partner Center → *Account settings* → *User management* → **Microsoft Entra
+   applications** → add that application, and give it the **Manager** role.
+   Without the role, authentication succeeds and every call is refused, which
+   reads like a wrong secret.
+
+#### The secrets
+
+| Secret | Where it comes from |
+|---|---|
+| `AZURE_AD_TENANT_ID` | Entra admin centre → *Identity* → *Overview* → Tenant ID |
+| `AZURE_AD_APPLICATION_CLIENT_ID` | the app registration's *Application (client) ID* |
+| `AZURE_AD_APPLICATION_SECRET` | the client secret from step 2 |
+| `MSIX_SELLER_ID` | Partner Center → *Account settings* → *Identifiers* → Seller ID |
+| `MSIX_STORE_PRODUCT_ID` | the product's Store ID, also in its Store listing URL |
+
+`MSIX_STORE_PRODUCT_ID` is the gate: until it is set, the job builds and
+attaches the package exactly as before and submits nothing.
+
+#### How to release
+
+The submission does **not** run on every publish. It runs on a tag push, or when
+the workflow is dispatched with **Also submit the MSIX to the Microsoft Store**
+ticked:
+
+```bash
+gh workflow run publish.yml --ref main -f track=internal -f microsoft_store=true
+```
+
+That default is the important part. Certification takes hours to days, each
+submission supersedes the one before it, and **a submission in flight blocks the
+next one** — so a Store upload on every internal Android build would leave the
+Store permanently trailing and never finishing a review.
+
+A green job means *submitted*, not *published*. The Store keeps showing the old
+version until certification passes.
+
+#### One thing to decide once and not revisit
+
+Once a submission has been created through the API, **editing that submission by
+hand in Partner Center can leave it unmanageable by the API**. Pick one route
+and stay with it: the listing text, screenshots and age rating are fine to edit
+in Partner Center between releases, but do not hand-edit a submission the
+workflow created while it is open.
 
 ---
 
@@ -502,7 +545,7 @@ None of this is implemented in `publish.yml` and none of it has been tried here.
 
 | Store | Artifact | Notes |
 |---|---|---|
-| Microsoft Store | `.msix` | Partner Center re-signs it, so it is submitted unsigned; uploaded by hand — see 4 |
+| Microsoft Store | `.msix` | Partner Center re-signs it, so it is submitted unsigned; uploaded on a tag or on request — see 4f |
 | Direct download | signed `.zip` | what CI publishes today; this is the one SignPath signs |
 | App Store | `.ipa` | uploaded to TestFlight first; review takes days |
 | Google Play | `.aab` | APKs are for direct install only; Play requires a bundle |

@@ -66,18 +66,38 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       // different load than the one being complained about.
       final costs = audioStageCosts();
       final was = _previous;
-      setState(() {
+      // Sampled outside `setState`, and kept whether or not anybody is
+      // looking. The graphs answer "what was it doing when the audio broke",
+      // so a history that only exists while the panel is open is a history
+      // that is empty exactly when it is wanted.
+      if (was != null) {
         // Rates from deltas: the counters are cumulative precisely so the
         // interval is the caller's business, and this one is a second.
-        if (was != null) {
-          _bytesIn.add((now.bytesIn - was.bytesIn) / 1024);
-          _bytesOut.add((now.bytesOut - was.bytesOut) / 1024);
-          _packetsIn.add((now.voiceIn - was.voiceIn).toDouble());
-          _packetsOut.add((now.voiceOut - was.voiceOut).toDouble());
-        }
-        _cpu.add(now.cpuPercent);
-        _memory.add(now.memoryMb);
-        _previous = now;
+        _bytesIn.add((now.bytesIn - was.bytesIn) / 1024);
+        _bytesOut.add((now.bytesOut - was.bytesOut) / 1024);
+        _packetsIn.add((now.voiceIn - was.voiceIn).toDouble());
+        _packetsOut.add((now.voiceOut - was.voiceOut).toDouble());
+      }
+      _cpu.add(now.cpuPercent);
+      _memory.add(now.memoryMb);
+      _previous = now;
+
+      // **Painting is the part that is gated, not sampling.** This panel is
+      // never disposed — it is only slid out of sight — so without this a
+      // rider with it closed rebuilt forty widgets and six graphs every second
+      // for the whole ride, drawing them to a screen nobody was looking at.
+      //
+      // `getInheritedWidgetOfExactType` rather than `AppStateScope.of`: this
+      // runs from a timer, and the second one would register a dependency
+      // outside `build`.
+      final open = context
+              .getInheritedWidgetOfExactType<AppStateScope>()
+              ?.notifier
+              ?.diagnosticsOpen ??
+          false;
+      if (!open) return;
+
+      setState(() {
         _audio = now;
         _chain = chain;
         _costs = costs;
@@ -796,15 +816,22 @@ class _GraphState extends State<_Graph> with SingleTickerProviderStateMixin {
         SizedBox(
           height: 46,
           child: ClipRect(
-            child: AnimatedBuilder(
-              animation: _phase,
-              builder: (context, _) => CustomPaint(
-                size: Size.infinite,
-                painter: _GraphPainter(
-                  series: widget.series,
-                  peak: peak,
-                  phase: _phase.value,
-                  grid: quiet.withValues(alpha: 0.16),
+            // Its own layer. Six of these scroll continuously at sixty frames
+            // a second, and without a boundary each one's repaint dirties the
+            // layer they share — so every graph, every counter row and every
+            // dot beside them is redrawn six times over for one graph's worth
+            // of movement.
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _phase,
+                builder: (context, _) => CustomPaint(
+                  size: Size.infinite,
+                  painter: _GraphPainter(
+                    series: widget.series,
+                    peak: peak,
+                    phase: _phase.value,
+                    grid: quiet.withValues(alpha: 0.16),
+                  ),
                 ),
               ),
             ),

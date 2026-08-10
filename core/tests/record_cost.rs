@@ -164,4 +164,60 @@ fn record_cost() {
         (FRAME * 2) as f64 * 100.0 / 1024.0,
         8192.0 / ((FRAME * 2) as f64 * 100.0),
     );
+
+    // ---- and now the part the numbers above deliberately do not include ----
+    //
+    // **Everything so far wrote to memory.** That prices the conversion and
+    // the formatting and says nothing at all about the file, which is the
+    // thing a rider on a slow phone actually suspects. A `write` that reaches
+    // flash can block for milliseconds, and the earlier "0.1% of a core" did
+    // not cover it.
+    //
+    // So: the same traffic, to a real file, at the buffer size that ships and
+    // at larger ones. `BLOCKS` of audio is 200 seconds of recording.
+    println!("\nreal files, {} blocks (200 s of recording):", BLOCKS);
+    println!(
+        "{:<14} {:>10} {:>12} {:>12}",
+        "pcm buffer", "total ms", "us/block", "worst ms"
+    );
+
+    let dir = std::env::temp_dir().join(format!("mw-io-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let pcm: Vec<u8> = {
+        let mut v = Vec::with_capacity(FRAME * 2);
+        for s in &block {
+            v.extend_from_slice(&(((*s).clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes());
+        }
+        v
+    };
+
+    for cap in [8 * 1024usize, 64 * 1024, 256 * 1024] {
+        let path = dir.join(format!("cap{cap}.s16"));
+        let file = std::fs::File::create(&path).expect("create");
+        let mut w = std::io::BufWriter::with_capacity(cap, file);
+        let mut worst = 0u128;
+        let t = Instant::now();
+        for _ in 0..BLOCKS {
+            let one = Instant::now();
+            let _ = w.write_all(&pcm);
+            worst = worst.max(one.elapsed().as_micros());
+        }
+        let _ = w.flush();
+        let total = t.elapsed();
+        println!(
+            "{:<14} {:>10.1} {:>12.2} {:>12.2}",
+            format!("{} kB", cap / 1024),
+            total.as_micros() as f64 / 1000.0,
+            total.as_micros() as f64 / BLOCKS as f64,
+            worst as f64 / 1000.0,
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+
+    println!(
+        "\nworst ms is the single slowest write_all -- the one that would stall\n\
+         the writer thread and, if it happens often enough, fill the 200-block\n\
+         channel and start dropping capture."
+    );
 }

@@ -232,7 +232,22 @@ impl Enhancer {
     /// not load, because losing the enhancement is a much smaller failure than
     /// losing the microphone.
     pub fn new() -> Self {
-        let model = match Self::build() {
+        Self::with_atten_lim(ATTEN_LIM_DB)
+    }
+
+    /// The same, with the attenuation cap overridden.
+    ///
+    /// **For measuring the cap, which is the knob that decides how much of a
+    /// word start survives.** `ATTEN_LIM_DB` is the ceiling on how far the
+    /// model may pull a frame down, and `core/tests/onset_survival.rs` shows
+    /// onsets sitting right against it — a leading "sh" or "p" is noise-like
+    /// and pitchless, which is what the model is trained to remove, and at the
+    /// start of an utterance its own SNR estimate is still at the floor.
+    ///
+    /// Public so the sweep can run against the shipping code rather than a
+    /// copy of it. Nothing in the app calls this.
+    pub fn with_atten_lim(atten_lim_db: f32) -> Self {
+        let model = match Self::build_with(atten_lim_db) {
             Ok(m) => Some(Box::new(m)),
             Err(e) => {
                 // With the reason. "It did not load" is not something anybody
@@ -255,11 +270,11 @@ impl Enhancer {
         }
     }
 
-    fn build() -> Result<DfTract> {
+    fn build_with(atten_lim_db: f32) -> Result<DfTract> {
         // Mono. Every route this app records from is one channel by the time
         // it reaches the chain.
         let params = RuntimeParams::default_with_ch(1)
-            .with_atten_lim(ATTEN_LIM_DB)
+            .with_atten_lim(atten_lim_db)
             .with_thresholds(MIN_DB, MAX_ERB_DB, MAX_DF_DB);
         let model = DfTract::new(DfParams::default(), &params)?;
         anyhow::ensure!(
@@ -413,7 +428,7 @@ mod tests {
         // latency argument would change with it.
         // Built directly rather than through `Enhancer::new`, which swallows
         // the reason by design -- here the reason is the whole point.
-        let built = Enhancer::build();
+        let built = Enhancer::build_with(ATTEN_LIM_DB);
         assert!(
             built.is_ok(),
             "the embedded DFN3 model did not load: {:#}",

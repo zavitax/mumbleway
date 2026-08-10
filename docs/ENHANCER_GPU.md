@@ -1,122 +1,141 @@
-# Moving DeepFilterNet off the CPU
+# The enhancer on a low-end phone
 
-Queued 2026-08-10. Nothing here is built. It is written down with the
-measurements that justify it and the two that argue against it, so whoever
-picks it up starts from evidence rather than from the idea.
+Written 2026-08-10 as a plan to move DeepFilterNet onto the GPU. **The plan was
+wrong and the measurements are why.** Both are kept: the reasoning that led to
+the GPU is the same reasoning anybody else will arrive at, and the numbers that
+killed it are the useful part.
 
-## Why
+**What shipped instead is an effort ladder** — `Effort` in
+`core/src/audio/deepfilter.rs`.
 
-`core/src/audio/deepfilter.rs` runs DeepFilterNet 3 (low-latency) through
-`tract`, which is **pure Rust and CPU-only — it has no GPU backend, and no flag
-adds one.** Moving to the GPU means changing inference engine, not configuring
-this one.
+---
 
-The cost, measured in release on a desktop x86 (`frame_cost`, `MW_CLIP` per
-clip):
+## The measurement that changed the answer
 
-| Clip | mean | p99 | worst |
+The enhancer is pure Rust, so it can be cross-compiled for
+`aarch64-linux-android` and run on a phone **with no APK at all**. That matters
+here more than usual: Play Protect refuses a locally built APK on this machine,
+so reaching the physical device otherwise means a Play release — half an hour
+per number.
+
+`tools/dfbench` is that binary.
+
+```powershell
+$ndk = "C:\Android\sdk\ndk\27.0.12077973\toolchains\llvm\prebuilt\windows-x86_64\bin"
+$env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "$ndk\aarch64-linux-android26-clang.cmd"
+cd tools\dfbench; cargo build --release --target aarch64-linux-android
+adb push target\aarch64-linux-android\release\dfbench /data/local/tmp/
+adb shell chmod 755 /data/local/tmp/dfbench
+adb push C:\ml_data\rides\20260810-1040-000.raw /data/local/tmp/clip.raw
+adb shell /data/local/tmp/dfbench /data/local/tmp/clip.raw
+```
+
+On the OPPO A3s (Snapdragon 450, eight Cortex-A53 at 1.8 GHz) — the device that
+reported the fault:
+
+```
+1311 frames  mean 6.23 ms  p50 7.87  p95 8.10  p99 8.32  worst 9.27
+stage            share    mean ms
+  zero-mask       30.3%     2.32
+  both decoders   69.7%     7.92
+over the 10 ms block budget: 0 frames (0.0%)
+```
+
+**Not one frame over budget.** The model fits on the phone that could not run
+it. What does not fit is the model *plus* RNNoise plus the profile filters plus
+the encoder, on one A53 core, inside the same 10 ms.
+
+The old guard could not see that. The enhancer carried the only stopwatch in
+the chain, so when blocks ran late it was the only stage that could be blamed —
+and it switched itself off for the session on that evidence. Every stage
+carries a clock now (`core/src/audio/timing.rs`), and the panel shows where a
+block's time goes, with an `unattributed` row for the part no stage was timing.
+
+---
+
+## Why the GPU was the wrong lever anyway
+
+Independent of the above, and worth keeping because it is not obvious.
+
+**The graph will not offload.** The three ONNX models are 483 nodes:
+
+| | enc | erb_dec | df_dec |
 |---|---|---|---|
-| ride, engine and wind | 0.54 ms | 2.75 | 4.05 |
-| voice over music | 2.28 ms | 6.94 | **14.38** |
-| ride, quiet, talking | 2.32 ms | 7.13 | **12.94** |
+| nodes | 223 | 141 | 119 |
+| weights | 0.6 MB | 0.2 MB | **19.2 MB** |
+| GRU | 1 | 2 | 3 |
 
-The budget is 10 ms a frame. **The worst frame already exceeds it on a
-desktop.** What keeps it viable is the mean and the worker's buffering, so the
-real requirement is a mean well under 10 ms — and on a low-end phone (OPPO A3s,
-Snapdragon 450) the mean goes over and the enhancer switches itself off. That
-was reported from the device and confirmed by the red **Enhancer** dot.
+The compute is **6 GRUs, 22 Convs, 8 Einsums**; roughly 380 of the 483 nodes are
+shape glue — `Constant`, `Reshape`, `Shape`, `Gather`, `Slice`, `Concat`,
+`Unsqueeze`, `Cast`, `Pad`. Neither ONNX Runtime's NNAPI provider nor TFLite's
+GPU delegate implements `GRU` or `Einsum`, so the graph would partition into
+islands around those six GRUs with a copy at every boundary — **a hundred times
+a second**. The same partitioning gave 31-of-47 on YAMNet, a model called once
+every two seconds.
 
-Stage skipping has already been tried and has nothing left to give: on a ride
-with no speech, **97.3% of frames already run no decoder at all**.
+**And there is no bandwidth to win.** `df_dec` is 19.2 MB of the 20 MB total:
+three GRUs of hidden size 512. At one frame per call a GRU step is
+matrix-by-*vector*, about two flops per byte loaded, so it is memory-bound. A
+mobile GPU shares the same memory bus as the CPU. The bottleneck is bytes, and
+the GPU moves the same bytes.
 
-## The two findings that argue against a GPU
+**And it crashed last time.** TFLite's GPU delegate segfaulted inside
+`TfLiteInterpreterAllocateTensors` on this exact device — native, so the Dart
+`catch` never ran and the process simply died.
 
-Both are from this codebase, not from the literature.
+---
 
-1. **The Android GPU delegate killed the app on the phone that needs it.**
-   TFLite's GPU delegate, used for the YAMNet classifier, segfaulted on an
-   OPPO A3s (Adreno 506, Android 12):
+## What shipped: an effort ladder
 
-   ```
-   Fatal signal 11 (SIGSEGV), Cause: null pointer dereference
-   #02 TfLiteInterpreterAllocateTensors+8  libtensorflowlite_jni.so
-   ```
+Four rungs, one step per hundred consecutive missed deadlines, measured rather
+than guessed. The rung sets `max_db_df_thresh` — a public field on `DfTract`, so
+a step costs one assignment with no rebuild and no allocation.
 
-   It is a **native** crash, so the Dart `try`/`catch` around it never ran and
-   the process simply died. That delegate has been removed.
+| Rung | `max_df` | Cost on the A3s | Worst clip | Voice over music |
+|---|---|---|---|---|
+| Full | 20 | 6.29 ms | 27.0 dB | 14.1 dB |
+| Reduced | 0 | 4.62 ms | 24.2 dB | **15.7 dB** |
+| ERB only | −15 | 4.34 ms | 22.1 dB | 15.9 dB |
+| Bypassed | — | 0 | — | — |
 
-2. **The offload would be partial.** TFLite's own log for YAMNet:
-   `31 operations will run on the GPU, and the remaining 16 will run on the
-   CPU`, because YAMNet computes its own mel spectrogram and no GPU delegate
-   supports `RFFT2D` or `COMPLEX_ABS`. DeepFilterNet is GRU-based with complex
-   spectral ops and is likely to split worse — and it is called **100 times a
-   second**, so a CPU↔GPU round trip lands inside every 10 ms frame. Dispatch
-   and transfer overhead of 1–3 ms per call would eat most of the win.
+Separation is speech-to-gap in dB across the ride corpus, measured by
+`dfbench --log <the .csv>`.
 
-None of this makes it impossible. It makes "try it and measure" the only
-honest plan, with the fallbacks built before the attempt.
+**Stepping down is not purely a loss.** On voice over music — the clip this
+model was adopted for — `Reduced` separates *better* than `Full`. The DF decoder
+takes **11.5 dB out of the speech** at full effort and 9.8 dB at reduced: it is
+the speech being eaten, not the music surviving. That is a measured account of
+*"speech gets choppier when Auto switches to Helmet"*.
 
-## The design, as asked for
+It is still a loss on quieter material — 27.0 dB to 24.2 on one ride — so this
+is a degradation path and **not a new default**.
 
-**Three rungs, in order, on every platform.**
+It only ever falls. Climbing back would be settled by the same measurement that
+pushed it down, so a device on the edge would oscillate, and every change of
+rung is audible.
 
-1. **GPU.** Android: ONNX Runtime with the NNAPI execution provider, or a
-   TFLite conversion with the GPU delegate. iOS: Core ML, which is the
-   accelerator actually suited to small low-latency models.
-2. **CPU.** The current `tract` path, unchanged. This is the fallback, not the
-   thing being replaced — it works on five platforms and must keep working.
-3. **Bypass.** The enhancer becomes a pass-through. **This rung already exists
-   and is proven**: a hundred consecutive frames over 10 ms and `Enhancer`
-   switches itself off for the session, which is what fired on the OPPO.
+### The panel says which rung, on every platform
 
-### Falling back from a rung that crashes
+Required, and the honest form of the original "say when acceleration is not in
+use". A rider comparing two phones has no other way to tell why one sounds
+different — every other number on the panel reads the same afterwards. Amber
+for the rungs that still enhance, red for bypassed, and **nothing at all at
+full effort**: a note that says "working normally" on every device teaches
+people to stop reading the panel.
 
-The ordinary `try`/`catch` shape does not work here, and finding 1 is why: the
-first attempt took the whole process down, so there was no `catch` to run and
-no second attempt to make.
+---
 
-So the GPU rung needs **a flag written to storage before the attempt and
-cleared after it succeeds**. On start-up, a flag still set means the last
-attempt did not return — do not try the GPU again on this device. Nothing else
-survives a SIGSEGV.
+## What is still open
 
-That is the same shape as a browser's "safe mode after a crash", and it is the
-only design that degrades rather than loops.
-
-### Say when acceleration is not being used — on every platform
-
-**Required, and not only for the GPU rung.** Today the panel says nothing at
-all on macOS, where the shipped `libtensorflowlite_c` exports no Core ML or GPU
-delegate symbols and everything runs on the CPU by construction. A rider
-comparing two devices has no way to know why one is warmer than the other.
-
-So: wherever the accelerated path was not built — refused, unavailable,
-disabled by the crash flag, or simply absent on this platform — the diagnostics
-panel says so in one line, with the measured per-frame cost beside it. The
-classifier already does exactly this (`diagClassifierOnCpu`, which reports
-milliseconds rather than warning about battery); the enhancer needs the same,
-and the message has to be reachable on Windows and macOS too, not only where a
-GPU was attempted and refused.
-
-**Claim only what can be checked.** Core ML decides per operation whether to
-use the Neural Engine, the GPU or the CPU and reports none of it. So the honest
-statement is *the accelerated path was or was not built* — never "an NPU is
-doing this".
-
-## What to measure before believing any of it
-
-- **Per-frame mean and p99 on a real phone**, both rungs, using `frame_cost`
-  with `MW_CLIP`. The mean is the number that decides it; the tail is what the
-  guard reacts to.
-- **How many operations actually offload.** If it is another 31-of-47, the
-  round trips will cost more than the compute saves at 100 calls a second.
-- **That the output still matches.** A GPU path that is fast and different is
-  not a win: run `dfn_enhance.py`'s comparison and check the speech-to-gap
-  separation still improves by roughly the 14.5 dB measured on the CPU path.
-
-## What is deliberately not in the plan
-
-Replacing `tract`. Whatever happens with acceleration, the CPU rung stays: it
-is the only path that cross-compiles to Android, iOS, macOS and Windows without
-a per-platform native binary, and that property is why the enhancer lives in
-`core` beside the chain instead of in Dart like the classifier.
+- **The ladder has not been seen to fire on the device.** Every rung is
+  measured, and the stepping is unit-tested, but the phone has not yet run a
+  build with it. That needs a Play release and a ride.
+- **`MIN_DB`.** The zero-mask branch zeroes rather than attenuates, and 85% of
+  a clean ride takes it. Untested, and the leading remaining candidate for
+  choppiness.
+- **f16 weights** would halve `df_dec`'s 19.2 MB and are the only remaining
+  idea that attacks the bottleneck directly. Note that Cortex-A53 is ARMv8.0
+  and has **no half-precision arithmetic** — only conversion — so this could
+  easily be slower there. Measure with `dfbench` before believing it, and note
+  that it needs `libDF` vendored, because the functions that build the models
+  are private.

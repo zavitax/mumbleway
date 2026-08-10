@@ -52,9 +52,10 @@ fn chain_cost() {
     let profile = NoiseProfile::Helmet;
     let mut enhancer = Enhancer::new();
     let mut processor = CaptureProcessor::new(profile);
-    let mut guard = FeedbackGuard::new();
-    guard.set_mode(FeedbackMode::Guard);
-    let mut expander = Expander::new();
+    let mut guard = FeedbackGuard::new(FeedbackMode::HowlGuard);
+    // The same shape the de-hiss setting uses; the exact numbers only move the
+    // gain it applies, not what it costs.
+    let mut expander = Expander::new(6.0, 12.0, 6.0);
     let mut encoder = VoiceEncoder::new(Quality::Balanced).expect("encoder");
 
     let mut timings = StageTimings::default();

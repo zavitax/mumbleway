@@ -38,17 +38,30 @@ would rather not send the audio at all, you do not have to — see below.
 
 ### Hear what the others heard
 
-The green stretches of the waveform are the parts that went to the server.
-Everything else was recorded but never sent.
+The recording is your **microphone**, on purpose — taken before the noise chain
+touches it, so it is what the phone heard rather than what the app made of it.
+That is the right thing to keep and the wrong thing to answer *"is this what
+everyone else got?"* with. Two controls beside play answer it between them.
 
-The **speaker icon** beside play turns green and plays **only the green
-stretches**, skipping everything the noise gate rejected. That is as close as
-you can get to sitting at the other end of the channel — without a second
-phone, a second account, and trying to judge your own voice coming back at you.
+The green stretches of the waveform are the parts that went to the server;
+everything else was recorded but never sent.
+
+| Control | What it does |
+|---|---|
+| **Green** — speaking head | Plays **only the green stretches**, skipping everything the gate rejected. Which parts went out, read from the log of what the app decided at the time. |
+| **Amber** — level bars | Plays through the **noise chain**, so you hear the treatment your voice was given rather than the raw microphone. |
+
+Turn on both and what is left is what the far end actually got — without a
+second phone, a second account, and trying to judge your own voice coming back
+at you.
 
 It is the fastest way to answer the question that matters: *was I cut off, or
-did it just sound like it?* If words are missing from this playback, they were
+did it just sound like it?* If words are missing from that playback, they were
 missing for everyone.
+
+If a recording has no green in it at all, a line under the waveform says why —
+usually that the microphone was muted, or that push-to-talk was set and the
+button was never pressed.
 
 <div class="shots">
   <figure>

@@ -82,22 +82,23 @@
 //! top of its range this model spends its capacity on the speech.
 //!
 //! So it is a real trade and not a free 3×: **cheaper, later, and harder on
-//! quiet voices.** Still not switched, because on the quiet ride — a rider
+//! quiet voices.** Not the default, because on the quiet ride — a rider
 //! talking normally in still air — it is the worse of the two on both axes
 //! that matter there.
 //!
-//! ## Where it would be worth having
+//! ## So it is a rung
 //!
-//! **As a rung, not as a default.** A device that cannot keep up currently
-//! gives up the enhancer altogether at the bottom of the ladder, losing the
-//! thing that turns 1.5 dB of separation into 16. Swapping to a model that
-//! costs a third as much and still separates within about a decibel is plainly
-//! a better last resort than switching it off.
+//! [`super::relief::Relief::SimpleModel`], immediately above switching the
+//! enhancer off. A device that reaches the bottom of the ladder was giving up
+//! the thing that turns 1.5 dB of separation into 16; a model that costs a
+//! third as much and separates within about a decibel is plainly a better last
+//! resort than nothing.
 //!
-//! What stops it today is that the model is chosen by a **Cargo feature**, so
-//! there is one in the binary. `DfParams::from_bytes` takes bytes, so embedding
-//! both and picking at load is possible; it costs 7.6 MB of app size, and it is
-//! the shape of the work if the OPPO still struggles at the bottom rung.
+//! The Cargo feature only ever puts one set of weights in the binary, so the
+//! plain model is **vendored** at `core/models/` and handed to
+//! `DfParams::from_bytes` by [`Enhancer::use_simple_model`]. That costs 7.6 MB
+//! of app size on every platform; `core/models/README.md` records why there is
+//! no smaller way.
 //!
 //! ## What nearly made all of this wrong
 //!
@@ -539,6 +540,9 @@ pub struct Enhancer {
     /// Whether the guard is allowed to act. Only the A/B in
     /// `core/tests/onset_survival.rs` turns it off.
     onset_guard: bool,
+    /// Whether the cheap model is the one loaded. See
+    /// [`Enhancer::use_simple_model`].
+    simple: bool,
 }
 
 impl Enhancer {
@@ -589,6 +593,7 @@ impl Enhancer {
             onset_lim_db: ONSET_ATTEN_LIM_DB,
             onset: OnsetGuard::new(),
             onset_guard: true,
+            simple: false,
         }
     }
 
@@ -639,13 +644,31 @@ impl Enhancer {
         self.onset.relax
     }
 
+    /// The plain DeepFilterNet 3, for [`Enhancer::use_simple_model`].
+    ///
+    /// Vendored rather than reached through the dependency because the crate
+    /// picks its model with a **Cargo feature**, which is resolved at compile
+    /// time — so the binary contains one set of weights and a rung that wants
+    /// the other has nowhere to get it. `core/models/README.md` has the
+    /// provenance, the licence, and why there is no smaller way.
+    const SIMPLE_MODEL: &'static [u8] = include_bytes!("../../models/DeepFilterNet3_onnx.tar.gz");
+
     fn build_with(atten_lim_db: f32) -> Result<DfTract> {
+        Self::build_from(atten_lim_db, false)
+    }
+
+    fn build_from(atten_lim_db: f32, simple: bool) -> Result<DfTract> {
         // Mono. Every route this app records from is one channel by the time
         // it reaches the chain.
         let params = RuntimeParams::default_with_ch(1)
             .with_atten_lim(atten_lim_db)
             .with_thresholds(MIN_DB, MAX_ERB_DB, MAX_DF_DB);
-        let model = DfTract::new(DfParams::default(), &params)?;
+        let weights = if simple {
+            DfParams::from_bytes(Self::SIMPLE_MODEL)?
+        } else {
+            DfParams::default()
+        };
+        let model = DfTract::new(weights, &params)?;
         anyhow::ensure!(
             model.hop_size == HOP,
             "DeepFilterNet hop is {} samples, the chain's block is {HOP}",
@@ -669,6 +692,48 @@ impl Enhancer {
     /// Which rung it is on. [`Effort::Full`] unless a phone made it step down.
     pub fn effort(&self) -> Effort {
         self.effort
+    }
+
+    /// Whether the cheap model is the one running.
+    pub fn simple_model(&self) -> bool {
+        self.simple
+    }
+
+    /// Swaps in the plain DeepFilterNet 3 — three times cheaper per frame, and
+    /// harder on a quiet voice. See [`Relief::SimpleModel`].
+    ///
+    /// **This rebuilds the graph, which is tens of milliseconds**, so it is not
+    /// free and it is not for the audio thread to do casually. It happens at
+    /// most once a session, and only when the ladder has already reached the
+    /// rung above switching the enhancer off — a device that far down has
+    /// bigger problems than one late block, and the alternative on offer is
+    /// losing the enhancer entirely.
+    ///
+    /// The common path avoids the stall altogether: the startup probe decides
+    /// the rung before the engine opens, so the worker builds the right model
+    /// once rather than swapping into it. This is the runtime fallback for a
+    /// device that degrades after the probe cleared it.
+    ///
+    /// A failure leaves the current model in place, which is the safe
+    /// direction: the rider keeps the enhancer they had.
+    pub fn use_simple_model(&mut self) {
+        if self.simple {
+            return;
+        }
+        match Self::build_from(self.base_lim_db, true) {
+            Ok(m) => {
+                self.model = Some(Box::new(m));
+                self.simple = true;
+                self.applied_lim_db = self.base_lim_db;
+                self.onset = OnsetGuard::new();
+                tracing::info!("swapped to the plain DFN3 model to meet the deadline");
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "could not load the plain DFN3 model ({e:#}); keeping the current one"
+                );
+            }
+        }
     }
 
     /// Frames of look-ahead the model itself holds, so its output lags its
@@ -877,6 +942,48 @@ mod tests {
             0.0,
             "it must not relax the cap when the background is loud enough to come back with it"
         );
+    }
+
+    /// The cheap model has to actually load, actually replace the other one,
+    /// and actually keep the chain's geometry.
+    ///
+    /// **The hop is the part that would fail silently.** Everything in this
+    /// chain assumes one capture block is one model frame; a swapped-in model
+    /// with a different hop would need buffering that does not exist, and the
+    /// symptom would be mangled audio on the slowest devices only — the ones
+    /// least able to report it.
+    ///
+    /// The look-ahead is asserted as *different* on purpose: it is 2 frames
+    /// here against 0 for the shipped model, which is the 20 ms this rung
+    /// costs. If it ever came back as 0 the vendored file would not be the
+    /// model it claims to be.
+    #[test]
+    fn the_cheap_model_loads_and_keeps_the_block_geometry() {
+        let mut e = Enhancer::new();
+        if !e.active() {
+            return; // no model in this build; nothing to swap
+        }
+        assert!(!e.simple_model());
+        let before = e.model_lookahead();
+
+        e.use_simple_model();
+        assert!(e.simple_model(), "the swap did not take");
+        assert_eq!(
+            e.model_lookahead(),
+            2,
+            "the vendored weights are not the plain DFN3"
+        );
+        assert_ne!(before, e.model_lookahead());
+
+        // And it still processes a block of our size in place.
+        let mut block = vec![0.1f32; HOP];
+        e.process(&mut block);
+        assert_eq!(block.len(), HOP);
+        assert!(block.iter().all(|s| s.is_finite()));
+
+        // Asking twice is a no-op rather than a second rebuild.
+        e.use_simple_model();
+        assert!(e.simple_model());
     }
 
     #[test]

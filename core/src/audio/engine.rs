@@ -2564,7 +2564,16 @@ where
     // Built here, on the worker's own thread, before the first block: loading
     // the model takes tens of milliseconds and must not happen between two
     // deadlines.
+    //
+    // Which model, though, depends on where the startup probe left the ladder —
+    // and asking now is what keeps the common case off the swap path below. A
+    // device the probe already put on `SimpleModel` builds the cheap one once,
+    // here, instead of building the expensive one and then rebuilding it
+    // between two deadlines on the first block that misses.
     let mut enhancer = Enhancer::new();
+    if super::probe::probed_start().is_some_and(|r| r.simple_model()) {
+        enhancer.use_simple_model();
+    }
     let mut encoder = match VoiceEncoder::new(config.quality) {
         Ok(e) => e,
         Err(e) => {
@@ -3203,6 +3212,13 @@ where
                 );
                 processor.set_relief(rung.skip_pitch(), rung.skip_rnnoise());
                 onset_delay.set_enabled(!rung.skip_paydown());
+                if rung.simple_model() {
+                    // Rebuilds the graph, so it stalls this block — see
+                    // `Enhancer::use_simple_model`. At most once a session, and
+                    // only on a device that has already given up everything
+                    // above it, where the alternative on offer is no enhancer.
+                    enhancer.use_simple_model();
+                }
                 while enhancer.effort().index() < rung.enhancer_rungs() {
                     enhancer.step_down();
                 }

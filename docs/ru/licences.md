@@ -39,6 +39,8 @@ description: Собственная лицензия MumbleWay и каждый �
 |---|---|---|
 | [Opus](https://opus-codec.org/) | Голосовой кодек, через крейты `opus` и `audiopus_sys` | BSD 3-Clause |
 | [RNNoise](https://jmvalin.ca/demo/rnnoise/), как [`nnnoiseless`](https://crates.io/crates/nnnoiseless) | Нейросетевое шумоподавление и детектор речевой активности | BSD 3-Clause |
+| [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) | Очистка речи в начале цепочки записи, вместе с весами модели. Низколатентная DFN3 идёт из крейта `deep_filter`, обычная DFN3 лежит в `core/models/` — для нижней ступени лестницы производительности | MIT / Apache-2.0 |
+| [`tract`](https://github.com/sonos/tract) | Исполняет эту модель — на чистом Rust, без нативной среды, которую пришлось бы собирать под каждую платформу | MIT / Apache-2.0 |
 | [`cpal`](https://crates.io/crates/cpal) | Кроссплатформенный доступ к аудиоустройствам | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Преобразование форматов отсчётов | MIT / Apache-2.0 |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | Классификатор звука, благодаря которому «Автоматически» слышит мотор и берёт шлемный профиль. Поставляется как `assets/models/yamnet.tflite` | Apache-2.0 |

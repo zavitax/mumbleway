@@ -37,6 +37,8 @@ The parts that do the actual work.
 |---|---|---|
 | [Opus](https://opus-codec.org/) | Voice codec, via the `opus` and `audiopus_sys` crates | BSD 3-Clause |
 | [RNNoise](https://jmvalin.ca/demo/rnnoise/), as [`nnnoiseless`](https://crates.io/crates/nnnoiseless) | Neural noise suppression and voice activity detection | BSD 3-Clause |
+| [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) | Speech enhancement at the head of the capture chain, with its weights. The low-latency DFN3 comes from the `deep_filter` crate; the plain DFN3 is vendored at `core/models/` for the performance ladder's last rung | MIT / Apache-2.0 |
+| [`tract`](https://github.com/sonos/tract) | Runs that model, in pure Rust with no native runtime to cross-compile | MIT / Apache-2.0 |
 | [`cpal`](https://crates.io/crates/cpal) | Cross-platform audio device access | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Sample format conversion | MIT / Apache-2.0 |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | The sound classifier that lets *Automatic* hear an engine and choose the helmet profile. Shipped as `assets/models/yamnet.tflite` | Apache-2.0 |

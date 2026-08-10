@@ -182,6 +182,35 @@ pub enum Relief {
     /// smaller one than losing the enhancer, which is where it sits.
     NoClassifier,
 
+    /// The enhancer swaps to the plain DeepFilterNet 3 — a third of the cost
+    /// per frame, and harder on a quiet voice.
+    ///
+    /// **The rung that exists because the alternative was losing the enhancer
+    /// altogether.** Everything above this has been given up and the device is
+    /// still late; the only thing left was `EnhancerOff`, which costs the
+    /// feature that turns 1.5 dB of speech-to-gap separation into 16. Measured
+    /// against the low-latency model this ships, on three rides:
+    ///
+    /// | | DFN3-ll | plain |
+    /// |---|---|---|
+    /// | cost per frame, mean | 2.63 ms | **0.88 ms** |
+    /// | p99 | 9.77 ms | **3.83 ms** |
+    /// | separation, quiet ride | **4.6 dB** | 3.3 dB |
+    /// | separation, road | 18.6 dB | **20.3 dB** |
+    /// | cut from the vowel | −5.8 to −10.0 | −11.8 to −14.1 |
+    ///
+    /// So it is not a worse model, it is a **more aggressive** one: it takes 4
+    /// to 6 dB more out of the speech, which wins where the background is loud
+    /// enough to be worth removing and loses where it is not. A poor default —
+    /// which is why it is not one — and far better than nothing, which is what
+    /// the rung below offers.
+    ///
+    /// It also costs **20 ms** of algorithmic latency, because the plain model
+    /// holds two frames of look-ahead where the low-latency one holds none.
+    /// [`super::paydown`] bought 36 ms back, so a device on this rung is still
+    /// ahead of where it was before that shipped.
+    SimpleModel,
+
     /// The enhancer is bypassed. The last resort, and the bottom.
     EnhancerOff,
 }
@@ -200,7 +229,8 @@ impl Relief {
             Relief::NoAnalyser => Relief::NoClassifierTop,
             Relief::NoClassifierTop => Relief::NoLiveDots,
             Relief::NoLiveDots => Relief::NoClassifier,
-            Relief::NoClassifier => Relief::EnhancerOff,
+            Relief::NoClassifier => Relief::SimpleModel,
+            Relief::SimpleModel => Relief::EnhancerOff,
             Relief::EnhancerOff => return None,
         })
     }
@@ -219,7 +249,8 @@ impl Relief {
             Relief::NoClassifierTop => 8,
             Relief::NoLiveDots => 9,
             Relief::NoClassifier => 10,
-            Relief::EnhancerOff => 11,
+            Relief::SimpleModel => 11,
+            Relief::EnhancerOff => 12,
         }
     }
 
@@ -248,6 +279,11 @@ impl Relief {
     /// the display.
     pub fn skip_classifier(self) -> bool {
         self >= Relief::NoClassifier
+    }
+
+    /// The enhancer runs the cheap model. See [`Relief::SimpleModel`].
+    pub fn simple_model(self) -> bool {
+        self >= Relief::SimpleModel
     }
 
     /// The spectrum analyser has been given up — in the core, not only on
@@ -378,6 +414,7 @@ mod tests {
             Relief::NoClassifierTop,
             Relief::NoLiveDots,
             Relief::NoClassifier,
+            Relief::SimpleModel,
             Relief::EnhancerOff,
         ];
         for want in expected {

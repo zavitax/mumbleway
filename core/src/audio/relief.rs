@@ -223,6 +223,20 @@ impl Relief {
         }
     }
 
+    /// The rung with this index, for carrying one across an atomic or the FFI.
+    ///
+    /// Round-trips with [`Self::index`]; a test asserts it for every rung, so
+    /// inserting one in the middle cannot silently renumber a stored value.
+    pub fn from_index(i: u8) -> Option<Relief> {
+        let mut r = Relief::None;
+        loop {
+            if r.index() == i {
+                return Some(r);
+            }
+            r = r.weaker()?;
+        }
+    }
+
     /// The look-ahead is no longer paid down; the delay is flat at
     /// [`super::paydown::FALLBACK_MS`].
     pub fn skip_paydown(self) -> bool {
@@ -304,6 +318,22 @@ pub struct ReliefLadder {
 }
 
 impl ReliefLadder {
+    /// A ladder that begins part-way down, because the device was asked before
+    /// the call started. See [`super::probe`].
+    ///
+    /// **Only ever a starting point.** The ladder still owns every decision
+    /// after this one and still only ever falls, so a probe that was too
+    /// generous is corrected by the same mechanism as before — it just costs a
+    /// second of a real conversation instead of nothing. A probe that was too
+    /// harsh costs quality that was affordable, which is why the budget it dials
+    /// to has a millisecond of headroom rather than none.
+    pub fn starting_at(level: Relief) -> Self {
+        Self {
+            level: (level != Relief::None).then_some(level),
+            run_of_overruns: 0,
+        }
+    }
+
     pub fn level(&self) -> Relief {
         self.level.unwrap_or(Relief::None)
     }

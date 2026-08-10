@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `process_usage`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -186,6 +186,19 @@ UiStageCosts audioStageCosts() =>
 /// with it. `None` means no frame has been produced yet.
 UiSpectrum? audioSpectrum() =>
     RustLib.instance.api.crateApiMumblewayAudioSpectrum();
+
+/// Measures this device against the block deadline and dials the ladder.
+///
+/// **Deliberately not `#[frb(sync)]`.** It loads the model and runs several
+/// hundred blocks through the real chain, which is seconds on a slow phone —
+/// so it has to run on a worker thread and not on the platform thread. Call it
+/// once while the app is opening.
+///
+/// The answer is remembered process-wide, so every engine start afterwards
+/// begins at the rung this found rather than discovering it again. See
+/// `mumbleway_core::audio::probe`.
+Future<UiProbe> audioProbeChain() =>
+    RustLib.instance.api.crateApiMumblewayAudioProbeChain();
 
 /// Where each stage of the capture chain stands.
 ///
@@ -1072,6 +1085,54 @@ class UiLogEntry {
           level == other.level &&
           target == other.target &&
           message == other.message;
+}
+
+/// What the startup performance probe found.
+class UiProbe {
+  /// The rung the ladder will start at. 0 is the whole chain.
+  final int relief;
+
+  /// The block time it was decided on, in microseconds — the second worst of
+  /// the run, so one scheduler stall cannot dial a rider down.
+  final int worstUs;
+
+  /// The single worst block, which the decision ignored. Shown beside the
+  /// other so the panel is not quietly hiding the number it did not use.
+  final int outlierUs;
+
+  /// How many rungs were given up.
+  final int steps;
+
+  /// The bottom of the ladder still did not fit. The session starts there
+  /// because there is nothing further to give.
+  final bool gaveUp;
+
+  const UiProbe({
+    required this.relief,
+    required this.worstUs,
+    required this.outlierUs,
+    required this.steps,
+    required this.gaveUp,
+  });
+
+  @override
+  int get hashCode =>
+      relief.hashCode ^
+      worstUs.hashCode ^
+      outlierUs.hashCode ^
+      steps.hashCode ^
+      gaveUp.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiProbe &&
+          runtimeType == other.runtimeType &&
+          relief == other.relief &&
+          worstUs == other.worstUs &&
+          outlierUs == other.outlierUs &&
+          steps == other.steps &&
+          gaveUp == other.gaveUp;
 }
 
 /// Whether a diagnostic recording is running, and how it is doing.

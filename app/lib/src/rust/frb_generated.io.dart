@@ -172,6 +172,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiLogEntry dco_decode_ui_log_entry(dynamic raw);
 
   @protected
+  UiProbe dco_decode_ui_probe(dynamic raw);
+
+  @protected
   UiRecordingState dco_decode_ui_recording_state(dynamic raw);
 
   @protected
@@ -378,6 +381,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiLogEntry sse_decode_ui_log_entry(SseDeserializer deserializer);
+
+  @protected
+  UiProbe sse_decode_ui_probe(SseDeserializer deserializer);
 
   @protected
   UiRecordingState sse_decode_ui_recording_state(SseDeserializer deserializer);
@@ -627,6 +633,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_log_entry(UiLogEntry self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_probe(UiProbe self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_recording_state(

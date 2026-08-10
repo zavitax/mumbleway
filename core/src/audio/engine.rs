@@ -2585,7 +2585,20 @@ where
     let mut timings = StageTimings::default();
     // What this device has had to give up to meet the deadline. Owned here
     // because the deadline is the block's, not any one stage's.
-    let mut relief = ReliefLadder::default();
+    //
+    // Started where the startup probe left it, when there was one. The ladder
+    // still owns everything after that and still only falls — see
+    // `super::probe`.
+    let mut relief = match super::probe::probed_start() {
+        Some(rung) => {
+            tracing::info!(
+                "starting at relief rung {} from the startup probe",
+                rung.index()
+            );
+            ReliefLadder::starting_at(rung)
+        }
+        None => ReliefLadder::default(),
+    };
 
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);

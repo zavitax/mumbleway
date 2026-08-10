@@ -635,6 +635,15 @@ class AppState extends ChangeNotifier {
       maxServers = maxConcurrentServers();
       gainRange = gainLimits();
 
+      // Ask this device what it can run, before a rider finds out mid-sentence.
+      //
+      // **Not awaited.** It takes seconds on a slow phone, and nothing here
+      // depends on the answer: it only decides which rung the ladder starts at,
+      // and the engine reads that when the devices next open — which is per
+      // call, not now. Awaiting it would hold the first frame for the length of
+      // a measurement whose whole point is that the rider never notices it.
+      unawaited(probeChain());
+
       _events = appEvents().listen(
         onEvent,
         onError: (Object e) {
@@ -2141,6 +2150,33 @@ class AppState extends ChangeNotifier {
 
   Timer? _reliefTimer;
   bool _chainDegraded = false;
+  /// Measures the chain against the block deadline and dials the ladder.
+  ///
+  /// **Once per launch, off the platform thread**, which is what the
+  /// non-`sync` bridge call buys: it loads the model and runs several hundred
+  /// blocks, and doing that on the UI thread would freeze the app while it
+  /// opened. Nothing waits for it — the result only decides where the ladder
+  /// starts, and the engine reads that when it next opens the devices.
+  ///
+  /// Failure is not an error worth showing. A device that cannot even be
+  /// measured gets the behaviour it had before this existed: the ladder starts
+  /// at the top and steps down if it has to.
+  ///
+  /// The numbers behind the decision are not kept here — the Rust side writes
+  /// them into the app's own log as it finishes, which is where a rider can
+  /// read them back and quote them. Holding a second copy in the state would be
+  /// a field with no reader.
+  Future<void> probeChain() async {
+    try {
+      if ((await audioProbeChain()).relief > 0) {
+        // The warning icon, before the first call rather than during it.
+        _chainDegraded = true;
+        notifyListeners();
+      }
+    } catch (_) {
+      // No measurement. The runtime ladder is unaffected and still authoritative.
+    }
+  }
 
   /// Whether the performance ladder has switched any capture stage off.
   ///
@@ -2180,8 +2216,13 @@ class AppState extends ChangeNotifier {
       // No engine. Nothing has been given up that this can know about.
       return;
     }
-    if (degraded == _chainDegraded) return;
-    _chainDegraded = degraded;
+    // **Only ever set, never cleared.** The ladder does not climb back, and
+    // the startup probe can raise this before an engine exists at all — so a
+    // poll that found a fresh engine at rung 0 would otherwise wipe a warning
+    // that is still true. The same reasoning as `_syncReliefWatch`, which is
+    // why the flag survives a call ending.
+    if (!degraded || _chainDegraded) return;
+    _chainDegraded = true;
     notifyListeners();
   }
 

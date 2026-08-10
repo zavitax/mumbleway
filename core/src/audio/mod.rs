@@ -13,6 +13,7 @@ pub mod modulation;
 pub mod paydown;
 pub mod pitch;
 pub mod preview;
+pub mod probe;
 pub mod quality;
 pub mod record;
 pub mod relief;

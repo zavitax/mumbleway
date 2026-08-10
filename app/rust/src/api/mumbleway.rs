@@ -1469,6 +1469,64 @@ pub fn audio_spectrum() -> anyhow::Result<Option<UiSpectrum>> {
     }))
 }
 
+/// What the startup performance probe found.
+#[derive(Debug, Clone)]
+pub struct UiProbe {
+    /// The rung the ladder will start at. 0 is the whole chain.
+    pub relief: u32,
+    /// The block time it was decided on, in microseconds — the second worst of
+    /// the run, so one scheduler stall cannot dial a rider down.
+    pub worst_us: u32,
+    /// The single worst block, which the decision ignored. Shown beside the
+    /// other so the panel is not quietly hiding the number it did not use.
+    pub outlier_us: u32,
+    /// How many rungs were given up.
+    pub steps: u32,
+    /// The bottom of the ladder still did not fit. The session starts there
+    /// because there is nothing further to give.
+    pub gave_up: bool,
+}
+
+/// Measures this device against the block deadline and dials the ladder.
+///
+/// **Deliberately not `#[frb(sync)]`.** It loads the model and runs several
+/// hundred blocks through the real chain, which is seconds on a slow phone —
+/// so it has to run on a worker thread and not on the platform thread. Call it
+/// once while the app is opening.
+///
+/// The answer is remembered process-wide, so every engine start afterwards
+/// begins at the rung this found rather than discovering it again. See
+/// `mumbleway_core::audio::probe`.
+pub fn audio_probe_chain() -> anyhow::Result<UiProbe> {
+    let got = mumbleway_core::audio::probe::probe(mumbleway_core::audio::probe::PROBE_BUDGET_US);
+    // Into the app's own log rather than `tracing`, because this is a fact a
+    // rider may need to quote back: it is the difference between "this phone
+    // was measured and cannot keep up" and "something went wrong on the day".
+    mumbleway_core::diag::record(
+        mumbleway_core::diag::LogLevel::Info,
+        "probe",
+        format!(
+            "startup probe: rung {} after {} steps, worst {:.1} ms (outlier {:.1} ms){}",
+            got.rung.index(),
+            got.steps,
+            got.worst_us as f32 / 1000.0,
+            got.outlier_us as f32 / 1000.0,
+            if got.gave_up {
+                ", still over budget at the bottom of the ladder"
+            } else {
+                ""
+            }
+        ),
+    );
+    Ok(UiProbe {
+        relief: got.rung.index() as u32,
+        worst_us: got.worst_us,
+        outlier_us: got.outlier_us,
+        steps: got.steps as u32,
+        gave_up: got.gave_up,
+    })
+}
+
 /// Where each stage of the capture chain stands.
 ///
 /// Free, and always current: the chain publishes this as it runs whether or not

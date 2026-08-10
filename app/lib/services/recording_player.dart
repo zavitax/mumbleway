@@ -19,6 +19,26 @@ const int kRecordingRate = 48000;
 const int kRecordingBlock = 480;
 const int _bytesPerSample = 2;
 
+/// How much run-in speech-only playback plays before a transmitted stretch, in
+/// blocks.
+///
+/// **Not a correction for a misalignment — the log and the audio already
+/// agree.** `run_worker` holds each recorded block in a queue until its audio
+/// has reached the transmit decision and stamps it with the answer, so row N
+/// describes block N and the green on the waveform sits where it belongs.
+///
+/// This is for the ear. Skipping straight to the first transmitted sample drops
+/// the listener into the middle of an attack with no run-up, and a word start
+/// judged that way sounds clipped whether or not it is — which is exactly the
+/// judgement this sheet exists to support. 160 ms, matching
+/// `ONSET_LOOKAHEAD_MS`, so what plays before a stretch is the same span the
+/// transmit envelope opens early for.
+///
+/// Older recordings were made when that constant was 80 ms. The extra 80 ms is
+/// silence they will play before the same stretch, which costs nothing.
+const int kPlaybackLeadBlocks = 16;
+
+
 /// Peaks for drawing a recording, and the length it was measured over.
 class Waveform {
   const Waveform(this.minima, this.maxima, this.duration, this.transmitted);
@@ -597,16 +617,30 @@ class RecordingPlayer extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether a block is worth playing: transmitted, or close enough in front of
+  /// one to be its run-in.
+  ///
+  /// Past the end of the decision log everything is worth playing — a log
+  /// shorter than its audio is missing information, and skipping the tail of a
+  /// ride on the strength of rows that were never written would be silent and
+  /// wrong.
+  bool _worthPlaying(int block) {
+    if (block >= _blocks.length) return true;
+    var until = block + kPlaybackLeadBlocks;
+    if (until > _blocks.length - 1) until = _blocks.length - 1;
+    for (var b = block; b <= until; b++) {
+      if (_blocks[b] != 0) return true;
+    }
+    return false;
+  }
+
   /// The next sample worth playing at or after [from].
   ///
-  /// Everything, unless speech-only is on. Past the end of the decision log it
-  /// is everything too: a log shorter than its audio is missing information,
-  /// and skipping the tail of a ride on the strength of rows that were never
-  /// written would be silent and wrong.
+  /// Everything, unless speech-only is on.
   int _nextAudible(int from) {
     if (!_speechOnly || _blocks.isEmpty) return from;
     var block = from ~/ kRecordingBlock;
-    while (block < _blocks.length && _blocks[block] == 0) {
+    while (block < _blocks.length && !_worthPlaying(block)) {
       block++;
     }
     final start = block * kRecordingBlock;
@@ -614,11 +648,17 @@ class RecordingPlayer extends ChangeNotifier {
   }
 
   /// Where the run containing [from] stops being worth playing.
+  ///
+  /// **The lead has to be in both halves of this pair or playback stalls.**
+  /// Backing the seek up by itself lands the playhead on a silent block, and an
+  /// end computed from "is this block transmitted" would then return the
+  /// playhead's own position — a run of zero length, which the feed loop breaks
+  /// out of and never re-enters.
   int _audibleEnd(int from) {
     if (!_speechOnly || _blocks.isEmpty) return _totalSamples;
     var block = from ~/ kRecordingBlock;
     if (block >= _blocks.length) return _totalSamples;
-    while (block < _blocks.length && _blocks[block] != 0) {
+    while (block < _blocks.length && _worthPlaying(block)) {
       block++;
     }
     // Off the end of the log is unknown, not silent — play to the end.

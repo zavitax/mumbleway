@@ -212,14 +212,34 @@ void main() {
 
     test('silence in front is skipped, and the run ends where it ends', () {
       // Ten blocks; only 4, 5 and 6 went out.
+      //
+      // The four in front are inside `kPlaybackLeadBlocks`, so they are the
+      // stretch's run-in and are played rather than skipped — see
+      // `playback_lead_test.dart`. What this asserts is that the *end* is still
+      // the end of what was transmitted, which the lead must not move.
       final p = withBlocks([0, 0, 0, 0, 1, 1, 1, 0, 0, 0]);
       expect(p.speechOnly, isTrue);
-      expect(p.nextAudibleForTest(0), 4 * kRecordingBlock);
-      expect(p.audibleEndForTest(4 * kRecordingBlock), 7 * kRecordingBlock);
+      expect(p.nextAudibleForTest(0), 0);
+      expect(p.audibleEndForTest(0), 7 * kRecordingBlock);
       // From inside the run, nothing moves and the end is unchanged.
       expect(p.nextAudibleForTest(5 * kRecordingBlock + 100),
           5 * kRecordingBlock + 100);
       expect(p.audibleEndForTest(5 * kRecordingBlock), 7 * kRecordingBlock);
+    });
+
+    test('silence longer than the lead is still skipped', () {
+      // The behaviour the test above used to assert, at a distance where the
+      // run-in cannot reach: 40 silent blocks, then three transmitted. The
+      // playhead lands `kPlaybackLeadBlocks` in front of them and not at zero.
+      final p = withBlocks([
+        for (var i = 0; i < 40; i++) 0,
+        1, 1, 1,
+        for (var i = 0; i < 10; i++) 0,
+      ]);
+      expect(p.nextAudibleForTest(0),
+          (40 - kPlaybackLeadBlocks) * kRecordingBlock);
+      expect(p.audibleEndForTest(p.nextAudibleForTest(0)),
+          43 * kRecordingBlock);
     });
 
     test('past the last transmitted block it runs to the end', () {

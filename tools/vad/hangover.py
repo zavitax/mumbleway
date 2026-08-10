@@ -160,10 +160,16 @@ def main(root):
     print(f"\ngaps between speech runs ({len(all_gaps)} of them), in ms:")
     for q in (10, 25, 50, 75, 90, 95, 99):
         print(f"  p{q:<3} {all_gaps[len(all_gaps) * q // 100] * BLOCK_MS:>6}")
+    # **A gap closes at `hold + LOOKAHEAD_MS`, not at `hold`.** The run after it
+    # opens the look-ahead early, so the two envelopes meet that much sooner.
+    # Counting against the hold alone understates what the tail bridges, and
+    # disagreed with the reconstruction below — 14 gaps "newly split" where it
+    # only produced 7 more runs, which is what caught it.
     for h in (100, 200, 330, 500):
-        bridged = sum(1 for g in all_gaps if g * BLOCK_MS <= h)
+        bridged = sum(1 for g in all_gaps if g * BLOCK_MS <= h + LOOKAHEAD_MS)
         print(
-            f"  a {h:>3} ms hold bridges {bridged:>5} of {len(all_gaps)} "
+            f"  a {h:>3} ms hold bridges gaps to {h + LOOKAHEAD_MS:>3} ms: "
+            f"{bridged:>5} of {len(all_gaps)} "
             f"({100.0 * bridged / len(all_gaps):.1f}%)"
         )
 
@@ -176,9 +182,12 @@ def main(root):
     # were recorded when the look-ahead was 80 ms rather than 160, so their
     # recorded envelope is narrower than this reconstruction assumes. Read the
     # column against the 330 ms row, not against the seconds above.
-    print(f"\n{'hold':>8}{'airtime':>10}{'vs 330':>9}{'runs':>8}{'median run':>12}")
-    shipped = None
-    for h in (330, 250, 200, 150, 100, 50):
+    print(
+        f"\n{'hold':>8}{'airtime':>10}{'vs 330':>9}{'runs':>8}{'+runs':>7}"
+        f"{'median run':>12}{'newly split':>13}{'per min':>9}"
+    )
+    shipped = shipped_runs = shipped_bridged = None
+    for h in (330, 300, 275, 250, 225, 200, 150, 100, 50):
         blocks, nruns, lens = 0, 0, []
         for _, speaking, _ in rides:
             sent = envelope(runs(speaking), len(speaking), h)
@@ -187,13 +196,23 @@ def main(root):
             nruns += len(r)
             lens += [b - a for a, b in r]
         lens.sort()
+        bridged = sum(1 for g in all_gaps if g * BLOCK_MS <= h + LOOKAHEAD_MS)
         if shipped is None:
-            shipped = blocks
+            shipped, shipped_runs, shipped_bridged = blocks, nruns, bridged
+        minutes = blocks * BLOCK_MS / 1000 / 60
         print(
             f"{h:>6} ms{blocks * BLOCK_MS / 1000:>9.0f}s"
             f"{100.0 * blocks / shipped - 100:>8.1f}%"
-            f"{nruns:>8}{lens[len(lens) // 2] * BLOCK_MS:>10} ms"
+            f"{nruns:>8}{nruns - shipped_runs:>+7}"
+            f"{lens[len(lens) // 2] * BLOCK_MS:>10} ms"
+            f"{shipped_bridged - bridged:>13}"
+            f"{(nruns - shipped_runs) / minutes:>9.1f}"
         )
+    print(
+        "\n`newly split` is gaps the shipped hold bridges and this one does "
+        "not:\neach is a phrase that comes apart. `per min` is the extra gate "
+        "closures\nper minute of airtime that buys."
+    )
 
 
 if __name__ == "__main__":

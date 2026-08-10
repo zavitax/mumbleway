@@ -74,6 +74,31 @@ const BUDGET_US: u32 = 10_000;
 ///
 /// `MAX_DF_DB` is therefore the whole cost lever, and it is the one this file
 /// uses when a phone cannot keep up. See [`Effort`].
+///
+/// # `MIN_DB` was the suspect, and it is not guilty
+///
+/// The zero-mask branch does not attenuate — it *zeroes* — and 85.1% of a
+/// clean ride takes it, so this was carried for a long time as the leading
+/// untested explanation for speech sounding choppy: 85% of the file muted
+/// outright with a hard edge at every boundary.
+///
+/// Measured with `dfbench --min-db` on that ride, against −16 dB, which is
+/// below the model's own `lsnr_min` and so removes the branch entirely:
+///
+/// | `MIN_DB` | Mean frame | Zero-masked | Separation |
+/// |---|---|---|---|
+/// | **−10** (shipped) | **1.41 ms** | 85.1% | **14.1 dB** |
+/// | −16 (branch gone) | 4.81 ms | 0% | 13.4 dB |
+///
+/// Removing it costs **3.4× the CPU and 0.7 dB of separation** — worse on both
+/// axes, and worst on exactly the devices already stepping down the ladder.
+/// The hard mute is doing real work: it is what makes the gaps silent enough
+/// for the 1.8 dB the microphone gives to become 14.
+///
+/// What this cannot see is a click at a boundary, which no separation figure
+/// measures. That needs an ear, and the chain playback in the listen sheet is
+/// now the way to use one — but the cost above makes it a bad trade unless the
+/// artefact turns out to be severe.
 const MIN_DB: f32 = -10.0;
 const MAX_ERB_DB: f32 = 30.0;
 const MAX_DF_DB: f32 = 20.0;

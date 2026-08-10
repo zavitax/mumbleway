@@ -2769,6 +2769,7 @@ where
                     transmitting: false,
                     mode: 0,
                     muted: false,
+                    gain_db: 0.0,
                     samples,
                     speaking: analysis.speaking,
                     gate_open: analysis.gate_open,
@@ -2919,6 +2920,7 @@ where
                     // 80 ms earlier that the decision was made about.
                     entry.mode = mode as u8;
                     entry.muted = shared.is_muted();
+                    entry.gain_db = shared.input_gain_db();
                     shared.record_block(entry);
                 }
             }
@@ -3128,6 +3130,7 @@ mod tests {
             modulation: 0.5,
             mode: 0,
             muted: false,
+            gain_db: 0.0,
         });
         assert!(!shared.is_diagnostic_recording());
     }
@@ -3160,6 +3163,7 @@ mod tests {
                 modulation: 0.4,
                 mode: 0,
                 muted: false,
+                gain_db: 0.0,
             });
         }
 

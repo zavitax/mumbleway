@@ -126,7 +126,7 @@ issue directly, and there is no voice in it to think twice about.
 | File | What it is |
 |---|---|
 | `YYYYMMDD-HHMM-NNN.s16` | The audio, exactly as the chain received it: raw 16-bit PCM, mono, 48 kHz, no header |
-| `YYYYMMDD-HHMM-NNN.csv` | One row per 10 ms — `transmitting`, `speaking`, `gate_open`, `vad`, `snr_db`, `level_db`, `floor_db`, `harmonicity`, `modulation`, `mode`, `muted` |
+| `YYYYMMDD-HHMM-NNN.csv` | One row per 10 ms — `transmitting`, `speaking`, `gate_open`, `vad`, `snr_db`, `level_db`, `floor_db`, `harmonicity`, `modulation`, `mode`, `muted`, `gain_db` |
 
 </div>
 
@@ -144,6 +144,11 @@ push to talk and 2 for continuous, and `muted` is the microphone switch. A
 recording where nothing went out because the microphone was muted looks
 identical, in every other column, to one where the gate never opened — and
 those call for opposite answers.
+
+`gain_db` is the microphone gain slider, for the same kind of reason. A
+recording that sounds distorted can be an overdriven input or a chain
+misbehaving, and the one control that decides which was, until now, the only
+setting in the app that left no trace in the file.
 
 New columns are added on the end and never in the middle, so a reader that
 finds them by name keeps working and older recordings stay readable.

@@ -93,6 +93,20 @@ pub struct Recorded {
     /// activated, 1 push to talk, 2 continuous.
     pub mode: u8,
     pub muted: bool,
+    /// The microphone gain the rider had set, in dB.
+    ///
+    /// **The column an evening was spent not having.** A recording came back
+    /// with 35% of its samples at full scale and nothing in the file said what
+    /// the one control that sets the input level was set to — so "the meter
+    /// never reaches 100%" and "a third of this is clipped" were argued
+    /// against each other twice, both true of different signals. The gain was
+    /// never observed, only inferred, and the inference is still the weakest
+    /// claim in `docs/SESSION_2026-08-10.md`.
+    ///
+    /// Per block rather than in the header, because it is a slider: a rider
+    /// who turns it down mid-ride would otherwise leave a file whose header
+    /// describes a setting that was true for the first ten seconds.
+    pub gain_db: f32,
 }
 
 enum Message {
@@ -199,7 +213,7 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
         log,
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
          block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,\
-         modulation,mode,muted"
+         modulation,mode,muted,gain_db"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -237,7 +251,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
 
         let _ = writeln!(
             sink.log,
-            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{}",
+            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1}",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -250,6 +264,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.modulation,
             block.mode,
             block.muted as u8,
+            block.gain_db,
         );
         block_index += 1;
 
@@ -299,6 +314,7 @@ mod tests {
             modulation: 0.4,
             mode: 0,
             muted: false,
+            gain_db: 0.0,
         }
     }
 
@@ -323,6 +339,7 @@ mod tests {
         let header: Vec<&str> = lines.next().unwrap().split(',').collect();
         assert!(header.contains(&"mode"), "header lost the mode column");
         assert!(header.contains(&"muted"), "header lost the muted column");
+        assert!(header.contains(&"gain_db"), "header lost the gain column");
         for row in lines {
             assert_eq!(
                 row.split(',').count(),

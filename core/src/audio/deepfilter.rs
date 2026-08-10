@@ -68,24 +68,110 @@ const BUDGET_US: u32 = 10_000;
 /// `MAX_DF_DB` the cheap ERB decoder only; and between them both decoders,
 /// which is the expensive one.
 ///
-/// **A helmet at speed sits in the expensive branch by construction** — that
-/// is what "noisy" means — so these are the only lever on cost that does not
-/// change engine. Lowering `MAX_DF_DB` sends more frames down the ERB-only
-/// path: cheaper, and less deep filtering on exactly the frames that are
-/// already fairly clean.
+/// **The DF decoder is 19.2 MB of the model's 20 MB** — three GRUs of 512 — so
+/// a frame that skips it is a different order of work. On a Snapdragon 450 the
+/// two paths measure 7.9 ms and 4.7 ms against a 10 ms block.
 ///
-/// The defaults are the crate's (-10 / 30 / 20) and are kept until measured;
-/// `frame_cost` below is what measures them.
+/// `MAX_DF_DB` is therefore the whole cost lever, and it is the one this file
+/// uses when a phone cannot keep up. See [`Effort`].
 const MIN_DB: f32 = -10.0;
 const MAX_ERB_DB: f32 = 30.0;
 const MAX_DF_DB: f32 = 20.0;
 
-/// Consecutive missed deadlines before the enhancer switches itself off.
+/// How much work the enhancer is allowed to do.
+///
+/// **Because the alternative was all or nothing, and low-end phones got
+/// nothing.** Until now a device that missed the deadline a hundred times in a
+/// row switched the enhancer off for the session — and on the phone this was
+/// reported from, that is exactly what happened. Measured on that same phone
+/// (OPPO A3s, Snapdragon 450, Cortex-A53), with the model doing all the work,
+/// the enhancer's own frames come in at a mean of 6.2 ms and a worst of 9.3 ms
+/// — **inside the 10 ms budget, with nothing to spare for the rest of the
+/// chain**. It is not that the model cannot run there. It is that the model
+/// plus RNNoise plus the filters plus the encoder cannot.
+///
+/// So there are rungs between full and off, and each one was measured rather
+/// than guessed. Separation is speech-to-gap in dB across the ride corpus, and
+/// the cost is that phone's mean frame:
+///
+/// | Rung | `max_df` | Cost there | Separation, worst clip | Best clip |
+/// |---|---|---|---|---|
+/// | [`Effort::Full`] | 20 | 6.29 ms | 27.0 dB | 14.1 dB |
+/// | [`Effort::Reduced`] | 0 | 4.62 ms | 24.2 dB | **15.7 dB** |
+/// | [`Effort::ErbOnly`] | −15 | 4.34 ms | 22.1 dB | 15.9 dB |
+/// | [`Effort::Bypassed`] | — | 0 | none | none |
+///
+/// **Stepping down is not purely a loss.** On voice over music — the clip this
+/// model was adopted for — `Reduced` separates *better* than `Full`: 15.7 dB
+/// against 14.1. The DF decoder takes 11.5 dB out of the speech at full effort
+/// and 9.8 dB at reduced, and it is the speech being eaten, not the music
+/// surviving. That is a measured account of "speech gets choppier in Helmet",
+/// and it is why the middle rungs are worth having even on a fast phone.
+///
+/// It is still a loss on quieter material — 27.0 dB to 24.2 on one ride — so
+/// this is a degradation path and not a new default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effort {
+    /// Everything the model can do. What a phone that keeps up runs.
+    Full,
+    /// The DF decoder only on the frames that most need it.
+    Reduced,
+    /// The ERB decoder alone; the 19.2 MB of GRUs never run.
+    ErbOnly,
+    /// Pass-through. The chain runs without the enhancer at all.
+    Bypassed,
+}
+
+impl Effort {
+    /// The DF threshold this rung runs at, in dB.
+    ///
+    /// −15 dB is the model's own `lsnr_min`, so every frame that is not
+    /// already zero-masked takes the ERB-only path and the DF decoder is never
+    /// reached. Written as the floor rather than as minus infinity because it
+    /// is the value the corpus was measured at.
+    fn max_df_db(self) -> f32 {
+        match self {
+            Effort::Full => MAX_DF_DB,
+            Effort::Reduced => 0.0,
+            Effort::ErbOnly | Effort::Bypassed => -15.0,
+        }
+    }
+
+    /// The next rung down, or `None` at the bottom.
+    fn weaker(self) -> Option<Effort> {
+        match self {
+            Effort::Full => Some(Effort::Reduced),
+            Effort::Reduced => Some(Effort::ErbOnly),
+            Effort::ErbOnly => Some(Effort::Bypassed),
+            Effort::Bypassed => None,
+        }
+    }
+
+    /// For the panel and the decision log.
+    pub fn index(self) -> u8 {
+        match self {
+            Effort::Full => 0,
+            Effort::Reduced => 1,
+            Effort::ErbOnly => 2,
+            Effort::Bypassed => 3,
+        }
+    }
+}
+
+/// Consecutive missed deadlines before the enhancer gives up a rung.
 ///
 /// One second's worth. Long enough that a scheduler hiccup or a cold cache
-/// does not disable a feature that works, short enough that a phone which
-/// simply cannot manage it is not allowed to ruin a whole ride.
-const GIVE_UP_AFTER: u32 = 100;
+/// does not cost quality on a phone that is coping, short enough that a phone
+/// which simply cannot manage is not allowed to ruin a whole ride.
+///
+/// **It steps down, and never back up.** Climbing again would need the same
+/// hysteresis argument the profile chooser needed, and it would be settled by
+/// the same measurement that pushed it down in the first place — so a device
+/// on the edge would oscillate, and every change of rung is audible. A rung is
+/// treated as a fact about this device for the rest of the session, which is
+/// what the old all-or-nothing guard already assumed and is the one part of it
+/// worth keeping.
+const STEP_DOWN_AFTER: u32 = 100;
 
 /// Speech enhancement in front of everything else.
 pub struct Enhancer {
@@ -106,10 +192,10 @@ pub struct Enhancer {
     overruns: u32,
     frames: u64,
     /// Consecutive frames that missed the budget. Reset by any frame that
-    /// makes it.
+    /// makes it, and by every step down.
     run_of_overruns: u32,
-    /// Switched off because it could not keep up. See [`Self::process`].
-    gave_up: bool,
+    /// How hard it is allowed to work. Only ever falls. See [`Effort`].
+    effort: Effort,
 }
 
 impl Enhancer {
@@ -139,7 +225,7 @@ impl Enhancer {
             overruns: 0,
             frames: 0,
             run_of_overruns: 0,
-            gave_up: false,
+            effort: Effort::Full,
         }
     }
 
@@ -160,14 +246,19 @@ impl Enhancer {
 
     /// Whether it is enhancing right now.
     pub fn active(&self) -> bool {
-        self.model.is_some() && !self.gave_up
+        self.model.is_some() && self.effort != Effort::Bypassed
     }
 
     /// Whether it loaded but then had to stop. Distinct from never having
     /// loaded: one is a phone that cannot keep up, the other is a build that
     /// went wrong, and they call for different answers.
     pub fn gave_up(&self) -> bool {
-        self.gave_up
+        self.effort == Effort::Bypassed
+    }
+
+    /// Which rung it is on. [`Effort::Full`] unless a phone made it step down.
+    pub fn effort(&self) -> Effort {
+        self.effort
     }
 
     /// The model's own signal-to-noise estimate for the last frame, in dB.
@@ -184,7 +275,7 @@ impl Enhancer {
     ///
     /// A no-op when the model did not load, so the caller has one path.
     pub fn process(&mut self, block: &mut [f32]) {
-        if self.gave_up {
+        if self.effort == Effort::Bypassed {
             return;
         }
         let Some(model) = self.model.as_mut() else {
@@ -223,27 +314,49 @@ impl Enhancer {
         if us > BUDGET_US {
             self.overruns = self.overruns.saturating_add(1);
             self.run_of_overruns += 1;
-            // **It stops rather than stuttering.** Measured at 3.55 ms a frame
-            // on a desktop in release, but a phone core is slower and this has
-            // not been measured on one. A model that cannot keep up does not
-            // degrade gracefully -- it misses the deadline every frame, and a
-            // missed deadline is a click in somebody's helmet for the rest of
-            // the ride. Better to lose the enhancement and say so.
+            // **It gives up a rung rather than the whole feature.** A missed
+            // deadline is a click in somebody's helmet, so it cannot simply
+            // stutter on -- but the old guard went straight from everything to
+            // nothing, and on the phone this was reported from the model was
+            // measured at 6.2 ms a frame against a 10 ms budget. It was never
+            // the model on its own that did not fit.
             //
             // A run, not a total: one slow frame is a scheduler hiccup, and a
-            // hundred in a row is a phone that will never manage it.
-            if self.run_of_overruns >= GIVE_UP_AFTER {
-                self.gave_up = true;
-                tracing::warn!(
-                    "DeepFilterNet could not keep up ({} consecutive frames over {} ms);                      switching it off for this session",
-                    self.run_of_overruns,
-                    BUDGET_US / 1000
-                );
+            // hundred in a row is a device that will not manage this rung.
+            if self.run_of_overruns >= STEP_DOWN_AFTER {
+                self.step_down();
             }
         } else {
             self.run_of_overruns = 0;
         }
         self.frames += 1;
+    }
+
+    /// Drops to the next rung, or to pass-through at the bottom.
+    fn step_down(&mut self) {
+        let Some(next) = self.effort.weaker() else {
+            return;
+        };
+        self.effort = next;
+        self.run_of_overruns = 0;
+        // The thresholds are plain public fields on the model, so a rung costs
+        // one assignment: no rebuild, no allocation, nothing that could block
+        // the audio thread for the tens of milliseconds a reload would take.
+        if let Some(model) = self.model.as_mut() {
+            model.max_db_df_thresh = next.max_df_db();
+        }
+        match next {
+            Effort::Bypassed => tracing::warn!(
+                "DeepFilterNet could not keep up even at its lowest setting; \
+                 the chain runs without it for this session"
+            ),
+            other => tracing::warn!(
+                "DeepFilterNet could not keep up ({} consecutive frames over {} ms); \
+                 stepping down to {other:?}",
+                STEP_DOWN_AFTER,
+                BUDGET_US / 1000
+            ),
+        }
     }
 
     /// Forgets the timing history, for the panel's Reset.
@@ -252,10 +365,10 @@ impl Enhancer {
         self.overruns = 0;
         self.frames = 0;
         self.run_of_overruns = 0;
-        // Deliberately not clearing `gave_up`. It is a fact about this device,
+        // Deliberately not restoring the rung. It is a fact about this device,
         // and a Reset button on a diagnostics panel should not quietly re-arm
-        // something that was switched off for missing its deadline a hundred
-        // times.
+        // something that stepped down for missing its deadline a hundred times
+        // — least of all while a rider is on the road listening to the result.
     }
 }
 
@@ -447,6 +560,101 @@ mod tests {
             }
         }
         assert!(changed, "the enhancer left every block untouched");
+    }
+
+    #[test]
+    fn it_gives_up_a_rung_at_a_time_and_never_climbs_back() {
+        // The behaviour the phone needed. The old guard went from everything
+        // to nothing in one step, which is how a device measured at 6.2 ms a
+        // frame against a 10 ms budget ended up with no enhancement at all.
+        let mut e = Enhancer::new();
+        assert_eq!(e.effort(), Effort::Full);
+        assert!(e.active());
+
+        for expected in [Effort::Reduced, Effort::ErbOnly, Effort::Bypassed] {
+            e.step_down();
+            assert_eq!(e.effort(), expected);
+        }
+
+        // The bottom is the bottom, and it stays there.
+        assert!(e.gave_up());
+        assert!(!e.active());
+        e.step_down();
+        assert_eq!(e.effort(), Effort::Bypassed);
+
+        // And a Reset on the diagnostics panel clears the counters without
+        // quietly re-arming something that could not keep up.
+        e.reset_timing();
+        assert_eq!(e.effort(), Effort::Bypassed);
+        assert_eq!(e.timing(), (0, 0, 0));
+    }
+
+    #[test]
+    fn each_rung_asks_the_model_for_less_work() {
+        // The rung is a threshold on the model's own SNR estimate, and the
+        // whole saving is that fewer frames reach the DF decoder — 19.2 MB of
+        // the model's 20. If these ever stopped descending, stepping down
+        // would cost quality and buy nothing.
+        let steps = [
+            Effort::Full,
+            Effort::Reduced,
+            Effort::ErbOnly,
+            Effort::Bypassed,
+        ];
+        for pair in steps.windows(2) {
+            assert!(
+                pair[1].max_df_db() <= pair[0].max_df_db(),
+                "{:?} does not ask for less than {:?}",
+                pair[1],
+                pair[0]
+            );
+        }
+        assert!(steps.windows(2).any(|p| p[1].max_df_db() < p[0].max_df_db()));
+
+        // And the model is actually told, rather than the rung being a label.
+        let mut e = Enhancer::new();
+        e.step_down();
+        assert_eq!(
+            e.model.as_ref().map(|m| m.max_db_df_thresh),
+            Some(Effort::Reduced.max_df_db()),
+            "the rung changed but the model was not told"
+        );
+    }
+
+    #[test]
+    fn a_reduced_enhancer_still_enhances() {
+        // Every rung above bypass has to do something, or stepping down is
+        // just a slower way of switching off. Speech-shaped tone under noise,
+        // the same shape the full-effort test uses.
+        for rung in [Effort::Reduced, Effort::ErbOnly] {
+            let mut e = Enhancer::new();
+            while e.effort() != rung {
+                e.step_down();
+            }
+            assert!(e.active(), "{rung:?} should still be enhancing");
+
+            let mut changed = false;
+            let mut seed = 4242u32;
+            for _ in 0..40 {
+                let mut block: Vec<f32> = (0..HOP)
+                    .map(|i| {
+                        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                        let noise = (seed >> 16) as f32 / 32768.0 - 1.0;
+                        0.25 * (i as f32 * 0.06).sin() + 0.15 * noise
+                    })
+                    .collect();
+                let before = block.clone();
+                e.process(&mut block);
+                if block.iter().zip(&before).any(|(a, b)| (a - b).abs() > 1e-4) {
+                    changed = true;
+                }
+                assert!(
+                    block.iter().all(|s| s.is_finite()),
+                    "{rung:?} produced something unplayable"
+                );
+            }
+            assert!(changed, "{rung:?} left every block untouched");
+        }
     }
 
     #[test]

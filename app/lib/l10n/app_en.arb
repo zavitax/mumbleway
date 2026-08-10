@@ -400,6 +400,18 @@
       }
     }
   },
+  "diagEnhancerReduced": "This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.",
+  "@diagEnhancerReduced": {
+    "description": "Shown in diagnostics when the speech enhancer has dropped to its reduced setting because the device missed the block deadline"
+  },
+  "diagEnhancerErbOnly": "This device could not keep up, so the enhancer is running its light stage only. Speech still comes through; the deepest filtering does not run.",
+  "@diagEnhancerErbOnly": {
+    "description": "Shown in diagnostics when the speech enhancer has dropped to its lightest setting"
+  },
+  "diagEnhancerBypassed": "This device could not keep up even at the lightest setting, so the enhancer is switched off for this session.",
+  "@diagEnhancerBypassed": {
+    "description": "Shown in diagnostics when the speech enhancer has been bypassed entirely"
+  },
   "diagPreviewTitle": "Listen back",
   "diagPreviewBody": "It is a recording of your own microphone. Hear what is in it before you send it anywhere.",
   "diagPreviewPlay": "Play",

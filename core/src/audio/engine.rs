@@ -25,7 +25,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use super::deepfilter::Enhancer;
@@ -39,6 +39,7 @@ use super::jitter::{
 use super::record::{DiagnosticRecorder, Recorded};
 use super::resample::Resampler;
 use super::spectrum::{SpectrumAnalyser, SpectrumFrame, TAP_PRE_GATE, TAP_RAW, TAP_SENT};
+use super::timing::{Lap, Stage, StageTimings};
 use super::waveform::{WaveformFrame, WaveformTap};
 
 /// Where every stage of the capture chain stands, as of the last block.
@@ -99,6 +100,13 @@ pub struct ChainStatus {
     pub enhancer_on: bool,
     pub enhancer_gave_up: bool,
     pub enhancer_worst_us: u32,
+    /// Which rung the enhancer is on — [`super::deepfilter::Effort::index`].
+    ///
+    /// **Published because a rider comparing two phones cannot otherwise tell
+    /// why one sounds different.** The enhancer steps itself down on a device
+    /// that misses the block deadline, and a device running reduced sounds
+    /// unlike one running full while every other number on the panel matches.
+    pub enhancer_effort: u8,
     /// The background classifier is holding `Helmet` in force.
     ///
     /// Published so the panel can say *why* the profile is what it is. Helmet
@@ -127,6 +135,7 @@ impl Default for ChainStatus {
             enhancer_on: false,
             enhancer_gave_up: false,
             enhancer_worst_us: 0,
+            enhancer_effort: 0,
             music_hold: false,
             transmit_mode: 0,
             dehiss_mode: 0,
@@ -550,6 +559,20 @@ pub struct AudioShared {
     /// Where every stage of the capture chain stands, as of the last block.
     chain: Mutex<ChainStatus>,
 
+    /// What each stage of the capture chain cost, published once per block.
+    ///
+    /// Separate from [`Self::chain`] because it answers a different question
+    /// and is reset on its own: `chain` is where the signal stands *now*, and
+    /// this is where the time has gone since the last Reset.
+    stage_timings: Mutex<StageTimings>,
+    /// Set by the panel's Reset, consumed by the worker.
+    ///
+    /// A flag rather than clearing the published copy directly: the worker owns
+    /// the running totals and re-publishes them every block, so zeroing the
+    /// shared snapshot from another thread would be overwritten within 10 ms
+    /// and the button would look broken.
+    reset_stage_timings: AtomicBool,
+
     /// Whether a diagnostic recording is running.
     ///
     /// Duplicated from `recorder.is_some()` on purpose. The worker asks this
@@ -799,6 +822,8 @@ impl AudioShared {
             input_peak_bits: AtomicU32::new(0),
             input_clipped: AtomicU64::new(0),
             chain: Mutex::new(ChainStatus::default()),
+            stage_timings: Mutex::new(StageTimings::default()),
+            reset_stage_timings: AtomicBool::new(false),
             recording: AtomicBool::new(false),
             recorder: Mutex::new(None),
             normalise_levels: AtomicBool::new(true),
@@ -864,6 +889,40 @@ impl AudioShared {
     pub fn reset_glitch_counts(&self) {
         self.underrun_samples.store(0, Ordering::Relaxed);
         self.capture_dropped_samples.store(0, Ordering::Relaxed);
+    }
+
+    /// What each stage of the capture chain has been costing.
+    pub fn stage_timings(&self) -> StageTimings {
+        self.stage_timings
+            .try_lock()
+            .map(|t| *t)
+            .unwrap_or_default()
+    }
+
+    /// Publishes the running totals. Once per block, from the worker.
+    pub fn publish_stage_timings(&self, timings: StageTimings) {
+        if let Some(mut slot) = self.stage_timings.try_lock() {
+            *slot = timings;
+        }
+    }
+
+    pub fn reset_stage_timings(&self) {
+        self.reset_stage_timings.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether a reset was asked for since this was last called.
+    pub fn take_stage_timings_reset(&self) -> bool {
+        self.reset_stage_timings.swap(false, Ordering::Relaxed)
+    }
+
+    /// How much captured audio is waiting for the worker, in milliseconds.
+    ///
+    /// The consequence rather than a cost: a backlog that climbs is a chain
+    /// that cannot keep up, and it says so before a single sample is dropped.
+    pub fn capture_backlog_ms(&self) -> f32 {
+        self.capture_queue.try_lock().map_or(0.0, |q| {
+            q.len() as f32 * 1000.0 / SAMPLE_RATE as f32
+        })
     }
 
     /// Current level per speaker, keyed by [`stream_key`].
@@ -2316,6 +2375,12 @@ where
     // through if the link has already said something different.
     let mut protection: u8 = 10;
 
+    // Owned by the worker and published as a snapshot once per block. Keeping
+    // the running totals here rather than behind the shared lock means one
+    // lock per block instead of one per stage, and the accumulator is never
+    // read half-updated.
+    let mut timings = StageTimings::default();
+
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
@@ -2340,16 +2405,31 @@ where
 
         // --- capture path -------------------------------------------------
         loop {
+            let backlog_ms;
             {
                 let mut q = shared.capture_queue.lock();
                 if q.len() < FRAME_SIZE {
                     break;
                 }
+                // Measured before this block is taken out, so it is "what was
+                // waiting", not "what is left".
+                backlog_ms = q.len() as f32 * 1000.0 / SAMPLE_RATE as f32;
                 for slot in block.iter_mut() {
                     *slot = q.pop_front().unwrap_or(0.0);
                 }
             }
             did_work = true;
+
+            if shared.take_stage_timings_reset() {
+                timings.reset();
+            }
+            // Two clocks: one that splits between stages and one that spans the
+            // whole iteration. The difference between the sum of the splits and
+            // the span is what nothing here is holding a stopwatch on —
+            // scheduling, mostly — and telling those apart is the entire point.
+            // See `timing.rs`.
+            let block_started = Instant::now();
+            let mut lap = Lap::new();
 
             // Microphone gain goes in ahead of the DSP chain, so the level
             // meter, the gate and the far end all see the same signal.
@@ -2491,6 +2571,7 @@ where
             } else {
                 None
             };
+            timings.record(Stage::Input, lap.split());
 
             // **The first thing that alters the audio, and it goes here.**
             //
@@ -2520,11 +2601,13 @@ where
             // altered. `docs/MUSIC_GATE.md` records this as the thing to check
             // if echo behaviour changes.
             enhancer.process(&mut block);
+            timings.record(Stage::Enhancer, lap.split());
 
             let analysis = processor.process_with_reference(&mut block, &echo_ref);
             if analysing {
                 analyser.push(TAP_PRE_GATE, processor.pre_gate());
             }
+            timings.record(Stage::Suppression, lap.split());
 
             if raw.is_none() && !pending_record.is_empty() {
                 // Recording stopped. The blocks still waiting have no answer
@@ -2558,6 +2641,7 @@ where
             // modelled and subtracted.
             guard.set_mode(shared.feedback_mode());
             guard.process(&mut block, &echo_ref);
+            timings.record(Stage::Feedback, lap.split());
 
             // De-hissing last of the reductions, and before the level is
             // published: everything above it either removes a correlated signal
@@ -2576,6 +2660,7 @@ where
                     subtractor.process(&mut block, analysis.speaking);
                 }
             }
+            timings.record(Stage::Dehiss, lap.split());
 
             shared.store_threshold(analysis.activation_threshold_db);
             shared.store_noise_floor(analysis.noise_floor_db);
@@ -2717,6 +2802,7 @@ where
                 enhancer_on: enhancer.active(),
                 enhancer_gave_up: enhancer.gave_up(),
                 enhancer_worst_us: enhancer.timing().0,
+                enhancer_effort: enhancer.effort().index(),
             });
 
             // Loopback monitoring: hear exactly what would be transmitted.
@@ -2748,6 +2834,8 @@ where
                     shared.publish_spectrum(spectrum);
                 }
             }
+
+            timings.record(Stage::Transmit, lap.split());
 
             frame.extend_from_slice(&block);
             if frame.len() >= FRAME_SAMPLES {
@@ -2789,6 +2877,17 @@ where
                 }
                 frame.clear();
             }
+            timings.record(Stage::Encode, lap.split());
+
+            // The span, against the sum of the splits above. What the two
+            // disagree by is time nothing here is holding a stopwatch on —
+            // which on a busy phone is most of the story, and is the difference
+            // between a stage that is slow and a worker that is being starved.
+            timings.block(
+                block_started.elapsed().as_micros().min(u32::MAX as u128) as u32,
+                backlog_ms,
+            );
+            shared.publish_stage_timings(timings);
         }
 
         // Cues are not drained here. The output callback mixes them over the

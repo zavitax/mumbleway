@@ -151,6 +151,7 @@ class _SpectrumViewState extends State<SpectrumView>
         // ignore: prefer_const_constructors
         _ClassifierTop(),
         if (_chain != null) _ChainDots(status: _chain!),
+        if (_chain != null) _EnhancerEffort(status: _chain!),
         // Not `const`: it reads the classifier's state, and a const child
         // would be built once and never notice the model starting.
         // ignore: prefer_const_constructors
@@ -206,6 +207,58 @@ class _ClassifierNote extends StatelessWidget {
             Icons.warning_amber_rounded,
             size: 15,
             color: StatusColors.connecting,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Says when the speech enhancer is not running at full effort.
+///
+/// **Required on every platform, not only where it happens.** A rider
+/// comparing two phones has no way to tell why one sounds different: the
+/// enhancer steps itself down when a device cannot return a frame inside
+/// 10 ms, and afterwards every other number on this panel reads the same. An
+/// amber dot says something changed; this says what, and it is the one line a
+/// support conversation actually needs.
+///
+/// Nothing at full effort — a note that says "working normally" on every
+/// device teaches people to stop reading the panel.
+class _EnhancerEffort extends StatelessWidget {
+  const _EnhancerEffort({required this.status});
+
+  final UiChainStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final message = switch (status.enhancerEffort) {
+      1 => l.diagEnhancerReduced,
+      2 => l.diagEnhancerErbOnly,
+      3 => l.diagEnhancerBypassed,
+      _ => null,
+    };
+    if (message == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.speed,
+            size: 15,
+            color: status.enhancerEffort == 3
+                ? StatusColors.failed
+                : StatusColors.connecting,
           ),
           const SizedBox(width: 6),
           Expanded(

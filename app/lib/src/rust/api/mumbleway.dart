@@ -773,6 +773,15 @@ class UiChainStatus {
   /// arrived at.
   final NoiseSetting effectiveProfile;
 
+  /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
+  /// 3 bypassed.
+  ///
+  /// **A rider comparing two phones cannot otherwise tell why one sounds
+  /// different.** The enhancer steps itself down on a device that misses the
+  /// 10 ms block deadline, and every other number on this panel looks the
+  /// same afterwards. An amber dot says something changed; this says what.
+  final int enhancerEffort;
+
   const UiChainStatus({
     required this.stages,
     required this.wouldPassVoiceActivated,
@@ -784,6 +793,7 @@ class UiChainStatus {
     required this.inputPeakDb,
     required this.inputClipped,
     required this.effectiveProfile,
+    required this.enhancerEffort,
   });
 
   @override
@@ -797,7 +807,8 @@ class UiChainStatus {
       activationThresholdDb.hashCode ^
       inputPeakDb.hashCode ^
       inputClipped.hashCode ^
-      effectiveProfile.hashCode;
+      effectiveProfile.hashCode ^
+      enhancerEffort.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -813,7 +824,8 @@ class UiChainStatus {
           activationThresholdDb == other.activationThresholdDb &&
           inputPeakDb == other.inputPeakDb &&
           inputClipped == other.inputClipped &&
-          effectiveProfile == other.effectiveProfile;
+          effectiveProfile == other.effectiveProfile &&
+          enhancerEffort == other.enhancerEffort;
 }
 
 class UiChannel {

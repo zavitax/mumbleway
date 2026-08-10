@@ -1759,6 +1759,24 @@ abstract class L {
   /// **'Shared {count} files in {archives, plural, =1{one archive} other{{archives} archives}}.'**
   String diagRecordingShared(int count, int archives);
 
+  /// Shown in diagnostics when the speech enhancer has dropped to its reduced setting because the device missed the block deadline
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.'**
+  String get diagEnhancerReduced;
+
+  /// Shown in diagnostics when the speech enhancer has dropped to its lightest setting
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not keep up, so the enhancer is running its light stage only. Speech still comes through; the deepest filtering does not run.'**
+  String get diagEnhancerErbOnly;
+
+  /// Shown in diagnostics when the speech enhancer has been bypassed entirely
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not keep up even at the lightest setting, so the enhancer is switched off for this session.'**
+  String get diagEnhancerBypassed;
+
   /// No description provided for @diagPreviewTitle.
   ///
   /// In en, this message translates to:

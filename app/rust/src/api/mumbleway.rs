@@ -1302,6 +1302,14 @@ pub struct UiChainStatus {
     /// doing" is answered and the answer should not depend on how it was
     /// arrived at.
     pub effective_profile: NoiseSetting,
+    /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
+    /// 3 bypassed.
+    ///
+    /// **A rider comparing two phones cannot otherwise tell why one sounds
+    /// different.** The enhancer steps itself down on a device that misses the
+    /// 10 ms block deadline, and every other number on this panel looks the
+    /// same afterwards. An amber dot says something changed; this says what.
+    pub enhancer_effort: u32,
 }
 
 /// The latest analyser frame, and an ask for the next one.
@@ -1429,13 +1437,17 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         },
         UiStage {
             id: "enhancer".into(),
-            // Three states worth telling apart. Green: enhancing. Red: it
-            // loaded and then gave up because this phone could not return a
-            // frame inside 10 ms, which is a fact about the device and the one
-            // a rider would report. Grey: it never loaded at all, which is a
-            // build problem rather than theirs.
-            state: if c.enhancer_on {
+            // Four states worth telling apart. Green: enhancing at full
+            // effort. Amber: still enhancing, but stepped down because this
+            // phone could not return a frame inside 10 ms — which sounds
+            // different and is a fact about the device, so it must not read as
+            // green. Red: it stepped all the way down to pass-through. Grey:
+            // it never loaded at all, which is a build problem rather than
+            // theirs.
+            state: if c.enhancer_on && c.enhancer_effort == 0 {
                 StageState::Good
+            } else if c.enhancer_on {
+                StageState::Warn
             } else if c.enhancer_gave_up {
                 StageState::Bad
             } else {
@@ -1485,6 +1497,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         noise_floor_db: c.noise_floor_db,
         activation_threshold_db: c.activation_threshold_db,
         effective_profile: from_profile_index(c.profile),
+        enhancer_effort: c.enhancer_effort as u32,
         input_peak_db: {
             let (peak, _) = shared.input_peak();
             if peak > 0.0 {

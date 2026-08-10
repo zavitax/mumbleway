@@ -1,0 +1,35 @@
+[package]
+name = "dfbench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "What one DeepFilterNet frame costs, on the device that has to run it"
+license = "GPL-3.0-or-later"
+
+# Its own workspace, deliberately. This is built for `aarch64-linux-android`
+# and pushed to a phone over adb, and `mumbleway-core` cannot be: `audiopus_sys`
+# builds Opus through CMake and needs an Android CMake toolchain, an NDK
+# generator and a C++ compiler that the pure-Rust half of this project has
+# never needed. The enhancer is the only thing being measured and it depends on
+# none of that, so the measurement does not have to wait for a toolchain.
+[workspace]
+
+[dependencies]
+# The same commit, the same features and the same pins as `core/Cargo.toml`.
+# A benchmark of a different build than the one that ships measures nothing.
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", rev = "d375b2d8309e0935d165700c91da9de862a99c31", default-features = false, features = [
+    "tract",
+    "default-model-ll",
+] }
+tract-core = "=0.21.4"
+tract-hir = "=0.21.4"
+tract-onnx = "=0.21.4"
+tract-pulse = "=0.21.4"
+ndarray = "0.15"
+anyhow = "1"
+
+[profile.release]
+# Matched to what the app ships, so the numbers transfer.
+opt-level = 3
+lto = true
+codegen-units = 1

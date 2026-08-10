@@ -17,6 +17,7 @@ pub mod resample;
 pub mod spectrum;
 pub mod stretch;
 pub mod testsig;
+pub mod timing;
 pub mod waveform;
 
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};

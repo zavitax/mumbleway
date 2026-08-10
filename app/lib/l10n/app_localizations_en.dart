@@ -915,6 +915,18 @@ class LEn extends L {
   }
 
   @override
+  String get diagEnhancerReduced =>
+      'This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.';
+
+  @override
+  String get diagEnhancerErbOnly =>
+      'This device could not keep up, so the enhancer is running its light stage only. Speech still comes through; the deepest filtering does not run.';
+
+  @override
+  String get diagEnhancerBypassed =>
+      'This device could not keep up even at the lightest setting, so the enhancer is switched off for this session.';
+
+  @override
   String get diagPreviewTitle => 'Listen back';
 
   @override

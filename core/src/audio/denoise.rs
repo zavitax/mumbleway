@@ -134,8 +134,64 @@ impl NoiseProfile {
     /// Dropping the thresholds eighteen decibels moved recall by less than two
     /// points and put 2% of synthetic noise on the wire, because for the
     /// blocks it did affect the gate had been catching false positives the
-    /// decision let past. It is not an independent lever on recall and there is
-    /// no free one: see the transmit decision.
+    /// decision let past.
+    ///
+    /// **And then DeepFilterNet went in front of the whole chain, and the
+    /// premise the revert rested on stopped being true.** The enhancer takes 7
+    /// to 11 dB out of the speech before any of this sees it, so the levels
+    /// these thresholds were matched to are gone. Measured with the enhancer
+    /// in place on a real unclipped ride, counting only the blocks the
+    /// transmit decision *accepted* — so the confound above is excluded by
+    /// construction — `core/tests/profile_recall.rs` gives:
+    ///
+    /// | Profile | Gate vetoed | Level it judged | Old threshold |
+    /// |---|---|---|---|
+    /// | `Light` | 3.3% | −44.6 dBFS | −52 |
+    /// | `Standard` | 45.4% | −45.7 dBFS | −46 |
+    /// | `Helmet` | **67.9%** | **−51.1 dBFS** | **−40** |
+    ///
+    /// Helmet was judging accepted speech eleven decibels below the bar it had
+    /// to clear, and throwing away two thirds of it. That is the "cuts into
+    /// words" a rider hears, and it is not the transmit decision — the
+    /// decision had already said yes.
+    ///
+    /// # Unresolved, with the measurement that found it
+    ///
+    /// A rider listening through the chain reported Helmet cutting into words.
+    /// `core/tests/profile_recall.rs` says why, from the chain's own state and
+    /// no labels at all: **the gate throws away most of the blocks the
+    /// transmit decision accepted**, because the level it judges them by no
+    /// longer resembles the threshold it judges them against.
+    ///
+    /// | Ride | Profile | Decision accepted | Gate vetoed | Level it judged |
+    /// |---|---|---|---|---|
+    /// | music | `Light` | 45.1% | 3.3% | −44.6 dBFS |
+    /// | music | `Standard` | 40.0% | 45.4% | −45.7 dBFS |
+    /// | music | `Helmet` | 42.1% | **67.9%** | **−51.1 dBFS** |
+    /// | road | `Helmet` | 26.6% | **98.6%** | **−69.9 dBFS** |
+    ///
+    /// Helmet judges accepted speech 11 dB under its bar on one ride and 30 dB
+    /// under it on another. The thresholds climb with the profile while the
+    /// output level falls, and DeepFilterNet took a further 7 to 11 dB out of
+    /// the speech in front of all of it.
+    ///
+    /// **Two fixes were tried and neither is shipped.** Lowering each
+    /// threshold under its profile's measured output took Helmet's recall from
+    /// 63.2% to 96.5% and its precision from 99.9% to 53.2%. Anchoring the
+    /// threshold to the tracked floor removed the veto altogether — 0.3% — and
+    /// left precision at 44%. On a voice-over-music ride that difference is
+    /// the music going out with the words, and `docs/MUSIC_GATE.md` is the
+    /// record of that being unsolved.
+    ///
+    /// **And the yardstick will not settle it.** Precision and recall here are
+    /// measured against the `speaking` column of the recording's own log —
+    /// which this code produced. The old configuration scoring 99.9% precision
+    /// against labels it generated is close to tautological. Choosing a
+    /// threshold needs labels this chain did not write: hand-marked speech on
+    /// a Helmet ride, or the rider's ear on the transmitted-only playback.
+    ///
+    /// So the numbers below are unchanged, and they are known to be wrong
+    /// rather than believed to be right.
     fn gate_db(self) -> (f32, f32) {
         match self {
             NoiseProfile::Off => (-90.0, -95.0),

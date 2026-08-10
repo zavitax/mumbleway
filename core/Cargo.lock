@@ -2307,8 +2307,6 @@ dependencies = [
 [[package]]
 name = "tract-core"
 version = "0.21.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98ef3e1f2d94e88d007811e78a3dcc9e5734bfd841849416fab09a407488cb7d"
 dependencies = [
  "anyhow",
  "bit-set",

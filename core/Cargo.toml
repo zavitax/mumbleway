@@ -87,3 +87,16 @@ url = "2.5.8"
 
 [build-dependencies]
 prost-build = "0.13"
+
+# tract-core, with one hunk changed. See third_party/tract-core/PATCH.md.
+#
+# Not a preference and not a version pin dressed up as one: the vendored plain
+# DFN3 -- the enhancer rung that keeps a slow phone enhancing instead of losing
+# the enhancer -- **cannot be loaded by any released tract**, because
+# `add_const` deduplicates constants by value and then mints their name without
+# checking it is free. The patch asks the second question too.
+#
+# 0.21.5 has the identical code, and 0.21.6 drops `Graph::symbol_table`, which
+# `deep_filter` uses -- so there is no version to move to instead.
+[patch.crates-io]
+tract-core = { path = "../third_party/tract-core" }

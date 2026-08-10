@@ -184,6 +184,23 @@ default PATH:
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\src\flutter\bin;$env:PATH"
 ```
 
+### `--release` and debug can disagree about whether a model loads
+
+`cargo test` and `cargo test --release` are not the same check here, and the
+difference is not speed. **tract's graph self-checks are `#[cfg(debug_assertions)]`**
+— `check_compact`, `check_names`, `check_edges` — so a graph tract considers
+malformed loads perfectly well in release and refuses to load in debug.
+
+That is not hypothetical: the plain DFN3 hit exactly this, and the two readings
+of it are opposite. In release the rung worked; in debug four tests failed with
+`duplicate name /convt3/Conv.bias`, which reads like a corrupt download and was
+a name collision inside tract's own optimiser. `third_party/tract-core/PATCH.md`
+has the mechanism.
+
+So when something model-shaped behaves differently between the two, suspect this
+before suspecting the file. And **run the debug suite** — it is the one that can
+see this class of fault, and it is what CI runs.
+
 New user-facing strings need keys in **both** `app_en.arb` and `app_ru.arb`,
 with genuine Russian: a test fails on a key that is missing from one file or
 identical in both. Run `flutter gen-l10n` after editing them.

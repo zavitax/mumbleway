@@ -64,8 +64,33 @@ use super::relief::Relief;
 /// `u8::MAX` means "not probed", which is distinct from "probed and found
 /// fine": the first should leave the ladder alone, and the second is a
 /// measurement worth keeping.
+///
+/// **Written once per process and never again.** The rung a device landed on
+/// is a fact about that device, and a second probe measuring a busier or idler
+/// moment would move it — which would mean a rider's chain quietly changing
+/// character mid-session, in either direction, for a reason nothing on screen
+/// could explain. The ladder may still fall further at runtime; what cannot
+/// happen is this decision being *revisited*. Restarting the app is the only
+/// way to take a fresh measurement, and that is deliberate.
 static PROBED: AtomicU8 = AtomicU8::new(NOT_PROBED);
 const NOT_PROBED: u8 = u8::MAX;
+
+/// Records where the probe landed, unless it has already landed somewhere.
+///
+/// Returns what is in force afterwards, which is the first answer rather than
+/// this one when a second probe ran anyway.
+fn remember(rung: Relief) -> Relief {
+    match PROBED.compare_exchange(
+        NOT_PROBED,
+        rung.index(),
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+    ) {
+        Ok(_) => rung,
+        // Somebody got there first. Theirs stands.
+        Err(existing) => Relief::from_index(existing).unwrap_or(rung),
+    }
+}
 
 /// The rung a worker should start at, or `None` if nothing has been measured.
 pub fn probed_start() -> Option<Relief> {
@@ -209,6 +234,20 @@ fn measure(
 /// Slow — it loads the model and runs up to a few hundred blocks — so it
 /// belongs off the audio thread and off the UI thread, at app start.
 pub fn probe(budget_us: u32) -> Probed {
+    let got = measure_ladder(budget_us);
+    Probed {
+        // The first answer of the process wins, which is what makes the
+        // decision unrepeatable rather than merely unrepeated.
+        rung: remember(got.rung),
+        ..got
+    }
+}
+
+/// The measurement on its own, without recording it.
+///
+/// Split out so the tests can assert what the walk decides without fighting
+/// each other over a process-wide static that is, by design, writable once.
+fn measure_ladder(budget_us: u32) -> Probed {
     let mut enhancer = super::deepfilter::Enhancer::new();
     // The profile the probe runs under is the strictest one, because it is the
     // one with the most stages switched on. Clearing a device on `Light` and
@@ -223,7 +262,6 @@ pub fn probe(budget_us: u32) -> Probed {
         level(&mut enhancer, &mut processor, rung);
         let (worst_us, outlier_us) = measure(&mut enhancer, &mut processor, &mut at);
         if worst_us <= budget_us {
-            PROBED.store(rung.index(), Ordering::Relaxed);
             return Probed {
                 rung,
                 worst_us,
@@ -234,7 +272,6 @@ pub fn probe(budget_us: u32) -> Probed {
         }
         let Some(next) = rung.weaker() else {
             // The bottom, and still over. Start there and say so.
-            PROBED.store(rung.index(), Ordering::Relaxed);
             return Probed {
                 rung,
                 worst_us,
@@ -282,6 +319,41 @@ mod tests {
         );
     }
 
+    /// The rung a launch lands on is settled once, and a later probe cannot
+    /// move it.
+    ///
+    /// **This is a requirement rather than an optimisation.** The ladder may
+    /// still fall further while a call runs — that is its job — but the
+    /// starting point must not be re-decided, in either direction, because a
+    /// second measurement taken at a busier or idler moment would change a
+    /// rider's chain mid-session with nothing on screen to explain it. Only
+    /// restarting the app takes a fresh measurement.
+    ///
+    /// One test, because the static is process-wide and two tests asserting
+    /// against it would race each other by construction.
+    #[test]
+    fn where_a_launch_lands_is_settled_once() {
+        forget();
+        assert_eq!(probed_start(), None, "unprobed is not a rung");
+
+        // A generous budget lands at the top.
+        assert_eq!(probe(u32::MAX).rung, Relief::None);
+        assert_eq!(probed_start(), Some(Relief::None));
+
+        // A second probe, however harsh, is measured and then ignored: it
+        // reports what is in force rather than what it just found.
+        assert_eq!(
+            probe(0).rung,
+            Relief::None,
+            "a later probe moved a decision that was already made"
+        );
+        assert_eq!(probed_start(), Some(Relief::None));
+
+        // And the only way back is the one a restart gives.
+        forget();
+        assert_eq!(probed_start(), None);
+    }
+
     /// Every rung has to survive the trip through an atomic and the FFI, or a
     /// stored index means a different rung than the one that was measured.
     #[test]
@@ -305,7 +377,7 @@ mod tests {
     /// it, rather than looping or reporting a rung it did not reach.
     #[test]
     fn an_impossible_budget_stops_at_the_bottom_and_says_so() {
-        let got = probe(0);
+        let got = measure_ladder(0);
         assert!(got.gave_up);
         assert_eq!(got.rung, Relief::EnhancerOff);
         assert_eq!(
@@ -318,7 +390,7 @@ mod tests {
     /// And a budget anything can meet must not give anything up.
     #[test]
     fn a_generous_budget_keeps_the_whole_chain() {
-        let got = probe(u32::MAX);
+        let got = measure_ladder(u32::MAX);
         assert_eq!(got.rung, Relief::None);
         assert_eq!(got.steps, 0);
         assert!(!got.gave_up);

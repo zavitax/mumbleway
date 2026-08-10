@@ -68,13 +68,30 @@ class HomeScreen extends StatelessWidget {
           // the one control that leads there has to be able to say that
           // something is wrong before anybody goes looking for it.
           IconButton(
-            tooltip: state.chainDegraded ? l.diagChainDegradedShort : l.diagnostics,
+            tooltip: state.probing
+                ? l.diagProbing
+                : state.chainDegraded
+                ? l.diagChainDegradedShort
+                : l.diagnostics,
             onPressed: state.toggleDiagnostics,
-            icon: Icon(
-              state.chainDegraded
-                  ? Icons.warning_amber_rounded
-                  : Icons.monitor_heart_outlined,
-            ),
+            // A spinner while the device is being measured, because the icon it
+            // replaces is about to make a claim — plain or warning — that has
+            // not been decided yet. Showing either one early would be saying
+            // something untrue for the few seconds it takes.
+            //
+            // Sized to the icon it stands in for, so the toolbar does not shift
+            // when the measurement lands.
+            icon: state.probing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    state.chainDegraded
+                        ? Icons.warning_amber_rounded
+                        : Icons.monitor_heart_outlined,
+                  ),
             color: state.chainDegraded
                 ? StatusColors.connecting
                 : state.diagnosticsOpen

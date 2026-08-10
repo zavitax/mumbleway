@@ -2144,7 +2144,15 @@ class AppState extends ChangeNotifier {
   Timer? _reliefTimer;
   bool _chainDegraded = false;
   bool _probed = false;
+  bool _probing = false;
   Timer? _probeTimer;
+
+  /// Whether the device is being measured right now.
+  ///
+  /// The toolbar shows a spinner in place of the diagnostics icon while this
+  /// is true: that icon is about to claim either "fine" or "degraded", and
+  /// neither has been decided yet.
+  bool get probing => _probing;
 
   /// How long the app is left alone before it is measured.
   ///
@@ -2194,14 +2202,20 @@ class AppState extends ChangeNotifier {
       return;
     }
     _probed = true;
+    _probing = true;
+    notifyListeners();
     try {
       if ((await audioProbeChain()).relief > 0) {
         // The warning icon, before the first call rather than during it.
         _chainDegraded = true;
-        notifyListeners();
       }
     } catch (_) {
       // No measurement. The runtime ladder is unaffected and still authoritative.
+    } finally {
+      // On every path out, or the toolbar spins for the rest of the session
+      // over a measurement that already failed.
+      _probing = false;
+      notifyListeners();
     }
   }
 

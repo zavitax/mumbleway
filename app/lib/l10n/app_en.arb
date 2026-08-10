@@ -412,6 +412,10 @@
   "@diagChainDegradedShort": {
     "description": "Tooltip on the toolbar diagnostics button once it has turned into a warning"
   },
+  "diagProbing": "Checking what this device can run",
+  "@diagProbing": {
+    "description": "Tooltip on the toolbar diagnostics button while the startup performance probe is measuring the capture chain, and the button shows a spinner instead of an icon"
+  },
   "diagChainDegraded": "This device could not process audio fast enough, so parts of the noise chain have been switched off — they are crossed out above. Your voice still goes out, but it will sound worse than it would on a faster phone. A more powerful device would run the whole chain.",
   "@diagChainDegraded": {
     "description": "Warning shown in diagnostics when the performance ladder has disabled one or more capture chain stages, telling the rider quality is affected and suggesting a faster device"

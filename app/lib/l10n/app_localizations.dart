@@ -1777,6 +1777,12 @@ abstract class L {
   /// **'Parts of the noise chain are switched off'**
   String get diagChainDegradedShort;
 
+  /// Tooltip on the toolbar diagnostics button while the startup performance probe is measuring the capture chain, and the button shows a spinner instead of an icon
+  ///
+  /// In en, this message translates to:
+  /// **'Checking what this device can run'**
+  String get diagProbing;
+
   /// Warning shown in diagnostics when the performance ladder has disabled one or more capture chain stages, telling the rider quality is affected and suggesting a faster device
   ///
   /// In en, this message translates to:

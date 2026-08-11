@@ -9,6 +9,19 @@ class StatusColors {
   static const failed = Color(0xFFE74C3C);
   static const idle = Color(0xFF7F8C8D);
   static const talking = Color(0xFF3498DB);
+
+  /// The pair a failure is written in: [connecting]'s yellow on a deep red.
+  ///
+  /// Fixed rather than taken from the scheme, and for the same reason the six
+  /// above are: this is read at a glance, through a visor, by somebody who has
+  /// just been told no. Material's own choice is `inverseSurface`, which on a
+  /// dark theme is a white card — the loudest thing on the screen and the one
+  /// colour that says nothing about what happened.
+  ///
+  /// The red is darker than [failed] because the yellow has to survive on it.
+  /// `#F1C40F` on `#E74C3C` is about 2:1 and unreadable; on this it is 5.3:1.
+  static const errorBackground = Color(0xFF8C1D18);
+  static const errorForeground = connecting;
 }
 
 ThemeData buildTheme(Brightness brightness) {

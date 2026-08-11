@@ -89,6 +89,8 @@ your first call**, and watched while you talk. If it does not fit, stages are
 given up one at a time — in an order that was measured rather than guessed, and
 never quietly.
 
+{% include fig-ladder.svg lang=page.lang %}
+
 **The cheapest quality goes first.** The enhancer softens by two steps before
 anything else is touched: they are the two largest savings on the chain and
 cost almost nothing, and on voice over music the first of them measured
@@ -188,10 +190,12 @@ the channel and who is in it down the other.
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/diagnostics-desktop.webp' | relative_url }}"
-         alt="The diagnostics panel on Windows: the analyser and stage lights
-         above three columns of counters for incoming audio, this device and
-         the server."
-         width="1000" height="691" loading="lazy" decoding="async">
+         alt="The diagnostics panel on Windows: the analyser with the gate's
+         opening level and noise floor marked across it, what the background
+         sounds like and the profile that answer chose, the stage lights and the
+         enhancer's rung, above four columns of counters for incoming audio,
+         this device, where a block's ten milliseconds go, and the server."
+         width="1000" height="496" loading="lazy" decoding="async">
     <figcaption>The diagnostics panel, where a wide window shows every counter
   at once instead of stacking them.</figcaption>
   </figure>
@@ -286,14 +290,18 @@ to be fixed by a setting.
     <a href="{{ '/server.html' | relative_url }}">It takes about ten minutes.</a></p>
   </div>
   <div class="panel warn">
-    <h3>Music rides out with your voice</h3>
-    <p><strong>Being heard over your own music is solved</strong> — anchoring
-    the gate to the tracked background took speech through from 63% to 98% on a
-    voice-over-music ride. What is not solved is the other direction: on that
-    same ride, 44% precision means a good deal of what goes out during a phrase
-    is music rather than speech. The detector was trained to tell speech from
-    noise, and music is neither. Push-to-talk avoids it entirely, and the work
-    is <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
+    <h3>Music can occasionally key the channel</h3>
+    <p><strong>This was the worst thing about the app and is now a footnote.</strong>
+    Speech over your own music goes through 98% of the time where it used to be
+    63%, and the enhancer takes <strong>19 dB out of the gaps between your
+    words</strong> — music that used to sit a decibel and a half under the
+    speech now sits sixteen under it. In riding since, music keys the channel
+    only rarely, and what gets through arrives well down rather than at
+    level.</p>
+    <p>It is not zero, and the reason it is not is worth knowing: the detector
+    was trained to tell speech from noise, and music is neither. Push-to-talk
+    removes the possibility entirely if you need certainty, and the work is
+    <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
     open</a>, including every attempt that has already failed.</p>
   </div>
 </div>

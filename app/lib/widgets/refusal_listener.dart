@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/server_refusal.dart';
 import '../state/app_state.dart';
+import 'error_snack.dart';
 
 /// Puts the server's refusals in front of the user.
 ///
@@ -45,21 +46,11 @@ class _RefusalListenerState extends State<RefusalListener> {
     final l = L.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
-    // Replaces whatever is showing rather than queueing behind it. Refusals
-    // arrive in bursts when a client retries, and a queue would make the user
-    // sit through stale ones to reach the current one.
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(l.serverRefused(refusal.describe(l))),
-          backgroundColor: Theme.of(context).colorScheme.errorContainer,
-          // Longer than the default. This is the only account of why an action
-          // did nothing, and it is being read by somebody who may be wearing
-          // gloves and looking at the road.
-          duration: const Duration(seconds: 6),
-        ),
-      );
+    // Through the shared helper, which is where the colours, the six seconds
+    // and the replace-rather-than-queue now live. This used to state all three
+    // here, which is how every other failure in the app came to be shown in
+    // Material's default white.
+    showError(messenger, l.serverRefused(refusal.describe(l)));
   }
 
   @override

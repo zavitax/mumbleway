@@ -45,7 +45,7 @@ description: Собственная лицензия MumbleWay и каждый �
 | [`cpal`](https://crates.io/crates/cpal) | Кроссплатформенный доступ к аудиоустройствам | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Преобразование форматов отсчётов | MIT / Apache-2.0 |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | Классификатор звука, благодаря которому «Автоматически» слышит мотор и берёт шлемный профиль. Поставляется как `assets/models/yamnet.tflite` | Apache-2.0 |
-| [LiteRT / TensorFlow Lite](https://ai.google.dev/edge/litert) | Запускает эту модель. На Android и iOS — из Maven и CocoaPods самой Google, на macOS — универсальная `libtensorflowlite_c` из состава `tflite_flutter` | Apache-2.0 |
+| [LiteRT / TensorFlow Lite](https://ai.google.dev/edge/litert) | Запускает эту модель. На Android и iOS — из Maven и CocoaPods самой Google, на macOS — универсальная `libtensorflowlite_c` из состава `tflite_flutter`, на Windows — собрана из исходников TensorFlow r2.17 и лежит в `app/blobs/`, поскольку готовой сборки под неё никто не публикует | Apache-2.0 |
 | [`tflite_flutter`](https://github.com/tensorflow/flutter-tflite) | Обвязка для Dart; лежит в `app/third_party` с правкой в одну строку, чтобы её библиотека для macOS загружалась из `Contents/Frameworks`, как того требует Apple | Apache-2.0 |
 
 </div>

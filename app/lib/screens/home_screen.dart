@@ -5,6 +5,7 @@ import '../services/site_links.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/diagnostics_panel.dart';
+import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/server_card.dart';
@@ -130,12 +131,12 @@ class HomeScreen extends StatelessWidget {
                 case 'export':
                   final e = await state.exportServersToFile();
                   if (e != null) {
-                    messenger.showSnackBar(SnackBar(content: Text(e)));
+                    showError(messenger, e);
                   }
                 case 'import':
                   final e = await state.importServersFromFile();
                   if (e != null) {
-                    messenger.showSnackBar(SnackBar(content: Text(e)));
+                    showError(messenger, e);
                   }
                 case 'website':
                   if (!context.mounted) return;

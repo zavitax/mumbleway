@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../screens/scan_qr_screen.dart';
 import '../services/qr_intake.dart';
 import '../state/app_state.dart';
+import 'error_snack.dart';
 
 /// Takes an invitation from a QR code and hands it to whoever asked for one.
 ///
@@ -96,9 +97,7 @@ class _QrIntakeButtonState extends State<QrIntakeButton> {
           // Dismissed the picker. Saying anything would be noise.
           return;
         case QrRefused(:final reason):
-          messenger.showSnackBar(
-            SnackBar(content: Text(_wording(l, reason))),
-          );
+          showError(messenger, _wording(l, reason));
         case QrInvitation(:final server):
           // Handed over as a draft rather than saved outright. A code can be
           // photographed off a screen by anyone walking past it, so the last

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
+import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 
 /// Adds servers from a shared link or a downloadable profile file.
@@ -33,10 +34,15 @@ class _ImportScreenState extends State<ImportScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error ?? L.of(context).serversAdded)),
+    final messenger = ScaffoldMessenger.of(context);
+    if (error != null) {
+      showError(messenger, error);
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(content: Text(L.of(context).serversAdded)),
     );
-    if (error == null) Navigator.pop(context);
+    Navigator.pop(context);
   }
 
   @override

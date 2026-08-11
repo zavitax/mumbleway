@@ -761,7 +761,7 @@
       }
     }
   },
-  "diagClassifierUnavailable": "Background detection runs on phones only, so the helmet profile is chosen from levels here.",
+  "diagClassifierUnavailable": "Background detection is not available on this platform, so the helmet profile is chosen from levels here.",
   "diagSpectrum": "Voice chain",
   "diagSpectrumWaiting": "Waiting for audio",
   "diagSpectrumStalled": "The audio engine has stopped",

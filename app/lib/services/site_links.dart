@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
+import '../widgets/error_snack.dart';
 
 /// Links from the app to its own website.
 ///
@@ -60,6 +61,6 @@ Future<void> openSite(BuildContext context, Uri url) async {
     opened = false;
   }
   if (!opened) {
-    messenger.showSnackBar(SnackBar(content: Text(l.couldNotOpenLink)));
+    showError(messenger, l.couldNotOpenLink);
   }
 }

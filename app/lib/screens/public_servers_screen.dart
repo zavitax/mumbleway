@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
+import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 
 /// Browser for publicly listed Mumble servers.
@@ -185,9 +186,13 @@ class _PublicServerTileState extends State<_PublicServerTile> {
     if (!mounted) return;
     setState(() => _adding = false);
 
-    messenger.showSnackBar(
-      SnackBar(content: Text(error ?? 'Added ${widget.server.name}')),
-    );
+    if (error != null) {
+      showError(messenger, error);
+    } else {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Added ${widget.server.name}')),
+      );
+    }
 
     // Back to the list of servers, not to the form that led here. Adding from
     // the directory is finished business: the next thing anyone wants is the

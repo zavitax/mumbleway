@@ -2578,7 +2578,7 @@ abstract class L {
   /// No description provided for @diagClassifierUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Background detection runs on phones only, so the helmet profile is chosen from levels here.'**
+  /// **'Background detection is not available on this platform, so the helmet profile is chosen from levels here.'**
   String get diagClassifierUnavailable;
 
   /// No description provided for @diagSpectrum.

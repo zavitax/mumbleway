@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../widgets/app_bar_title.dart';
+import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import 'import_screen.dart';
 import '../widgets/qr_intake_button.dart';
@@ -268,9 +269,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
     setState(() => _saving = false);
 
     if (error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error)));
+      showError(ScaffoldMessenger.of(context), error);
       return;
     }
     Navigator.pop(context);

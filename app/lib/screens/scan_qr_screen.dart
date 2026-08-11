@@ -7,6 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../l10n/app_localizations.dart';
 import '../services/qr_codec.dart';
 import '../widgets/app_bar_title.dart';
+import '../widgets/error_snack.dart';
 
 /// Points the camera at a QR code and returns whatever text is in it.
 ///
@@ -103,7 +104,7 @@ class _ScanQrScreenState extends State<ScanQrScreen>
 
     final text = QrCodec.decodeImage(await file.readAsBytes());
     if (text == null) {
-      messenger.showSnackBar(SnackBar(content: Text(l.qrNoCodeFound)));
+      showError(messenger, l.qrNoCodeFound);
       return;
     }
     navigator.pop(text);

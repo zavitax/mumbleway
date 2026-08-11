@@ -95,6 +95,48 @@
     <h1>{{ s.hero.title }}</h1>
     <p class="lede">{{ s.description | strip_newlines }}</p>
     <div class="cta">
+      <!-- The stores first, because they are what most readers arriving here
+           want: "give it to me" ahead of "how does this work". The two buttons
+           below the rule are for the smaller number of people who are going to
+           run a server or read the source, and they lose nothing by being
+           second — they are the only text in the row, and text is found.
+
+           Placeholder hrefs where a listing has no public URL yet; `url` being
+           empty is what greys a badge out, so a link arrives by filling in one
+           line of _data/strings.yml. -->
+      <span class="stores">
+      {% for st in s.hero.stores %}
+        {% comment %}
+          The vendors' own artwork, not a redrawing of it. Each of the three
+          publishes rules about the badge's proportions and clear space, so
+          these are used as supplied and only scaled by height; `.badge img`
+          sets the height and lets width follow, which keeps all three
+          correct at once despite their differing aspect ratios.
+        {% endcomment %}
+        {%- comment -%} `badge` already carries its extension: Apple and
+          Microsoft publish SVG, Google only ever publishes PNG. {%- endcomment -%}
+        {% assign badge = st.badge %}
+        {% if st.url and st.url != '' %}
+      <a class="badge" href="{{ st.url }}">
+        <img src="{{ '/assets/img/badges/' | append: badge | relative_url }}"
+             alt="{{ st.alt }}" loading="lazy" decoding="async">
+      </a>
+        {% else %}
+      <span class="badge soon" aria-label="{{ st.alt }} — {{ s.hero.store_soon }}"
+            title="{{ s.hero.store_soon }}">
+        <img src="{{ '/assets/img/badges/' | append: badge | relative_url }}"
+             alt="{{ st.alt }}" loading="lazy" decoding="async">
+      </span>
+        {% endif %}
+      {% endfor %}
+      </span>
+      <!-- Always a line break, and always this rule on it, at every width.
+           There was a pair of these once, one upright for when the two groups
+           shared a line and one lying down for when they did not, chosen
+           between by container queries at a measured threshold per language. It
+           worked, and every change to a label, a badge or a gap meant sweeping
+           both thresholds again. -->
+      <span class="cta-rule" role="separator" aria-orientation="horizontal"></span>
       <a class="btn primary" href="{{ s.hero.cta_primary_url | relative_url }}">{{ s.hero.cta_primary }}</a>
       <a class="btn" href="{{ site.repo }}">{{ s.hero.cta_secondary }}</a>
     </div>

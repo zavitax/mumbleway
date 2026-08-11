@@ -14,6 +14,7 @@ import '../services/site_links.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
 
@@ -408,7 +409,7 @@ class _MonitorTile extends StatelessWidget {
         final messenger = ScaffoldMessenger.of(context);
         final error = await state.toggleMonitoring();
         if (error != null) {
-          messenger.showSnackBar(SnackBar(content: Text(error)));
+          showError(messenger, error);
         }
       },
     );
@@ -643,7 +644,7 @@ class _TestOutputTile extends StatelessWidget {
           final messenger = ScaffoldMessenger.of(context);
           final error = await state.testOutput();
           if (error != null) {
-            messenger.showSnackBar(SnackBar(content: Text(error)));
+            showError(messenger, error);
           }
         },
         child: Text(l.play),
@@ -1054,7 +1055,7 @@ class _OverlayTileState extends State<_OverlayTile> {
                   if (!mounted) return;
                   setState(() => _busy = false);
                   if (error != null) {
-                    messenger.showSnackBar(SnackBar(content: Text(error)));
+                    showError(messenger, error);
                   }
                 },
         ),

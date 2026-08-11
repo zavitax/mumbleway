@@ -258,8 +258,8 @@ waits, and holds it for **fifteen seconds** after they stop.
 It is a vote for the helmet setting and nothing else. It can never choose a
 lighter one, it never touches the decision about whether to transmit, and it
 does nothing at all unless Automatic is chosen — a profile you picked by hand is
-an instruction. Nothing runs it on Windows or macOS, where Automatic uses levels
-alone.
+an instruction. It runs on Android, iOS and macOS; on Windows there is no
+classifier yet and Automatic uses levels alone.
 
 **Dialling down is slow, and slower the further down it goes.** Leaving the
 helmet setting for Standard needs **fifteen seconds** of the background actually
@@ -381,12 +381,13 @@ same way, so the gesture has one answer on both phones.
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/floating-phone.webp' | relative_url }}"
-         alt="The call floating over the home screen: a connected light, the
-         microphone meter, whether anyone is speaking, the route and mode,
-         and mute and deafen buttons."
-         width="560" height="612" loading="lazy" decoding="async">
+         alt="The call floating over the home screen: a close cross in the top
+         left corner, a connected light, the microphone meter, whether anyone
+         is speaking, the route and mode, and mute and deafen buttons."
+         width="560" height="506" loading="lazy" decoding="async">
     <figcaption>Over another app on Android: state, meter, route and mode, and
-  the controls you need without going back.</figcaption>
+  the controls you need without going back. The cross that puts it away is in
+  the corner, where Picture in Picture puts it on an iPhone.</figcaption>
   </figure>
 </div>
 

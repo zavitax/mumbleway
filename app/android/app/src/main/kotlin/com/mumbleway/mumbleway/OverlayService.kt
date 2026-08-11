@@ -25,6 +25,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.graphics.Typeface
@@ -497,15 +498,27 @@ class OverlayService : Service() {
         // decision to make stopped, in the app.
         val mute = pill("\uD83C\uDFA4")
         val deafen = pill("\uD83D\uDD0A")
-        // Puts the window away without touching the call, matching the close
-        // button on the iOS Picture in Picture frame. Furthest from TALK on
-        // purpose: it is the one control here whose effect a rider cannot undo
-        // from this window, since dismissing it removes the thing they would
-        // undo it with.
+        // Puts the window away without touching the call.
+        //
+        // **Over the card's top-left corner, where iOS puts it**, rather than on
+        // the controls row where it started. Two reasons, and the second was
+        // only visible once it shipped. A rider who carries both phones should
+        // not have to learn the window twice, which is the same argument that
+        // put the card's two halves where they are. And on the controls row it
+        // took its width from the only elastic thing there \u2014 the TALK pill,
+        // which carries the route and the mode \u2014 so "hands-free \u00B7 voice
+        // activated" became "hands-free \u00B7 voice" and the mode, the part that
+        // says whether a rider has to press anything to be heard, was the half
+        // that got cut.
+        //
+        // Smaller than the control pills and quieter, because it is not one of
+        // them: those three are used while riding, and this is the one whose
+        // effect cannot be undone from this window \u2014 dismissing it removes the
+        // thing you would undo it with.
         //
         // A multiplication sign rather than a letter x, which is narrow and
         // sits low; this is the glyph every close button on the platform uses.
-        val close = pill("\u00D7").apply {
+        val close = cornerClose().apply {
             contentDescription = phrase("pipClose", "Hide this window")
         }
 
@@ -531,16 +544,28 @@ class OverlayService : Service() {
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ).apply { leftMargin = dp(6) },
             )
+        }
+
+        // The card with the close button laid over it rather than beside it.
+        // The connection line the corner sits next to is centred in the card's
+        // left half rather than anchored to its edge, so a small button in the
+        // corner has that corner to itself.
+        val framedCard = FrameLayout(this).apply {
+            addView(card, FrameLayout.LayoutParams(dp(300), dp(150)))
             addView(
                 close,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { leftMargin = dp(6) },
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.START,
+                ).apply {
+                    leftMargin = dp(4)
+                    topMargin = dp(4)
+                },
             )
         }
 
-        container.addView(card, LinearLayout.LayoutParams(dp(300), dp(150)))
+        container.addView(framedCard, LinearLayout.LayoutParams(dp(300), dp(150)))
         container.addView(controls)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -993,6 +1018,29 @@ class OverlayService : Service() {
         gravity = Gravity.CENTER
         setPadding(dp(9), dp(9), dp(9), dp(9))
         background = pillBackground(active = false)
+    }
+
+    /**
+     * The close button in the card's top-left corner.
+     *
+     * Deliberately not a [pill]. It sits *over* the card rather than in a row of
+     * its own, so it has to be small enough not to crowd the connection line
+     * beside it and quiet enough not to be mistaken for one of the three
+     * controls below — which are the ones a rider reaches for while moving.
+     * Round rather than rounded-rectangular, and translucent, which is what the
+     * platform's own overlay close buttons look like.
+     */
+    private fun cornerClose() = TextView(this).apply {
+        text = "×"
+        setTextColor(Color.argb(220, 255, 255, 255))
+        textSize = 12f
+        gravity = Gravity.CENTER
+        setPadding(dp(6), dp(3), dp(6), dp(5))
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(140, 0, 0, 0))
+            setStroke(dp(1), Color.argb(70, 255, 255, 255))
+        }
     }
 
     private fun pillBackground(active: Boolean) = GradientDrawable().apply {

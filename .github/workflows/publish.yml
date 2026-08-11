@@ -648,10 +648,17 @@ jobs:
           Write-Output $status.Trim()
           Write-Output "---------------------------------"
 
-          # Finished, one way or the other: either the last submission is live,
-          # or there has never been one. Anything else is either in flight or
-          # is a state a person should look at before adding to it.
-          $settled = 'Published|None|Unpublished'
+          # Finished, one way or the other: the last submission is live, was
+          # withdrawn, or there has never been one. Anything else is either in
+          # flight or is a state a person should look at before adding to it.
+          #
+          # `Canceled` is on this list because leaving it off cost a submission.
+          # A cancelled submission is as finished as a published one -- nothing
+          # is in certification and nothing is blocked -- but it matched neither
+          # list, so the closed-declines branch below fired and the build was
+          # not sent, on a run that was asked for precisely to send it. Note the
+          # single L: that spelling is the Store's, not a typo.
+          $settled = 'Published|None|Unpublished|Canceled|Cancelled'
           # Named so the message can say which one, rather than "not settled".
           $inFlight = 'PendingCommit|CommitStarted|CommitFailed|PreProcessing|' +
                       'PreProcessingFailed|Certification|CertificationFailed|' +

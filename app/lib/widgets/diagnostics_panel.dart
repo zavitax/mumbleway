@@ -799,9 +799,20 @@ class _History {
   final int decimals;
   final List<double> samples = [];
 
+  /// How many samples have ever been added, which is **not** `samples.length`.
+  ///
+  /// The graph restarts its scroll on each new sample and needs to know one has
+  /// arrived. `samples.length` looks like that signal and is one for exactly
+  /// [capacity] seconds: once the window is full every `add` also drops one off
+  /// the front, the length is pinned at 31 for ever, and anything watching it
+  /// concludes that time has stopped. This does not stop.
+  int get added => _added;
+  int _added = 0;
+
   void add(double value) {
     samples.add(value);
     if (samples.length > capacity) samples.removeAt(0);
+    _added++;
   }
 
   double get latest => samples.isEmpty ? 0 : samples.last;
@@ -876,7 +887,16 @@ class _GraphState extends State<_Graph> with SingleTickerProviderStateMixin {
   @override
   void didUpdateWidget(_Graph old) {
     super.didUpdateWidget(old);
-    final now = widget.series.first.history.samples.length;
+    // `added`, not `samples.length`. The two agree for the first 31 seconds of
+    // a history and then part company for ever, because a full window drops a
+    // sample for every one it takes -- so this read the length, saw it never
+    // change again, and stopped restarting the scroll. The graphs froze one
+    // second after being looked at, that second being this controller's one
+    // and only run, while the numbers above them carried on updating from the
+    // same data. The panel is built at startup and its timer has been filling
+    // these histories ever since, so by the time anybody opens it the window is
+    // long since full and the frozen case is the only case.
+    final now = widget.series.first.history.added;
     // Restarting on a new sample rather than looping freely keeps the motion
     // married to the data: a late sample stalls the scroll instead of letting
     // it run ahead and then snap back.

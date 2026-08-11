@@ -325,8 +325,34 @@ a:hover { color: #FFC276; }
   max-width: 46ch;
   margin: 0 0 2rem;
 }
+/* Half again as much in the hero, which is the space between everything the
+   page says about itself and the row that acts on it. At 2rem the badges read
+   as another paragraph of the introduction; at 3rem they are the next thing,
+   without the row drifting far enough from the words to look unrelated to
+   them. Scoped to the hero on purpose — the same class introduces every other
+   page, where there is nothing below it and the gap would just be a hole. */
+.hero .lede { margin-bottom: 3rem; }
 
-.cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2.5rem; }
+/* Two gaps, not one. Along the row 0.75rem is right — it is the spacing between
+   controls that belong together. Between rows it is not: the row below is the
+   store badges, a different kind of thing from the two buttons above, and at
+   0.75rem they read as one block of five controls that happened to wrap.
+
+   The row gap is a whole control's height, which is why it is `--cta-h` and not
+   a number: it is the same measure the buttons and badges are built from, so
+   the empty row between the two groups is exactly as tall as the things either
+   side of it and stays that way as the type scales with the window. */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.75rem;
+  /* Half, because the rule between the two groups is itself a row: the gap is
+     paid twice, above it and below it, and the two groups still end up a
+     control's height apart. */
+  row-gap: calc(var(--cta-h) / 2);
+  margin-bottom: 2.5rem;
+}
 .btn {
   display: inline-block;
   padding: 0.7rem 1.4rem;
@@ -738,4 +764,66 @@ tbody tr:last-child td { border-bottom: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* The store badges in the hero, above a rule, with the two buttons under it.
+   Separated because they answer different questions: the badges are "give it to
+   me", the buttons are "how does this work". */
+/* One flex item, so the three badges stay together on their line and only
+   break up badge by badge when the group alone is wider than the row. Three
+   stores going down one at a time while the row still has space for two of
+   them reads as three unrelated things rather than one set. */
+.stores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+/* The vendors' badges are used as supplied and scaled by height only, which is
+   what all three sets of brand rules ask for. Their aspect ratios differ, so
+   fixing the height and letting width follow keeps every one of them correct
+   without a per-store size.
+
+   The height is the button's beside them, restated rather than measured:
+   line box + padding + border, in the same units the button declares them in.
+   A fixed pixel height cannot work here, because `.btn` takes its font size
+   from a `clamp()` with a `vw` term and therefore grows with the window — so
+   the two would agree at one width and nowhere else. Each term below mirrors
+   one declaration: 1.65 is the inherited `line-height`, 1.4rem the two 0.7rem
+   paddings, 2px the two 1px borders. */
+.cta { --cta-h: calc(1.65em + 1.4rem + 2px); }
+.badge { display: inline-flex; align-items: center; }
+.badge img { height: var(--cta-h); width: auto; display: block; }
+/* Not a link yet. Kept in place rather than hidden so the three read as a set,
+   and dimmed so nobody clicks twice wondering why nothing happened. */
+.badge.soon { opacity: 0.4; cursor: default; filter: grayscale(1); }
+/* The rule between the buttons and the stores, at every width.
+   `flex-basis: 100%` both draws the division and causes it: a full-width flex
+   item takes a line of its own, so everything after it starts on the next one.
+   The badges are therefore always below the buttons and always left-aligned
+   with them, with no wrapping for the CSS to detect and no width at which the
+   answer changes.
+
+   **This replaced a pair.** There was an upright rule for when the two groups
+   shared a line and this one for when they did not, chosen between by container
+   queries at a measured threshold per language. It worked, and the thresholds
+   had to be re-swept after any change to a label, a badge, a gap or the rule's
+   own margins — three times in one afternoon — and each re-sweep had the same
+   trap in it: measure while the queries are still deciding for themselves and
+   the upright rule is hidden throughout, so the width you find is ~41px short
+   and the query then shows the rule at a width it overflows, leaving the stray
+   tick the whole mechanism existed to prevent. A layout with one state cannot
+   have a wrong one.
+
+   It fades out to the right rather than running the full width. A rule that
+   reaches the far margin would be the widest thing in the hero and would read
+   as a section break, dividing the page rather than the row; fading it lets it
+   separate the two groups and then get out of the way. Gone by 62%, which is
+   past the right edge of both the badges above it and the buttons below — it
+   covers what it divides, and the fade means it stops being a line some way
+   before that. */
+.cta-rule {
+  flex-basis: 100%;
+  height: 1px;
+  background: linear-gradient(to right, var(--line), transparent 62%);
 }

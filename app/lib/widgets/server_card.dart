@@ -452,7 +452,15 @@ class _ProbeLine extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2, color: muted),
           ),
           const SizedBox(width: 8),
-          Text('Checking…', style: TextStyle(fontSize: 12, color: muted)),
+          // Was a hardcoded English literal, while `probeChecking` sat
+          // translated and unused in both .arb files. The l10n test cannot see
+          // this: it checks that a key exists in both languages and differs
+          // between them, which was true the whole time -- nothing checks that
+          // a key is *reached*. It showed as "Checking…" on a Russian phone.
+          Text(
+            L.of(context).probeChecking,
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
         ],
       );
     }

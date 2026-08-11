@@ -260,6 +260,7 @@
       }
     }
   },
+  "channelsPlain": "Каналы",
   "noChannelsYet": "Каналов пока нет.",
   "nobodyElseHere": "В этом канале больше никого нет.",
   "joinAutomatically": "Входить в этот канал автоматически",

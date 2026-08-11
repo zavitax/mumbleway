@@ -1159,6 +1159,12 @@ abstract class L {
   /// **'Channels ({count})'**
   String channelsHeading(int count);
 
+  /// No description provided for @channelsPlain.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels'**
+  String get channelsPlain;
+
   /// No description provided for @noChannelsYet.
   ///
   /// In en, this message translates to:

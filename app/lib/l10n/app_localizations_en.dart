@@ -587,6 +587,9 @@ class LEn extends L {
   }
 
   @override
+  String get channelsPlain => 'Channels';
+
+  @override
   String get noChannelsYet => 'No channels yet.';
 
   @override

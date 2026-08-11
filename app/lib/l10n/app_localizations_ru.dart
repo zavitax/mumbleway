@@ -591,6 +591,9 @@ class LRu extends L {
   }
 
   @override
+  String get channelsPlain => 'Каналы';
+
+  @override
   String get noChannelsYet => 'Каналов пока нет.';
 
   @override

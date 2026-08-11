@@ -266,6 +266,7 @@
       }
     }
   },
+  "channelsPlain": "Channels",
   "noChannelsYet": "No channels yet.",
   "nobodyElseHere": "Nobody else is in this channel.",
   "joinAutomatically": "Join this channel automatically",

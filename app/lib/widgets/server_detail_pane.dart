@@ -94,11 +94,19 @@ class ServerDetailPane extends StatelessWidget {
         ),
 
         const SizedBox(height: 18),
-        _Heading('In this channel (${rt.channelPeers.length})'),
+        // Both of these headings were hardcoded English while their
+        // translations sat in both .arb files. The desktop pane is the only
+        // place they appear, so a Russian rider saw "IN THIS CHANNEL" and
+        // "CHANNELS" on every Mac, Windows and tablet screen -- and so did
+        // every Russian store screenshot at a desktop size.
+        _Heading(L.of(context).inThisChannel(rt.channelPeers.length)),
         ChannelUserList(serverId: s.id, users: rt.channelPeers),
 
         const SizedBox(height: 22),
-        _Heading('Channels'),
+        // `channelsPlain`, not `channelsHeading` — the latter carries a count
+        // the phone card shows and this pane deliberately does not, and a
+        // translation fix is the wrong place to redesign a heading.
+        _Heading(L.of(context).channelsPlain),
         ChannelTree(
           serverId: s.id,
           channels: rt.channels,

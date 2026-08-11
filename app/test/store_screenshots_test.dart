@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/screens/add_server_screen.dart';
 import 'package:mumbleway/screens/home_screen.dart';
@@ -84,10 +85,18 @@ void main() {
     _Shot('app-store', 'iphone-6.5', 1242, 2688, 3),
     _Shot('app-store', 'ipad-12.9', 2048, 2732, 2),
     _Shot('mac-app-store', 'mac', 2880, 1800, 2),
-    // 1366x768 at ratio 1 is a small laptop, and it is the size worth having
-    // because it is the one the desktop layout is tightest in -- if the panel
-    // fits here it fits everywhere above.
-    _Shot('mac-app-store', 'mac-small', 1366, 768, 1, everyScene: true),
+    // A small laptop, and the size worth having because it is the one the
+    // desktop layout is tightest in -- if the panel fits here it fits
+    // everywhere above.
+    //
+    // 1280x800 rather than the 1366x768 this used to be. **Apple accepts only
+    // 16:10 for Mac**: 1280x800, 1440x900, 2560x1600, 2880x1800 and nothing
+    // else. 1366x768 is 16:9, so the settings, addServer and diagnostics Mac
+    // shots were unuploadable for as long as they existed -- the store refuses
+    // them at upload, after the form is filled in, and only home-mac-2880x1800
+    // ever had a valid size. The Microsoft entry below keeps 1366x768 because
+    // that is Microsoft's own floor and Microsoft accepts it.
+    _Shot('mac-app-store', 'mac-small', 1280, 800, 1, everyScene: true),
     // Play takes anything between 320 and 3840 on the short side, 16:9-ish.
     _Shot('google-play', 'phone', 1080, 2400, 3),
     _Shot('google-play', 'tablet-10', 1600, 2560, 2),
@@ -163,6 +172,21 @@ void main() {
       expect(file.existsSync(), isTrue);
       expect(width, shot.width);
       expect(height, shot.height);
+      // Colour type 6 is truecolour-with-alpha. Apple refuses that at upload,
+      // and every Apple screenshot in this repository carried it until the
+      // encoder above was changed -- invisibly, because the channel was fully
+      // opaque. Assert what was written, not what was drawn.
+      expect(
+        _pngColourType(file),
+        2,
+        reason: 'a store screenshot must carry no alpha channel',
+      );
+
+      // `markAudioActiveForTesting` starts the relief poll timer, and the
+      // binding asserts no timer is pending once the tree is disposed. That
+      // check runs at the end of the body, *before* any `addTearDown`, so
+      // registering the dispose there is too late -- it has to be here.
+      state.dispose();
     });
   }
   }
@@ -277,7 +301,16 @@ AppState _connectedState() {
   final state = AppState()
     // Every screen is gated on this; without it the whole app is a spinner and
     // the screenshot is a picture of one.
-    ..markReadyForTesting();
+    ..markReadyForTesting()
+    // Without this the talk panel draws `_MicIdleNotice` instead of the meter,
+    // because that panel keys on `audioActive` rather than on the connection.
+    // The result was a screenshot that contradicted itself: a card reading
+    // **Connected** directly above the sentence "The microphone meter appears
+    // here once you connect to a server." Both halves were behaving correctly
+    // -- there is no engine behind a widget test, so the microphone really was
+    // shut -- which is exactly why it survived. The hook to say otherwise has
+    // existed since the probe-spinner work and this harness never called it.
+    ..markAudioActiveForTesting();
   final server = SavedServer(
     name: 'Sunday Run',
     host: 'mumble.example.org',
@@ -288,6 +321,18 @@ AppState _connectedState() {
   state.servers.add(server);
 
   final runtime = state.runtimeFor(server.id);
+  // Without a probe the card's reachability line is a spinner reading
+  // "Checking…", which in a store screenshot is a picture of the app thinking
+  // rather than of the app working. Same reasoning as `markReadyForTesting`
+  // above, which exists because the toolbar had the same problem.
+  runtime.probe = UiServerStatus(
+    serverId: server.id,
+    reachable: true,
+    pingMs: 34,
+    users: 4,
+    maxUsers: 100,
+    version: '1.4.287',
+  );
   runtime.status = ConnStatus.connected;
   runtime.selfSession = 1;
   runtime.transport = 'udp';
@@ -357,14 +402,40 @@ AppState _connectedState() {
   return state;
 }
 
+/// Writes the boundary to a PNG **with no alpha channel**.
+///
+/// Apple refuses a screenshot that carries transparency -- "Images cannot
+/// include alpha channels or transparencies" -- and it refuses it at upload,
+/// after the listing form is filled in, rather than at review. Flutter's own
+/// PNG encoder (`ImageByteFormat.png`) always writes RGBA, so every Apple
+/// screenshot this harness produced carried a channel the store rejects. The
+/// pixels underneath were fully opaque, which is why nothing ever looked
+/// wrong and why nothing caught it.
+///
+/// So the raw RGBA is re-encoded to three channels. That is a channel drop,
+/// not a composite: there is nothing to flatten against.
 Future<void> _capture(GlobalKey key, File file, double ratio) async {
   final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
   final image = await boundary.toImage(pixelRatio: ratio);
-  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  final rgba = img.Image.fromBytes(
+    width: image.width,
+    height: image.height,
+    bytes: data!.buffer,
+    numChannels: 4,
+  );
   file.parent.createSync(recursive: true);
-  file.writeAsBytesSync(data!.buffer.asUint8List());
+  file.writeAsBytesSync(img.encodePng(rgba.convert(numChannels: 3)));
   image.dispose();
 }
+
+/// The PNG colour type, read out of IHDR.
+///
+/// 2 is truecolour, 6 is truecolour with alpha. Read from the bytes rather
+/// than by decoding, because the whole point is to check what was *written*.
+/// Layout: 8-byte signature, then the IHDR chunk -- length, type, width,
+/// height, bit depth, and colour type at offset 25.
+int _pngColourType(File file) => file.readAsBytesSync()[25];
 
 /// Loads the faces the app actually draws with.
 ///

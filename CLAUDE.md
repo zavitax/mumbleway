@@ -31,6 +31,18 @@ A `v*` tag triggers the same workflow **and** a GitHub release. Tagging is a
 release marker with a permanent name, so it is a bigger statement than
 publishing a test build — do not reach for it just to get a build to testers.
 
+### The `msstore-cli` skill is a reference, not a route
+
+`.claude/skills/msstore-cli/` documents the Microsoft Store CLI, including
+`msstore publish` and `msstore submission delete`. **Publishing still goes
+through `publish.yml`.** The workflow does two things a bare `msstore publish`
+does not: it reads the pending submission's status first and refuses to submit
+over one that is in flight — a submission in certification blocks the next, and
+overwriting one costs days — and it builds the MSIX from a clean checkout with
+the version derived from `run_number`. Reach for the skill to *read* state
+(`msstore apps list`, `msstore submission status`), which the workflow cannot do
+interactively, and for nothing that writes.
+
 ### Build numbers come from `github.run_number`
 
 Not from `pubspec.yaml`. The version there (`1.0.0+1`) is the human-facing one

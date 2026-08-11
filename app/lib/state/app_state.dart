@@ -531,6 +531,24 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   void markReadyForTesting() {
     _ready = true;
+    // The toolbar spins until the device has been measured, and nothing here
+    // ever measures it — so without this the diagnostics icon in every store
+    // screenshot is a progress indicator. Same reasoning as `_ready` above.
+    _probeAnswered = true;
+  }
+
+  /// Pretends the devices opened, without an engine to open them.
+  ///
+  /// Runs the real [_syncReliefWatch], rather than reaching past it to the
+  /// field it sets: the thing worth protecting is that opening the devices
+  /// stops the toolbar spinner, and a test that set the flag itself would
+  /// still pass with that wiring deleted.
+  ///
+  /// Cancel it with [dispose] — this starts the relief poll timer.
+  @visibleForTesting
+  void markAudioActiveForTesting() {
+    _audioActive = true;
+    _syncReliefWatch();
   }
   String? get startupError => _startupError;
   bool get muted => _muted;
@@ -696,6 +714,11 @@ class AppState extends ChangeNotifier {
       _probeWhenIdle();
     } catch (e) {
       _startupError = e.toString();
+      // `_probeWhenIdle` is the last line of the `try` and a throw above it
+      // skips the arming entirely, so nothing would ever resolve the spinner.
+      // There is no chain to measure on this path and the screen already says
+      // why, which makes the plain icon the honest one.
+      _settleProbeUnmeasured();
     } finally {
       // Collect what the engine said while starting, on every path out of here.
       //
@@ -2172,15 +2195,35 @@ class AppState extends ChangeNotifier {
   Timer? _reliefTimer;
   bool _chainDegraded = false;
   bool _probed = false;
-  bool _probing = false;
+  bool _probeAnswered = false;
   Timer? _probeTimer;
 
-  /// Whether the device is being measured right now.
+  /// Whether the toolbar still has nothing true to say about this device.
   ///
   /// The toolbar shows a spinner in place of the diagnostics icon while this
   /// is true: that icon is about to claim either "fine" or "degraded", and
   /// neither has been decided yet.
-  bool get probing => _probing;
+  ///
+  /// **From launch, not from the start of the measurement.** This used to be
+  /// "is the probe running", which left the plain icon on screen for the whole
+  /// of startup and the five-second settle after it — several seconds of
+  /// claiming the chain was fine, before anything had looked. That is the
+  /// state the spinner exists to avoid, and it was the longer half of it.
+  ///
+  /// It resolves on every path that can produce an answer, which is what makes
+  /// it safe to start true:
+  ///
+  ///   * the probe finishes, or fails, or finds no engine — [_probeChain];
+  ///   * the devices open before it ever ran, so the ladder is now measuring
+  ///     the real chain every block and is the better authority anyway —
+  ///     [_syncReliefWatch];
+  ///   * startup failed, so there is no chain to measure and the screen has an
+  ///     error on it — [_init].
+  ///
+  /// A spinner that never stops is worse than an icon that is briefly wrong,
+  /// so a path that resolves this must not be removed without another taking
+  /// its place. `probe_spinner_test.dart` holds each of them.
+  bool get probing => !_probeAnswered;
 
   /// How long the app is left alone before it is measured.
   ///
@@ -2230,7 +2273,6 @@ class AppState extends ChangeNotifier {
       return;
     }
     _probed = true;
-    _probing = true;
     notifyListeners();
     try {
       if ((await audioProbeChain()).relief > 0) {
@@ -2242,9 +2284,20 @@ class AppState extends ChangeNotifier {
     } finally {
       // On every path out, or the toolbar spins for the rest of the session
       // over a measurement that already failed.
-      _probing = false;
+      _probeAnswered = true;
       notifyListeners();
     }
+  }
+
+  /// Stops the spinner without an answer from the probe.
+  ///
+  /// Used where waiting longer cannot produce one: the devices opened first,
+  /// or startup failed outright. Named rather than inlined because the count
+  /// of these paths is the thing that keeps the spinner from being permanent.
+  void _settleProbeUnmeasured() {
+    if (_probeAnswered) return;
+    _probeAnswered = true;
+    notifyListeners();
   }
 
   /// Whether the performance ladder has switched any capture stage off.
@@ -2266,6 +2319,12 @@ class AppState extends ChangeNotifier {
         (_) => _pollRelief(),
       );
       _pollRelief();
+      // A call beat the probe to it. The real chain is now being measured
+      // every block by the ladder itself, which is a better authority than a
+      // synthetic run — and a probe deferred until the devices shut could be
+      // twenty minutes away. Spinning for the length of a ride would read as
+      // broken, so the icon starts speaking for the ladder here.
+      _settleProbeUnmeasured();
       return;
     }
     _reliefTimer?.cancel();

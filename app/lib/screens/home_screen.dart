@@ -74,10 +74,17 @@ class HomeScreen extends StatelessWidget {
                 ? l.diagChainDegradedShort
                 : l.diagnostics,
             onPressed: state.toggleDiagnostics,
-            // A spinner while the device is being measured, because the icon it
+            // A spinner until the device has been measured, because the icon it
             // replaces is about to make a claim — plain or warning — that has
             // not been decided yet. Showing either one early would be saying
-            // something untrue for the few seconds it takes.
+            // something untrue.
+            //
+            // **From launch, not from the start of the measurement.** The probe
+            // waits for startup to go quiet before it times anything, so gating
+            // this on "is it running" left the plain icon up through startup and
+            // a five-second settle — the longer half of the window it exists to
+            // cover, and the half a rider actually sees. `AppState.probing`
+            // carries the whole of it now, and names the paths that end it.
             //
             // Sized to the icon it stands in for, so the toolbar does not shift
             // when the measurement lands.

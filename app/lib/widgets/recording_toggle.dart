@@ -3,11 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/file_reveal.dart';
 import '../services/recording_archive.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -299,45 +299,17 @@ class _RecordingToggleState extends State<RecordingToggle> {
       ..sort((a, b) => b.path.compareTo(a.path));
     if (files.isEmpty) return;
 
-    if (!Platform.isAndroid && !Platform.isIOS) {
-      // No share sheet worth the name on desktop, and a path that can be
-      // pasted is more use than one that has to be retyped.
-      await Clipboard.setData(ClipboardData(text: dir.path));
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(dir.path)));
-      return;
-    }
-
     setState(() => _busy = true);
     try {
-      final temp = await getTemporaryDirectory();
-      // Cleared on the way in rather than on the way out, because they cannot
-      // be deleted on the way out — see below. A share that produced four
-      // archives followed by one that produces two would otherwise send the
-      // two new ones and the two stale ones beside them.
-      for (final f in temp.listSync().whereType<File>()) {
-        // The stem rather than the numbered prefix, so the single
-        // `mumbleway-recordings.zip` that earlier builds left here is cleared
-        // too. It will never be shared again and nothing else would remove it.
-        if (f.path
-            .split(Platform.pathSeparator)
-            .last
-            .startsWith(archiveStem)) {
-          try {
-            f.deleteSync();
-          } catch (_) {
-            // Still held open by a transfer that has not finished. It will be
-            // overwritten by name if this share needs that number again.
-          }
-        }
-      }
+      final staging = await shareStagingDir();
+      await clearStaging(staging);
 
       // Off this isolate. Packing a ride's worth of audio takes seconds, and
       // doing it here would stop the meters and the spectrum in a panel whose
       // whole job is to be watched.
       final archives = await compute(packRecordings, [
         '$archiveCapBytes',
-        temp.path,
+        staging.path,
         for (final f in files) f.path,
       ]);
 
@@ -357,7 +329,17 @@ class _RecordingToggleState extends State<RecordingToggle> {
       // spinner on screen for the life of the process after a share that
       // worked.
       if (mounted) setState(() => _busy = false);
-      final result = await shared;
+      ShareResult? result;
+      try {
+        result = await shared;
+      } on UnimplementedError {
+        // A desktop with no share sheet for files. Showing the archives is the
+        // next best thing, and the staging folder holds nothing else — which
+        // is the whole reason it exists.
+        if (!await revealFile(archives.first) && mounted) {
+          showError(messenger, l.diagRecordingShareFailed('$staging'));
+        }
+      }
       // Deliberately not deleted here. `share` returns when the sheet closes,
       // and AirDrop and the mail composer go on reading the file after that —
       // deleting it now would truncate the transfer it was made for. The next
@@ -366,8 +348,9 @@ class _RecordingToggleState extends State<RecordingToggle> {
       if (!mounted) return;
       // Only after a target was actually chosen. A dismissed sheet must not
       // offer to delete what it did not send, and the offer is an action the
-      // rider has to reach for rather than something that happens to them.
-      if (result.status == ShareResultStatus.success) {
+      // rider has to reach for rather than something that happens to them. A
+      // revealed folder is not a send either: nothing has left the machine yet.
+      if (result?.status == ShareResultStatus.success) {
         messenger.showSnackBar(
           SnackBar(
             content: Text(l.diagRecordingShared(files.length, archives.length)),
@@ -377,11 +360,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
         );
       }
     } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l.diagRecordingShareFailed('$e'))),
-        );
-      }
+      if (mounted) showError(messenger, l.diagRecordingShareFailed('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

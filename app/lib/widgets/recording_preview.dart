@@ -1,13 +1,14 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/file_reveal.dart';
 import '../services/recording_archive.dart';
 import '../services/recording_player.dart';
 import '../state/app_state.dart';
@@ -38,11 +39,26 @@ Future<void> showRecordingPreview(BuildContext context, Directory dir) {
   // Navigator, not of the widget that opened it, so the scope this sits under
   // is not necessarily in the sheet's own ancestry.
   final state = AppStateScope.of(context);
+  final width = MediaQuery.of(context).size.width;
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
+    // **Material caps a bottom sheet at 640px and that is a phone's width.**
+    // The cap is right on a tablet, where a sheet spanning a 1024px screen
+    // would be a wall; it is wrong on a desktop window, where it left this one
+    // as a narrow column in the middle of an empty screen with a waveform
+    // squeezed into it. A waveform is the one thing here that is *made* of
+    // horizontal room -- every extra pixel is more of the recording visible at
+    // once -- so the sheet takes at least four fifths of what there is.
+    //
+    // The floor keeps small windows out of it: below 800px logical, four
+    // fifths would be narrower than Material's own cap, so the cap wins. On a
+    // phone both terms come out at the screen width and nothing changes.
+    constraints: BoxConstraints(
+      maxWidth: math.max(width * 0.8, math.min(width, 640)),
+    ),
     builder: (_) => _PreviewSheet(dir: dir, state: state),
   );
 }
@@ -193,21 +209,13 @@ class _PreviewSheetState extends State<_PreviewSheet> {
         if (File(p).existsSync()) p,
     ];
 
-    if (!Platform.isAndroid && !Platform.isIOS) {
-      // No share sheet worth the name on desktop, and a path that can be
-      // pasted beats one that has to be retyped off a screen.
-      await Clipboard.setData(ClipboardData(text: path));
-      if (!mounted) return;
-      messenger.showSnackBar(SnackBar(content: Text(path)));
-      return;
-    }
-
     setState(() => _sharing = true);
     try {
-      final temp = await getTemporaryDirectory();
+      final staging = await shareStagingDir();
+      await clearStaging(staging);
       final archives = await compute(packRecordings, [
         '$archiveCapBytes',
-        temp.path,
+        staging.path,
         ...files,
       ]);
       final shared = SharePlus.instance.share(
@@ -232,7 +240,16 @@ class _PreviewSheetState extends State<_PreviewSheet> {
       // Awaited below all the same, so a real failure still reaches the
       // snackbar; it simply no longer holds the button hostage.
       if (mounted) setState(() => _sharing = false);
-      await shared;
+      try {
+        await shared;
+      } on UnimplementedError {
+        // A desktop with no share sheet for files — Linux, or a Windows older
+        // than the one that brought the system share UI. Showing the archive
+        // is the next best thing and is what somebody came here to do anyway.
+        if (!await revealFile(archives.first) && mounted) {
+          showError(messenger, l.diagRecordingShareFailed('$staging'));
+        }
+      }
       // Not deleted afterwards, for the reason the card records: `share`
       // returns when the sheet closes, and AirDrop and the mail composer go on
       // reading the file after that.

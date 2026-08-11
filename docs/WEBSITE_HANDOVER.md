@@ -12,6 +12,7 @@ working note like [SESSION_2026-08-10.md](SESSION_2026-08-10.md).
 | | State |
 |---|---|
 | Windows screenshots | **started, blocked** — build done, recordings seeded, app will not start locally (see below) |
+| Degraded-panel screenshots | **not started** — decided: shoot on the OPPO, no runtime override |
 | Website copy | **not started** — `index.md` last touched 2026-08-09 |
 | Store texts and screenshots | **not started** — `STORE_DESCRIPTION.md` and `STORE_LISTING.md` last touched 2026-08-07 |
 | Licences and credits | **partly current** — three dependencies missing, listed below |
@@ -96,10 +97,32 @@ in it rather than an empty one.
   regions, and both toggles visible — transmitted-only (green) and chain
   playback (amber).
 
-A degraded panel cannot be produced on a fast desktop by waiting. `MW_RELIEF`
-is honoured by `core/tests/chain_cost.rs`; there is **no** equivalent runtime
-override in the app, so either one is added for the screenshot or the degraded
-states are shot on the OPPO instead. Worth deciding before building anything.
+### The degraded panel is shot on the OPPO — decided
+
+A degraded panel cannot be produced on a fast desktop by waiting, and
+`MW_RELIEF` is honoured only by `core/tests/chain_cost.rs` — there is no
+runtime override in the app. **The decision is to shoot those states on the
+OPPO A3s rather than add one**, which keeps a debug-only path for taking
+marketing pictures out of the shipping app.
+
+It works because that device genuinely gets there: on a real call it walks the
+whole ladder and stops the enhancer, and the panel rungs were confirmed
+appearing on it. So the struck-through stage names, the yellow toolbar warning
+and the "a more powerful device" message are all reachable by making a call and
+waiting, with no instrumentation at all.
+
+Two things about capturing it, both already paid for:
+
+- **`adb shell screencap -p` into a file, then `adb pull`.** Piping it through
+  PowerShell's `>` corrupts the PNG — the redirect is not binary-safe, and the
+  result is a file of the right sort of size that no viewer will open.
+- The panel is a **bottom sheet**, so it scrolls. `CLAUDE.md` has the warning
+  about swiping down the middle of a settings list dragging a slider instead;
+  the same applies here wherever a control is under the thumb, and **x = 1060**
+  is the safe column on this device.
+
+The desktop set is still worth taking for the *undegraded* panel, which is what
+most people will see and is the better picture for a store listing.
 
 ## Website
 
@@ -202,4 +225,8 @@ not the same as a licence entry.
 Licences first: smallest, and the only one of the four that is a store
 requirement rather than an improvement. Then store texts, which the website copy
 can borrow from. Then the website. Screenshots last, because they need the clean
-rebuild and a decision about how to show a degraded panel.
+rebuild above.
+
+The two screenshot passes are independent and can be taken in either order: the
+Windows set for the ordinary panel and the listen sheet with content, and the
+OPPO set for the degraded states.

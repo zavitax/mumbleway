@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'dart:io' show File, Platform;
 
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, listEquals, visibleForTesting;
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -1818,7 +1819,49 @@ class AppState extends ChangeNotifier {
     _releaseAudioSoon();
   }
 
+  /// Moves the server the rider just chose up the list, under any that are
+  /// already live.
+  ///
+  /// **Not simply "newest to the top".** This app holds more than one server
+  /// at a time, and a plain most-recently-used list would push a live
+  /// conversation down a place every time a second one was joined — the list
+  /// reordering under a thumb that is reaching for it. So a server that is
+  /// already connected keeps its place, and the one being connected lands
+  /// directly beneath it.
+  ///
+  /// Pure, and taking the liveness test as an argument, so the ordering can be
+  /// tested without an engine behind it.
+  @visibleForTesting
+  static void promoteOnConnect(
+    List<SavedServer> servers,
+    String id,
+    bool Function(String id) isLive,
+  ) {
+    final from = servers.indexWhere((s) => s.id == id);
+    if (from < 0) return;
+    final entry = servers.removeAt(from);
+    // The run of already-live servers at the top, counted after the removal so
+    // reconnecting the one already at the front is a no-op rather than a
+    // shuffle.
+    var to = 0;
+    while (to < servers.length && isLive(servers[to].id)) {
+      to++;
+    }
+    servers.insert(to, entry);
+  }
+
   Future<void> connect(String id) async {
+    // Ordered on the rider's choice rather than on the handshake succeeding.
+    // A server that fails to answer is still the one they reached for, and a
+    // list that reorders only on success would leave the entry they just
+    // tapped somewhere below the one they did not.
+    final before = [for (final s in servers) s.id];
+    promoteOnConnect(servers, id, (i) => runtimes[i]?.isLive ?? false);
+    if (!listEquals(before, [for (final s in servers) s.id])) {
+      unawaited(_persist());
+      notifyListeners();
+    }
+
     // Details that arrived from another device while this session was in use
     // are applied now, on the way in, rather than having interrupted it then.
     if (_pendingRegistration.remove(id)) {

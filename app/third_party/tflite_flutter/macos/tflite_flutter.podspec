@@ -25,5 +25,19 @@ A new Flutter plugin project.
   # MumbleWay: uncommented. This is what puts the dylib in
   # Contents/Frameworks and has Xcode sign it with the app's identity, which
   # is both what Apple requires and where the patched loader looks.
-  s.vendored_libraries = 'libtensorflowlite_c-mac.dylib'
+  #
+  # **The filename must match the dylib's own install name.** Vendoring it also
+  # links it, so the app binary records `LC_LOAD_DYLIB @rpath/
+  # libtensorflowlite_c.dylib` -- taken from this file's `LC_ID_DYLIB` -- while
+  # CocoaPods copies the file into Frameworks under whatever it is called here.
+  # Shipped as `libtensorflowlite_c-mac.dylib`, those two disagree, and every
+  # macOS build died in dyld before `main`:
+  #
+  #     Library not loaded: @rpath/libtensorflowlite_c.dylib
+  #     tried: '/Applications/mumbleway.app/Contents/Frameworks/
+  #            libtensorflowlite_c.dylib' (no such file)
+  #
+  # Renaming the file is the fix rather than `install_name_tool`, because then
+  # one name is true everywhere: here, in the loader, and in `bindings.dart`.
+  s.vendored_libraries = 'libtensorflowlite_c.dylib'
 end

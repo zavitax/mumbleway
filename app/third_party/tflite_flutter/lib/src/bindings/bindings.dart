@@ -36,8 +36,13 @@ final DynamicLibrary _dylib = () {
     // finding, and this app ships through the Mac App Store. The podspec
     // beside this file vendors the dylib, which is what puts it in Frameworks
     // and gets it signed with the app's own identity.
+    //
+    // **`libtensorflowlite_c.dylib`, not `-mac`.** Vendoring links it as well
+    // as copying it, so the name here has to agree with the dylib's own
+    // install name or the app dies in dyld before this line ever runs. See the
+    // podspec for the crash it produced.
     return DynamicLibrary.open(
-        '${Directory(Platform.resolvedExecutable).parent.parent.path}/Frameworks/libtensorflowlite_c-mac.dylib');
+        '${Directory(Platform.resolvedExecutable).parent.parent.path}/Frameworks/libtensorflowlite_c.dylib');
   }
 
   if (Platform.isLinux) {

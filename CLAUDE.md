@@ -302,6 +302,32 @@ one, which is the same reason the app records its own capture input.
   report an English locale for an undeclared language whatever the phone is set
   to, so a complete translation is simply never asked for. A test asserts this.
 
+### A vendored dylib must be called what its install name says
+
+`vendored_libraries` in a podspec **links** the library as well as copying it.
+So the app binary records the dylib's own `LC_ID_DYLIB` as the name to load at
+launch, while CocoaPods copies the file into `Contents/Frameworks` under
+whatever the podspec calls it. If those disagree, every Mac dies in dyld before
+`main`:
+
+```text
+Library not loaded: @rpath/libtensorflowlite_c.dylib
+tried: '/Applications/mumbleway.app/Contents/Frameworks/
+       libtensorflowlite_c.dylib' (no such file)
+```
+
+That shipped: the classifier dylib is distributed as
+`libtensorflowlite_c-mac.dylib` and calls itself
+`@rpath/libtensorflowlite_c.dylib`. Rename the file rather than reach for
+`install_name_tool`, so one name is true in the podspec, in the loader and in
+`bindings.dart` alike.
+
+**CI cannot see this class of fault.** The macOS job compiles, signs and
+uploads without ever launching the result, so the first thing that noticed was a
+crash report from a real Mac. `app/test/macos_tflite_dylib_test.dart` reads the
+Mach-O header and asserts the three names agree, which is checkable from any
+host.
+
 ## Say when a device is not accelerating
 
 Anything that runs a model has to report, on every platform, whether the

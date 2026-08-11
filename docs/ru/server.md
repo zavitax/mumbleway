@@ -171,7 +171,7 @@ Apple Silicon и `/usr/local/etc/` на Intel. `brew info mumble-server` печ�
               пользователя и необязательный пароль, а также кнопки для
               просмотра публичных серверов, импорта файла и сканирования
               QR-кода."
-         width="560" height="1217" loading="lazy" decoding="async">
+         width="560" height="883" loading="lazy" decoding="async">
     <figcaption>Ввести один раз — или отсканировать QR-код из
     приложения.</figcaption>
   </figure>
@@ -180,7 +180,7 @@ Apple Silicon и `/usr/local/etc/` на Intel. `brew info mumble-server` печ�
          alt="Та же форма на iPhone, уже заполненная по ссылке mumble://:
               отображаемое имя, адрес, порт и имя пользователя, ниже кнопка
               добавления."
-         width="560" height="1214" loading="lazy" decoding="async">
+         width="560" height="1217" loading="lazy" decoding="async">
     <figcaption>Или перейти по ссылке <code>mumble://</code> — форма
     заполнится сама.</figcaption>
   </figure>

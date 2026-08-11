@@ -325,12 +325,13 @@ a:hover { color: #FFC276; }
   max-width: 46ch;
   margin: 0 0 2rem;
 }
-/* Three times that in the hero, which is the space between everything the page
-   says about itself and the row that acts on it. At 2rem the badges read as
-   another paragraph of the introduction; at 6rem they are the next thing.
-   Scoped to the hero on purpose — the same class introduces every other page,
-   where there is nothing below it and the gap would just be a hole. */
-.hero .lede { margin-bottom: 6rem; }
+/* Half again as much in the hero, which is the space between everything the
+   page says about itself and the row that acts on it. At 2rem the badges read
+   as another paragraph of the introduction; at 3rem they are the next thing,
+   without the row drifting far enough from the words to look unrelated to
+   them. Scoped to the hero on purpose — the same class introduces every other
+   page, where there is nothing below it and the gap would just be a hole. */
+.hero .lede { margin-bottom: 3rem; }
 
 /* Two gaps, not one. Along the row 0.75rem is right — it is the spacing between
    controls that belong together. Between rows it is not: the row below is the

@@ -89,6 +89,8 @@ your first call**, and watched while you talk. If it does not fit, stages are
 given up one at a time — in an order that was measured rather than guessed, and
 never quietly.
 
+{% include fig-ladder.svg lang=page.lang %}
+
 **The cheapest quality goes first.** The enhancer softens by two steps before
 anything else is touched: they are the two largest savings on the chain and
 cost almost nothing, and on voice over music the first of them measured
@@ -285,16 +287,17 @@ to be fixed by a setting.
     <a href="{{ '/server.html' | relative_url }}">It takes about ten minutes.</a></p>
   </div>
   <div class="panel warn">
-    <h3>Music can still key the channel</h3>
-    <p><strong>Both halves of this are much better than they were.</strong>
-    Being heard over your own music went from 63% of speech through to 98%, and
-    the enhancer takes <strong>19 dB out of the gaps between your words</strong>
-    — so where music used to sit a decibel and a half under the speech, it now
-    sits sixteen under it. Music that keys the channel therefore arrives
-    attenuated rather than at level.</p>
-    <p>What has not changed is the decision itself: the detector was trained to
-    tell speech from noise, music is neither, and it still opens the gate more
-    often than it should. Push-to-talk avoids it entirely, and the work is
+    <h3>Music can occasionally key the channel</h3>
+    <p><strong>This was the worst thing about the app and is now a footnote.</strong>
+    Speech over your own music goes through 98% of the time where it used to be
+    63%, and the enhancer takes <strong>19 dB out of the gaps between your
+    words</strong> — music that used to sit a decibel and a half under the
+    speech now sits sixteen under it. In riding since, music keys the channel
+    only rarely, and what gets through arrives well down rather than at
+    level.</p>
+    <p>It is not zero, and the reason it is not is worth knowing: the detector
+    was trained to tell speech from noise, and music is neither. Push-to-talk
+    removes the possibility entirely if you need certainty, and the work is
     <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
     open</a>, including every attempt that has already failed.</p>
   </div>

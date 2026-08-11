@@ -1,0 +1,66 @@
+{%- assign f = site.data.strings[include.lang].figures.ladder -%}
+<!-- What a device gives up, in the order it gives it up. Inlined rather than
+     linked as an <img> for the same reason as the other figures: an SVG loaded
+     as an image cannot see the document's webfonts.
+
+     Fifteen rungs is more than a picture can carry, so the drawing groups them
+     into the seven bands that differ in *kind* — and the ordering, which is the
+     whole point of the figure, is preserved exactly. -->
+<figure class="figure">
+<svg viewBox="0 0 900 340" role="img" aria-labelledby="ld-title ld-desc" class="fig">
+  <title id="ld-title">{{ f.title }}</title>
+  <desc id="ld-desc">{{ f.desc | strip_newlines }}</desc>
+
+  <!-- The descent. One step per band, falling left to right, so "further down
+       the ladder" is literal rather than a figure of speech. -->
+  <g font-family="inherit" font-size="12">
+    <!-- 1. The enhancer bends. Green: costs almost nothing. -->
+    <rect x="10" y="40" width="118" height="34" rx="4" fill="#1E3A2C" stroke="#3ECF7E"/>
+    <text x="69" y="62" fill="#3ECF7E" text-anchor="middle">{{ f.enhancer_soft }}</text>
+
+    <!-- 2. The pay-down. Still green: no sample changes. -->
+    <rect x="136" y="76" width="118" height="34" rx="4" fill="#1E3A2C" stroke="#3ECF7E"/>
+    <text x="195" y="98" fill="#3ECF7E" text-anchor="middle">{{ f.paydown }}</text>
+
+    <!-- 3. Cheap detectors. -->
+    <rect x="262" y="112" width="118" height="34" rx="4" fill="#2A3644" stroke="#8695A6"/>
+    <text x="321" y="134" fill="#B9C4D0" text-anchor="middle">{{ f.detectors }}</text>
+
+    <!-- 4. The panel's own drawing. Nothing a listener hears. -->
+    <rect x="388" y="148" width="118" height="34" rx="4" fill="#2A3644" stroke="#8695A6"/>
+    <text x="447" y="170" fill="#B9C4D0" text-anchor="middle">{{ f.display }}</text>
+
+    <!-- 5. The classifier. Amber: Auto stops adapting. -->
+    <rect x="514" y="184" width="118" height="34" rx="4" fill="#3A2E17" stroke="#FFA53C"/>
+    <text x="573" y="206" fill="#FFA53C" text-anchor="middle">{{ f.classifier }}</text>
+
+    <!-- 6. A cheaper model. -->
+    <rect x="640" y="220" width="118" height="34" rx="4" fill="#3A2E17" stroke="#FFA53C"/>
+    <text x="699" y="242" fill="#FFA53C" text-anchor="middle">{{ f.simple_model }}</text>
+
+    <!-- 7. The bottom. Red: the thing that turns 1.5 dB into 16. -->
+    <rect x="766" y="256" width="124" height="34" rx="4" fill="#3E1F22" stroke="#F2555A"/>
+    <text x="828" y="278" fill="#F2555A" text-anchor="middle">{{ f.enhancer_off }}</text>
+  </g>
+
+  <!-- Connectors, drawn as the tread between one step and the next. -->
+  <g stroke="#4E6076" stroke-width="1" fill="none" stroke-dasharray="3 3">
+    <path d="M128 57 L136 57 L136 76"/>
+    <path d="M254 93 L262 93 L262 112"/>
+    <path d="M380 129 L388 129 L388 148"/>
+    <path d="M506 165 L514 165 L514 184"/>
+    <path d="M632 201 L640 201 L640 220"/>
+    <path d="M758 237 L766 237 L766 256"/>
+  </g>
+
+  <!-- The axis the whole thing is ordered by. -->
+  <g font-family="inherit" font-size="12" fill="#8695A6">
+    <text x="10" y="24">{{ f.first }}</text>
+    <text x="890" y="316" text-anchor="end">{{ f.last }}</text>
+  </g>
+  <path d="M10 306 L880 306" stroke="#3E4E61" stroke-width="1"/>
+  <path d="M880 306 l-7 -4 l0 8 z" fill="#3E4E61"/>
+  <text x="10" y="326" fill="#61707F" font-size="11" font-family="inherit">{{ f.axis }}</text>
+</svg>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
+</figure>

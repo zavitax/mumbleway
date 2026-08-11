@@ -229,14 +229,83 @@ idb ui text --udid <udid> "hello"
 idb ui swipe --udid <udid> 200 700 200 200
 ```
 
-Two things that are easy to reach for and should not be:
+Things that are easy to reach for and should not be:
 
 - **Writing the preferences plist directly does not stick.** `cfprefsd` has it
   cached and writes back over the edit. Go through `defaults` *inside* the
   simulator instead: `xcrun simctl spawn booted defaults write …`, with any
   JSON value quoted as one string inside a plist array.
+- **And that write only lands if the app is not already running.** Setting
+  `flutter.mumbleway.locale` under a live app changes nothing — SharedPreferences
+  read it at startup. Set it before the first launch, or just tap the flag
+  button, which is a one-tap toggle because there are only two languages.
 - **`xcrun simctl openurl booted "mumble://user@host:64738/"`** fills in the
   add-server form without any tapping at all, which is often enough on its own.
+- **`idb ui swipe` takes four coordinates, and three is not an error.** `swipe
+  380 700 600` is accepted and does nothing. A scroll loop built on it makes no
+  progress while every call reports success, which reads as a list that will not
+  scroll rather than as a malformed command.
+
+**Tap by label, not by measuring a screenshot.** `idb ui describe-all` returns
+every element with its frame already in device points — the same unit `idb ui
+tap` wants — so there is no pixel-to-point arithmetic to get wrong:
+
+```bash
+idb ui describe-all --udid <udid>   # JSON array; frame is {x,y,width,height}
+```
+
+Two things that pass while being wrong:
+
+- **Rank the matches before tapping one.** "Add server" is both the screen's
+  heading and its button. Tapping the heading does nothing and looks exactly
+  like a tap that worked. Prefer an element that is operable, then an exact
+  label match.
+- **An absent label does not mean what you think.** The listen sheet's toggles
+  advertise what tapping them will *do*, so "Play only what was transmitted"
+  disappearing means the toggle went on — or means the sheet closed. Deriving
+  state from absence alone reported four captures of the same screen as four
+  different states, and reported success. Check the sheet is open first.
+
+### Photograph a Mac window with `screencapture -l`, and drive it with CGEvent
+
+```bash
+swift tool/winlist.swift                    # windowid, owner, bounds, title
+screencapture -x -o -l <windowid> out.png    # exactly one window, no desktop
+```
+
+`-x` drops the shutter sound, `-o` the window shadow. The result is the window
+at native 2x — a 1000x720-point window comes out 2000x1440 — and the desktop
+behind it is never in the file, which is the thing that must not happen: an
+earlier session took a full-screen grab and caught another project's work in it.
+
+The window id comes from `CGWindowListCopyWindowInfo`, which reads geometry
+rather than pixels and so needs no permission. `screencapture` itself needs
+Screen Recording, granted to the terminal.
+
+**This replaces the route recorded in 63db3ee**, which drove the same Mac
+*remotely* over Screen Sharing with `vncdotool` and cropped the window out of a
+whole-framebuffer grab. All three of the difficulties that commit describes —
+ARD security type 30, no per-window capture in the VNC protocol, doubling every
+crop because the framebuffer is Retina and bounds are in points — were artifacts
+of being remote. Run locally they disappear. That procedure was never written
+into the tree; grep for "vncdotool" and there is nothing.
+
+**`System Events -> click at {x, y}` does not work on this app, and says it
+did.** It resolves the element under the point and sends it an AXPress. Flutter
+draws the whole interface into one NSView, so the only thing there is a generic
+group: the call succeeds, returns `group 1 of window mumbleway`, and nothing
+happens. Post a real event instead — a `CGEvent` mouse down/up lands wherever
+the pointer is put, whatever the accessibility tree exposes. Move the pointer
+first, and park it off the window before capturing or a tooltip ends up in the
+shot. Resizing and positioning *do* work through System Events, so accessibility
+permission is still needed for both.
+
+**Every local rebuild re-asks for the microphone.** The app signs ad-hoc, so a
+rebuild changes its signature and macOS treats it as a new app. The prompt is
+easy to miss when driving headlessly, and while it sits unanswered the engine
+fails with `the audio device did not open in time` — which reads as a broken
+audio stack rather than an unanswered dialog. `swift tool/winlist.swift` shows
+it as a `UserNotificationCenter` window.
 
 ### Never scroll the settings screen down its middle
 

@@ -5,6 +5,9 @@ and **the first build turned out to export nothing at all**. See "The DLL that
 exported nothing" — it is the trap most likely to be walked into again, because
 every part of it looks like success.
 
+With that fixed, **the classifier is confirmed running on Windows**. What
+follows is kept as the procedure for checking it again, not as an open question.
+
 **Not a site page.** No front matter, so Jekyll leaves it alone.
 
 ## What is done
@@ -49,9 +52,18 @@ That is the stronger of the two, because the module list can only contain what
 call when all four conditions below hold. It needs no clicking, and it is the
 check to reach for when somebody else is using the window.
 
-What is **still** unwitnessed is the three scored rows in the panel — the model
-running on live microphone audio rather than on a probe's silence. That is a
-screenshot, and it is what remains of this task.
+**And in the panel**, which is the one that needed no interpreting: connected to
+a server with `Automatic` chosen, the diagnostics panel shows *Auto is using
+Standard* over three scored rows — Silence 0.59, Speech 0.03, Inside small room
+0.02 — with the `Background` dot green and the accelerator note reading **10 ms
+per check, once every two seconds**. That is YAMNet running on live microphone
+audio in a quiet room, and the scores say so: a room with nobody talking in it
+is exactly what a 0.59 on Silence and a 0.03 on Speech describe. The 10 ms also
+agrees with the probe's 9.0 ms, which is worth noticing — two independent paths
+to the same model arriving at the same cost.
+
+So the feature is confirmed working on Windows, end to end. Nothing about it is
+now taken on trust.
 
 ## The four conditions
 
@@ -193,7 +205,13 @@ smoke test, and neither the compiler nor the linker will say a word.
 
 ## Building it again
 
-Three things, all learned the hard way and all recorded in `9051ee3`:
+Four things, all learned the hard way. The first is the patch above and is not
+optional; the other three are recorded in `9051ee3`:
+
+- **Apply the `INTERFACE_COMPILE_OPTIONS` patch** to
+  `tensorflow/lite/c/CMakeLists.txt` before configuring, or the DLL comes out
+  exporting nothing. The build tree at `C:\src\tensorflow` is a plain checkout
+  and carries the patch as a local edit, so a fresh clone will not have it.
 
 - **Ninja, not the Visual Studio generator.** Eigen includes
   `CMakeDetermineFortranCompiler` unconditionally, and under the VS generator
@@ -213,8 +231,9 @@ cmake -S C:\src\tensorflow\tensorflow\lite\c -B C:\src\tflite-win-build ^
 cmake --build C:\src\tflite-win-build --target tensorflowlite_c
 ```
 
-666 targets, about eight minutes, one 1.28 MB DLL. `vcvars64.bat` first, and
-Ninja is in `C:\Android\sdk\cmake\3.22.1\bin`.
+666 targets, about eight minutes, one **3.69 MB** DLL with a
+`tensorflowlite_c.lib` beside it. `vcvars64.bat` first, and Ninja is in
+`C:\Android\sdk\cmake\3.22.1\bin`.
 
 ## The classifier diagnostics, and what they are for
 
@@ -263,8 +282,8 @@ alarming of the two claims and the wrong one.
   its own mel spectrogram and no GPU delegate implements `RFFT2D` or
   `COMPLEX_ABS` — and the attempt SIGSEGV'd inside
   `TfLiteInterpreterAllocateTensors` on an Adreno 506, natively, where a Dart
-  `catch` never runs. Against ~2.4 ms once every two seconds there is nothing
-  to win.
+  `catch` never runs. Against the **10 ms** the panel now measures on this
+  machine, once every two seconds, there is nothing to win.
 - **The screenshots still want retaking**, and the Windows diagnostics panel
   should be shot *after* this is confirmed working, so the three classifier rows
   are in the picture. `docs/assets/img/shots/diagnostics-desktop.webp` is

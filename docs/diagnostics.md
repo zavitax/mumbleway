@@ -234,10 +234,11 @@ it.
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/diag-graphs-phone.webp' | relative_url }}"
-         alt="Two small history graphs, CPU and memory, each with its current
-              value, a thirty-second trace and a peak."
-         width="560" height="253" loading="lazy" decoding="async">
+    <img src="{{ '/assets/img/shots/diag-graphs-ios.webp' | relative_url }}"
+         alt="Four history graphs — network, voice packets, CPU and memory —
+              each with its current value, a thirty-second trace and a peak
+              beneath it."
+         width="560" height="546" loading="lazy" decoding="async">
     <figcaption>Half a minute of history, with the peak, under each
     figure.</figcaption>
   </figure>

@@ -237,10 +237,11 @@ description: Панель, которая отвечает на вопрос «�
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/diag-graphs-phone.webp' | relative_url }}"
-         alt="Два маленьких графика истории, процессор и память: текущее
-              значение, тридцать секунд хода и пик."
-         width="560" height="253" loading="lazy" decoding="async">
+    <img src="{{ '/assets/img/shots/diag-graphs-ios.webp' | relative_url }}"
+         alt="Четыре графика истории — сеть, голосовые пакеты, процессор и
+              память: у каждого текущее значение, тридцать секунд хода и пик
+              под ним."
+         width="560" height="546" loading="lazy" decoding="async">
     <figcaption>Полминуты истории и пик под каждой величиной.</figcaption>
   </figure>
 </div>

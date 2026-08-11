@@ -52,7 +52,18 @@ class _RefusalListenerState extends State<RefusalListener> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(l.serverRefused(refusal.describe(l))),
+          // **Say what colour the text is.** The background was set and the
+          // foreground was not, so the label kept whatever the surrounding
+          // theme gave it -- which on this dark theme is the amber accent, and
+          // amber on the error red is close to unreadable. It is also the one
+          // message here that has to survive being read at a glance, through a
+          // visor, by somebody who has just been refused and does not know why.
+          content: Text(
+            l.serverRefused(refusal.describe(l)),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
+          ),
           backgroundColor: Theme.of(context).colorScheme.errorContainer,
           // Longer than the default. This is the only account of why an action
           // did nothing, and it is being read by somebody who may be wearing

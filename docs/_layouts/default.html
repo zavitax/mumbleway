@@ -97,6 +97,37 @@
     <div class="cta">
       <a class="btn primary" href="{{ s.hero.cta_primary_url | relative_url }}">{{ s.hero.cta_primary }}</a>
       <a class="btn" href="{{ site.repo }}">{{ s.hero.cta_secondary }}</a>
+
+      <!-- The stores, after a rule, because they answer a different question:
+           the two buttons above are "how does this work", these are "give it
+           to me". Placeholder hrefs where the listing has no public URL yet;
+           `store_url` being empty is what greys the button out, so a link
+           arrives by filling in one line of _data/strings.yml. -->
+      <span class="cta-sep" role="separator" aria-orientation="vertical"></span>
+      {% for st in s.hero.stores %}
+        {% comment %}
+          The vendors' own artwork, not a redrawing of it. Each of the three
+          publishes rules about the badge's proportions and clear space, so
+          these are used as supplied and only scaled by height; `.badge img`
+          sets the height and lets width follow, which keeps all three
+          correct at once despite their differing aspect ratios.
+        {% endcomment %}
+        {%- comment -%} `badge` already carries its extension: Apple and
+          Microsoft publish SVG, Google only ever publishes PNG. {%- endcomment -%}
+        {% assign badge = st.badge %}
+        {% if st.url and st.url != '' %}
+      <a class="badge" href="{{ st.url }}">
+        <img src="{{ '/assets/img/badges/' | append: badge | relative_url }}"
+             alt="{{ st.alt }}" loading="lazy" decoding="async">
+      </a>
+        {% else %}
+      <span class="badge soon" aria-label="{{ st.alt }} — {{ s.hero.store_soon }}"
+            title="{{ s.hero.store_soon }}">
+        <img src="{{ '/assets/img/badges/' | append: badge | relative_url }}"
+             alt="{{ st.alt }}" loading="lazy" decoding="async">
+      </span>
+        {% endif %}
+      {% endfor %}
     </div>
     <p class="hero-note">{{ s.hero.note | strip_newlines }}</p>
   </div>

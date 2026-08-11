@@ -47,6 +47,20 @@ en:
     cta_primary: Set up a server
     cta_primary_url: /server.html
     cta_secondary: Source on GitHub
+    store_soon: Coming to this store
+    stores:
+      - id: apple
+        badge: app-store.svg
+        alt: Download on the App Store
+        url: ''
+      - id: google
+        badge: google-play.png
+        alt: Get it on Google Play
+        url: ''
+      - id: microsoft
+        badge: microsoft.svg
+        alt: Get it from Microsoft
+        url: https://apps.microsoft.com/detail/9PNZ7PWDVLTB
     note: >-
       The bars above are the app's own analyser: microphone, after suppression,
       and what actually leaves for the server.
@@ -245,6 +259,20 @@ ru:
     cta_primary: Поднять сервер
     cta_primary_url: /ru/server.html
     cta_secondary: Исходный код на GitHub
+    store_soon: Скоро в этом магазине
+    stores:
+      - id: apple
+        badge: app-store-ru.svg
+        alt: Загрузите в App Store
+        url: ''
+      - id: google
+        badge: google-play-ru.png
+        alt: Доступно в Google Play
+        url: ''
+      - id: microsoft
+        badge: microsoft.svg
+        alt: Загрузите из Microsoft
+        url: https://apps.microsoft.com/detail/9PNZ7PWDVLTB
     note: >-
       Эти полосы — анализатор из самого приложения: микрофон, сигнал после
       шумоподавления и то, что в итоге уходит на сервер.

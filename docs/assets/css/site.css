@@ -739,3 +739,27 @@ tbody tr:last-child td { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* The store buttons in the hero, after a rule.
+   Separated because they answer a different question from the two beside them:
+   those are "how does this work", these are "give it to me". */
+.cta-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 0.35rem;
+}
+/* The vendors' badges are used as supplied and scaled by height only, which is
+   what all three sets of brand rules ask for. Their aspect ratios differ, so
+   fixing the height and letting width follow keeps every one of them correct
+   without a per-store size. */
+.badge { display: inline-flex; align-items: center; }
+.badge img { height: 44px; width: auto; display: block; }
+/* Not a link yet. Kept in place rather than hidden so the three read as a set,
+   and dimmed so nobody clicks twice wondering why nothing happened. */
+.badge.soon { opacity: 0.4; cursor: default; filter: grayscale(1); }
+@media (max-width: 560px) {
+  /* A vertical rule between wrapped rows is a stray tick; the wrap is the
+     separation at this width. */
+  .cta-sep { display: none; }
+}

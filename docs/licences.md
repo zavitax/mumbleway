@@ -43,7 +43,7 @@ The parts that do the actual work.
 | [`cpal`](https://crates.io/crates/cpal) | Cross-platform audio device access | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Sample format conversion | MIT / Apache-2.0 |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | The sound classifier that lets *Automatic* hear an engine and choose the helmet profile. Shipped as `assets/models/yamnet.tflite` | Apache-2.0 |
-| [LiteRT / TensorFlow Lite](https://ai.google.dev/edge/litert) | Runs that model. From Google's own Maven and CocoaPods on Android and iOS; the universal `libtensorflowlite_c` inside `tflite_flutter` on macOS | Apache-2.0 |
+| [LiteRT / TensorFlow Lite](https://ai.google.dev/edge/litert) | Runs that model. From Google's own Maven and CocoaPods on Android and iOS; the universal `libtensorflowlite_c` inside `tflite_flutter` on macOS; on Windows built from the TensorFlow r2.17 source and vendored at `app/blobs/`, because upstream publishes no binary for it | Apache-2.0 |
 | [`tflite_flutter`](https://github.com/tensorflow/flutter-tflite) | The Dart binding, vendored under `app/third_party` and patched in one line so its macOS library loads from `Contents/Frameworks`, where Apple requires it | Apache-2.0 |
 
 </div>

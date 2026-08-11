@@ -110,7 +110,14 @@ class BackgroundClassifier {
   /// Core ML or GPU delegate symbols in it. Measured at 2.4 ms an inference on
   /// Apple Silicon, which at one every two seconds is nothing worth avoiding.
   static bool get supportedHere =>
-      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+      Platform.isAndroid ||
+      Platform.isIOS ||
+      Platform.isMacOS ||
+      // Windows, since `blobs/libtensorflowlite_c-win.dll` is now built and
+      // installed beside the executable. Upstream ships no prebuilt for this
+      // platform, which is the only reason it was absent -- see
+      // `windows/CMakeLists.txt`.
+      Platform.isWindows;
 
   Interpreter? _model;
   IsolateInterpreter? _isolate;

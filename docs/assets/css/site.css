@@ -760,7 +760,20 @@ tbody tr:last-child td { border-bottom: 0; }
    than the row does its own `flex-wrap` break it up badge by badge. Three
    stores going down one at a time while the row still has space for two of
    them reads as three unrelated things rather than one set. */
-.stores { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.stores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  /* Space before the first badge, and the one declaration does both jobs: on a
+     single line it is a gap wide enough to read as a break between "how does
+     this work" and "give it to me", and once the group has gone to its own line
+     it indents that line instead, which says the same thing without a rule to
+     say it with. The row's own 0.75rem is not enough for either on its own —
+     it is the same gap that sits between two badges, so it grouped all five
+     controls into one undifferentiated run. */
+  margin-left: 1.75rem;
+}
 /* The vendors' badges are used as supplied and scaled by height only, which is
    what all three sets of brand rules ask for. Their aspect ratios differ, so
    fixing the height and letting width follow keeps every one of them correct
@@ -796,19 +809,19 @@ tbody tr:last-child td { border-bottom: 0; }
    more, which is how much wider its button pair is.
 
    **As it stands neither threshold is reached**, so the rule is not currently
-   drawn in either language. The row needs 938px in English and 1013px in
+   drawn in either language. The row needs 966px in English and 1041px in
    Russian against the 912px `.hero-inner` leaves after its padding, which is
-   why the badges sit on their own line at every width. Three changes together
+   why the badges sit on their own line at every width. Four changes together
    did that, all of them deliberate: badges raised from 44px to the buttons'
    52.44px, the Google badge's transparent margin cropped away so its art fills
-   that height (it grew 41px wider), and the rule's own 0.35rem margins dropped.
-   Left in place rather than deleted because it is a threshold, not a decision —
-   shorten a label, drop a store, or widen the hero, and it comes back on its
-   own. */
+   that height (it grew 41px wider), the 1.75rem before the store group, and the
+   rule's own 0.35rem margins dropped. Left in place rather than deleted because
+   it is a threshold, not a decision — shorten a label, drop a store, or widen
+   the hero, and it comes back on its own. */
 .cta-sep { display: none; }
-@container (min-width: 938px) {
+@container (min-width: 966px) {
   html[lang="en"] .cta-sep { display: block; }
 }
-@container (min-width: 1013px) {
+@container (min-width: 1041px) {
   html[lang="ru"] .cta-sep { display: block; }
 }

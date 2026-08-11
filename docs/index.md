@@ -189,11 +189,12 @@ the channel and who is in it down the other.
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/diagnostics-desktop.webp' | relative_url }}"
-         alt="The diagnostics panel on Windows: the analyser, the profile in
-         force, the stage lights and the enhancer's rung, above four columns of
-         counters for incoming audio, this device, where a block's ten
-         milliseconds go, and the server."
-         width="1000" height="661" loading="lazy" decoding="async">
+         alt="The diagnostics panel on Windows: the analyser with the gate's
+         opening level and noise floor marked across it, what the background
+         sounds like and the profile that answer chose, the stage lights and the
+         enhancer's rung, above four columns of counters for incoming audio,
+         this device, where a block's ten milliseconds go, and the server."
+         width="1000" height="496" loading="lazy" decoding="async">
     <figcaption>The diagnostics panel, where a wide window shows every counter
   at once instead of stacking them.</figcaption>
   </figure>

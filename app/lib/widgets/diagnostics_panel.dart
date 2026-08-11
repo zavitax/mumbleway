@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -68,11 +69,60 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   /// indistinguishable from a graph that is broken — so the panel says which.
   bool? _perCoreAvailable;
 
+  /// How far the plots are through the current sample interval, 0 to 1.
+  ///
+  /// **One clock for all six graphs, and it is not the display's.** Each graph
+  /// used to own an `AnimationController`, which is driven by a `Ticker` and so
+  /// repaints once per vsync — six painters at the refresh rate, 360 paints a
+  /// second on a 60 Hz screen and 720 on a 120 Hz one, for a plot that gains a
+  /// new sample once a second and moves one pixel-ish between frames. Opening
+  /// the panel put a visible step in GPU load.
+  ///
+  /// A timer at [_scrollFps] instead. The value means exactly what the
+  /// controller's did, so the painter is unchanged, and the graphs all advance
+  /// together because they are all fed by the same one-second [_refresh] — a
+  /// per-graph clock was never buying independence, only frames.
+  final _scroll = ValueNotifier<double>(1);
+
+  /// Fast enough that a scroll of one step per second reads as motion rather
+  /// than as ticking, which is all this has to be. The eye cannot follow a
+  /// 46-pixel-high plot moving a fifth of a pixel per frame at 120 Hz.
+  static const _scrollFps = 20;
+  static const _scrollPeriod = Duration(milliseconds: 1000 ~/ _scrollFps);
+
+  Timer? _scrollTick;
+
+  /// Time since the sample the plots are currently walking away from.
+  ///
+  /// Read rather than counted: a timer that fires late — and on a phone under
+  /// the load this panel exists to explain, it will — would otherwise leave the
+  /// plot short of where the data says it should be, and the error would
+  /// accumulate for as long as the panel stayed open.
+  final _sinceSample = Stopwatch();
+
   @override
   void initState() {
     super.initState();
     _refresh();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+  }
+
+  void _startScrolling() {
+    _sinceSample
+      ..reset()
+      ..start();
+    _scrollTick ??= Timer.periodic(_scrollPeriod, (_) {
+      final t = _sinceSample.elapsedMilliseconds / 1000;
+      // A `ValueNotifier` is silent when the value is unchanged, so a stalled
+      // sample stops repainting instead of redrawing the same frame for ever.
+      _scroll.value = t >= 1 ? 1 : t;
+    });
+  }
+
+  void _stopScrolling() {
+    _scrollTick?.cancel();
+    _scrollTick = null;
+    _sinceSample.stop();
   }
 
   /// Where the chain stands, for the one counter measured before it runs.
@@ -143,7 +193,13 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
               ?.notifier
               ?.diagnosticsOpen ??
           false;
-      if (!open) return;
+      if (!open) {
+        // Nothing is on screen to scroll. The sampling above continues, because
+        // the history is the point of it; the painting does not.
+        _stopScrolling();
+        return;
+      }
+      _startScrolling();
 
       setState(() {
         _audio = now;
@@ -158,6 +214,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   @override
   void dispose() {
     _tick?.cancel();
+    _stopScrolling();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -429,6 +487,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                       minWidth: 250,
                       children: [
                         _Graph(
+                          phase: _scroll,
                           title: l.diagNetwork,
                           series: [
                             _Series('in', _bytesIn, StatusColors.connected),
@@ -436,6 +495,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                           ],
                         ),
                         _Graph(
+                          phase: _scroll,
                           title: l.diagVoicePackets,
                           series: [
                             _Series('in', _packetsIn, StatusColors.connected),
@@ -447,6 +507,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                           ],
                         ),
                         _Graph(
+                          phase: _scroll,
                           title: 'CPU',
                           series: [
                             _Series('app', _cpu, scheme.primary),
@@ -496,6 +557,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                             ),
                           ),
                         _Graph(
+                          phase: _scroll,
                           title: l.diagMemory,
                           series: [_Series('rss', _memory, scheme.primary)],
                         ),
@@ -863,64 +925,38 @@ class _Series {
 ///
 /// Related quantities share axes. In against out is the comparison worth
 /// making, and on two separate graphs the reader has to make it themselves.
-class _Graph extends StatefulWidget {
-  const _Graph({required this.title, required this.series});
+/// One time series plot, scrolled by the panel's clock rather than its own.
+///
+/// **Stateless on purpose.** It used to own an `AnimationController` and
+/// restart it whenever a sample arrived, which is where a fixed-capacity ring
+/// and a change signal met and got it wrong: the restart compared
+/// `samples.length`, which stops changing the moment the window fills, so the
+/// graphs froze a second after anybody opened the panel while the numbers above
+/// them carried on. There is nothing here now for that bug to live in — the
+/// clock is the panel's, and it is reset by the same code that adds the sample.
+class _Graph extends StatelessWidget {
+  const _Graph({
+    required this.title,
+    required this.series,
+    required this.phase,
+  });
 
   final String title;
   final List<_Series> series;
 
-  @override
-  State<_Graph> createState() => _GraphState();
-}
-
-class _GraphState extends State<_Graph> with SingleTickerProviderStateMixin {
-  late final AnimationController _phase = AnimationController(
-    vsync: this,
-    // One sample interval: the plot travels exactly one step in the time the
-    // next sample takes to arrive, so it scrolls continuously instead of
-    // jumping once a second.
-    duration: const Duration(seconds: 1),
-  )..forward();
-
-  int _seen = 0;
-
-  @override
-  void didUpdateWidget(_Graph old) {
-    super.didUpdateWidget(old);
-    // `added`, not `samples.length`. The two agree for the first 31 seconds of
-    // a history and then part company for ever, because a full window drops a
-    // sample for every one it takes -- so this read the length, saw it never
-    // change again, and stopped restarting the scroll. The graphs froze one
-    // second after being looked at, that second being this controller's one
-    // and only run, while the numbers above them carried on updating from the
-    // same data. The panel is built at startup and its timer has been filling
-    // these histories ever since, so by the time anybody opens it the window is
-    // long since full and the frozen case is the only case.
-    final now = widget.series.first.history.added;
-    // Restarting on a new sample rather than looping freely keeps the motion
-    // married to the data: a late sample stalls the scroll instead of letting
-    // it run ahead and then snap back.
-    if (now != _seen) {
-      _seen = now;
-      _phase.forward(from: 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _phase.dispose();
-    super.dispose();
-  }
+  /// How far through the current sample interval, 0 to 1. See
+  /// `_DiagnosticsPanelState._scroll`.
+  final ValueListenable<double> phase;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final quiet = scheme.onSurfaceVariant;
-    final peak = widget.series
+    final peak = series
         .map((s) => s.history.peak)
         .fold(0.0, (a, b) => a > b ? a : b);
-    final unit = widget.series.first.history.unit;
-    final decimals = widget.series.first.history.decimals;
+    final unit = series.first.history.unit;
+    final decimals = series.first.history.decimals;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -929,12 +965,12 @@ class _GraphState extends State<_Graph> with SingleTickerProviderStateMixin {
           children: [
             Expanded(
               child: Text(
-                widget.title,
+                title,
                 style: TextStyle(fontSize: 11, color: quiet),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            for (final s in widget.series.where((s) => s.inLegend)) ...[
+            for (final s in series.where((s) => s.inLegend)) ...[
               const SizedBox(width: 6),
               Container(
                 width: 7,
@@ -962,20 +998,23 @@ class _GraphState extends State<_Graph> with SingleTickerProviderStateMixin {
         SizedBox(
           height: 46,
           child: ClipRect(
-            // Its own layer. Six of these scroll continuously at sixty frames
-            // a second, and without a boundary each one's repaint dirties the
-            // layer they share — so every graph, every counter row and every
-            // dot beside them is redrawn six times over for one graph's worth
-            // of movement.
+            // Its own layer. Six of these scroll together, and without a
+            // boundary each one's repaint dirties the layer they share — so
+            // every graph, every counter row and every dot beside them is
+            // redrawn six times over for one graph's worth of movement.
             child: RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _phase,
-                builder: (context, _) => CustomPaint(
+              child: ValueListenableBuilder<double>(
+                valueListenable: phase,
+                // Only this builder runs on a tick. The title, the legend and
+                // the peak below are outside it, so twenty times a second the
+                // work is six painters and nothing else — no layout, no text
+                // shaping, no rebuild of the rows around them.
+                builder: (context, value, _) => CustomPaint(
                   size: Size.infinite,
                   painter: _GraphPainter(
-                    series: widget.series,
+                    series: series,
                     peak: peak,
-                    phase: _phase.value,
+                    phase: value,
                     grid: quiet.withValues(alpha: 0.16),
                   ),
                 ),

@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/background_classifier.dart';
@@ -21,10 +22,21 @@ import '../theme.dart';
 /// diagnostics panel is never disposed — it is only slid off screen — so this
 /// has to be created and destroyed by an `if`, not merely hidden.
 ///
-/// Driven by a [Ticker] rather than a [Timer] on purpose: Flutter mutes tickers
-/// when the app goes to the background, so backgrounding stops the polling, the
-/// engine's arming lapses, and the transforms stop — with no code of its own to
-/// get that wrong.
+/// **Driven by a [Timer], and it used to be a [Ticker].** The ticker was chosen
+/// for a real property — Flutter mutes tickers in the background, so
+/// backgrounding stopped the polling and let the engine's arming lapse with no
+/// code of its own to get wrong — and it cost more than it was worth.
+///
+/// A ticker asks for a frame *every vsync*, which is what it is for. This one
+/// wanted 20 Hz and got 60 or 120, discarding two frames in three; but the ask
+/// is not free, because a running ticker keeps the whole frame pipeline turning
+/// over for as long as the panel is open. Opening diagnostics on an idle,
+/// disconnected app took this machine's GPU from ~0% to ~29%, and the analyser
+/// is the largest continuously-repainted thing on that panel.
+///
+/// The background behaviour is now explicit instead of inherited, via
+/// [AppLifecycleListener] — which says what it means, and does not depend on
+/// noticing that a ticker was load-bearing for something other than animation.
 class SpectrumView extends StatefulWidget {
   const SpectrumView({super.key});
 
@@ -32,9 +44,9 @@ class SpectrumView extends StatefulWidget {
   State<SpectrumView> createState() => _SpectrumViewState();
 }
 
-class _SpectrumViewState extends State<SpectrumView>
-    with SingleTickerProviderStateMixin {
-  Ticker? _ticker;
+class _SpectrumViewState extends State<SpectrumView> {
+  Timer? _poll;
+  AppLifecycleListener? _lifecycle;
 
   /// One notifier per thing that changes at its own rate, rather than one
   /// `setState` for all of them.
@@ -70,20 +82,42 @@ class _SpectrumViewState extends State<SpectrumView>
   BigInt? _lastSeq;
   int _sinceNewFrame = 0;
 
-  /// Roughly 20 Hz. Faster buys nothing: the core smooths the bands at 33 Hz
-  /// and an eye cannot follow either.
-  static const _pollEvery = 3;
-  int _tick = 0;
+  /// 20 Hz. Faster buys nothing: the core smooths the bands at 33 Hz and an eye
+  /// cannot follow either.
+  ///
+  /// A period rather than a count of frames. It was `if (++_tick % 3 != 0)
+  /// return`, which is 20 Hz only on a 60 Hz screen — on a 120 Hz one it was
+  /// 40, so the devices with the most headroom were asked to do twice the work
+  /// to draw the same picture, and the bridge was crossed twice as often for a
+  /// spectrum the core had not recomputed.
+  static const _pollEvery = Duration(milliseconds: 50);
 
   @override
   void initState() {
     super.initState();
-    _ticker = createTicker(_onTick)..start();
+    _start();
+    // What the ticker gave for free, said out loud. A backgrounded app must
+    // stop asking for spectra: the ask is what makes the core compute them,
+    // and it expires half a second after the last one.
+    _lifecycle = AppLifecycleListener(
+      onStateChange: (s) =>
+          s == AppLifecycleState.resumed ? _start() : _stop(),
+    );
+  }
+
+  void _start() {
+    _poll ??= Timer.periodic(_pollEvery, (_) => _onTick());
+  }
+
+  void _stop() {
+    _poll?.cancel();
+    _poll = null;
   }
 
   @override
   void dispose() {
-    _ticker?.dispose();
+    _stop();
+    _lifecycle?.dispose();
     _spectrum.dispose();
     _chain.dispose();
     _transmitting.dispose();
@@ -127,8 +161,7 @@ class _SpectrumViewState extends State<SpectrumView>
     return b.toString();
   }
 
-  void _onTick(Duration _) {
-    if (++_tick % _pollEvery != 0) return;
+  void _onTick() {
     UiSpectrum? spectrum;
     UiChainStatus? chain;
     try {

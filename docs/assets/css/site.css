@@ -329,7 +329,18 @@ a:hover { color: #FFC276; }
   margin: 0 0 2rem;
 }
 
-.cta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 2.5rem; }
+/* Two gaps, not one. Along the row 0.75rem is right — it is the spacing between
+   controls that belong together. Between rows it is not: the row below is the
+   store badges, a different kind of thing from the two buttons above, and at
+   0.75rem they read as one block of five controls that happened to wrap. The
+   larger row gap is what makes them two groups. */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.75rem;
+  row-gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
 .btn {
   display: inline-block;
   padding: 0.7rem 1.4rem;
@@ -746,14 +757,20 @@ tbody tr:last-child td { border-bottom: 0; }
 /* The store buttons in the hero, after a rule.
    Separated because they answer a different question from the two beside them:
    those are "how does this work", these are "give it to me". */
-/* No margin of its own: the row's 0.75rem gap already stands on both sides of
-   it. The extra 0.35rem each side that used to be here cost 11px on a line
-   that turns out to have about 15px to spare in English, which is too fine a
-   margin to spend on air. */
+/* The horizontal half of the separation, and the only half that can be a
+   margin: 0.875rem each side of the rule, so the two groups stand about 3.5rem
+   apart on a shared line rather than the 0.75rem that sits between two badges.
+
+   It has to live here and not as a `margin-left` on `.stores`, which is the
+   obvious place and is wrong — a margin on the group indents it when it wraps
+   too, and the badges are meant to line up with the buttons above them. This
+   spacing belongs to the state where the two groups share a line, and so does
+   the element that carries it. */
 .cta-sep {
   width: 1px;
   align-self: stretch;
   background: var(--line);
+  margin: 0 0.875rem;
 }
 /* One flex item, so the three badges leave the buttons' line together.
    `.cta` wraps this whole group first, and only when the group alone is wider
@@ -765,14 +782,6 @@ tbody tr:last-child td { border-bottom: 0; }
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
-  /* Space before the first badge, and the one declaration does both jobs: on a
-     single line it is a gap wide enough to read as a break between "how does
-     this work" and "give it to me", and once the group has gone to its own line
-     it indents that line instead, which says the same thing without a rule to
-     say it with. The row's own 0.75rem is not enough for either on its own —
-     it is the same gap that sits between two badges, so it grouped all five
-     controls into one undifferentiated run. */
-  margin-left: 1.75rem;
 }
 /* The vendors' badges are used as supplied and scaled by height only, which is
    what all three sets of brand rules ask for. Their aspect ratios differ, so
@@ -809,19 +818,19 @@ tbody tr:last-child td { border-bottom: 0; }
    more, which is how much wider its button pair is.
 
    **As it stands neither threshold is reached**, so the rule is not currently
-   drawn in either language. The row needs 966px in English and 1041px in
-   Russian against the 912px `.hero-inner` leaves after its padding, which is
-   why the badges sit on their own line at every width. Four changes together
-   did that, all of them deliberate: badges raised from 44px to the buttons'
-   52.44px, the Google badge's transparent margin cropped away so its art fills
-   that height (it grew 41px wider), the 1.75rem before the store group, and the
-   rule's own 0.35rem margins dropped. Left in place rather than deleted because
-   it is a threshold, not a decision — shorten a label, drop a store, or widen
-   the hero, and it comes back on its own. */
+   drawn in either language, and the two groups are separated by the row gap
+   instead. The row needs 925px in English and 1000px in Russian against the
+   912px `.hero-inner` leaves after its padding. English misses it by 13px,
+   which is worth knowing before touching any of the widths involved: shorten a
+   label or trim a gap and this comes back on its own, which is why it is a
+   threshold here rather than a deletion. Three changes put it over — badges
+   raised from 44px to the buttons' 52.44px, the Google badge's transparent
+   margin cropped away so its art fills that height (it grew 41px wider), and
+   the rule's margins widened from 0.35rem to 0.875rem. */
 .cta-sep { display: none; }
-@container (min-width: 966px) {
+@container (min-width: 925px) {
   html[lang="en"] .cta-sep { display: block; }
 }
-@container (min-width: 1041px) {
+@container (min-width: 1000px) {
   html[lang="ru"] .cta-sep { display: block; }
 }

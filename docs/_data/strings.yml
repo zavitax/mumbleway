@@ -62,7 +62,7 @@ en:
         alt: Get it from Microsoft
         url: https://apps.microsoft.com/detail/9PNZ7PWDVLTB
     note: >-
-      The bars above are the app's own analyser: microphone, after suppression,
+      Those bars are the app's own analyser: microphone, after suppression,
       and what actually leaves for the server.
 
   footer:

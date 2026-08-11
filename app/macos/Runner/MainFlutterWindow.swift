@@ -30,6 +30,14 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
+    // Set here rather than by renaming the product. macOS takes the window's
+    // default title from `PRODUCT_NAME`, which is also the bundle's name, what
+    // it is signed as and what every path in the build refers to — so changing
+    // it there to change a title bar would rename the application to rename a
+    // string. This changes only the string. The menu bar keeps the short name,
+    // which is what a menu bar is for.
+    self.title = "MumbleWay - Voice for bikers"
+
     RegisterGeneratedPlugins(registry: flutterViewController)
     registerOverlayChannel(with: flutterViewController.engine.binaryMessenger)
     registerPowerChannel(with: flutterViewController.engine.binaryMessenger)

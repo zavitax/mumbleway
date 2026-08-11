@@ -27,7 +27,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"mumbleway", origin, size)) {
+  // The title bar and the taskbar both read this, and "mumbleway" alone said
+  // nothing to anyone who had not already installed it. The tagline is the same
+  // one the site leads with, so a window found in a taskbar and a page found in
+  // a search agree about what this is.
+  if (!window.Create(L"MumbleWay - Voice for bikers", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

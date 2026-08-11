@@ -36,7 +36,12 @@ A new Flutter FFI plugin project.
   s.script_phase = {
     :name => 'Build Rust library',
     # First argument is relative path to the `rust` folder, second is name of rust library
-    :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_mumbleway',
+    # See the iOS podspec for why this cannot be left to /.cargo/config.toml:
+    # cargo reads config relative to the working directory, and Xcode's script
+    # phase does not run inside the repository. macOS happens to build without
+    # it today, which makes it the more dangerous of the two -- it would break
+    # on the first machine where pkg-config stops finding a system Opus.
+    :script => 'export CMAKE_POLICY_VERSION_MINIMUM=3.5; sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_mumbleway',
     :execution_position => :before_compile,
     :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
     # Let XCode know that the static library referenced in -force_load below is

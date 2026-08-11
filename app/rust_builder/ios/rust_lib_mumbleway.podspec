@@ -35,7 +35,20 @@ A new Flutter FFI plugin project.
   s.script_phase = {
     :name => 'Build Rust library',
     # First argument is relative path to the `rust` folder, second is name of rust library
-    :script => 'sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_mumbleway',
+    # CMAKE_POLICY_VERSION_MINIMUM is set in /.cargo/config.toml as well, and
+    # that is not enough. Cargo discovers config from the **working directory**
+    # and its parents -- not from `--manifest-path` -- and Xcode runs this
+    # script phase outside the repository, so the repo's config.toml is never
+    # read here. It works from a shell and fails under Xcode, which is exactly
+    # how it presented: `cargo build --target aarch64-apple-ios-sim` succeeds
+    # by hand while the same target fails in the build with
+    # `failed to run custom build command for audiopus_sys`.
+    #
+    # Underneath: audiopus_sys finds no Opus via pkg-config (Homebrew is not on
+    # Xcode's PATH either), falls back to building the vendored libopus, and
+    # libopus declares `cmake_minimum_required(VERSION 3.1)` which CMake 4
+    # refuses outright.
+    :script => 'export CMAKE_POLICY_VERSION_MINIMUM=3.5; sh "$PODS_TARGET_SRCROOT/../cargokit/build_pod.sh" ../../rust rust_lib_mumbleway',
     :execution_position => :before_compile,
     :input_files => ['${BUILT_PRODUCTS_DIR}/cargokit_phony'],
     # Let XCode know that the static library referenced in -force_load below is

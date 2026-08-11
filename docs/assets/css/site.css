@@ -332,13 +332,18 @@ a:hover { color: #FFC276; }
 /* Two gaps, not one. Along the row 0.75rem is right — it is the spacing between
    controls that belong together. Between rows it is not: the row below is the
    store badges, a different kind of thing from the two buttons above, and at
-   0.75rem they read as one block of five controls that happened to wrap. The
-   larger row gap is what makes them two groups. */
+   0.75rem they read as one block of five controls that happened to wrap.
+
+   The row gap is a whole control's height, which is why it is `--cta-h` and not
+   a number: it is the same measure the buttons and badges are built from, so
+   the empty row between the two groups is exactly as tall as the things either
+   side of it and stays that way as the type scales with the window. */
 .cta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   column-gap: 0.75rem;
-  row-gap: 1.5rem;
+  row-gap: var(--cta-h);
   margin-bottom: 2.5rem;
 }
 .btn {

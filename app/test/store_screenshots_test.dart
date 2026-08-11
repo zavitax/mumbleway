@@ -98,7 +98,12 @@ void main() {
     // that is Microsoft's own floor and Microsoft accepts it.
     _Shot('mac-app-store', 'mac-small', 1280, 800, 1, everyScene: true),
     // Play takes anything between 320 and 3840 on the short side, 16:9-ish.
-    _Shot('google-play', 'phone', 1080, 2400, 3),
+    //
+    // The phone gets every scene because **Play will not publish a listing with
+    // fewer than two phone screenshots**, and one home shot is what this
+    // produced. It also wants four of at least 1080px to be eligible for
+    // promotion, which four scenes at 1080x2400 satisfies exactly.
+    _Shot('google-play', 'phone', 1080, 2400, 3, everyScene: true),
     _Shot('google-play', 'tablet-10', 1600, 2560, 2),
     // The Microsoft Store's own floor, and the size asked for above it.
     _Shot('microsoft-store', 'desktop-small', 1366, 768, 1, everyScene: true),

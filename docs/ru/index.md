@@ -199,10 +199,11 @@ Bluetooth-интерком связывает мотоциклистов дру�
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/home-macos.webp' | relative_url }}"
-         alt="MumbleWay на macOS, подключено: слева три сохранённых сервера, у
-              подключённого путь голоса отмечен жёлтым как «TCP tunnelled»,
-              справа канал и приветствие, внизу живой индикатор микрофона."
-         width="1000" height="724" loading="lazy" decoding="async">
+         alt="MumbleWay на macOS, подключено к публичному серверу: слева
+              карточка сервера, у которой путь голоса отмечен жёлтым как
+              «TCP tunnelled», справа двое в канале и дерево каналов, внизу
+              живой индикатор микрофона."
+         width="1000" height="720" loading="lazy" decoding="async">
     <figcaption>macOS. Здесь написано <strong>TCP</strong>, а не UDP: сеть не
     пропускала голосовой порт — и приложение об этом говорит, а не начинает
     молча звучать хуже.</figcaption>

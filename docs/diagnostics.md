@@ -178,6 +178,20 @@ has settled on as this environment's quiet, and **opens at** is the level a
 block has to beat to be sent. On a bike at speed the floor climbs and the threshold climbs with it —
 which is what the noise profiles are for.
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/diagnostics-macos.webp' | relative_url }}"
+         alt="The diagnostics panel on macOS: the analyser drawing a live
+              spectrum with green bars for the blocks that went out, two dashed
+              lines across it labelled floor and opens at, the ten stage dots
+              all green, and the enhancer running at full."
+         width="1000" height="436" loading="lazy" decoding="async">
+    <figcaption>The same two levels, drawn. On a Mac there is headroom to run
+    the whole chain, so every dot is green and the enhancer says
+    <strong>Full</strong>.</figcaption>
+  </figure>
+</div>
+
 ### Where a block's 10 ms goes
 
 <div class="shots">
@@ -335,6 +349,19 @@ device.
 
 They combine: both on is the closest you can get, on your own, to sitting at
 the other end.
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/listen-ios.webp' | relative_url }}"
+         alt="The listen-back sheet on iPhone with both switches on: the voice
+              icon filled green and the chain icon filled amber, a waveform
+              whose green stretches are the parts that went to the server, the
+              playhead at the start, and the elapsed and total time."
+         width="560" height="460" loading="lazy" decoding="async">
+    <figcaption>Both on, on an iPhone — green for transmitted only, amber for
+    through the chain.</figcaption>
+  </figure>
+</div>
 
 **A recording with no green in it at all** has a note under the waveform saying
 why — muted, push-to-talk, or a gate that never opened. That distinction

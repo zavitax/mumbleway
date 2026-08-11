@@ -196,11 +196,11 @@ the channel and who is in it down the other.
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/home-macos.webp' | relative_url }}"
-         alt="MumbleWay on macOS, connected: three saved servers down the left,
-              the connected one showing its voice path as TCP tunnelled in
-              amber, the channel and welcome message on the right, and a live
-              microphone meter along the bottom."
-         width="1000" height="724" loading="lazy" decoding="async">
+         alt="MumbleWay on macOS, connected to a public server: the server card
+              down the left showing its voice path as TCP tunnelled in amber,
+              two people in the channel and the channel tree on the right, and a
+              live microphone meter along the bottom."
+         width="1000" height="720" loading="lazy" decoding="async">
     <figcaption>macOS. This one says <strong>TCP</strong> rather than UDP — the
     network was not passing the voice port, and the app says so instead of
     quietly sounding worse.</figcaption>

@@ -429,6 +429,18 @@ profile files. It does not tunnel voice.
 
 ## Sync
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-sync-ios.webp' | relative_url }}"
+         alt="The sync section: one switch, sync servers and settings across
+              devices, with a line underneath saying to sign in to iCloud on
+              this device to use it."
+         width="560" height="253" loading="lazy" decoding="async">
+    <figcaption>On iPhone, where iCloud can carry it. On Windows the section is
+    not there at all.</figcaption>
+  </figure>
+</div>
+
 Optionally copies your server list and settings between your own devices, via
 your own iCloud or Android Backup account. Passwords are held separately from
 the server list. Nothing passes through any server of ours, because there is

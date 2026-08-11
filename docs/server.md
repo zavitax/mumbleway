@@ -174,7 +174,7 @@ which is why the app's <em>Identity</em> setting is worth keeping.</p>
          alt="The same form on iPhone, already filled in from a mumble:// link:
               display name, address, port and username, with the add button
               below."
-         width="560" height="1217" loading="lazy" decoding="async">
+         width="560" height="1218" loading="lazy" decoding="async">
     <figcaption>Or follow a <code>mumble://</code> link, which fills the form
     in for you.</figcaption>
   </figure>

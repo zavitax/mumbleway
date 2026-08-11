@@ -1,9 +1,9 @@
 # Testing the Windows classifier — handover
 
-Written 2026-08-11. The TensorFlow Lite library for Windows is built, vendored
-and wired in, the app starts with it present, and **the one thing that matters
-has not been checked**: that the model actually loads and YAMNet actually runs.
-This says exactly how to check it, and what each way it can fail looks like.
+Written 2026-08-11, revised the same day when the check below was finally run
+and **the first build turned out to export nothing at all**. See "The DLL that
+exported nothing" — it is the trap most likely to be walked into again, because
+every part of it looks like success.
 
 **Not a site page.** No front matter, so Jekyll leaves it alone.
 
@@ -11,16 +11,49 @@ This says exactly how to check it, and what each way it can fail looks like.
 
 | | |
 |---|---|
-| `libtensorflowlite_c-win.dll` | built from TensorFlow **r2.17** at `C:\src\tensorflow`, output in `C:\src\tflite-win-build`, vendored at `app/blobs/` |
+| `libtensorflowlite_c-win.dll` | built from TensorFlow **r2.17** at `C:\src\tensorflow`, output in `C:\src\tflite-win-build`, vendored at `app/blobs/`. 3.69 MB |
 | Install into the bundle | upstream's own `install()` block in `app/windows/CMakeLists.txt`; confirmed landing in `build/windows/x64/runner/Release/blobs/` |
 | `BackgroundClassifier.supportedHere` | now includes `Platform.isWindows` |
 | Licences | `docs/licences.md` and `docs/ru/licences.md` both name the Windows build |
+| **The library loads and the model runs** | proved twice, see below |
 
 Rebuilding the DLL is `scratchpad/build_tflite_win.cmd` if it is still around;
-if not, the recipe is three flags and is recorded under "Building it again"
-below.
+if not, the recipe is under "Building it again" below — and it **needs the
+patch**, which is not optional.
 
-## What is not done: does it load?
+## What has been proved, and how
+
+Two checks, deliberately different in kind.
+
+**Outside the app**, `scratchpad/tflite_probe.dart` opens the vendored DLL by
+path with `dart:ffi` and drives the C API by hand: `TfLiteVersion` → 2.17.1,
+`yamnet.tflite` loads, tensors allocate, input shape `[15600]` and output shape
+`[1, 521]` — the two the app asserts at load — and an inference on a block of
+silence returns in 9.0 ms with class 494 at 0.80 and `Music` at 0.0039, which is
+the right answer for silence. It goes round `tflite_flutter` on purpose: the
+package resolves the library from `Platform.resolvedExecutable` and needs a
+Flutter binding for `rootBundle`, so a failure there could mean the DLL is wrong
+*or* that a test harness could not find an asset, and this has to be able to
+fail for one reason only.
+
+**Inside the app**, with a connected session and `Automatic` chosen, the DLL
+appears in the process's own loaded modules:
+
+```powershell
+(Get-Process mumbleway).Modules |
+  Where-Object { $_.ModuleName -match 'tensorflow' } | Select ModuleName, FileName
+```
+
+That is the stronger of the two, because the module list can only contain what
+`DynamicLibrary.open` actually opened, and `_syncClassifier` only reaches that
+call when all four conditions below hold. It needs no clicking, and it is the
+check to reach for when somebody else is using the window.
+
+What is **still** unwitnessed is the three scored rows in the panel — the model
+running on live microphone audio rather than on a probe's silence. That is a
+screenshot, and it is what remains of this task.
+
+## The four conditions
 
 **The model is opened lazily and only under one condition.** `_syncClassifier`
 in `app_state.dart` wants *four* things true at once, and all four are easy to
@@ -78,12 +111,85 @@ $p = Start-Process .\mumbleway.exe -PassThru -RedirectStandardOutput out.txt -Re
 flutter run -d windows
 ```
 
-Then check the DLL's own dependencies resolve — a TFLite build can want a
-Visual C++ runtime the target machine has not got:
+Then check the DLL itself, in this order. **Exports first** — that is the fault
+that has actually happened, and it is invisible from the loader's side:
+
+```powershell
+dumpbin /exports build\windows\x64\runner\Release\blobs\libtensorflowlite_c-win.dll
+```
+
+`TfLiteVersion` and `TfLiteInterpreterCreate` should be in the list. An empty
+list, or "no exports", is the trap described above. `scratchpad/tflite_probe.dart`
+answers the same question and rather more besides.
+
+Only then the dependencies, since a TFLite build can want a Visual C++ runtime
+the target machine has not got:
 
 ```powershell
 dumpbin /dependents build\windows\x64\runner\Release\blobs\libtensorflowlite_c-win.dll
 ```
+
+## The DLL that exported nothing
+
+The first build produced `tensorflowlite_c.dll`, 1.28 MB, and everything about
+it looked right: the build was green, the file was the expected shape, it copied
+into the bundle, and **it loaded**. `DynamicLibrary.open` succeeded. Only the
+first `lookupFunction` failed:
+
+```
+Invalid argument(s): Failed to lookup symbol 'TfLiteVersion':
+The specified procedure could not be found. (error code: 127)
+```
+
+It had **no export directory at all** — not a missing symbol, no symbols. Two
+things beside it said so and neither is loud: there was no `tensorflowlite_c.lib`
+next to the DLL, because an import library is only produced for a DLL that
+exports something, and 1.28 MB is about a third of what a real one weighs,
+because the linker had dropped everything nothing reached.
+
+The cause is one line in a file that belongs to neither end of it.
+`tensorflow/lite/CMakeLists.txt` appends `-DTFL_STATIC_LIBRARY_BUILD` to
+`tensorflow-lite`'s **PUBLIC** compile options whenever `BUILD_SHARED_LIBS` is
+off — which it is here, since the whole shape of this build is a shared C shim
+over a static core. PUBLIC means it is inherited by the shim, and
+`core/c/c_api_types.h` tests it **before** `TFL_COMPILE_LIBRARY`:
+
+```c
+#ifdef SWIG
+#define TFL_CAPI_EXPORT
+#elif defined(TFL_STATIC_LIBRARY_BUILD)
+#define TFL_CAPI_EXPORT              /* <- taken, and the story ends here */
+#else
+#if defined(_WIN32)
+#ifdef TFL_COMPILE_LIBRARY
+#define TFL_CAPI_EXPORT __declspec(dllexport)
+```
+
+So `target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)`,
+which upstream sets three lines away and which is exactly right, never gets
+reached. The fix drops the flag from the *interface* only, which leaves the core
+compiling as the static library it is and changes only the four C API
+translation units:
+
+```cmake
+# in tensorflow/lite/c/CMakeLists.txt, after target_link_libraries
+get_target_property(_tflite_iface tensorflow-lite INTERFACE_COMPILE_OPTIONS)
+if (_tflite_iface)
+  list(REMOVE_ITEM _tflite_iface "-DTFL_STATIC_LIBRARY_BUILD")
+  set_target_properties(tensorflow-lite
+    PROPERTIES INTERFACE_COMPILE_OPTIONS "${_tflite_iface}")
+endif()
+```
+
+**`/UTFL_STATIC_LIBRARY_BUILD` does not work**, which is worth recording because
+it is the obvious first attempt and it fails quietly: CMake emits a target's
+inherited interface options *after* its own, so the `-D` lands after the `/U`
+and MSVC takes them in order. The rebuild looked identical — same byte count,
+same missing `.lib` — which is precisely how a no-op presents.
+
+With the patch the DLL is **3.69 MB** with an import library beside it. Both
+numbers are worth checking after any rebuild; they are the cheapest possible
+smoke test, and neither the compiler nor the linker will say a word.
 
 ## Building it again
 

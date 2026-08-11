@@ -104,6 +104,7 @@
            `store_url` being empty is what greys the button out, so a link
            arrives by filling in one line of _data/strings.yml. -->
       <span class="cta-sep" role="separator" aria-orientation="vertical"></span>
+      <span class="stores">
       {% for st in s.hero.stores %}
         {% comment %}
           The vendors' own artwork, not a redrawing of it. Each of the three
@@ -128,6 +129,7 @@
       </span>
         {% endif %}
       {% endfor %}
+      </span>
     </div>
     <p class="hero-note">{{ s.hero.note | strip_newlines }}</p>
   </div>

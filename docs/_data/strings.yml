@@ -270,7 +270,7 @@ ru:
         alt: Доступно в Google Play
         url: ''
       - id: microsoft
-        badge: microsoft.svg
+        badge: microsoft-ru.svg
         alt: Загрузите из Microsoft
         url: https://apps.microsoft.com/detail/9PNZ7PWDVLTB
     note: >-

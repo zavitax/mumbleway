@@ -249,6 +249,31 @@
   "learn": "Learn",
   "pressButtonNow": "Press the button on your remote now…",
   "proxyOffDirect": "Off — connecting directly",
+  "proxyDirect": "Direct connection",
+  "proxySystemAt": "System proxy · {proxy}",
+  "@proxySystemAt": {
+    "placeholders": {
+      "proxy": {
+        "type": "String"
+      }
+    }
+  },
+  "proxyEnvironmentAt": "Environment proxy · {proxy}",
+  "@proxyEnvironmentAt": {
+    "placeholders": {
+      "proxy": {
+        "type": "String"
+      }
+    }
+  },
+  "proxyManualAt": "Manual proxy · {proxy}",
+  "@proxyManualAt": {
+    "placeholders": {
+      "proxy": {
+        "type": "String"
+      }
+    }
+  },
   "certificateFingerprint": "Certificate fingerprint",
   "inThisChannel": "In this channel ({count})",
   "@inThisChannel": {

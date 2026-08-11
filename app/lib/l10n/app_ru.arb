@@ -243,6 +243,31 @@
   "learn": "Обучить",
   "pressButtonNow": "Нажмите кнопку на пульте…",
   "proxyOffDirect": "Выключено — прямое подключение",
+  "proxyDirect": "Прямое подключение",
+  "proxySystemAt": "Системный прокси · {proxy}",
+  "@proxySystemAt": {
+    "placeholders": {
+      "proxy": {
+        "type": "String"
+      }
+    }
+  },
+  "proxyEnvironmentAt": "Прокси из окружения · {proxy}",
+  "@proxyEnvironmentAt": {
+    "placeholders": {
+      "proxy": {
+        "type": "String"
+      }
+    }
+  },
+  "proxyManualAt": "Прокси, заданный вручную · {proxy}",
+  "@proxyManualAt": {
+    "placeholders": {
+      "proxy": {
+        "type": "String"
+      }
+    }
+  },
   "certificateFingerprint": "Отпечаток сертификата",
   "inThisChannel": "В этом канале ({count})",
   "@inThisChannel": {

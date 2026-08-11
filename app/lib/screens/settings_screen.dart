@@ -9,6 +9,7 @@ import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/noise_profiles.dart';
 import '../services/overlay.dart';
+import '../services/proxy.dart';
 import '../services/site_links.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -917,6 +918,22 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
   }
 }
 
+/// The proxy line, in the rider's language.
+///
+/// `ProxyConfig.description` builds the same sentence in English and is kept
+/// for logs, where English is wanted. It was being shown in the interface too,
+/// so a Russian settings screen read "Direct connection" under a switch whose
+/// own label was translated.
+String _proxyLine(L l, ProxyConfig c) {
+  final proxy = c.proxy ?? '';
+  return switch (c.source) {
+    ProxySource.none => l.proxyDirect,
+    ProxySource.system => l.proxySystemAt(proxy),
+    ProxySource.environment => l.proxyEnvironmentAt(proxy),
+    ProxySource.manual => l.proxyManualAt(proxy),
+  };
+}
+
 class _ProxyTile extends StatelessWidget {
   const _ProxyTile();
 
@@ -930,7 +947,9 @@ class _ProxyTile extends StatelessWidget {
           secondary: const Icon(Icons.vpn_lock),
           title: Text(l.useSystemProxy),
           subtitle: Text(
-            state.proxyEnabled ? state.proxyDescription : l.proxyOffDirect,
+            state.proxyEnabled
+                ? _proxyLine(l, state.proxyConfig)
+                : l.proxyOffDirect,
           ),
           value: state.proxyEnabled,
           onChanged: state.setProxyEnabled,

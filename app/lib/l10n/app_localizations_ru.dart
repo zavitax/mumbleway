@@ -578,6 +578,24 @@ class LRu extends L {
   String get proxyOffDirect => 'Выключено — прямое подключение';
 
   @override
+  String get proxyDirect => 'Прямое подключение';
+
+  @override
+  String proxySystemAt(String proxy) {
+    return 'Системный прокси · $proxy';
+  }
+
+  @override
+  String proxyEnvironmentAt(String proxy) {
+    return 'Прокси из окружения · $proxy';
+  }
+
+  @override
+  String proxyManualAt(String proxy) {
+    return 'Прокси, заданный вручную · $proxy';
+  }
+
+  @override
   String get certificateFingerprint => 'Отпечаток сертификата';
 
   @override

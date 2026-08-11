@@ -574,6 +574,24 @@ class LEn extends L {
   String get proxyOffDirect => 'Off — connecting directly';
 
   @override
+  String get proxyDirect => 'Direct connection';
+
+  @override
+  String proxySystemAt(String proxy) {
+    return 'System proxy · $proxy';
+  }
+
+  @override
+  String proxyEnvironmentAt(String proxy) {
+    return 'Environment proxy · $proxy';
+  }
+
+  @override
+  String proxyManualAt(String proxy) {
+    return 'Manual proxy · $proxy';
+  }
+
+  @override
   String get certificateFingerprint => 'Certificate fingerprint';
 
   @override

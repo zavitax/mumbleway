@@ -3064,7 +3064,15 @@ class AppState extends ChangeNotifier {
   bool get proxyEnabled => SystemProxy.instance.enabled;
 
   /// Human-readable description of what is currently in effect.
+  /// English, for logs and the engine log view. Not for the interface — see
+  /// [proxyConfig], which lets the caller build a translated line instead.
   String get proxyDescription => SystemProxy.instance.config.description;
+
+  /// The resolved configuration, so a screen can describe it in the rider's
+  /// language. `ProxyConfig.description` is a plain service class with no
+  /// `BuildContext`, so its four strings were English wherever they were shown
+  /// — which on the settings screen was under the proxy switch, in Russian.
+  ProxyConfig get proxyConfig => SystemProxy.instance.config;
 
   Future<void> setProxyEnabled(bool on) async {
     SystemProxy.instance.enabled = on;

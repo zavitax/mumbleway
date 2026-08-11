@@ -1141,6 +1141,30 @@ abstract class L {
   /// **'Off — connecting directly'**
   String get proxyOffDirect;
 
+  /// No description provided for @proxyDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct connection'**
+  String get proxyDirect;
+
+  /// No description provided for @proxySystemAt.
+  ///
+  /// In en, this message translates to:
+  /// **'System proxy · {proxy}'**
+  String proxySystemAt(String proxy);
+
+  /// No description provided for @proxyEnvironmentAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Environment proxy · {proxy}'**
+  String proxyEnvironmentAt(String proxy);
+
+  /// No description provided for @proxyManualAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual proxy · {proxy}'**
+  String proxyManualAt(String proxy);
+
   /// No description provided for @certificateFingerprint.
   ///
   /// In en, this message translates to:

@@ -786,11 +786,7 @@ tbody tr:last-child td { border-bottom: 0; }
    paddings, 2px the two 1px borders. */
 .cta { --cta-h: calc(1.65em + 1.4rem + 2px); }
 .badge { display: inline-flex; align-items: center; }
-/* Three quarters of a button, not the whole of it. A vendor's badge carries its
-   own wordmark and its own logo, so at the buttons' height it competed with
-   them for the eye instead of following them; and it is still derived from the
-   same measure, so it scales with the type like everything else in the row. */
-.badge img { height: calc(var(--cta-h) * 0.75); width: auto; display: block; }
+.badge img { height: var(--cta-h); width: auto; display: block; }
 /* Not a link yet. Kept in place rather than hidden so the three read as a set,
    and dimmed so nobody clicks twice wondering why nothing happened. */
 .badge.soon { opacity: 0.4; cursor: default; filter: grayscale(1); }

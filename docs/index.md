@@ -114,13 +114,13 @@ what it costs.
 
 <div class="shots">
   <figure>
-    <img src="{{ '/assets/img/shots/degraded-windows.webp' | relative_url }}"
-         alt="The diagnostics panel after the chain has been cut back: the
-              analyser replaced by a note saying it was switched off, Suppressor
-              struck through in the stage list, the enhancer reading Off, and a
-              warning explaining that parts of the noise chain were switched off
-              and that a more powerful device would run the whole chain."
-         width="1000" height="453" loading="lazy" decoding="async">
+    <img src="{{ '/assets/img/shots/degraded-ios.webp' | relative_url }}"
+         alt="The diagnostics panel after the chain has been cut back: an amber
+              warning in the toolbar, the analyser replaced by a note saying it
+              was switched off, Suppressor, Feedback and Enhancer struck through
+              in the stage list, the enhancer reading Off, and a warning saying
+              that a more powerful device would run the whole chain."
+         width="560" height="1218" loading="lazy" decoding="async">
     <figcaption>The bottom of the ladder, and the panel saying so.</figcaption>
   </figure>
 </div>
@@ -165,10 +165,11 @@ construction.
     <figcaption>No speech: the sent trace goes flat while the others do not.</figcaption>
   </figure>
   <figure>
-    <img src="{{ '/assets/img/shots/home-phone.webp' | relative_url }}"
-         alt="The main screen connected to a server, showing latency, the UDP
-              round trip, the channel and the microphone meter."
-         width="560" height="1244" loading="lazy" decoding="async">
+    <img src="{{ '/assets/img/shots/home-ios.webp' | relative_url }}"
+         alt="The main screen on iPhone connected to a public server, showing
+              the UDP round trip, who is in the channel, the channel list and
+              the microphone meter."
+         width="560" height="1218" loading="lazy" decoding="async">
     <figcaption>Connected: latency, channel, and the meter.</figcaption>
   </figure>
 </div>

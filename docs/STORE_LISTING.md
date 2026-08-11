@@ -47,7 +47,7 @@ A Mumble voice client built for talking from inside a motorcycle helmet at speed
 Changeable without a review, so use it for what is new.
 
 ```
-Diagnostic recording, so a rider can capture what their headset actually hears and send it in. Russian now follows your phone's language. Bluetooth audio fixes on iOS.
+On a slow phone the noise chain steps down in a measured order and says which stages went. Word starts survive. Hear a recording as the far end did, or through the chain.
 ```
 
 ## Keywords — App Store (100, comma-separated, no spaces)
@@ -83,15 +83,51 @@ edited.
   commonest reason a listing like this earns a one-star review: somebody
   installs a voice app, finds nobody to talk to, and concludes it is broken.
 
+## Screenshots, per store
+
+Four stores now, not three — the Microsoft Store listing is live. Each wants a
+different shape, and the sizes below were read off each store's own
+documentation on **2026-08-11**. They move; check the linked page before a
+submission rather than trusting this table, which exists so nobody has to find
+the four pages again from scratch.
+
+<div class="table-wrap" markdown="1">
+
+| Store | Size | Count | Format |
+|---|---|---|---|
+| [App Store, iPhone](https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/) | **6.9"** 1260 × 2736, or 6.5" 1284 × 2778 if no 6.9" is supplied | 1–10 per display size | PNG or JPEG, **no alpha channel** |
+| App Store, iPad | **13"** 2064 × 2752, or 12.9" 2048 × 2732 | 1–10 | as above |
+| [Mac App Store](https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications/) | 1280 × 800, 1440 × 900, 2560 × 1600 or 2880 × 1800 — 16:10 | 1–10 | as above |
+| [Google Play](https://support.google.com/googleplay/android-developer/answer/9866151) | 320–3840 px, and the long edge no more than twice the short one | **at least 2 to publish**, up to 8 per device type | PNG or JPEG |
+| [Microsoft Store](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/screenshots-and-images) | desktop **1366 × 768 or larger**, 4K supported | 1 required, up to 10 desktop | **PNG only**, under 50 MB |
+
+</div>
+
+Three things that are easy to get wrong:
+
+- **Google Play needs a 512 × 512 icon and a 1024 × 500 feature graphic** as
+  well, and wants four screenshots of at least 1080 px to be eligible for
+  promotion.
+- **Apple rejects an alpha channel.** A screenshot saved with transparency
+  fails at upload, not at review.
+- **Microsoft puts text overlays on the bottom third**, so nothing that has to
+  be read belongs there.
+
+The site's own captures are in `docs/assets/img/shots/` and are cropped for the
+web rather than to any of these sizes — a store screenshot is a whole device
+frame, so it is a separate pass and not a resize of these.
+
 ## Still needed before any of this can be submitted
 
-- **A privacy policy URL.** Mandatory on every store here for an app that
-  records a microphone. Microsoft Store Policy 10.5.1 and Apple's App Privacy
-  both require it, and submission is blocked without it. The text above says the
-  app collects nothing, so the policy has to say the same or the listing is
-  contradicted by its own fine print.
-- **Screenshots**, per store and per device size.
+- **Screenshots at the sizes above**, per store and per device size.
 - **An age rating** questionnaire per store.
 - **Apple App Privacy answers**: the microphone is used for the app's core
   function and audio is not collected — but that questionnaire is answered in
   App Store Connect, not here.
+
+**The privacy policy URL is done**:
+<https://zavitax.github.io/mumbleway/privacy>. Mandatory on every store here for
+an app that records a microphone — Microsoft Store Policy 10.5.1 and Apple's App
+Privacy both require it, and submission is blocked without it. The text above
+says the app collects nothing, so the policy has to keep saying the same or the
+listing is contradicted by its own fine print.

@@ -37,6 +37,7 @@ MumbleWay connects to any of them — a friend's box, one at the clubhouse, a pu
 
 BUILT FOR A BIKE
 • Noise profiles from Light to Helmet, or Auto, which picks from what it hears and shows you where it landed.
+• Voice activation looks 80 ms ahead, so the channel opens on the sound that led into the decision and the first consonant of a word is not clipped off.
 • Push to talk, voice activation, or open microphone.
 • Works over Bluetooth intercom headsets on the hands-free profile, which is where the boom microphone lives.
 • Pair a handlebar Bluetooth remote and it learns whatever your remote actually sends, rather than offering a list of keys that may not match it. Hold to talk, or tap to toggle for remotes that never send a release.
@@ -52,13 +53,17 @@ TALKING TO PEOPLE
 • Channel tree and roster, with per-person mute and volume.
 • Two servers connected at once.
 • Live ping per server, and the app shows whether voice is going direct over UDP or tunnelled through TCP when a carrier will not pass it.
+• A jitter buffer that plays a backlog off at up to double speed after a tunnel, rather than leaving everybody a second behind.
 • Join by QR code or a mumble:// link.
 
 PRIVATE BY DEFAULT
 Voice is encrypted with AES-128 and the control channel runs over TLS. Server certificates are pinned the first time you connect and a changed certificate is refused until you say otherwise. MumbleWay has no servers of its own, collects no analytics and shows no advertising.
 
+ON AN OLDER PHONE
+A block of audio arrives every 10 milliseconds and the whole chain has to finish before the next one. If your phone cannot manage that, MumbleWay gives stages up one at a time, cheapest first, in an order that was measured rather than guessed — and says which ones, rather than quietly sounding worse.
+
 DIAGNOSTICS
-An optional panel shows the microphone chain working — the spectrum before and after suppression, and which stage stopped a sound reaching the far end. There is a diagnostic recorder in there too, off unless you switch it on, for capturing what your headset actually hears on a ride.
+An optional panel shows the microphone chain working — the spectrum before and after suppression, and which stage stopped a sound reaching the far end. There is a diagnostic recorder in there too, off unless you switch it on, for capturing what your headset actually hears on a ride. You can play a recording back hearing only what would have been transmitted, or through the processing chain, so you can judge for yourself how you sound at the far end without a second phone.
 
 Available in English and Russian.
 

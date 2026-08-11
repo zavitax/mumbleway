@@ -2637,6 +2637,35 @@ where
 
         // --- capture path -------------------------------------------------
         loop {
+            // **Playback gets its turn before every capture block, not after
+            // the backlog.**
+            //
+            // This loop drains the whole capture queue, and the playback path
+            // is at the bottom of the iteration — so for as long as capture is
+            // behind, nothing refills `playback_queue`. That is survivable
+            // when a block costs well under its 10 ms and fatal when it does
+            // not: the output callback holds three frames, 60 ms, so a backlog
+            // of seven blocks on a phone spending 10 ms each is already longer
+            // than the audio in hand, and the speaker stutters.
+            //
+            // It is also self-feeding. CPU pressure makes capture fall behind,
+            // a longer backlog makes the capture phase longer, and the longer
+            // it runs the further playback starves — which is why this appears
+            // on the OPPO, the device whose blocks are at budget, and on no
+            // desktop.
+            //
+            // The ordering is the fix and it is also the right priority. A
+            // stuttering speaker is a call the rider cannot follow; a late
+            // capture block costs transmit quality, which the relief ladder
+            // already exists to trade away. Topping up first costs the capture
+            // path one queue check per block.
+            // `did_work` too, or a wakeup that only refilled playback looks
+            // idle and the worker goes back to sleep having done something.
+            if shared.playback_queue.lock().len() < FRAME_SAMPLES * 3 {
+                mix_speakers(&shared, &mut mix_scratch, &mut mixed);
+                did_work |= !mixed.is_empty();
+            }
+
             let backlog_ms;
             {
                 let mut q = shared.capture_queue.lock();

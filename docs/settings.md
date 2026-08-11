@@ -74,6 +74,41 @@ delay, which is more distracting than almost any other audio fault.
 
 On a headset there is no echo to cancel and it can only take something away.
 
+### Light noise model
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-simplemodel-windows.webp' | relative_url }}"
+         alt="The light noise model row, switched off, explaining that it runs a
+              smaller speech cleaner costing a third as much, keeps the rest of
+              the noise chain working on a slow phone, is harsher on quiet
+              speech and adds 20 ms of delay."
+         width="1000" height="83" loading="lazy" decoding="async">
+    <figcaption>Off by default. A trade to make on purpose, not an
+    improvement.</figcaption>
+  </figure>
+</div>
+
+Swaps the speech cleaner at the head of the chain for a smaller one that costs
+**about a third as much to run**. It is off by default, and it is a trade
+rather than an upgrade.
+
+Turn it on if your phone is
+[giving stages up]({{ '/index.html#keeping-up' | relative_url }}):
+paying for the cleaner model up front can keep the rest of the noise chain
+running instead of it being switched off piece by piece, which is the worse
+outcome of the two.
+
+What it costs is real. The smaller model is **more aggressive, not worse** — it
+takes 4 to 6 dB more out of the speech along with the noise, which wins where
+the background is loud enough to be worth removing and loses where it is not.
+So it is harsher on a quiet voice in a quiet room, and it adds **20 ms of
+delay**, because it looks two frames ahead where the standard model looks none.
+
+**Some devices take it whether or not you choose it.** A single-core phone gets
+it from the start, and any device that runs out of everything else to give up
+ends on it before losing the cleaner altogether.
+
 ### Even out speaker loudness
 
 <div class="shots">
@@ -327,6 +362,13 @@ reach and without going back to the app.
 - **Android** needs the "display over other apps" permission.
 - **iOS** uses Picture in Picture, which allows three buttons: play/pause
   talks, skip back mutes, skip forward hangs up (twice to confirm).
+
+**The window has a close button, and it means "not right now".** It is not the
+same as turning the feature off, which is this setting: closing it lasts until
+you go back into the app, and the next time you leave the app it returns. It is
+deliberately not remembered between rides, so tapping it once cannot leave you
+hunting for the talk button a week later. Picture in Picture on iOS behaves the
+same way, so the gesture has one answer on both phones.
 
 <div class="shots">
   <figure>

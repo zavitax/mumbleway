@@ -74,6 +74,13 @@ Until that is fixed, either:
 Music from your phone ducks under a call rather than stopping — that part works
 — but ducked music is still music, and the detector still hears it.
 
+**Being heard over your own music is the half that now works.** The gate takes
+its threshold from the noise floor it has measured rather than from a fixed
+level, so music raises the bar instead of drowning the speech that has to clear
+it: on a recording of talking over music, the helmet profile went from letting
+**63%** of the speech through to **98%**. Speaking over music is no longer the
+problem. Music speaking for you still is.
+
 ## A rally, or riders who do not know each other
 
 - **Share the server with a QR code** from the app rather than dictating an

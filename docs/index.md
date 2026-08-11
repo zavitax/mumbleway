@@ -60,6 +60,59 @@ it, and every stage is visible while it runs.
 
 {% include fig-timeline.svg lang=page.lang %}
 
+## When a phone cannot keep up
+{: #keeping-up}
+
+A block of audio arrives every 10 milliseconds, and the whole chain has to be
+finished before the next one turns up. On a current phone that is comfortable.
+On a cheap or elderly one it is not, and the useful thing to do about that is
+not to pretend otherwise.
+
+So the device is **measured against the deadline when the app starts, before
+your first call**, and watched while you talk. If it does not fit, stages are
+given up one at a time — in an order that was measured rather than guessed, and
+never quietly.
+
+**The cheapest quality goes first.** The enhancer softens by two steps before
+anything else is touched: they are the two largest savings on the chain and
+cost almost nothing, and on voice over music the first of them measured
+*better* than the full setting. Then the look-ahead stops being paid down,
+which changes no sample a listener hears — only the delay goes back up to what
+it was before that existed. Then three detectors whose work the level meter
+largely duplicates. Then the diagnostics panel's own drawing, which is free to
+give up because nobody's voice passes through it. Then the background
+classifier, so *Automatic* stops noticing that the road has become a car park.
+Then a cheaper, more aggressive noise model. **Switching the enhancer off is
+the fourteenth and last thing tried**, because it is the one that turns 16 dB
+of separation between speech and gaps back into 1.5.
+
+**It does not climb back during a session.** A device that was late once will
+be late again, and a chain that switched stages on and off as the load moved
+would sound worse than either state. Restarting the app tries the whole chain
+again.
+
+**And it tells you.** Stages that have been given up are struck through in the
+diagnostics panel, the toolbar icon becomes an amber warning so you find out
+without going looking, and the panel says in plain words what was dropped and
+what it costs.
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/degraded-windows.webp' | relative_url }}"
+         alt="The diagnostics panel after the chain has been cut back: the
+              analyser replaced by a note saying it was switched off, Suppressor
+              struck through in the stage list, the enhancer reading Off, and a
+              warning explaining that parts of the noise chain were switched off
+              and that a more powerful device would run the whole chain."
+         width="1000" height="453" loading="lazy" decoding="async">
+    <figcaption>The bottom of the ladder, and the panel saying so.</figcaption>
+  </figure>
+</div>
+
+One thing worth knowing: this measures the device **as it finds it**, not as it
+could be. A computer that is busy with something else when the app opens can
+start a step lower than the same computer idle.
+
 ## Watch how it works
 
 Most voice apps tell you nothing. When somebody says "it cut me off", there is
@@ -208,7 +261,7 @@ to be fixed by a setting.
     notes — the detector was trained to tell speech from noise, and music is
     neither. Push-to-talk avoids it entirely. This one is being worked on and
     is <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
-    open</a>, including the three attempts that have already failed.</p>
+    open</a>, including every attempt that has already failed.</p>
   </div>
 </div>
 

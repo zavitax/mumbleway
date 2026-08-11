@@ -41,6 +41,7 @@ description: Собственная лицензия MumbleWay и каждый �
 | [RNNoise](https://jmvalin.ca/demo/rnnoise/), как [`nnnoiseless`](https://crates.io/crates/nnnoiseless) | Нейросетевое шумоподавление и детектор речевой активности | BSD 3-Clause |
 | [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) | Очистка речи в начале цепочки записи, вместе с весами модели. Низколатентная DFN3 идёт из крейта `deep_filter`, обычная DFN3 лежит в `core/models/` — для нижней ступени лестницы производительности | MIT / Apache-2.0 |
 | [`tract`](https://github.com/sonos/tract) | Исполняет эту модель — на чистом Rust, без нативной среды, которую пришлось бы собирать под каждую платформу | MIT / Apache-2.0 |
+| [`ndarray`](https://crates.io/crates/ndarray) | Тип массива, который принимает и возвращает сам интерфейс очистителя речи | MIT / Apache-2.0 |
 | [`cpal`](https://crates.io/crates/cpal) | Кроссплатформенный доступ к аудиоустройствам | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Преобразование форматов отсчётов | MIT / Apache-2.0 |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | Классификатор звука, благодаря которому «Автоматически» слышит мотор и берёт шлемный профиль. Поставляется как `assets/models/yamnet.tflite` | Apache-2.0 |
@@ -69,6 +70,9 @@ description: Собственная лицензия MumbleWay и каждый �
 | [`tracing`](https://crates.io/crates/tracing) | Структурированное журналирование | MIT |
 | [`parking_lot`](https://crates.io/crates/parking_lot) | Блокировки на звуковом тракте | MIT / Apache-2.0 |
 | [`rand`](https://crates.io/crates/rand) | Одноразовые значения и джиттер | MIT / Apache-2.0 |
+| [`sysinfo`](https://crates.io/crates/sysinfo) | Сколько приложение тратит процессорного времени и памяти — на Windows | MIT |
+| [`libc`](https://crates.io/crates/libc) | То же самое на Android и Linux, где ответ берётся из `/proc` | MIT / Apache-2.0 |
+| [`mach2`](https://crates.io/crates/mach2) | И на iOS и macOS, где его даёт Mach | BSD-2-Clause / MIT / Apache-2.0 |
 | [`anyhow`](https://crates.io/crates/anyhow), [`thiserror`](https://crates.io/crates/thiserror) | Обработка ошибок | MIT / Apache-2.0 |
 | [`bytes`](https://crates.io/crates/bytes), [`url`](https://crates.io/crates/url) | Буферы и разбор URL | MIT / Apache-2.0 |
 
@@ -82,12 +86,13 @@ description: Собственная лицензия MumbleWay и каждый �
 |---|---|---|
 | [Flutter](https://flutter.dev/) и Dart SDK | Каркас приложения | BSD 3-Clause |
 | [`flutter_rust_bridge`](https://cjycode.com/flutter_rust_bridge/) | Мост между интерфейсом на Dart и движком на Rust | MIT |
-| [`shared_preferences`](https://pub.dev/packages/shared_preferences), [`path_provider`](https://pub.dev/packages/path_provider), [`share_plus`](https://pub.dev/packages/share_plus), [`package_info_plus`](https://pub.dev/packages/package_info_plus), [`file_selector`](https://pub.dev/packages/file_selector) | Платформенная обвязка | BSD 3-Clause |
+| [`shared_preferences`](https://pub.dev/packages/shared_preferences), [`path_provider`](https://pub.dev/packages/path_provider), [`share_plus`](https://pub.dev/packages/share_plus), [`package_info_plus`](https://pub.dev/packages/package_info_plus), [`file_selector`](https://pub.dev/packages/file_selector), [`url_launcher`](https://pub.dev/packages/url_launcher) | Платформенная обвязка | BSD 3-Clause |
 | [`http`](https://pub.dev/packages/http), [`intl`](https://pub.dev/packages/intl) | Сеть и локализация | BSD 3-Clause |
 | [`qr_flutter`](https://pub.dev/packages/qr_flutter), [`qr`](https://pub.dev/packages/qr) | Рисуют приглашения на сервер | BSD 3-Clause |
 | [`mobile_scanner`](https://pub.dev/packages/mobile_scanner) | Считывает их обратно | BSD 3-Clause |
 | [`image`](https://pub.dev/packages/image), [`archive`](https://pub.dev/packages/archive) | Работа с изображениями и диагностический архив | MIT |
 | [`flutter_svg`](https://pub.dev/packages/flutter_svg) | Векторная графика | MIT |
+| [`cupertino_icons`](https://pub.dev/packages/cupertino_icons) | Набор значков в стиле iOS | MIT |
 | [`freezed`](https://pub.dev/packages/freezed) | Кодогенерация | MIT |
 
 </div>
@@ -135,9 +140,11 @@ SIL OFL 1.1).
 Лицензии перечислены по условиям, опубликованным самими проектами, и мы
 считаем их верными, — но эта страница остаётся сводкой, а не юридическим
 документом.
-**Достоверным является текст, поставляемый с каждым пакетом.** Часть крейтов
-Rust распространяется под двойной лицензией — MIT *или* Apache-2.0, на ваш
-выбор, — и отмечена выше как «MIT / Apache-2.0».
+**Достоверным является текст, поставляемый с каждым пакетом.**
+
+Косая черта выше означает «*или*, на ваш выбор», а не «и». Бóльшая часть
+крейтов Rust здесь выходит под двойной лицензией — MIT или Apache-2.0; у
+`mach2` их три, добавляется BSD-2-Clause.
 
 Нашли ошибку или пропуск? [Заведите issue]({{ site.repo }}/issues): неверно
 указанная лицензия — это дефект, и он будет исправлен.

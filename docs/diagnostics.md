@@ -75,6 +75,60 @@ music and is holding the helmet setting, and grey that nothing is classifying �
 because a profile was chosen by hand, or because this is a desktop, where the
 model does not run. When it is grey the line underneath says which.
 
+### What the classifier is actually hearing
+
+Under **Automatic**, above the dots, three rows appear: the classifier's three
+most likely labels, each with a bar and a score between 0 and 1. A label has to
+clear **0.30** to count as heard.
+
+This is the evidence behind the profile line above it. "Automatic chose Helmet"
+is an answer without a reason; three scores say whether it was confident or
+whether the field was level, and reading the bars against each other is the
+point of drawing them rather than listing numbers.
+
+It appears only under Automatic, because under the other four settings the
+panel would be repeating a choice you already made — and only while the devices
+are open. Between calls the model is not running, and the row says so rather
+than showing an empty space that reads as a missing feature.
+
+## When the chain has to give something up
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/degraded-windows.webp' | relative_url }}"
+         alt="A degraded panel: a note where the analyser was saying it is
+              switched off, Suppressor struck through among the stage dots, the
+              enhancer reading Off with the model on Light, and a warning that
+              parts of the noise chain were switched off and a more powerful
+              device would run the whole chain."
+         width="1000" height="453" loading="lazy" decoding="async">
+    <figcaption>Every claim this panel makes about a cut-back chain, in one
+    picture.</figcaption>
+  </figure>
+</div>
+
+A device that cannot finish a block in 10 ms
+[gives stages up in a measured order]({{ '/index.html#keeping-up' | relative_url }}),
+and this panel is where you find out exactly which.
+
+**Struck-through names in the dot list** are the stages that have been switched
+off. They keep their place in the row rather than disappearing, so the chain
+still reads as the chain.
+
+**Enhancer** names the rung the speech cleaner is on — *Full*, *Reduced*,
+*Light* or *Off* — with a sentence saying what that costs. **Model** says which
+of the two cleaners is loaded, *Low latency* or *Light*; see
+[Light noise model]({{ '/settings.html' | relative_url }}).
+
+**The analyser can be given up too**, and when it is, a note stands where it
+was. That is deliberate: a blank box would read as a broken analyser, which is
+the one thing it must not, because the analyser is what most people open this
+panel to look at. The reading it drew is gone; nothing about your voice
+changed.
+
+The toolbar icon becomes an amber warning at the same time, so none of this
+depends on the panel being open.
+
 ## Counters
 
 <div class="shots">
@@ -112,6 +166,30 @@ has settled on as this environment's quiet, and **opens at** is the level a
 block has to beat to be sent. On a bike at speed the floor climbs and the threshold climbs with it —
 which is what the noise profiles are for.
 
+### Where a block's 10 ms goes
+
+The third column is the deadline itself, broken down by stage: **input and
+taps**, **enhancer**, **suppression**, **feedback**, **de-hiss**, **to the
+server**, **encode**, and **not in any stage** for what is left over.
+
+Underneath are the two figures that decide whether this device is coping:
+
+- **Whole block, mean / worst.** Read the mean. A single late block moves the
+  worst by milliseconds and means nothing on its own; the mean is what the
+  ladder reacts to, over a hundred blocks.
+- **Waiting to be processed, mean / worst.** How much captured audio is queued
+  up behind the chain. This is the one that turns into dropped microphone
+  milliseconds if it keeps climbing.
+
+Expect the enhancer to be most of the block — on the phone this was built for
+it is around 88% of it, and everything else together is under a millisecond.
+That is why it is [the first thing softened and the last thing switched
+off]({{ '/index.html#keeping-up' | relative_url }}).
+
+The fourth column is per-server: the **voice path** (UDP direct or tunnelled
+over TCP), the **ping**, the **channel** you are in and how many people are in
+it.
+
 ## The last thirty seconds
 
 <div class="shots">
@@ -129,6 +207,18 @@ Network in and out, voice packets in and out, CPU and memory, each as a current
 value and a thirty-second trace with its peak. A number that is fine *now* and
 was not a moment ago is exactly the shape of an intermittent fault, and a
 single reading cannot show it.
+
+**Under the app's own CPU line, one line per processor core.** A phone with
+eight cores can sit at 30% overall while one core is pinned at 95%, and it is
+the pinned core that makes audio late — the chain runs on one thread, so a
+device average can look comfortable while the thread that matters has no room
+left. The ladder watches the cores for that reason, and this is where you can
+see what it saw.
+
+Where the system will not report per-core figures to an app, the panel **says
+so in words** rather than drawing an empty graph or a flat line at zero. An
+absent measurement and a measurement of zero look identical on a chart and mean
+opposite things.
 
 ## The engine log
 
@@ -200,6 +290,30 @@ for a gap.
 Pinch to zoom on a phone, or hold ctrl and use the wheel on a desktop; the
 playhead stays in view as it moves. The clock beneath counts milliseconds,
 because a gate that shuts mid-word does it well inside a second.
+
+### The two playback toggles
+
+Beside the transport are two switches, outlined when off and filled when on.
+Both change what you hear rather than what is stored, and they answer the two
+halves of "how did I sound?" without needing a second person on a second
+device.
+
+- **Play only what would have been transmitted** (green). Skips every stretch
+  the gate closed, so you hear the far end's version of the ride — the
+  sentences with the swallowed beginnings and the dropped words, one after
+  another. Silence you never notice while listening to the whole file becomes
+  obvious the moment the gaps are taken out.
+- **Play through the voice processing chain** (amber). Runs the recording back
+  through suppression, gate and levelling as it plays, so you hear what goes
+  out rather than what came in.
+
+They combine: both on is the closest you can get, on your own, to sitting at
+the other end.
+
+**A recording with no green in it at all** has a note under the waveform saying
+why — muted, push-to-talk, or a gate that never opened. That distinction
+matters, because "the app did not transmit" and "I had it muted" look
+identical on a waveform.
 
 A single recording can be shared or deleted from here, which is where that
 decision actually gets made: you have just heard what is in it.

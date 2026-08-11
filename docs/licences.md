@@ -39,6 +39,7 @@ The parts that do the actual work.
 | [RNNoise](https://jmvalin.ca/demo/rnnoise/), as [`nnnoiseless`](https://crates.io/crates/nnnoiseless) | Neural noise suppression and voice activity detection | BSD 3-Clause |
 | [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) | Speech enhancement at the head of the capture chain, with its weights. The low-latency DFN3 comes from the `deep_filter` crate; the plain DFN3 is vendored at `core/models/` for the performance ladder's last rung | MIT / Apache-2.0 |
 | [`tract`](https://github.com/sonos/tract) | Runs that model, in pure Rust with no native runtime to cross-compile. `tract-core` is vendored under `third_party` and patched in one hunk, without which the plain DFN3 cannot be loaded at all — see `third_party/tract-core/PATCH.md` | MIT / Apache-2.0 |
+| [`ndarray`](https://crates.io/crates/ndarray) | The array type the enhancer's own API takes and returns | MIT / Apache-2.0 |
 | [`cpal`](https://crates.io/crates/cpal) | Cross-platform audio device access | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Sample format conversion | MIT / Apache-2.0 |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | The sound classifier that lets *Automatic* hear an engine and choose the helmet profile. Shipped as `assets/models/yamnet.tflite` | Apache-2.0 |
@@ -67,6 +68,9 @@ buffer — is written for this project and covered by its own GPL v3.
 | [`tracing`](https://crates.io/crates/tracing) | Structured logging | MIT |
 | [`parking_lot`](https://crates.io/crates/parking_lot) | Locks used on the audio path | MIT / Apache-2.0 |
 | [`rand`](https://crates.io/crates/rand) | Nonces and jitter | MIT / Apache-2.0 |
+| [`sysinfo`](https://crates.io/crates/sysinfo) | What the app is costing in processor time and memory, on Windows | MIT |
+| [`libc`](https://crates.io/crates/libc) | The same question on Android and Linux, where the answer comes from `/proc` | MIT / Apache-2.0 |
+| [`mach2`](https://crates.io/crates/mach2) | And on iOS and macOS, where it comes from Mach | BSD-2-Clause / MIT / Apache-2.0 |
 | [`anyhow`](https://crates.io/crates/anyhow), [`thiserror`](https://crates.io/crates/thiserror) | Error handling | MIT / Apache-2.0 |
 | [`bytes`](https://crates.io/crates/bytes), [`url`](https://crates.io/crates/url) | Buffers and URL parsing | MIT / Apache-2.0 |
 
@@ -80,12 +84,13 @@ buffer — is written for this project and covered by its own GPL v3.
 |---|---|---|
 | [Flutter](https://flutter.dev/) and the Dart SDK | Application framework | BSD 3-Clause |
 | [`flutter_rust_bridge`](https://cjycode.com/flutter_rust_bridge/) | The bridge between the Dart UI and the Rust engine | MIT |
-| [`shared_preferences`](https://pub.dev/packages/shared_preferences), [`path_provider`](https://pub.dev/packages/path_provider), [`share_plus`](https://pub.dev/packages/share_plus), [`package_info_plus`](https://pub.dev/packages/package_info_plus), [`file_selector`](https://pub.dev/packages/file_selector) | Platform plumbing | BSD 3-Clause |
+| [`shared_preferences`](https://pub.dev/packages/shared_preferences), [`path_provider`](https://pub.dev/packages/path_provider), [`share_plus`](https://pub.dev/packages/share_plus), [`package_info_plus`](https://pub.dev/packages/package_info_plus), [`file_selector`](https://pub.dev/packages/file_selector), [`url_launcher`](https://pub.dev/packages/url_launcher) | Platform plumbing | BSD 3-Clause |
 | [`http`](https://pub.dev/packages/http), [`intl`](https://pub.dev/packages/intl) | Networking and localisation | BSD 3-Clause |
 | [`qr_flutter`](https://pub.dev/packages/qr_flutter), [`qr`](https://pub.dev/packages/qr) | Renders server invitations | BSD 3-Clause |
 | [`mobile_scanner`](https://pub.dev/packages/mobile_scanner) | Scans them back | BSD 3-Clause |
 | [`image`](https://pub.dev/packages/image), [`archive`](https://pub.dev/packages/archive) | Image handling and the diagnostic archive | MIT |
 | [`flutter_svg`](https://pub.dev/packages/flutter_svg) | Vector artwork | MIT |
+| [`cupertino_icons`](https://pub.dev/packages/cupertino_icons) | The iOS icon set | MIT |
 | [`freezed`](https://pub.dev/packages/freezed) | Code generation | MIT |
 
 </div>
@@ -131,9 +136,11 @@ result. It is left in place, and marked, rather than deleted.
 
 Licences are stated from each project's own published terms and are believed
 correct, but this page is a summary and not a legal document. **The
-authoritative text is the one distributed with each package.** Several Rust
-crates are dual-licensed MIT *or* Apache-2.0, at your option, and are marked
-"MIT / Apache-2.0" above.
+authoritative text is the one distributed with each package.**
+
+A slash above means *or, at your option* — not "and". Most of the Rust crates
+here are dual-licensed MIT or Apache-2.0; `mach2` offers three, adding
+BSD-2-Clause.
 
 Found something wrong or missing? [Open an issue]({{ site.repo }}/issues) — a
 licence attribution error is a bug and will be fixed.

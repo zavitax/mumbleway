@@ -95,19 +95,15 @@
     <h1>{{ s.hero.title }}</h1>
     <p class="lede">{{ s.description | strip_newlines }}</p>
     <div class="cta">
-      <a class="btn primary" href="{{ s.hero.cta_primary_url | relative_url }}">{{ s.hero.cta_primary }}</a>
-      <a class="btn" href="{{ site.repo }}">{{ s.hero.cta_secondary }}</a>
+      <!-- The stores first, because they are what most readers arriving here
+           want: "give it to me" ahead of "how does this work". The two buttons
+           below the rule are for the smaller number of people who are going to
+           run a server or read the source, and they lose nothing by being
+           second — they are the only text in the row, and text is found.
 
-      <!-- The stores, after a rule, because they answer a different question:
-           the two buttons above are "how does this work", these are "give it
-           to me". Placeholder hrefs where the listing has no public URL yet;
-           `store_url` being empty is what greys the button out, so a link
-           arrives by filling in one line of _data/strings.yml. -->
-      <span class="cta-sep" role="separator" aria-orientation="vertical"></span>
-      <!-- The same separator in the other orientation, for when the two groups
-           are on two lines. Exactly one of the pair is ever displayed, and the
-           CSS decides which from the width the row actually has. -->
-      <span class="cta-rule" role="separator" aria-orientation="horizontal"></span>
+           Placeholder hrefs where a listing has no public URL yet; `url` being
+           empty is what greys a badge out, so a link arrives by filling in one
+           line of _data/strings.yml. -->
       <span class="stores">
       {% for st in s.hero.stores %}
         {% comment %}
@@ -134,6 +130,15 @@
         {% endif %}
       {% endfor %}
       </span>
+      <!-- Always a line break, and always this rule on it, at every width.
+           There was a pair of these once, one upright for when the two groups
+           shared a line and one lying down for when they did not, chosen
+           between by container queries at a measured threshold per language. It
+           worked, and every change to a label, a badge or a gap meant sweeping
+           both thresholds again. -->
+      <span class="cta-rule" role="separator" aria-orientation="horizontal"></span>
+      <a class="btn primary" href="{{ s.hero.cta_primary_url | relative_url }}">{{ s.hero.cta_primary }}</a>
+      <a class="btn" href="{{ site.repo }}">{{ s.hero.cta_secondary }}</a>
     </div>
     <p class="hero-note">{{ s.hero.note | strip_newlines }}</p>
   </div>

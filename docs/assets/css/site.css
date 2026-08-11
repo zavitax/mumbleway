@@ -298,9 +298,6 @@ a:hover { color: #FFC276; }
   max-width: 62rem;
   margin: 0 auto;
   padding: clamp(3.5rem, 9vw, 7rem) var(--pad) clamp(4rem, 10vw, 8rem);
-  /* So the rule between the buttons and the store badges can be asked about
-     the width it actually has, rather than about the window's. See `.cta-sep`. */
-  container-type: inline-size;
 }
 
 .eyebrow {
@@ -762,27 +759,11 @@ tbody tr:last-child td { border-bottom: 0; }
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
-/* The store buttons in the hero, after a rule.
-   Separated because they answer a different question from the two beside them:
-   those are "how does this work", these are "give it to me". */
-/* The horizontal half of the separation, and the only half that can be a
-   margin: 0.875rem each side of the rule, so the two groups stand about 3.5rem
-   apart on a shared line rather than the 0.75rem that sits between two badges.
-
-   It has to live here and not as a `margin-left` on `.stores`, which is the
-   obvious place and is wrong — a margin on the group indents it when it wraps
-   too, and the badges are meant to line up with the buttons above them. This
-   spacing belongs to the state where the two groups share a line, and so does
-   the element that carries it. */
-.cta-sep {
-  width: 1px;
-  align-self: stretch;
-  background: var(--line);
-  margin: 0 0.875rem;
-}
-/* One flex item, so the three badges leave the buttons' line together.
-   `.cta` wraps this whole group first, and only when the group alone is wider
-   than the row does its own `flex-wrap` break it up badge by badge. Three
+/* The store badges in the hero, above a rule, with the two buttons under it.
+   Separated because they answer different questions: the badges are "give it to
+   me", the buttons are "how does this work". */
+/* One flex item, so the three badges stay together on their line and only
+   break up badge by badge when the group alone is wider than the row. Three
    stores going down one at a time while the row still has space for two of
    them reads as three unrelated things rather than one set. */
 .stores {
@@ -805,69 +786,41 @@ tbody tr:last-child td { border-bottom: 0; }
    paddings, 2px the two 1px borders. */
 .cta { --cta-h: calc(1.65em + 1.4rem + 2px); }
 .badge { display: inline-flex; align-items: center; }
-.badge img { height: var(--cta-h); width: auto; display: block; }
+/* Three quarters of a button, not the whole of it. A vendor's badge carries its
+   own wordmark and its own logo, so at the buttons' height it competed with
+   them for the eye instead of following them; and it is still derived from the
+   same measure, so it scales with the type like everything else in the row. */
+.badge img { height: calc(var(--cta-h) * 0.75); width: auto; display: block; }
 /* Not a link yet. Kept in place rather than hidden so the three read as a set,
    and dimmed so nobody clicks twice wondering why nothing happened. */
 .badge.soon { opacity: 0.4; cursor: default; filter: grayscale(1); }
-/* A vertical rule at the end of a line, with what it separates on the line
-   below, is a stray tick. So the rule shows only while everything is genuinely
-   on one line — and CSS cannot ask whether something wrapped, so the substitute
-   is to ask whether the row is wide enough to hold it all, measured in a
-   browser rather than guessed.
+/* The rule between the buttons and the stores, at every width.
+   `flex-basis: 100%` both draws the division and causes it: a full-width flex
+   item takes a line of its own, so everything after it starts on the next one.
+   The badges are therefore always below the buttons and always left-aligned
+   with them, with no wrapping for the CSS to detect and no width at which the
+   answer changes.
 
-   A *container* query, not a media query, because the window's width is not the
-   question: `.hero-inner` caps at 62rem, so past that point a wider window buys
-   the row nothing. Asking the container asks the thing that actually decides,
-   and keeps this correct by construction if that cap ever moves.
-
-   The widths are the row's own content and nothing else — two buttons, three
-   badges, five 0.75rem gaps and the rule itself — because a container query
-   measures the *content* box, inside the hero's padding. Russian needs 75px
-   more, which is how much wider its button pair is.
-
-   **As it stands neither threshold is reached**, so the upright rule is not
-   currently drawn in either language and `.cta-rule` below does the work
-   instead. The row needs 966px in English and 1041px in Russian against the
-   912px `.hero-inner` leaves after its padding. Three changes put it over —
-   badges raised from 44px to the buttons' 52.44px, the Google badge's
-   transparent margin cropped away so its art fills that height (it grew 41px
-   wider), and the rule's own margins widened from 0.35rem to 0.875rem.
-
-   Both numbers include the rule and its margins, which is the subtle part and
-   was wrong once: sweep for the width at which the row fits while the rule is
-   *hidden*, and the threshold you get is 41px too small — so the query turns
-   the rule on at a width that the rule itself then overflows, and it dangles at
-   the end of the line. The question has to be asked about the layout that will
-   exist once the answer is yes. */
-.cta-sep { display: none; }
-@container (min-width: 966px) {
-  html[lang="en"] .cta-sep { display: block; }
-}
-@container (min-width: 1041px) {
-  html[lang="ru"] .cta-sep { display: block; }
-}
-
-/* The same separator lying down, for the layout that actually happens.
-   `flex-basis: 100%` is what forces the break, so this element both draws the
-   division and causes it — which is why it and `.cta-sep` are governed by the
-   same two thresholds with the sense reversed. Exactly one of the pair is ever
-   displayed, and there is no circularity in that: both ask about the width the
-   container has, not about whether anything wrapped.
+   **This replaced a pair.** There was an upright rule for when the two groups
+   shared a line and this one for when they did not, chosen between by container
+   queries at a measured threshold per language. It worked, and the thresholds
+   had to be re-swept after any change to a label, a badge, a gap or the rule's
+   own margins — three times in one afternoon — and each re-sweep had the same
+   trap in it: measure while the queries are still deciding for themselves and
+   the upright rule is hidden throughout, so the width you find is ~41px short
+   and the query then shows the rule at a width it overflows, leaving the stray
+   tick the whole mechanism existed to prevent. A layout with one state cannot
+   have a wrong one.
 
    It fades out to the right rather than running the full width. A rule that
    reaches the far margin would be the widest thing in the hero and would read
    as a section break, dividing the page rather than the row; fading it lets it
-   separate the two groups and then get out of the way. It stops at 62% because
-   that is a little past the right edge of the badges, so the line covers what
-   it divides and no more. */
+   separate the two groups and then get out of the way. Gone by 62%, which is
+   past the right edge of both the badges above it and the buttons below — it
+   covers what it divides, and the fade means it stops being a line some way
+   before that. */
 .cta-rule {
   flex-basis: 100%;
   height: 1px;
   background: linear-gradient(to right, var(--line), transparent 62%);
-}
-@container (min-width: 966px) {
-  html[lang="en"] .cta-rule { display: none; }
-}
-@container (min-width: 1041px) {
-  html[lang="ru"] .cta-rule { display: none; }
 }

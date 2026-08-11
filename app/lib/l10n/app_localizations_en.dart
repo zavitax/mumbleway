@@ -944,6 +944,15 @@ class LEn extends L {
   String get diagEnhancerEffort => 'Enhancer';
 
   @override
+  String get diagEnhancerModel => 'Model';
+
+  @override
+  String get diagEnhancerModelFull => 'Low latency';
+
+  @override
+  String get diagEnhancerModelSimple => 'Light';
+
+  @override
   String get diagEnhancerRungFull => 'Full';
 
   @override

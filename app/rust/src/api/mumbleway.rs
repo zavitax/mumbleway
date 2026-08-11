@@ -1150,7 +1150,7 @@ pub struct UiDiagnostics {
     pub memory_mb: f32,
 }
 
-use crate::usage::process_usage;
+use mumbleway_core::usage::process_usage;
 
 #[frb(sync)]
 pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
@@ -1393,6 +1393,13 @@ pub struct UiChainStatus {
     /// Ids rather than a rung number, because the mapping from rung to stages
     /// is the ladder's business and it will change as rungs are added.
     pub disabled_stages: Vec<String>,
+    /// Whether the cheap noise model is the one loaded.
+    ///
+    /// Separate from `enhancer_effort`, which names a rung *within* whichever
+    /// model is running — so without this a phone on the cheap model at full
+    /// effort read identically to one on the expensive model at full effort,
+    /// and toggling the setting changed nothing on screen.
+    pub enhancer_simple_model: bool,
     /// How far down the whole-chain ladder this device has gone. 0 is nothing
     /// given up; the panel uses it only to decide whether to warn at all.
     pub relief: u32,
@@ -1683,6 +1690,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         classifier_top_disabled: rung_at(c.relief).skip_classifier_top(),
         live_dots_disabled: rung_at(c.relief).skip_live_dots(),
         enhancer_effort: c.enhancer_effort as u32,
+        enhancer_simple_model: c.enhancer_simple_model,
         input_peak_db: {
             let (peak, _) = shared.input_peak();
             if peak > 0.0 {

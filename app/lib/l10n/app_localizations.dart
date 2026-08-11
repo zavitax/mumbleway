@@ -1807,6 +1807,24 @@ abstract class L {
   /// **'Enhancer'**
   String get diagEnhancerEffort;
 
+  /// Label for the row naming which noise model the speech enhancer has loaded
+  ///
+  /// In en, this message translates to:
+  /// **'Model'**
+  String get diagEnhancerModel;
+
+  /// The enhancer is running the low-latency model the app ships by default
+  ///
+  /// In en, this message translates to:
+  /// **'Low latency'**
+  String get diagEnhancerModelFull;
+
+  /// The enhancer is running the cheaper light model, either by setting, by the performance ladder, or because the device has one core
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get diagEnhancerModelSimple;
+
   /// The speech enhancer is doing all the work it can
   ///
   /// In en, this message translates to:

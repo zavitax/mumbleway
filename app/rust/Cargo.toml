@@ -19,33 +19,10 @@ anyhow = "1"
 rustls-pemfile = "2"
 serde_json = "1.0.151"
 
-# Process CPU and memory for the diagnostics panel come from `src/usage.rs`,
-# which asks each platform in the way that platform will answer. The
-# dependencies below are per-target for that reason, and the reasoning is in
-# that file: `sysinfo` reports 0% CPU on both phones, for two different causes.
-
-# `/proc/self` on Android and Linux -- `sysconf` for the clock tick and page
-# size, which are the two constants the parse needs.
-[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-libc = "0.2"
-
-# Mach on iOS and macOS, which answers for the current task inside the sandbox
-# where `sysinfo` compiles its process refresh to a stub.
-#
-# 0.6 and not 0.4: `mach_task_basic_info` and `task_thread_times_info` are not
-# under `mach2::task_info` in 0.4, and since no Windows or Android build
-# compiles this branch, the mismatch would first appear in a macOS CI job.
-# `tools/usageprobe` carries the same code so it can be typechecked with
-# `cargo check --target aarch64-apple-ios` from any host, which is how this was
-# caught.
-[target.'cfg(target_vendor = "apple")'.dependencies]
-mach2 = "0.6"
-
-# Windows, where `sysinfo` works and there is nothing to work around. Default
-# features pull in every subsystem the crate can read; only this process is
-# ever inspected.
-[target.'cfg(target_os = "windows")'.dependencies]
-sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+# Process CPU and memory now live in `mumbleway_core::usage`, with the
+# per-target dependencies they need. They moved there because the relief
+# ladder reads the CPU figure, and the ladder has to work whether or not
+# anybody has the diagnostics panel open.
 
 # Android only. cpal's backend asks `ndk_context` for the JVM and the app
 # Context so it can reach the Java audio APIs, and panics outright if nobody

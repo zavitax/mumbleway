@@ -118,6 +118,23 @@ pub struct ChainStatus {
     /// that misses the block deadline, and a device running reduced sounds
     /// unlike one running full while every other number on the panel matches.
     pub enhancer_effort: u8,
+    /// Whether the cheap model is the one loaded, rather than the low-latency
+    /// one the app ships by default.
+    ///
+    /// **Published because turning the setting on changed nothing a rider
+    /// could see.** The panel already named the effort rung — `Full`,
+    /// `Reduced`, `Light`, `Off` — and those are stages *within* a model, so a
+    /// phone running the cheap model at full effort read exactly like one
+    /// running the expensive model at full effort. The one control a rider has
+    /// over which model runs had no readout at all, and `Light` on the effort
+    /// row is a different thing from the "Light noise model" setting, which
+    /// made the pair actively misleading rather than merely silent.
+    ///
+    /// Three ways to arrive here and the panel does not distinguish them,
+    /// because the question it answers is "what is running": the setting, the
+    /// ladder's `SimpleModel` rung, and a single-core device that takes it up
+    /// front — see [`super::deepfilter::simple_model_wanted`].
+    pub enhancer_simple_model: bool,
     /// The background classifier is holding `Helmet` in force.
     ///
     /// Published so the panel can say *why* the profile is what it is. Helmet
@@ -147,6 +164,7 @@ impl Default for ChainStatus {
             enhancer_gave_up: false,
             enhancer_worst_us: 0,
             enhancer_effort: 0,
+            enhancer_simple_model: false,
             relief: 0,
             music_hold: false,
             transmit_mode: 0,
@@ -2609,6 +2627,15 @@ where
         None => ReliefLadder::default(),
     };
 
+    // The ladder's second condition, sampled once a second.
+    //
+    // **Not every block.** `process_usage` reads `/proc/self/stat` on Android
+    // and makes two Mach calls on Apple; at 100 blocks a second that would be
+    // a measurement costing more than several of the stages it exists to
+    // protect. A second is also the shortest interval the reading means
+    // anything over, since it is a rate between two samples.
+    let mut cpu_sampled_at = std::time::Instant::now();
+
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
@@ -3145,6 +3172,10 @@ where
                 enhancer_gave_up: enhancer.gave_up(),
                 enhancer_worst_us: enhancer.timing().0,
                 enhancer_effort: enhancer.effort().index(),
+                // The enhancer's own answer, not the setting's. Those differ on a
+                // single-core device and while the ladder is stepping, and the
+                // panel is asked what is running.
+                enhancer_simple_model: enhancer.simple_model(),
                 relief: relief.level().index(),
             });
 
@@ -3233,7 +3264,22 @@ where
             // The one place that decides what to give up, and it decides from
             // the whole block rather than from any stage's own stopwatch. See
             // `audio::relief` for the order and the measurements behind it.
-            if let Some(rung) = relief.note_block(block_us) {
+            //
+            // Two conditions, one ladder. The block deadline is the primary
+            // one and answers within a second; the CPU is a slower backstop
+            // for a phone that is saturated without any single block being
+            // late — see `relief::note_cpu`. Whichever fires, the same rung
+            // goes, so a device failing both does not skip any.
+            let mut stepped = relief.note_block(block_us);
+            if stepped.is_none() {
+                let since = cpu_sampled_at.elapsed();
+                if since.as_secs_f32() >= 1.0 {
+                    cpu_sampled_at = std::time::Instant::now();
+                    let (cpu_percent, _) = crate::usage::process_usage();
+                    stepped = relief.note_cpu(cpu_percent, since.as_secs_f32());
+                }
+            }
+            if let Some(rung) = stepped {
                 // Into the process-wide floor, so this survives the worker.
                 // The worker is per device-open, which is per call — without
                 // this, everything a hard conversation taught the ladder was
@@ -3269,8 +3315,13 @@ where
             // device that walked all the way down to `SimpleModel` on its own
             // must stay there whatever the setting says. The ladder does not
             // climb, and a setting must not climb it on the ladder's behalf.
+            //
+            // `simple_model_wanted` and not `force_simple_model`: on a
+            // single-core device the cheap model is a floor rather than a
+            // preference, and reading the preference here would swap the
+            // expensive one back in a block after it was chosen.
             if !relief.level().simple_model() {
-                enhancer.set_simple_model(super::deepfilter::force_simple_model());
+                enhancer.set_simple_model(super::deepfilter::simple_model_wanted());
             }
         }
 

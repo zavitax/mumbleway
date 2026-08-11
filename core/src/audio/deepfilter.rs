@@ -159,8 +159,39 @@ pub fn set_force_simple_model(on: bool) {
 }
 
 /// Whether the cheap model has been asked for outright.
+///
+/// The *preference*, not the outcome — a single-core device gets the cheap
+/// model whether or not this was asked for. Use [`simple_model_wanted`] to
+/// decide what to load, and this only to drive the settings toggle.
 pub fn force_simple_model() -> bool {
     FORCE_SIMPLE.load(Ordering::Relaxed)
+}
+
+/// A device with one core to run everything on.
+///
+/// Cached: the count cannot change while we are running, and this is asked
+/// every time an enhancer is built.
+fn single_core() -> bool {
+    static SINGLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SINGLE.get_or_init(|| crate::usage::cores() <= 1.0)
+}
+
+/// Whether the cheap model is the one to load.
+///
+/// **Single-core devices take it up front rather than laddering down to it.**
+/// The ladder reaches [`super::relief::Relief::SimpleModel`] only after giving
+/// up the pitch search, RNNoise, the feedback guard and most of the panel — a
+/// sequence that costs about eleven seconds of a real conversation at one
+/// second a rung, and on a one-core phone every one of those rungs is sold
+/// before the thing that would actually have helped. The plain model costs a
+/// third of the low-latency one; a device with a single core to run a capture
+/// worker, a playback callback and a UI on has no plausible path to affording
+/// the expensive one.
+///
+/// It is a floor and not a preference: the setting can ask for the cheap model
+/// on any device, and cannot ask a single-core device for the expensive one.
+pub fn simple_model_wanted() -> bool {
+    force_simple_model() || single_core()
 }
 
 /// How much it may attenuate, in dB.
@@ -610,7 +641,7 @@ impl Enhancer {
         // it — the worker, the probe, and the listen sheet's preview chain.
         // A rider who asked for the cheap model and heard the expensive one in
         // chain playback would have no way to tell which was which.
-        let simple = force_simple_model();
+        let simple = simple_model_wanted();
         let model = match Self::build_from(atten_lim_db, simple) {
             Ok(m) => Some(Box::new(m)),
             Err(e) => {

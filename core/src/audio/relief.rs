@@ -340,6 +340,23 @@ pub const STEP_DOWN_AFTER: u32 = 100;
 /// The deadline a whole block has to be returned in, in microseconds.
 pub const BUDGET_US: u32 = 10_000;
 
+/// Share of the whole device, above which the CPU is called saturated.
+///
+/// See [`crate::usage`] for what the number means: it is the device, not one
+/// core, so 90 is "nine tenths of every core this phone has".
+pub const CPU_BUSY_PERCENT: f32 = 90.0;
+
+/// How long the CPU has to stay above [`CPU_BUSY_PERCENT`] before a rung goes.
+///
+/// Five seconds, which is far longer than the block deadline's one second on
+/// purpose. **This is a backstop, not the main signal.** The deadline catches
+/// the thing that actually hurts a rider — a block returned late — and it does
+/// so within a second. Whole-process CPU is a slower, blunter statement about
+/// the phone as a whole, and something that transient must not be allowed to
+/// sell quality: a burst while the map redraws is not a device that cannot
+/// cope.
+pub const CPU_BUSY_SECONDS: f32 = 5.0;
+
 /// Tracks the ladder and decides when to give up the next rung.
 ///
 /// **Driven by the whole block, not by any one stage.** The enhancer used to
@@ -351,6 +368,8 @@ pub const BUDGET_US: u32 = 10_000;
 pub struct ReliefLadder {
     level: Option<Relief>,
     run_of_overruns: u32,
+    /// Seconds the CPU has been continuously at or above the busy mark.
+    busy_seconds: f32,
 }
 
 impl ReliefLadder {
@@ -367,6 +386,7 @@ impl ReliefLadder {
         Self {
             level: (level != Relief::None).then_some(level),
             run_of_overruns: 0,
+            busy_seconds: 0.0,
         }
     }
 
@@ -386,6 +406,40 @@ impl ReliefLadder {
             return None;
         }
         self.run_of_overruns = 0;
+        self.step()
+    }
+
+    /// Feeds a CPU reading in, with the time since the previous one.
+    ///
+    /// `percent` is a share of the **whole device**, from [`crate::usage`] —
+    /// not of one core, which is what every platform API reports natively and
+    /// what made the Android panel read 146%.
+    ///
+    /// **The second condition, and the weaker of the two.** A block returned
+    /// late is a rider hearing a gap; a phone at 90% is a phone that might be
+    /// about to cause one, and might equally be drawing a map. So it needs
+    /// five seconds where the deadline needs one, and like the deadline a
+    /// single reading below the mark forgives the run entirely — this measures
+    /// a device that is *staying* saturated, not one that touched it.
+    pub fn note_cpu(&mut self, percent: f32, elapsed_seconds: f32) -> Option<Relief> {
+        if !percent.is_finite() || percent < CPU_BUSY_PERCENT {
+            self.busy_seconds = 0.0;
+            return None;
+        }
+        // Guards a clock that went backwards or stood still: neither should
+        // count towards five seconds of evidence.
+        if elapsed_seconds > 0.0 {
+            self.busy_seconds += elapsed_seconds;
+        }
+        if self.busy_seconds < CPU_BUSY_SECONDS {
+            return None;
+        }
+        self.busy_seconds = 0.0;
+        self.step()
+    }
+
+    /// Gives up the next rung, if there is one left.
+    fn step(&mut self) -> Option<Relief> {
         let next = self.level().weaker()?;
         self.level = Some(next);
         Some(next)
@@ -426,6 +480,56 @@ mod tests {
         // The bottom is the bottom.
         for _ in 0..STEP_DOWN_AFTER * 2 {
             assert_eq!(ladder.note_block(BUDGET_US + 1), None);
+        }
+        assert_eq!(ladder.level(), Relief::EnhancerOff);
+    }
+
+    #[test]
+    fn five_seconds_of_a_saturated_cpu_costs_a_rung() {
+        let mut ladder = ReliefLadder::default();
+        // Four seconds is not five, however it is sliced.
+        for _ in 0..8 {
+            assert_eq!(ladder.note_cpu(95.0, 0.5), None);
+        }
+        assert_eq!(ladder.level(), Relief::None);
+        // The ninth half-second is still 4.5; the tenth reaches five.
+        assert_eq!(ladder.note_cpu(95.0, 0.5), None);
+        assert_eq!(ladder.note_cpu(95.0, 0.5), Some(Relief::EnhancerReduced));
+    }
+
+    #[test]
+    fn a_cpu_below_the_mark_forgives_the_run() {
+        // The same rule the deadline follows, and for the same reason: a phone
+        // that touched 90% while a map redrew is not a phone that cannot cope,
+        // and selling quality for it would be selling it for nothing.
+        let mut ladder = ReliefLadder::default();
+        for _ in 0..9 {
+            assert_eq!(ladder.note_cpu(99.0, 0.5), None);
+        }
+        assert_eq!(ladder.note_cpu(12.0, 0.5), None);
+        for _ in 0..9 {
+            assert_eq!(ladder.note_cpu(99.0, 0.5), None);
+        }
+        assert_eq!(ladder.level(), Relief::None, "the run restarted");
+    }
+
+    #[test]
+    fn a_stopped_clock_is_not_evidence() {
+        // Five seconds of readings with no time between them is one reading.
+        let mut ladder = ReliefLadder::default();
+        for _ in 0..100 {
+            assert_eq!(ladder.note_cpu(100.0, 0.0), None);
+        }
+        assert_eq!(ladder.level(), Relief::None);
+    }
+
+    #[test]
+    fn the_cpu_condition_walks_the_same_ladder_and_stops_at_the_bottom() {
+        // Not a separate ladder: the two conditions give up the same rungs in
+        // the same order, so a device failing both does not skip any.
+        let mut ladder = ReliefLadder::default();
+        for _ in 0..40 {
+            ladder.note_cpu(100.0, 5.0);
         }
         assert_eq!(ladder.level(), Relief::EnhancerOff);
     }

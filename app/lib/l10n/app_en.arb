@@ -432,6 +432,18 @@
   "@diagEnhancerEffort": {
     "description": "Label for the row naming which effort rung the speech enhancer is running at"
   },
+  "diagEnhancerModel": "Model",
+  "@diagEnhancerModel": {
+    "description": "Label for the row naming which noise model the speech enhancer has loaded"
+  },
+  "diagEnhancerModelFull": "Low latency",
+  "@diagEnhancerModelFull": {
+    "description": "The enhancer is running the low-latency model the app ships by default"
+  },
+  "diagEnhancerModelSimple": "Light",
+  "@diagEnhancerModelSimple": {
+    "description": "The enhancer is running the cheaper light model, either by setting, by the performance ladder, or because the device has one core"
+  },
   "diagEnhancerRungFull": "Full",
   "diagEnhancerRungReduced": "Reduced",
   "diagEnhancerRungLight": "Light",

@@ -46,6 +46,28 @@
 //! readings. The first call after start has nothing to subtract from and
 //! honestly reports zero; the panel polls at 1 Hz, so it is right from the
 //! second tick. Reporting a made-up first value would be worse.
+//!
+//! # A share of the device, not of one core
+//!
+//! The first version of this reported a share of **one core**, which is what
+//! every one of these platform APIs measures, and the Android panel duly read
+//! **146%** under load. That is not wrong — this app runs a capture worker, a
+//! playback callback, a classifier and a UI, so 1.46 cores is a true statement
+//! about a multi-core phone — but a percentage above 100 in a diagnostics
+//! panel reads as a broken meter, and it cannot be compared between a
+//! four-core phone and an eight-core one.
+//!
+//! So it is divided by the core count and clamped to 0..=100: **how much of
+//! this device we are using**. The same number drives the ladder's CPU rung,
+//! which is the other reason it has to mean something absolute — see
+//! [`crate::audio::relief`].
+//!
+//! What that costs is worth stating plainly, because it makes one thing
+//! *harder* to see: an app pinning a single core on an eight-core phone now
+//! reads 12%, and on a device whose other seven cores are idle that is the
+//! honest answer to "how loaded is this phone". The thing that catches a
+//! saturated audio thread is the block deadline, which is measured directly
+//! and is not this number.
 
 use std::sync::OnceLock;
 #[cfg(any(not(target_os = "windows"), test))]
@@ -97,7 +119,37 @@ fn rate(previous: Option<(f64, Instant)>, seconds: f64, now: Instant) -> f32 {
     // Clamped at zero rather than allowed negative: a counter that appears to
     // go backwards is a platform quirk, not a process that un-ran, and a
     // negative percentage on the panel would be read as a bug in the panel.
-    ((((seconds - then_seconds) / elapsed) * 100.0).max(0.0)) as f32
+    let per_core = (((seconds - then_seconds) / elapsed) * 100.0).max(0.0);
+    share_of_device(per_core as f32)
+}
+
+/// How many cores the CPU figure is divided by.
+///
+/// Cached, because `available_parallelism` is a syscall on every platform and
+/// this is read once a second for the life of the process. It also cannot
+/// change while we are running, so asking twice is asking the same question.
+///
+/// Falls back to 1 rather than to a guess: on a machine that will not say, a
+/// share of one core is the honest reading and it is the conservative one for
+/// the ladder, which steps *down* on a high number.
+pub fn cores() -> f32 {
+    static CORES: OnceLock<f32> = OnceLock::new();
+    *CORES.get_or_init(|| {
+        std::thread::available_parallelism()
+            .map(|n| n.get() as f32)
+            .unwrap_or(1.0)
+            .max(1.0)
+    })
+}
+
+/// Turns a share of one core into a share of the whole device.
+///
+/// Clamped at 100 rather than allowed to exceed it. The clamp can only bite
+/// when the process out-runs its own core count, which means the reading
+/// straddled a scheduling artefact — and a panel that says 104% teaches a
+/// reader to distrust the number rather than to act on it.
+fn share_of_device(per_core: f32) -> f32 {
+    (per_core / cores()).clamp(0.0, 100.0)
 }
 
 /// Total CPU seconds used by this process, and its resident size in MiB.
@@ -228,7 +280,13 @@ pub fn process_usage() -> (f32, f32) {
     let (system, pid) = &mut *cell.lock();
     system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[*pid]), true);
     match system.process(*pid) {
-        Some(p) => (p.cpu_usage(), p.memory() as f32 / (1024.0 * 1024.0)),
+        // `cpu_usage` is a share of one core here too, so it needs the same
+        // division as the Unix paths -- otherwise the same app reads 146% on a
+        // phone and 18% on a desktop for the same load.
+        Some(p) => (
+            share_of_device(p.cpu_usage()),
+            p.memory() as f32 / (1024.0 * 1024.0),
+        ),
         None => (0.0, 0.0),
     }
 }
@@ -239,21 +297,21 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     #[test]
-    fn the_first_reading_is_zero_and_a_full_core_reads_as_one_hundred() {
+    fn the_first_reading_is_zero_and_every_core_busy_reads_as_one_hundred() {
         use std::time::Duration;
         let start = Instant::now();
+        let later = start + Duration::from_secs(1);
+        let n = cores() as f64;
 
         // Nothing to compare against.
         assert_eq!(rate(None, 12.0, start), 0.0);
 
-        // One second of wall clock, one second of CPU: one core, fully used.
-        let later = start + Duration::from_secs(1);
-        assert!((rate(Some((12.0, start)), 13.0, later) - 100.0).abs() < 0.01);
+        // Every core busy for a whole second is 100% of the device, whatever
+        // the core count is.
+        assert!((rate(Some((12.0, start)), 12.0 + n, later) - 100.0).abs() < 0.01);
 
-        // Two cores' worth is allowed to read over 100: this is a share of one
-        // core, not of the machine, and clamping it would hide the case worth
-        // seeing.
-        assert!((rate(Some((12.0, start)), 14.0, later) - 200.0).abs() < 0.01);
+        // Half the device.
+        assert!((rate(Some((12.0, start)), 12.0 + n / 2.0, later) - 50.0).abs() < 0.1);
 
         // Idle.
         assert_eq!(rate(Some((12.0, start)), 12.0, later), 0.0);
@@ -264,6 +322,16 @@ mod tests {
 
         // Two readings in the same instant would divide by zero.
         assert_eq!(rate(Some((12.0, start)), 13.0, start), 0.0);
+    }
+
+    #[test]
+    fn nothing_can_report_more_than_the_whole_device() {
+        // The bug this exists for: the panel read 146% on Android, which is a
+        // true statement about cores and an unreadable one about a phone.
+        assert_eq!(share_of_device(f32::MAX), 100.0);
+        assert_eq!(share_of_device(cores() * 100.0), 100.0);
+        assert_eq!(share_of_device(-5.0), 0.0);
+        assert!(share_of_device(cores() * 50.0) - 50.0 < 0.01);
     }
 
     #[test]

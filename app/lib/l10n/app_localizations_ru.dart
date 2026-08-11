@@ -945,6 +945,15 @@ class LRu extends L {
   String get diagEnhancerEffort => 'Очиститель речи';
 
   @override
+  String get diagEnhancerModel => 'Модель';
+
+  @override
+  String get diagEnhancerModelFull => 'Малая задержка';
+
+  @override
+  String get diagEnhancerModelSimple => 'Лёгкая';
+
+  @override
   String get diagEnhancerRungFull => 'Полностью';
 
   @override

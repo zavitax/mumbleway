@@ -2736,8 +2736,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 16)
-      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    if (arr.length != 17)
+      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2750,11 +2750,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputClipped: dco_decode_u_64(arr[8]),
       effectiveProfile: dco_decode_noise_setting(arr[9]),
       disabledStages: dco_decode_list_String(arr[10]),
-      relief: dco_decode_u_32(arr[11]),
-      analyserDisabled: dco_decode_bool(arr[12]),
-      classifierTopDisabled: dco_decode_bool(arr[13]),
-      liveDotsDisabled: dco_decode_bool(arr[14]),
-      enhancerEffort: dco_decode_u_32(arr[15]),
+      enhancerSimpleModel: dco_decode_bool(arr[11]),
+      relief: dco_decode_u_32(arr[12]),
+      analyserDisabled: dco_decode_bool(arr[13]),
+      classifierTopDisabled: dco_decode_bool(arr[14]),
+      liveDotsDisabled: dco_decode_bool(arr[15]),
+      enhancerEffort: dco_decode_u_32(arr[16]),
     );
   }
 
@@ -3513,6 +3514,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_inputClipped = sse_decode_u_64(deserializer);
     var var_effectiveProfile = sse_decode_noise_setting(deserializer);
     var var_disabledStages = sse_decode_list_String(deserializer);
+    var var_enhancerSimpleModel = sse_decode_bool(deserializer);
     var var_relief = sse_decode_u_32(deserializer);
     var var_analyserDisabled = sse_decode_bool(deserializer);
     var var_classifierTopDisabled = sse_decode_bool(deserializer);
@@ -3530,6 +3532,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       inputClipped: var_inputClipped,
       effectiveProfile: var_effectiveProfile,
       disabledStages: var_disabledStages,
+      enhancerSimpleModel: var_enhancerSimpleModel,
       relief: var_relief,
       analyserDisabled: var_analyserDisabled,
       classifierTopDisabled: var_classifierTopDisabled,
@@ -4303,6 +4306,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.inputClipped, serializer);
     sse_encode_noise_setting(self.effectiveProfile, serializer);
     sse_encode_list_String(self.disabledStages, serializer);
+    sse_encode_bool(self.enhancerSimpleModel, serializer);
     sse_encode_u_32(self.relief, serializer);
     sse_encode_bool(self.analyserDisabled, serializer);
     sse_encode_bool(self.classifierTopDisabled, serializer);

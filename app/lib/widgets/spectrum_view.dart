@@ -104,6 +104,10 @@ class _SpectrumViewState extends State<SpectrumView>
       ..write('/')
       ..write(c.enhancerEffort)
       ..write('/')
+      // Without this the row would not repaint when the model changed, which
+      // is the whole point of adding it.
+      ..write(c.enhancerSimpleModel ? 'S' : 'F')
+      ..write('/')
       ..write(c.relief)
       ..write('/')
       ..writeAll(c.disabledStages, ',')
@@ -509,6 +513,50 @@ class _EnhancerEffort extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          // Which model, under which rung.
+          //
+          // **The rung alone could not answer the question a rider asks.**
+          // `Full`, `Reduced` and `Light` are stages *within* whichever model
+          // is loaded, so a phone on the cheap model at full effort read
+          // identically to one on the expensive model at full effort — and
+          // "Light" here is a different thing from the "Light noise model"
+          // setting, which made the pair worse than silent. Toggling that
+          // setting now changes something visible.
+          //
+          // Shown on both values rather than only when it is cheap: this is a
+          // state and not a warning, and a rider who cannot see "Full" cannot
+          // tell a phone running the expensive model from a build too old to
+          // have the row. Same argument as the rung itself.
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 20),
+            child: Row(
+              children: [
+                Text(
+                  l.diagEnhancerModel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  status.enhancerSimpleModel
+                      ? l.diagEnhancerModelSimple
+                      : l.diagEnhancerModelFull,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    // Amber when it is the cheap one: it is a real reduction
+                    // in what the chain can do, whether a rider chose it, the
+                    // ladder reached it, or the device has one core.
+                    color: status.enhancerSimpleModel
+                        ? StatusColors.connecting
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
           if (why != null)
             Padding(

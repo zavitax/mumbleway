@@ -3208,6 +3208,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_effectiveProfile =
             <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         let mut var_disabledStages = <Vec<String>>::sse_decode(deserializer);
+        let mut var_enhancerSimpleModel = <bool>::sse_decode(deserializer);
         let mut var_relief = <u32>::sse_decode(deserializer);
         let mut var_analyserDisabled = <bool>::sse_decode(deserializer);
         let mut var_classifierTopDisabled = <bool>::sse_decode(deserializer);
@@ -3225,6 +3226,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             input_clipped: var_inputClipped,
             effective_profile: var_effectiveProfile,
             disabled_stages: var_disabledStages,
+            enhancer_simple_model: var_enhancerSimpleModel,
             relief: var_relief,
             analyser_disabled: var_analyserDisabled,
             classifier_top_disabled: var_classifierTopDisabled,
@@ -4020,6 +4022,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.input_clipped.into_into_dart().into_dart(),
             self.effective_profile.into_into_dart().into_dart(),
             self.disabled_stages.into_into_dart().into_dart(),
+            self.enhancer_simple_model.into_into_dart().into_dart(),
             self.relief.into_into_dart().into_dart(),
             self.analyser_disabled.into_into_dart().into_dart(),
             self.classifier_top_disabled.into_into_dart().into_dart(),
@@ -4889,6 +4892,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <u64>::sse_encode(self.input_clipped, serializer);
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);
         <Vec<String>>::sse_encode(self.disabled_stages, serializer);
+        <bool>::sse_encode(self.enhancer_simple_model, serializer);
         <u32>::sse_encode(self.relief, serializer);
         <bool>::sse_encode(self.analyser_disabled, serializer);
         <bool>::sse_encode(self.classifier_top_disabled, serializer);

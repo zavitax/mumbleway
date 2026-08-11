@@ -8,7 +8,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `process_usage`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
@@ -845,6 +845,14 @@ class UiChainStatus {
   /// is the ladder's business and it will change as rungs are added.
   final List<String> disabledStages;
 
+  /// Whether the cheap noise model is the one loaded.
+  ///
+  /// Separate from `enhancer_effort`, which names a rung *within* whichever
+  /// model is running — so without this a phone on the cheap model at full
+  /// effort read identically to one on the expensive model at full effort,
+  /// and toggling the setting changed nothing on screen.
+  final bool enhancerSimpleModel;
+
   /// How far down the whole-chain ladder this device has gone. 0 is nothing
   /// given up; the panel uses it only to decide whether to warn at all.
   final int relief;
@@ -881,6 +889,7 @@ class UiChainStatus {
     required this.inputClipped,
     required this.effectiveProfile,
     required this.disabledStages,
+    required this.enhancerSimpleModel,
     required this.relief,
     required this.analyserDisabled,
     required this.classifierTopDisabled,
@@ -901,6 +910,7 @@ class UiChainStatus {
       inputClipped.hashCode ^
       effectiveProfile.hashCode ^
       disabledStages.hashCode ^
+      enhancerSimpleModel.hashCode ^
       relief.hashCode ^
       analyserDisabled.hashCode ^
       classifierTopDisabled.hashCode ^
@@ -923,6 +933,7 @@ class UiChainStatus {
           inputClipped == other.inputClipped &&
           effectiveProfile == other.effectiveProfile &&
           disabledStages == other.disabledStages &&
+          enhancerSimpleModel == other.enhancerSimpleModel &&
           relief == other.relief &&
           analyserDisabled == other.analyserDisabled &&
           classifierTopDisabled == other.classifierTopDisabled &&

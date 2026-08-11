@@ -98,5 +98,28 @@ prost-build = "0.13"
 #
 # 0.21.5 has the identical code, and 0.21.6 drops `Graph::symbol_table`, which
 # `deep_filter` uses -- so there is no version to move to instead.
+# What this process costs, for the diagnostics panel and for the relief
+# ladder's CPU rung. Per-target because each platform has to be asked in the
+# way it will answer -- the reasoning, and the two ways sysinfo reports 0% on a
+# phone, are in `src/usage.rs`.
+
+# `/proc/self` on Android and Linux: `sysconf` for the clock tick and page size.
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = "0.2"
+
+# Mach on iOS and macOS, which answers for the current task inside the sandbox
+# where sysinfo compiles its process refresh to a stub.
+#
+# 0.6 and not 0.4: `mach_task_basic_info` and `task_thread_times_info` are not
+# under `mach2::task_info` in 0.4. `tools/usageprobe` carries the same code so
+# `cargo check --target aarch64-apple-ios` can typecheck it from any host.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+mach2 = "0.6"
+
+# Windows, where sysinfo works and there is nothing to work around.
+[target.'cfg(target_os = "windows")'.dependencies]
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+
 [patch.crates-io]
 tract-core = { path = "../third_party/tract-core" }
+

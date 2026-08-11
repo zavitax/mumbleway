@@ -11,6 +11,10 @@ pub mod error;
 pub mod net;
 pub mod proto;
 pub mod session;
+// What this process costs. In `core` rather than in the bridge because the
+// relief ladder reads it, and the ladder has to work whether or not anybody is
+// looking at the diagnostics panel.
+pub mod usage;
 pub mod varint;
 
 pub use error::{CoreError, DisconnectReason, Result};

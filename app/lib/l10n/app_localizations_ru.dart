@@ -889,6 +889,12 @@ class LRu extends L {
   String get diagOpensAt => 'Порог открытия';
 
   @override
+  String get diagPlotFloor => 'шум';
+
+  @override
+  String get diagPlotOpensAt => 'порог';
+
+  @override
   String get diagNetwork => 'Сеть';
 
   @override

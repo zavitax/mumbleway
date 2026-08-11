@@ -387,6 +387,8 @@
   "diagPlaybackGaps": "Playback gaps",
   "diagNoiseFloor": "Noise floor",
   "diagOpensAt": "Opens at",
+  "diagPlotFloor": "floor",
+  "diagPlotOpensAt": "opens at",
   "diagNetwork": "Network",
   "diagVoicePackets": "Voice packets",
   "diagMemory": "Memory",

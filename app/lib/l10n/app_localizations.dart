@@ -1705,6 +1705,18 @@ abstract class L {
   /// **'Opens at'**
   String get diagOpensAt;
 
+  /// No description provided for @diagPlotFloor.
+  ///
+  /// In en, this message translates to:
+  /// **'floor'**
+  String get diagPlotFloor;
+
+  /// No description provided for @diagPlotOpensAt.
+  ///
+  /// In en, this message translates to:
+  /// **'opens at'**
+  String get diagPlotOpensAt;
+
   /// No description provided for @diagNetwork.
   ///
   /// In en, this message translates to:

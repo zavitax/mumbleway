@@ -881,6 +881,12 @@ class LEn extends L {
   String get diagOpensAt => 'Opens at';
 
   @override
+  String get diagPlotFloor => 'floor';
+
+  @override
+  String get diagPlotOpensAt => 'opens at';
+
+  @override
   String get diagNetwork => 'Network';
 
   @override

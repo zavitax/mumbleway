@@ -399,6 +399,8 @@ class _SpectrumBody extends StatelessWidget {
                     opensAtDb: (status == null || status.warmingUp)
                         ? null
                         : status.activationThresholdDb,
+                    floorLabel: L.of(context).diagPlotFloor,
+                    opensAtLabel: L.of(context).diagPlotOpensAt,
                   ),
                 ),
               ),
@@ -934,7 +936,18 @@ class _SpectrumPainter extends CustomPainter {
     required this.preGate,
     this.noiseFloorDb,
     this.opensAtDb,
+    required this.floorLabel,
+    required this.opensAtLabel,
   });
+
+  /// The two dashed marks' labels.
+  ///
+  /// Passed in rather than looked up, because a painter has no
+  /// `BuildContext`. They were literals — "floor" and "opens at" — so the
+  /// only English left on a Russian analyser was drawn, not laid out, which
+  /// is why no test and no reading of the widget tree would have found it.
+  final String floorLabel;
+  final String opensAtLabel;
 
   /// The tracked noise floor and the level a block must beat to be sent, in
   /// dBFS, or null while there is no trustworthy answer.
@@ -1024,8 +1037,8 @@ class _SpectrumPainter extends CustomPainter {
     // Drawn floor first: where the two coincide — a quiet room, where the
     // threshold sits just over the floor — the one that decides is the one
     // that should be legible.
-    mark(noiseFloorDb, grid.withValues(alpha: 0.9), 'floor');
-    mark(opensAtDb, StatusColors.connecting.withValues(alpha: 0.7), 'opens at');
+    mark(noiseFloorDb, grid.withValues(alpha: 0.9), floorLabel);
+    mark(opensAtDb, StatusColors.connecting.withValues(alpha: 0.7), opensAtLabel);
 
     final bands = spectrum.centresHz.length;
     final slot = size.width / bands;
@@ -1076,7 +1089,12 @@ class _SpectrumPainter extends CustomPainter {
       // new frame arrived would sit at a stale level through exactly the
       // moments worth watching.
       old.noiseFloorDb != noiseFloorDb ||
-      old.opensAtDb != opensAtDb;
+      old.opensAtDb != opensAtDb ||
+      // Switching language changes nothing else here — same frame, same
+      // levels — so without this the plot keeps its old labels until the next
+      // block arrives, which on a settled analyser can be a visible while.
+      old.floorLabel != floorLabel ||
+      old.opensAtLabel != opensAtLabel;
 }
 
 /// The processing chain as a row of dots, in the order audio passes through it.

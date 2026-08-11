@@ -374,6 +374,8 @@
   "diagPlaybackGaps": "Пропуски воспроизведения",
   "diagNoiseFloor": "Уровень шума",
   "diagOpensAt": "Порог открытия",
+  "diagPlotFloor": "шум",
+  "diagPlotOpensAt": "порог",
   "diagNetwork": "Сеть",
   "diagVoicePackets": "Голосовые пакеты",
   "diagMemory": "Память",

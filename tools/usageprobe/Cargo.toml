@@ -1,0 +1,28 @@
+[package]
+name = "usageprobe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "What this process is actually costing, asked three ways, on the device"
+license = "GPL-3.0-or-later"
+
+# Its own workspace, like tools/dfbench, so it can be built for
+# `aarch64-linux-android` and pushed to a phone without dragging `core` and its
+# CMake-built Opus across.
+[workspace]
+
+[dependencies]
+# The same version the app uses, so this measures what the app measures.
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+libc = "0.2"
+
+# The Apple half of `app/rust/src/usage.rs`, carried here so it can be
+# typechecked without a Mac: `cargo check --target aarch64-apple-ios` needs no
+# Apple SDK for a crate with no C in it, and this crate has none. Getting the
+# `mach2` struct fields wrong is the one risk in that file that a Windows build
+# cannot see.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+mach2 = "0.6"
+
+[profile.release]
+opt-level = 2

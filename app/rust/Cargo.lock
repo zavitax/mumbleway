@@ -2103,6 +2103,8 @@ dependencies = [
  "anyhow",
  "flutter_rust_bridge",
  "jni 0.21.1",
+ "libc",
+ "mach2",
  "mumbleway-core",
  "ndk-context",
  "parking_lot",

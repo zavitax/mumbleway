@@ -1150,25 +1150,7 @@ pub struct UiDiagnostics {
     pub memory_mb: f32,
 }
 
-/// Kept between calls because CPU usage is a rate: it is measured by comparing
-/// two readings, and a freshly built one has nothing to compare against and
-/// reports zero.
-static SYSTEM: OnceLock<Mutex<(sysinfo::System, sysinfo::Pid)>> = OnceLock::new();
-
-fn process_usage() -> (f32, f32) {
-    let cell = SYSTEM.get_or_init(|| {
-        let mut system = sysinfo::System::new();
-        let pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from(0));
-        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
-        Mutex::new((system, pid))
-    });
-    let (system, pid) = &mut *cell.lock();
-    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[*pid]), true);
-    match system.process(*pid) {
-        Some(p) => (p.cpu_usage(), p.memory() as f32 / (1024.0 * 1024.0)),
-        None => (0.0, 0.0),
-    }
-}
+use crate::usage::process_usage;
 
 #[frb(sync)]
 pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {

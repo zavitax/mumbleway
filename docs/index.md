@@ -285,14 +285,17 @@ to be fixed by a setting.
     <a href="{{ '/server.html' | relative_url }}">It takes about ten minutes.</a></p>
   </div>
   <div class="panel warn">
-    <h3>Music rides out with your voice</h3>
-    <p><strong>Being heard over your own music is solved</strong> — anchoring
-    the gate to the tracked background took speech through from 63% to 98% on a
-    voice-over-music ride. What is not solved is the other direction: on that
-    same ride, 44% precision means a good deal of what goes out during a phrase
-    is music rather than speech. The detector was trained to tell speech from
-    noise, and music is neither. Push-to-talk avoids it entirely, and the work
-    is <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
+    <h3>Music can still key the channel</h3>
+    <p><strong>Both halves of this are much better than they were.</strong>
+    Being heard over your own music went from 63% of speech through to 98%, and
+    the enhancer takes <strong>19 dB out of the gaps between your words</strong>
+    — so where music used to sit a decibel and a half under the speech, it now
+    sits sixteen under it. Music that keys the channel therefore arrives
+    attenuated rather than at level.</p>
+    <p>What has not changed is the decision itself: the detector was trained to
+    tell speech from noise, music is neither, and it still opens the gate more
+    often than it should. Push-to-talk avoids it entirely, and the work is
+    <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
     open</a>, including every attempt that has already failed.</p>
   </div>
 </div>

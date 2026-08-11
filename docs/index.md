@@ -43,16 +43,32 @@ mouth, inside a helmet, at speed, with wind and an engine underneath.
 Speech from inside a helmet at speed is a hard signal. The chain is built for
 it, and every stage is visible while it runs.
 
+- **A neural speech enhancer at the head of the chain.** DeepFilterNet 3, on
+  the phone, in the 10 ms a block gets. It is the single largest lever here —
+  on the road it separates speech from the gaps between it by around 16 dB
+  where the rest of the chain manages 1.5 — which is why it is the first thing
+  softened and the last thing given up when a device runs short.
 - **Wind and engine suppression** tuned for a helmet, with lighter profiles for
   standing still and for indoors, and an automatic setting that picks between
-  them from the noise floor.
+  them from what it hears.
 - **Echo cancellation**, so a helmet speaker a few centimetres from the
   microphone does not send everybody back to themselves.
-- **Voice activation with an 80 ms look-ahead.** A threshold decides
-  mid-syllable, so the audio is held back and the channel opens on the sound
-  that *led into* the decision — the first consonant of a word survives instead
-  of arriving as the second. The channel then stays open 200 ms after you stop,
-  fading over the last 30, so a trailing "t" or "s" is not cut off.
+- **Voice activation that is not causal.** A threshold decides mid-syllable, so
+  by the time the gate opens the sound that opened it is already gone. The audio
+  is delayed and the decision is not: the channel opens on the sound that *led
+  into* it, and a word starting on "s", "f" or "sh" keeps its first consonant
+  instead of arriving as "ixty". Measured on three real rides, 160 ms of
+  look-ahead covered 94% of openings against 90% at 80 ms.
+- **The delay is then paid back.** Carrying a fixed look-ahead for ever is
+  latency on every transmission to protect the first tenth of a second of one.
+  So a phrase opens **240 ms** ahead and the debt is repaid at 1.1× — pitch
+  periods removed whole, so duration changes and pitch does not — until the
+  delay settles at **60 ms**. Not zero: a little slack absorbs a late block
+  instead of turning it into a dropout.
+- **The channel then holds for a full second** after you stop, fading over the
+  last 30 ms so a trailing "t" or "s" survives and the cut is not a click. A
+  second bridges the gaps *inside* a sentence, which is what stops a phrase
+  arriving as four fragments.
 - **Feedback suppression**, a de-hisser, automatic levelling and a limiter.
 - **An elastic jitter buffer** that plays a backlog off at up to double speed by
   removing pitch periods, rather than letting a tunnel put everybody a second
@@ -65,8 +81,8 @@ it, and every stage is visible while it runs.
 
 A block of audio arrives every 10 milliseconds, and the whole chain has to be
 finished before the next one turns up. On a current phone that is comfortable.
-On a cheap or elderly one it is not, and the useful thing to do about that is
-not to pretend otherwise.
+On an outdated or entry-level one it is not, and the useful thing to do about
+that is not to pretend otherwise.
 
 So the device is **measured against the deadline when the app starts, before
 your first call**, and watched while you talk. If it does not fit, stages are
@@ -247,10 +263,12 @@ to be fixed by a setting.
   </div>
   <div class="panel warn">
     <h3>Latency is a network's, not a radio's</h3>
-    <p>Expect a couple of hundred milliseconds on a good mobile link and more
-    on a bad one, against near-zero for an intercom between two adjacent
-    helmets. Conversation works; interrupting somebody mid-sentence does not
-    land the way it does face to face.</p>
+    <p>The capture chain contributes little — the look-ahead pays itself down
+    to 60 ms — but the network does not, so expect a couple of hundred
+    milliseconds on a good mobile link and more on a bad one, against near-zero
+    for an intercom between two adjacent helmets. Conversation works;
+    interrupting somebody mid-sentence does not land the way it does face to
+    face.</p>
   </div>
   <div class="panel warn">
     <h3>Bluetooth costs you audio quality</h3>
@@ -267,10 +285,13 @@ to be fixed by a setting.
     <a href="{{ '/server.html' | relative_url }}">It takes about ten minutes.</a></p>
   </div>
   <div class="panel warn">
-    <h3>Music still opens the gate</h3>
-    <p>Voice activation is fooled by music with sharp, tonal, plucked
-    notes — the detector was trained to tell speech from noise, and music is
-    neither. Push-to-talk avoids it entirely. This one is being worked on and
+    <h3>Music rides out with your voice</h3>
+    <p><strong>Being heard over your own music is solved</strong> — anchoring
+    the gate to the tracked background took speech through from 63% to 98% on a
+    voice-over-music ride. What is not solved is the other direction: on that
+    same ride, 44% precision means a good deal of what goes out during a phrase
+    is music rather than speech. The detector was trained to tell speech from
+    noise, and music is neither. Push-to-talk avoids it entirely, and the work
     is <a href="{{ site.repo }}/blob/main/docs/MUSIC_GATE.md">documented in the
     open</a>, including every attempt that has already failed.</p>
   </div>

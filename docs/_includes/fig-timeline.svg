@@ -34,9 +34,13 @@
   <rect x="250" y="108" width="270" height="48" fill="#2A3644" stroke="#3E4E61"/>
   <text x="262" y="138" fill="#8695A6" font-size="13" font-family="inherit">{{ f.detected }}</text>
 
-  <!-- 3. What actually goes on the wire. -->
+  <!-- 3. What actually goes on the wire.
+       Drawn to scale against the tracks above: 1 px is 1 ms, so the opening
+       runs from 200 and the tail from 520 to 720 — a second of hold at the
+       same scale would leave the figure, so the fading block stands for it and
+       the label carries the number. The look-ahead is the real 240 ms. -->
   <rect x="200" y="188" width="330" height="48" fill="#FFA53C" fill-opacity="0.85"/>
-  <rect x="530" y="188" width="70" height="48" fill="url(#tl-fade)"/>
+  <rect x="530" y="188" width="190" height="48" fill="url(#tl-fade)"/>
   <text x="212" y="218" fill="#17110A" font-size="13" font-weight="700" font-family="inherit">{{ f.on_the_wire }}</text>
 
   <!-- Guides tying the three tracks together at the two moments that matter -->
@@ -44,19 +48,19 @@
     <line x1="200" y1="30" x2="200" y2="250"/>
     <line x1="250" y1="60" x2="250" y2="250"/>
     <line x1="520" y1="60" x2="520" y2="250"/>
-    <line x1="600" y1="188" x2="600" y2="250"/>
+    <line x1="720" y1="188" x2="720" y2="250"/>
   </g>
 
   <!-- Measurements -->
   <g stroke="#3ECF7E" stroke-width="1.5" fill="none">
     <path d="M200 258 L250 258"/>
-    <path d="M520 258 L600 258"/>
+    <path d="M520 258 L720 258"/>
   </g>
   <g fill="#3ECF7E" font-size="13" font-family="inherit">
     <text x="200" y="280">{{ f.lookahead }}</text>
     <text x="520" y="280">{{ f.tail }}</text>
   </g>
-  <text x="602" y="218" fill="#8695A6" font-size="12" font-family="inherit">{{ f.fade }}</text>
+  <text x="722" y="218" fill="#8695A6" font-size="12" font-family="inherit">{{ f.fade }}</text>
 </svg>
 <figcaption>{{ f.caption | strip_newlines }}</figcaption>
 </figure>

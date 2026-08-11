@@ -37,7 +37,7 @@ MumbleWay connects to any of them — a friend's box, one at the clubhouse, a pu
 
 BUILT FOR A BIKE
 • Noise profiles from Light to Helmet, or Auto, which picks from what it hears and shows you where it landed.
-• Voice activation looks 80 ms ahead, so the channel opens on the sound that led into the decision and the first consonant of a word is not clipped off.
+• Voice activation opens 240 ms ahead of its own decision, so a word keeps its first consonant. The delay is then paid back to 60 ms rather than carried all call.
 • Push to talk, voice activation, or open microphone.
 • Works over Bluetooth intercom headsets on the hands-free profile, which is where the boom microphone lives.
 • Pair a handlebar Bluetooth remote and it learns whatever your remote actually sends, rather than offering a list of keys that may not match it. Hold to talk, or tap to toggle for remotes that never send a release.

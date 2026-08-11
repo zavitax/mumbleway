@@ -109,21 +109,21 @@ en:
         Three stacked tracks. The spoken word runs from 200 to 560
         milliseconds. The detector only recognises it from 250 to 520, missing
         the first consonant and dropping before the last. What is transmitted
-        runs from 200 to 600: an 80 millisecond look-ahead recovers the opening
-        consonant, and a 200 millisecond tail carries the closing one, fading
-        over its final 30 milliseconds.
+        runs from 200 to 720: a 240 millisecond look-ahead recovers the opening
+        consonant, and a one second tail carries the closing one and bridges
+        the gaps inside the sentence, fading over its final 30 milliseconds.
       you_say: You say
       detector: Detector
       transmitted: Transmitted
       detected: speech detected
       on_the_wire: on the wire
-      lookahead: 80 ms look-ahead
-      tail: 200 ms tail
+      lookahead: 240 ms look-ahead
+      tail: 1 s tail
       fade: 30 ms fade
       caption: >-
-        A threshold decides mid-syllable. Holding the audio back by 80 ms lets
+        A threshold decides mid-syllable. Holding the audio back by 240 ms lets
         the channel open on the sound that <em>led into</em> the decision, so
-        the opening consonant survives; a 200 ms tail carries the closing one,
+        the opening consonant survives; a one second tail carries the closing one,
         fading at the very end so it does not click.
 
     passenger:
@@ -278,20 +278,21 @@ ru:
         Три дорожки одна над другой. Слово звучит с 200-й по 560-ю миллисекунду.
         Детектор уверен в нём только с 250-й по 520-ю: он теряет первый
         согласный и отпускает раньше последнего. В эфир уходит отрезок с 200-й
-        по 600-ю: упреждение в 80 мс возвращает начальный согласный, а хвост в
-        200 мс доносит конечный, затухая на последних 30 мс.
+        по 720-ю: упреждение в 240 мс возвращает начальный согласный, а секундный
+        хвост доносит конечный и перекрывает паузы внутри фразы, затухая на
+        последних 30 мс.
       you_say: Вы говорите
       detector: Детектор
       transmitted: В эфир
       detected: речь обнаружена
       on_the_wire: идёт передача
-      lookahead: упреждение 80 мс
-      tail: хвост 200 мс
+      lookahead: упреждение 240 мс
+      tail: хвост 1 с
       fade: затухание 30 мс
       caption: >-
-        Порог принимает решение посреди слога. Задержка звука на 80 мс
+        Порог принимает решение посреди слога. Задержка звука на 240 мс
         позволяет открыть канал на том звуке, который <em>привёл</em> к
-        решению, — и начальный согласный сохраняется; хвост в 200 мс доносит
+        решению, — и начальный согласный сохраняется; секундный хвост доносит
         конечный и затухает в самом конце, чтобы не щёлкнуло.
 
     passenger:

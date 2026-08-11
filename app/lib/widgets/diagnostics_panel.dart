@@ -40,6 +40,21 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   final _cpu = _History('%');
   final _memory = _History('MB');
 
+  /// One history per core of the **device**, under the line for this process.
+  ///
+  /// Grown on first sight rather than declared, because the count is not known
+  /// until the core answers and differs per device. Kept as a list of the same
+  /// `_History` the other series use so the graph needs no special case.
+  final _perCore = <_History>[];
+
+  /// Whether the platform ever gave us per-core figures.
+  ///
+  /// Three states, not two, and the difference matters on screen: not asked
+  /// yet, answered, and refused. A phone that refuses draws no lines, and a
+  /// graph that silently has fewer lines than a rider expects is
+  /// indistinguishable from a graph that is broken — so the panel says which.
+  bool? _perCoreAvailable;
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +94,23 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         _packetsOut.add((now.voiceOut - was.voiceOut).toDouble());
       }
       _cpu.add(now.cpuPercent);
+      // Latched on the first non-empty answer rather than set from each
+      // sample: a device that reports cores must not have its lines vanish
+      // because one reading came back short, and one that refuses must not
+      // look like it is about to start.
+      if (now.cpuPerCore.isNotEmpty) {
+        _perCoreAvailable = true;
+        while (_perCore.length < now.cpuPerCore.length) {
+          _perCore.add(_History('%'));
+        }
+        for (var i = 0; i < _perCore.length; i++) {
+          _perCore[i].add(
+            i < now.cpuPerCore.length ? now.cpuPerCore[i] : 0.0,
+          );
+        }
+      } else {
+        _perCoreAvailable ??= false;
+      }
       _memory.add(now.memoryMb);
       _previous = now;
 
@@ -395,8 +427,38 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                         ),
                         _Graph(
                           title: 'CPU',
-                          series: [_Series('cpu', _cpu, scheme.primary)],
+                          series: [
+                            _Series('app', _cpu, scheme.primary),
+                            // The device's cores, under the app's own line.
+                            //
+                            // Dimmed on purpose: eight cores against one
+                            // process would otherwise be eight bright lines
+                            // burying the one line this panel exists for.
+                            // They are context for it, not peers of it.
+                            for (var i = 0; i < _perCore.length; i++)
+                              _Series(
+                                '$i',
+                                _perCore[i],
+                                scheme.onSurfaceVariant.withValues(alpha: 0.35),
+                              ),
+                          ],
                         ),
+                        // Said rather than left as an absence. Per-core times
+                        // come only from the global `/proc/stat` on Linux,
+                        // which is the file the Android sandbox denies us —
+                        // the same denial that made the CPU figure read 0%
+                        // before it was measured another way.
+                        if (_perCoreAvailable == false)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4, bottom: 6),
+                            child: Text(
+                              l.diagPerCoreUnavailable,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
                         _Graph(
                           title: l.diagMemory,
                           series: [_Series('rss', _memory, scheme.primary)],
@@ -646,6 +708,7 @@ class _Snapshot {
     required this.voiceIn,
     required this.voiceOut,
     required this.cpuPercent,
+    required this.cpuPerCore,
     required this.memoryMb,
   });
 
@@ -662,6 +725,7 @@ class _Snapshot {
     voiceIn: d.voicePacketsIn.toInt(),
     voiceOut: d.voicePacketsOut.toInt(),
     cpuPercent: d.cpuPercent,
+    cpuPerCore: d.cpuPerCore,
     memoryMb: d.memoryMb,
   );
 
@@ -677,6 +741,7 @@ class _Snapshot {
   final int voiceIn;
   final int voiceOut;
   final double cpuPercent;
+  final List<double> cpuPerCore;
   final double memoryMb;
 }
 

@@ -945,6 +945,10 @@ class LRu extends L {
   String get diagEnhancerEffort => 'Очиститель речи';
 
   @override
+  String get diagPerCoreUnavailable =>
+      'Загрузка отдельных ядер недоступна на этом устройстве: система не сообщает её приложению.';
+
+  @override
   String get diagEnhancerModel => 'Модель';
 
   @override

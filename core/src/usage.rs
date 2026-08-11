@@ -20,10 +20,21 @@
 //! }
 //! ```
 //!
-//! Android denies `/proc/stat` to an ordinary app while allowing it to the
-//! `adb shell` user — which is why `tools/usageprobe` reported 100% from a
-//! shell on the same phone the app reported 0% on. Memory does not go through
-//! that path and was never affected.
+//! Something in the app's sandbox denies that file while the `adb shell` user
+//! reads it happily — which is why `tools/usageprobe` reported 100% from a
+//! shell on the same phone the app reported 0% on, running identical code
+//! through identical calls. Memory does not go through that path and was never
+//! affected.
+//!
+//! **That it is specifically SELinux refusing `proc_stat` to `untrusted_app`
+//! is an inference, not a measurement.** `/proc/stat` is labelled
+//! `u:object_r:proc_stat:s0` and the app runs as `u:r:untrusted_app:s0`, but
+//! the denial itself could not be reproduced from here: the shell cannot
+//! `runcon` into the app's domain, and a locally built debuggable APK will not
+//! install on this device. What *is* measured is the outcome — identical code,
+//! shell 100%, app 0% — and that is what the fix below rests on. [`per_core`]
+//! asks the question again at runtime and reports the answer, which is the way
+//! this finally gets settled.
 //!
 //! # What it does instead
 //!
@@ -121,6 +132,216 @@ fn rate(previous: Option<(f64, Instant)>, seconds: f64, now: Instant) -> f32 {
     // negative percentage on the panel would be read as a bug in the panel.
     let per_core = (((seconds - then_seconds) / elapsed) * 100.0).max(0.0);
     share_of_device(per_core as f32)
+}
+
+/// Busy share of each core since the previous call, or `None` where the
+/// platform will not say.
+///
+/// # This is the *device's* cores, not ours
+///
+/// Every other number in this module is about this process. This one cannot
+/// be: a core is shared, and "how busy is core 3" includes every other app on
+/// the phone. It is here because a rider looking at a struggling device wants
+/// to know whether the phone is loaded or only we are, and those look
+/// identical from a single total.
+///
+/// # `None` is a real answer and has to be shown as one
+///
+/// Per-core times come from one place on Linux — the global `/proc/stat` —
+/// and that is the file the Android sandbox denies us. It is the whole reason
+/// `sysinfo` reported 0% CPU: it builds its CPU list from `/proc/stat`, got an
+/// empty list inside the app, and took its `if self.cpus.is_empty() { return }`
+/// early exit.
+///
+/// **Whether an ordinary app may read it was not provable from here.** The
+/// `adb` shell reads it fine and that says nothing, since the shell is not in
+/// the app's SELinux domain; `runcon` into `untrusted_app` is refused, and a
+/// locally built debuggable APK will not install on this device. So the app
+/// asks at runtime and reports what it got, which is the only honest way left
+/// to find out — and if Android does allow it, the lines simply appear.
+///
+/// The first call has nothing to subtract from and returns `Some(vec![0.0; n])`
+/// rather than `None`: "not yet" and "never" are different answers and the
+/// panel says different things about them.
+pub fn per_core() -> Option<Vec<f32>> {
+    per_core_impl()
+}
+
+/// `/proc/stat`'s per-core lines: `cpuN user nice system idle ...`.
+///
+/// Busy is everything that is not idle or iowait, over the total — the same
+/// definition `top` uses, so a rider comparing the two sees the same number.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn per_core_impl() -> Option<Vec<f32>> {
+    /// Per core: busy jiffies and total jiffies at the previous call.
+    static LAST: OnceLock<Mutex<Vec<(u64, u64)>>> = OnceLock::new();
+
+    let stat = std::fs::read_to_string("/proc/stat").ok()?;
+    let mut now: Vec<(u64, u64)> = Vec::new();
+    for line in stat.lines() {
+        // `cpu0`, `cpu1`, ... and not the `cpu ` aggregate line.
+        if !line.starts_with("cpu") || line.starts_with("cpu ") {
+            continue;
+        }
+        let fields: Vec<u64> = line
+            .split_whitespace()
+            .skip(1)
+            .filter_map(|v| v.parse().ok())
+            .collect();
+        // user, nice, system, idle, iowait, ... — anything shorter is a
+        // format this parse does not understand, and guessing at it would
+        // produce a plausible wrong number.
+        if fields.len() < 5 {
+            return None;
+        }
+        let total: u64 = fields.iter().sum();
+        let idle = fields[3] + fields[4];
+        now.push((total.saturating_sub(idle), total));
+    }
+    if now.is_empty() {
+        return None;
+    }
+
+    let cell = LAST.get_or_init(|| Mutex::new(Vec::new()));
+    let mut last = cell.lock();
+    let out = if last.len() == now.len() {
+        now.iter()
+            .zip(last.iter())
+            .map(|((busy, total), (was_busy, was_total))| {
+                let d_total = total.saturating_sub(*was_total);
+                if d_total == 0 {
+                    return 0.0;
+                }
+                let d_busy = busy.saturating_sub(*was_busy);
+                ((d_busy as f32 / d_total as f32) * 100.0).clamp(0.0, 100.0)
+            })
+            .collect()
+    } else {
+        // First call, or the core count changed under us — big.LITTLE phones
+        // do hotplug cores. Either way there is no delta to report yet.
+        vec![0.0; now.len()]
+    };
+    *last = now;
+    Some(out)
+}
+
+/// Mach's `host_processor_info`, which wants the **host** port rather than the
+/// task port this module otherwise uses.
+///
+/// That distinction is the whole risk: `mach_host_self` is fine to call in a
+/// sandbox, and whether the call behind it is answered for a sandboxed iOS app
+/// is exactly what could not be tested from a Windows host. It returns `None`
+/// on any failure, so an iOS refusal is the same code path as a device that
+/// has no answer.
+#[cfg(target_vendor = "apple")]
+fn per_core_impl() -> Option<Vec<f32>> {
+    use mach2::kern_return::KERN_SUCCESS;
+    use mach2::mach_types::host_t;
+    use mach2::message::mach_msg_type_number_t;
+    use mach2::traps::mach_task_self;
+    use mach2::vm_types::integer_t;
+
+    // Not in `mach2`'s public surface, so declared here. Both are ordinary
+    // libSystem exports.
+    extern "C" {
+        fn mach_host_self() -> host_t;
+        fn host_processor_info(
+            host: host_t,
+            flavour: i32,
+            out_count: *mut u32,
+            out_info: *mut *mut integer_t,
+            out_info_count: *mut mach_msg_type_number_t,
+        ) -> i32;
+        fn vm_deallocate(target: u32, address: usize, size: usize) -> i32;
+    }
+    const PROCESSOR_CPU_LOAD_INFO: i32 = 2;
+    // user, system, idle, nice — the order Mach reports them in.
+    const STATES: usize = 4;
+    const IDLE: usize = 2;
+
+    static LAST: OnceLock<Mutex<Vec<(u64, u64)>>> = OnceLock::new();
+
+    let mut cores: u32 = 0;
+    let mut info: *mut integer_t = std::ptr::null_mut();
+    let mut info_count: mach_msg_type_number_t = 0;
+    let ok = unsafe {
+        host_processor_info(
+            mach_host_self(),
+            PROCESSOR_CPU_LOAD_INFO,
+            &mut cores,
+            &mut info,
+            &mut info_count,
+        )
+    };
+    if ok != KERN_SUCCESS || info.is_null() || cores == 0 {
+        return None;
+    }
+
+    let mut now: Vec<(u64, u64)> = Vec::with_capacity(cores as usize);
+    for core in 0..cores as usize {
+        let mut total = 0u64;
+        let mut idle = 0u64;
+        for state in 0..STATES {
+            // Read before the deallocate below, which is why this is not
+            // deferred: the buffer belongs to the kernel until then.
+            let ticks = unsafe { *info.add(core * STATES + state) } as u32 as u64;
+            total += ticks;
+            if state == IDLE {
+                idle = ticks;
+            }
+        }
+        now.push((total.saturating_sub(idle), total));
+    }
+    // The kernel allocated this into our address space and it is ours to
+    // return. Leaking it once a second would be a slow leak that only shows up
+    // on a long ride.
+    unsafe {
+        vm_deallocate(
+            mach_task_self(),
+            info as usize,
+            info_count as usize * std::mem::size_of::<integer_t>(),
+        );
+    }
+
+    let cell = LAST.get_or_init(|| Mutex::new(Vec::new()));
+    let mut last = cell.lock();
+    let out = if last.len() == now.len() {
+        now.iter()
+            .zip(last.iter())
+            .map(|((busy, total), (was_busy, was_total))| {
+                let d_total = total.saturating_sub(*was_total);
+                if d_total == 0 {
+                    return 0.0;
+                }
+                ((busy.saturating_sub(*was_busy) as f32 / d_total as f32) * 100.0).clamp(0.0, 100.0)
+            })
+            .collect()
+    } else {
+        vec![0.0; now.len()]
+    };
+    *last = now;
+    Some(out)
+}
+
+/// Windows, where `sysinfo` reads per-core happily.
+#[cfg(target_os = "windows")]
+fn per_core_impl() -> Option<Vec<f32>> {
+    static SYSTEM: OnceLock<Mutex<(sysinfo::System, bool)>> = OnceLock::new();
+    let cell = SYSTEM.get_or_init(|| Mutex::new((sysinfo::System::new(), true)));
+    let (system, first) = &mut *cell.lock();
+    system.refresh_cpu_usage();
+    let mut out: Vec<f32> = system.cpus().iter().map(|c| c.cpu_usage()).collect();
+    if out.is_empty() {
+        return None;
+    }
+    // The same contract the other two implementations keep: the first reading
+    // has no interval behind it. `sysinfo` will happily return a number here,
+    // measured against a baseline taken when `System::new` ran, which is not
+    // the interval the caller thinks it is asking about.
+    if std::mem::take(first) {
+        out.iter_mut().for_each(|v| *v = 0.0);
+    }
+    Some(out)
 }
 
 /// How many cores the CPU figure is divided by.
@@ -322,6 +543,42 @@ mod tests {
 
         // Two readings in the same instant would divide by zero.
         assert_eq!(rate(Some((12.0, start)), 13.0, start), 0.0);
+    }
+
+    #[test]
+    fn per_core_agrees_with_the_core_count_and_stays_in_range() {
+        // Two calls: the first has no delta and is all zeroes by contract, so
+        // that "not yet" and "never" stay different answers.
+        let Some(first) = per_core() else {
+            // A platform that will not say is a legitimate outcome, and the
+            // panel has a line for it. Nothing else here can be asserted.
+            return;
+        };
+        assert!(
+            first.iter().all(|v| *v == 0.0),
+            "the first call has no delta"
+        );
+
+        let spin = Instant::now();
+        let mut x = 0u64;
+        while spin.elapsed().as_millis() < 80 {
+            x = x.wrapping_add(1);
+        }
+        std::hint::black_box(x);
+
+        let second = per_core().expect("a platform that answered once answers again");
+        assert_eq!(second.len(), first.len(), "the core count is stable");
+        assert_eq!(
+            second.len() as f32,
+            cores(),
+            "per-core disagrees with the divisor used for the total"
+        );
+        for (i, v) in second.iter().enumerate() {
+            assert!(
+                (0.0..=100.0).contains(v) && v.is_finite(),
+                "core {i} reported {v}"
+            );
+        }
     }
 
     #[test]

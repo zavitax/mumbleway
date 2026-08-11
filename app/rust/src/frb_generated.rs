@@ -3271,6 +3271,7 @@ impl SseDecode for crate::api::mumbleway::UiDiagnostics {
         let mut var_voicePacketsIn = <u64>::sse_decode(deserializer);
         let mut var_voicePacketsOut = <u64>::sse_decode(deserializer);
         let mut var_cpuPercent = <f32>::sse_decode(deserializer);
+        let mut var_cpuPerCore = <Vec<f32>>::sse_decode(deserializer);
         let mut var_memoryMb = <f32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiDiagnostics {
             playback_gap_ms: var_playbackGapMs,
@@ -3285,6 +3286,7 @@ impl SseDecode for crate::api::mumbleway::UiDiagnostics {
             voice_packets_in: var_voicePacketsIn,
             voice_packets_out: var_voicePacketsOut,
             cpu_percent: var_cpuPercent,
+            cpu_per_core: var_cpuPerCore,
             memory_mb: var_memoryMb,
         };
     }
@@ -4084,6 +4086,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiDiagnostics {
             self.voice_packets_in.into_into_dart().into_dart(),
             self.voice_packets_out.into_into_dart().into_dart(),
             self.cpu_percent.into_into_dart().into_dart(),
+            self.cpu_per_core.into_into_dart().into_dart(),
             self.memory_mb.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -4928,6 +4931,7 @@ impl SseEncode for crate::api::mumbleway::UiDiagnostics {
         <u64>::sse_encode(self.voice_packets_in, serializer);
         <u64>::sse_encode(self.voice_packets_out, serializer);
         <f32>::sse_encode(self.cpu_percent, serializer);
+        <Vec<f32>>::sse_encode(self.cpu_per_core, serializer);
         <f32>::sse_encode(self.memory_mb, serializer);
     }
 }

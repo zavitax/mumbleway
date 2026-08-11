@@ -112,6 +112,47 @@ fn apple_sample() -> (f64, f32) {
     (cpu, memory)
 }
 
+/// Per-core system usage, which needs the global `/proc/stat`.
+///
+/// The question this answers: **can an app show a line per core?** `/proc/stat`
+/// is the only source of per-core times on Linux, and it is the file Android
+/// denies to `untrusted_app` — the denial that made `sysinfo` report 0% and
+/// started all of this. A shell can read it, so a probe run this way proves
+/// nothing about the app unless it *fails*.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn per_core_lines() -> Result<Vec<String>, String> {
+    let stat = std::fs::read_to_string("/proc/stat").map_err(|e| e.to_string())?;
+    Ok(stat
+        .lines()
+        .filter(|l| l.starts_with("cpu") && !l.starts_with("cpu "))
+        .map(|l| l.split_whitespace().take(4).collect::<Vec<_>>().join(" "))
+        .collect())
+}
+
+/// Per-**thread** CPU, from `/proc/self/task`.
+///
+/// The alternative to per-core, and the one that lives under `/proc/self` —
+/// the tree the app is already reading successfully on Android, since the
+/// panel now shows a real number there.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn per_thread() -> Result<Vec<(String, u64)>, String> {
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir("/proc/self/task").map_err(|e| e.to_string())? {
+        let dir = entry.map_err(|e| e.to_string())?.path();
+        let Ok(stat) = std::fs::read_to_string(dir.join("stat")) else {
+            continue;
+        };
+        let Some(open) = stat.find('(') else { continue };
+        let Some(close) = stat.rfind(')') else { continue };
+        let name = stat[open + 1..close].to_string();
+        let fields: Vec<&str> = stat[close + 1..].split_whitespace().collect();
+        let utime: u64 = fields.get(11).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let stime: u64 = fields.get(12).and_then(|v| v.parse().ok()).unwrap_or(0);
+        out.push((name, utime + stime));
+    }
+    Ok(out)
+}
+
 fn burn(seconds: f32) {
     let until = Instant::now();
     let mut x = 0u64;
@@ -176,5 +217,32 @@ fn main() {
         println!("\n--- mach task_info ---");
         let (cpu_seconds, mb) = apple_sample();
         println!("cpu {cpu_seconds:.3} s of CPU consumed   memory {mb:.1} MB");
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        println!("\n--- per core, from the global /proc/stat ---");
+        match per_core_lines() {
+            Ok(lines) => {
+                println!("readable here: {} cores", lines.len());
+                for l in lines.iter().take(3) {
+                    println!("  {l}");
+                }
+                println!("  (a shell can read this; an app may not -- see the note above)");
+            }
+            Err(e) => println!("DENIED: {e}"),
+        }
+
+        println!("\n--- per thread, from /proc/self/task ---");
+        match per_thread() {
+            Ok(mut threads) => {
+                threads.sort_by_key(|(_, ticks)| std::cmp::Reverse(*ticks));
+                println!("{} threads", threads.len());
+                for (name, ticks) in threads.iter().take(6) {
+                    println!("  {name:<20} {ticks} ticks");
+                }
+            }
+            Err(e) => println!("DENIED: {e}"),
+        }
     }
 }

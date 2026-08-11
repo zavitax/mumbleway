@@ -432,6 +432,10 @@
   "@diagEnhancerEffort": {
     "description": "Label for the row naming which effort rung the speech enhancer is running at"
   },
+  "diagPerCoreUnavailable": "Per-core figures are not available on this device: the system will not report them to an app.",
+  "@diagPerCoreUnavailable": {
+    "description": "Shown under the CPU graph when the operating system refuses to give the app per-core CPU usage"
+  },
   "diagEnhancerModel": "Model",
   "@diagEnhancerModel": {
     "description": "Label for the row naming which noise model the speech enhancer has loaded"

@@ -1017,6 +1017,22 @@ class UiDiagnostics {
   /// Share of one core this process is using, as a percentage.
   final double cpuPercent;
 
+  /// Busy share of each of the device's cores, or empty where the platform
+  /// will not say.
+  ///
+  /// **The device's cores, not ours.** Every other figure here is about this
+  /// process; a core is shared, so this includes everything else running.
+  /// That is the point of showing it beside the total — a phone that is
+  /// loaded and a phone where only we are loaded look identical otherwise.
+  ///
+  /// Empty is a real answer and the panel says so rather than drawing
+  /// nothing: per-core times come only from the global `/proc/stat` on
+  /// Linux, which is the file the Android sandbox denies us and the reason
+  /// the CPU figure read 0% before it was measured a different way. Whether
+  /// an ordinary app may read it could not be established off-device, so the
+  /// app asks and reports what it got.
+  final Float32List cpuPerCore;
+
   /// Resident memory, in mebibytes.
   final double memoryMb;
 
@@ -1033,6 +1049,7 @@ class UiDiagnostics {
     required this.voicePacketsIn,
     required this.voicePacketsOut,
     required this.cpuPercent,
+    required this.cpuPerCore,
     required this.memoryMb,
   });
 
@@ -1050,6 +1067,7 @@ class UiDiagnostics {
       voicePacketsIn.hashCode ^
       voicePacketsOut.hashCode ^
       cpuPercent.hashCode ^
+      cpuPerCore.hashCode ^
       memoryMb.hashCode;
 
   @override
@@ -1069,6 +1087,7 @@ class UiDiagnostics {
           voicePacketsIn == other.voicePacketsIn &&
           voicePacketsOut == other.voicePacketsOut &&
           cpuPercent == other.cpuPercent &&
+          cpuPerCore == other.cpuPerCore &&
           memoryMb == other.memoryMb;
 }
 

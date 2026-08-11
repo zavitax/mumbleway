@@ -1146,6 +1146,21 @@ pub struct UiDiagnostics {
 
     /// Share of one core this process is using, as a percentage.
     pub cpu_percent: f32,
+    /// Busy share of each of the device's cores, or empty where the platform
+    /// will not say.
+    ///
+    /// **The device's cores, not ours.** Every other figure here is about this
+    /// process; a core is shared, so this includes everything else running.
+    /// That is the point of showing it beside the total — a phone that is
+    /// loaded and a phone where only we are loaded look identical otherwise.
+    ///
+    /// Empty is a real answer and the panel says so rather than drawing
+    /// nothing: per-core times come only from the global `/proc/stat` on
+    /// Linux, which is the file the Android sandbox denies us and the reason
+    /// the CPU figure read 0% before it was measured a different way. Whether
+    /// an ordinary app may read it could not be established off-device, so the
+    /// app asks and reports what it got.
+    pub cpu_per_core: Vec<f32>,
     /// Resident memory, in mebibytes.
     pub memory_mb: f32,
 }
@@ -1177,6 +1192,7 @@ pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
         voice_packets_in,
         voice_packets_out,
         cpu_percent,
+        cpu_per_core: mumbleway_core::usage::per_core().unwrap_or_default(),
         memory_mb,
     })
 }

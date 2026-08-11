@@ -1807,6 +1807,12 @@ abstract class L {
   /// **'Enhancer'**
   String get diagEnhancerEffort;
 
+  /// Shown under the CPU graph when the operating system refuses to give the app per-core CPU usage
+  ///
+  /// In en, this message translates to:
+  /// **'Per-core figures are not available on this device: the system will not report them to an app.'**
+  String get diagPerCoreUnavailable;
+
   /// Label for the row naming which noise model the speech enhancer has loaded
   ///
   /// In en, this message translates to:

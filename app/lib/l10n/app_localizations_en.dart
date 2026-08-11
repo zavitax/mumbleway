@@ -944,6 +944,10 @@ class LEn extends L {
   String get diagEnhancerEffort => 'Enhancer';
 
   @override
+  String get diagPerCoreUnavailable =>
+      'Per-core figures are not available on this device: the system will not report them to an app.';
+
+  @override
   String get diagEnhancerModel => 'Model';
 
   @override

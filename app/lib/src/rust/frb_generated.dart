@@ -2779,8 +2779,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiDiagnostics dco_decode_ui_diagnostics(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 13)
-      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
+    if (arr.length != 14)
+      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
     return UiDiagnostics(
       playbackGapMs: dco_decode_u_64(arr[0]),
       captureDroppedMs: dco_decode_u_64(arr[1]),
@@ -2794,7 +2794,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       voicePacketsIn: dco_decode_u_64(arr[9]),
       voicePacketsOut: dco_decode_u_64(arr[10]),
       cpuPercent: dco_decode_f_32(arr[11]),
-      memoryMb: dco_decode_f_32(arr[12]),
+      cpuPerCore: dco_decode_list_prim_f_32_strict(arr[12]),
+      memoryMb: dco_decode_f_32(arr[13]),
     );
   }
 
@@ -3575,6 +3576,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_voicePacketsIn = sse_decode_u_64(deserializer);
     var var_voicePacketsOut = sse_decode_u_64(deserializer);
     var var_cpuPercent = sse_decode_f_32(deserializer);
+    var var_cpuPerCore = sse_decode_list_prim_f_32_strict(deserializer);
     var var_memoryMb = sse_decode_f_32(deserializer);
     return UiDiagnostics(
       playbackGapMs: var_playbackGapMs,
@@ -3589,6 +3591,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       voicePacketsIn: var_voicePacketsIn,
       voicePacketsOut: var_voicePacketsOut,
       cpuPercent: var_cpuPercent,
+      cpuPerCore: var_cpuPerCore,
       memoryMb: var_memoryMb,
     );
   }
@@ -4340,6 +4343,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.voicePacketsIn, serializer);
     sse_encode_u_64(self.voicePacketsOut, serializer);
     sse_encode_f_32(self.cpuPercent, serializer);
+    sse_encode_list_prim_f_32_strict(self.cpuPerCore, serializer);
     sse_encode_f_32(self.memoryMb, serializer);
   }
 

@@ -178,6 +178,16 @@ Bluetooth-интерком связывает мотоциклистов дру�
     <figcaption>Панель диагностики: в широком окне все счётчики видны сразу, а
   не столбиком.</figcaption>
   </figure>
+  <figure>
+    <img src="{{ '/assets/img/shots/home-macos.webp' | relative_url }}"
+         alt="MumbleWay на macOS, подключено: слева три сохранённых сервера, у
+              подключённого путь голоса отмечен жёлтым как «TCP tunnelled»,
+              справа канал и приветствие, внизу живой индикатор микрофона."
+         width="1000" height="724" loading="lazy" decoding="async">
+    <figcaption>macOS. Здесь написано <strong>TCP</strong>, а не UDP: сеть не
+    пропускала голосовой порт — и приложение об этом говорит, а не начинает
+    молча звучать хуже.</figcaption>
+  </figure>
 </div>
 
 ## Достоинства

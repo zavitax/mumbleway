@@ -384,6 +384,7 @@
   "diagDecoded": "Decoded",
   "diagJitterBuffer": "Jitter buffer",
   "diagThisDevice": "This device",
+  "diagLast30Seconds": "Last 30 seconds",
   "diagPlaybackGaps": "Playback gaps",
   "diagNoiseFloor": "Noise floor",
   "diagOpensAt": "Opens at",

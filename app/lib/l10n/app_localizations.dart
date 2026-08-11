@@ -1687,6 +1687,12 @@ abstract class L {
   /// **'This device'**
   String get diagThisDevice;
 
+  /// No description provided for @diagLast30Seconds.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 30 seconds'**
+  String get diagLast30Seconds;
+
   /// No description provided for @diagPlaybackGaps.
   ///
   /// In en, this message translates to:

@@ -872,6 +872,9 @@ class LEn extends L {
   String get diagThisDevice => 'This device';
 
   @override
+  String get diagLast30Seconds => 'Last 30 seconds';
+
+  @override
   String get diagPlaybackGaps => 'Playback gaps';
 
   @override

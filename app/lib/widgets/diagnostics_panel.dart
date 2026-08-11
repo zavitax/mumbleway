@@ -409,7 +409,12 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'LAST 30 SECONDS',
+                      // Was the literal 'LAST 30 SECONDS', and unlike the other
+                      // strings of this kind there was no key to reach for --
+                      // it had never been in either .arb at all. Uppercased
+                      // here rather than stored that way, as `diagLog` and the
+                      // group headings are.
+                      l.diagLast30Seconds.toUpperCase(),
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,

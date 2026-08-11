@@ -371,6 +371,7 @@
   "diagDecoded": "Декодировано",
   "diagJitterBuffer": "Буфер джиттера",
   "diagThisDevice": "Это устройство",
+  "diagLast30Seconds": "Последние 30 секунд",
   "diagPlaybackGaps": "Пропуски воспроизведения",
   "diagNoiseFloor": "Уровень шума",
   "diagOpensAt": "Порог открытия",

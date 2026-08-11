@@ -880,6 +880,9 @@ class LRu extends L {
   String get diagThisDevice => 'Это устройство';
 
   @override
+  String get diagLast30Seconds => 'Последние 30 секунд';
+
+  @override
   String get diagPlaybackGaps => 'Пропуски воспроизведения';
 
   @override

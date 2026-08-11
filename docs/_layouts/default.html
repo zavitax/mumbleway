@@ -104,6 +104,10 @@
            `store_url` being empty is what greys the button out, so a link
            arrives by filling in one line of _data/strings.yml. -->
       <span class="cta-sep" role="separator" aria-orientation="vertical"></span>
+      <!-- The same separator in the other orientation, for when the two groups
+           are on two lines. Exactly one of the pair is ever displayed, and the
+           CSS decides which from the width the row actually has. -->
+      <span class="cta-rule" role="separator" aria-orientation="horizontal"></span>
       <span class="stores">
       {% for st in s.hero.stores %}
         {% comment %}

@@ -11,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../widgets/app_bar_title.dart';
+import '../widgets/error_snack.dart';
 
 /// A server's details as a QR code, to be pointed a phone at.
 ///
@@ -271,7 +272,7 @@ class _Body extends StatelessWidget {
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      showError(messenger, '$e');
     }
   }
 }

@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import 'voice_meter.dart';
 import '../theme.dart';
+import 'error_snack.dart';
 
 /// Channel tree for one connected server.
 ///
@@ -85,7 +86,7 @@ class ChannelTree extends StatelessWidget {
                 final messenger = ScaffoldMessenger.of(context);
                 final error = await state.joinChannelOn(serverId, channel.id);
                 if (error != null) {
-                  messenger.showSnackBar(SnackBar(content: Text(error)));
+                  showError(messenger, error);
                 }
               },
         borderRadius: BorderRadius.circular(10),
@@ -363,7 +364,11 @@ class _UserRow extends StatelessWidget {
     reason.dispose();
 
     final error = await state.kickUserFrom(serverId, user, text);
-    messenger.showSnackBar(SnackBar(content: Text(error ?? l.kickSent)));
+    if (error != null) {
+      showError(messenger, error);
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(l.kickSent)));
+    }
   }
 
   /// `speaking` comes from the audio, not the roster: the server never says

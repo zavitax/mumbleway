@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../services/server_refusal.dart';
 import '../state/app_state.dart';
+import 'error_snack.dart';
 
 /// Puts the server's refusals in front of the user.
 ///
@@ -45,32 +46,11 @@ class _RefusalListenerState extends State<RefusalListener> {
     final l = L.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
-    // Replaces whatever is showing rather than queueing behind it. Refusals
-    // arrive in bursts when a client retries, and a queue would make the user
-    // sit through stale ones to reach the current one.
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          // **Say what colour the text is.** The background was set and the
-          // foreground was not, so the label kept whatever the surrounding
-          // theme gave it -- which on this dark theme is the amber accent, and
-          // amber on the error red is close to unreadable. It is also the one
-          // message here that has to survive being read at a glance, through a
-          // visor, by somebody who has just been refused and does not know why.
-          content: Text(
-            l.serverRefused(refusal.describe(l)),
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onErrorContainer,
-            ),
-          ),
-          backgroundColor: Theme.of(context).colorScheme.errorContainer,
-          // Longer than the default. This is the only account of why an action
-          // did nothing, and it is being read by somebody who may be wearing
-          // gloves and looking at the road.
-          duration: const Duration(seconds: 6),
-        ),
-      );
+    // Through the shared helper, which is where the colours, the six seconds
+    // and the replace-rather-than-queue now live. This used to state all three
+    // here, which is how every other failure in the app came to be shown in
+    // Material's default white.
+    showError(messenger, l.serverRefused(refusal.describe(l)));
   }
 
   @override

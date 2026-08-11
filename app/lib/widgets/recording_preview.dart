@@ -12,6 +12,7 @@ import '../services/recording_archive.dart';
 import '../services/recording_player.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'error_snack.dart';
 
 /// The glyph each platform draws for sharing.
 ///
@@ -139,11 +140,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
     if (_holdingAudio) return true;
     final error = await widget.state.holdAudio();
     if (error != null) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error)));
-      }
+      if (mounted) showError(ScaffoldMessenger.of(context), error);
       return false;
     }
     _holdingAudio = true;
@@ -241,9 +238,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
       // reading the file after that.
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(content: Text(l.diagRecordingShareFailed('$e'))),
-        );
+        showError(messenger, l.diagRecordingShareFailed('$e'));
       }
     } finally {
       if (mounted) setState(() => _sharing = false);
@@ -328,8 +323,9 @@ class _PreviewSheetState extends State<_PreviewSheet> {
 
     if (!gone) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L.of(context).diagPreviewDeleteFailed)),
+        showError(
+          ScaffoldMessenger.of(context),
+          L.of(context).diagPreviewDeleteFailed,
         );
       }
       return;

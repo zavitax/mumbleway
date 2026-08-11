@@ -11,6 +11,7 @@ import '../l10n/app_localizations.dart';
 import '../services/recording_archive.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
+import 'error_snack.dart';
 import 'recording_preview.dart';
 
 /// Turns on recording of the microphone and of what the chain decided about it.
@@ -98,7 +99,11 @@ class _RecordingToggleState extends State<RecordingToggle> {
     });
   }
 
-  /// Where a rider can actually get at the files afterwards.
+  /// Where recordings are actually going, once a start has proved a folder can
+  /// be made. Null until then, and never set to somewhere that did not work.
+  Directory? _proven;
+
+  /// Where a rider can actually get at the files afterwards, best first.
   ///
   /// The answer differs per platform and getting it wrong is silent — the
   /// recording works and the files are simply unreachable, which looks like the
@@ -111,15 +116,87 @@ class _RecordingToggleState extends State<RecordingToggle> {
   ///   `UIFileSharingEnabled` is set in `Info.plist`. Without that key the files
   ///   exist and nobody can reach them.
   /// * **Desktop**: documents, where a person can find them without being told.
-  Future<Directory> _directory() async {
-    Directory? base;
+  ///
+  /// Windows carries a second and a third, because Documents there is often not
+  /// a folder. See [_createDirectory].
+  Future<List<Directory>> _bases() async {
+    final bases = <Directory>[];
     if (Platform.isAndroid) {
-      base = await getExternalStorageDirectory();
+      final external = await getExternalStorageDirectory();
+      if (external != null) bases.add(external);
     }
-    base ??= await getApplicationDocumentsDirectory();
-    return Directory(
-      '${base.path}${Platform.pathSeparator}mumbleway-recordings',
-    );
+    bases.add(await getApplicationDocumentsDirectory());
+    if (Platform.isWindows) {
+      // Still somewhere a person can open without being told, and outside the
+      // redirection that breaks the first choice.
+      final downloads = await getDownloadsDirectory();
+      if (downloads != null) bases.add(downloads);
+      // Last resort. Nobody will find this without being shown it, which is
+      // why it is last — but it is on a local disk and it always exists, and a
+      // recording nobody can find beats a recording that was never made.
+      bases.add(await getApplicationSupportDirectory());
+    }
+    return bases;
+  }
+
+  Directory _folder(Directory base) =>
+      Directory('${base.path}${Platform.pathSeparator}mumbleway-recordings');
+
+  /// The folder to list.
+  ///
+  /// Wherever the last start proved it could write, or failing that the first
+  /// candidate that is actually there — because a fallback taken in an earlier
+  /// session left the files somewhere this one has not been told about, and a
+  /// count of zero beside a folder full of recordings is the same wrong answer
+  /// the fallback exists to prevent.
+  Future<Directory> _directory() async {
+    final proven = _proven;
+    if (proven != null) return proven;
+    final bases = await _bases();
+    for (final base in bases) {
+      final dir = _folder(base);
+      if (await dir.exists()) return dir;
+    }
+    return _folder(bases.first);
+  }
+
+  /// Makes the folder, and checks it is really there.
+  ///
+  /// **`create` can succeed and create nothing.** On Windows the Documents
+  /// folder is usually redirected into OneDrive — here it is
+  /// `%USERPROFILE%\OneDrive\Documents` — and while OneDrive is not running
+  /// that path is a placeholder rather than a directory. `CreateDirectoryW`
+  /// against it returns success, `Directory.create(recursive: true)` therefore
+  /// returns normally, and the folder does not exist afterwards: the next write
+  /// fails with *the system cannot find the path*, which is the error the rider
+  /// sees and which points at the wrong step. Catching the exception is no
+  /// help, because there is no exception.
+  ///
+  /// So this asks whether the folder is there rather than whether making it
+  /// threw, and moves down [_bases] until one answers yes.
+  Future<Directory> _createDirectory() async {
+    Object? firstFailure;
+    final bases = await _bases();
+    for (final base in bases) {
+      final dir = _folder(base);
+      try {
+        await dir.create(recursive: true);
+        if (await dir.exists()) {
+          _proven = dir;
+          return dir;
+        }
+        firstFailure ??= FileSystemException(
+          'created without error and is not there',
+          dir.path,
+        );
+      } on FileSystemException catch (e) {
+        firstFailure ??= e;
+      }
+    }
+    // Every candidate refused. Report the first, which is the one for the place
+    // the recordings were meant to go.
+    throw firstFailure ??
+        FileSystemException('nowhere to record to', bases.first.path);
   }
 
   /// Both directions go through [AppState], which owns the audio hold.
@@ -138,8 +215,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
     setState(() => _busy = true);
     try {
       if (on) {
-        final dir = await _directory();
-        await dir.create(recursive: true);
+        final dir = await _createDirectory();
         // Names the files after when the ride was, because the alternative is
         // a directory of identically-named chunks whose order has to be
         // guessed from timestamps the sharing may not preserve.
@@ -151,9 +227,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
         // if it cannot be had.
         final error = await state.beginDiagnosticRecording(dir.path, tag);
         if (error != null) {
-          messenger.showSnackBar(
-            SnackBar(content: Text(l.diagRecordingFailed(error))),
-          );
+          showError(messenger, l.diagRecordingFailed(error));
         }
       } else {
         // Returns what storage could not keep up with. Surfaced rather than
@@ -167,9 +241,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
         }
       }
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(l.diagRecordingFailed('$e'))),
-      );
+      showError(messenger, l.diagRecordingFailed('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
       await _refresh();

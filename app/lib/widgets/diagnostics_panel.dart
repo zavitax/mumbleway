@@ -40,6 +40,19 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   final _cpu = _History('%');
   final _memory = _History('MB');
 
+  /// The whole device's CPU, as a share of everything it has.
+  ///
+  /// The mean of the per-core readings, which is what "the device is 40% busy"
+  /// means and is bounded at 100 by construction. Summing the cores instead
+  /// would give 800% on an eight-core phone, which is a true number nobody
+  /// reads correctly.
+  ///
+  /// Kept beside [_cpu] rather than replacing it: this process's share and the
+  /// device's total answer different questions, and the interesting case — a
+  /// phone that is busy with something else entirely — is exactly where the
+  /// two disagree.
+  final _cpuTotal = _History('%');
+
   /// One history per core of the **device**, under the line for this process.
   ///
   /// Grown on first sight rather than declared, because the count is not known
@@ -108,6 +121,9 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
             i < now.cpuPerCore.length ? now.cpuPerCore[i] : 0.0,
           );
         }
+        _cpuTotal.add(
+          now.cpuPerCore.reduce((a, b) => a + b) / now.cpuPerCore.length,
+        );
       } else {
         _perCoreAvailable ??= false;
       }
@@ -429,17 +445,32 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                           title: 'CPU',
                           series: [
                             _Series('app', _cpu, scheme.primary),
+                            // The whole device, as one number rather than one
+                            // per core. Drawn as no line at all — the cores
+                            // below already are that line, and a mean of them
+                            // laid over them would be a shape with no
+                            // information in it.
+                            if (_perCoreAvailable == true)
+                              _Series(
+                                'device',
+                                _cpuTotal,
+                                scheme.onSurfaceVariant,
+                                inPlot: false,
+                              ),
                             // The device's cores, under the app's own line.
                             //
                             // Dimmed on purpose: eight cores against one
                             // process would otherwise be eight bright lines
                             // burying the one line this panel exists for.
                             // They are context for it, not peers of it.
+                            //
+                            // Lines only. See [_Series.inLegend].
                             for (var i = 0; i < _perCore.length; i++)
                               _Series(
                                 '$i',
                                 _perCore[i],
                                 scheme.onSurfaceVariant.withValues(alpha: 0.35),
+                                inLegend: false,
                               ),
                           ],
                         ),
@@ -775,11 +806,36 @@ class _History {
 
 /// One line on a graph.
 class _Series {
-  const _Series(this.name, this.history, this.color);
+  const _Series(
+    this.name,
+    this.history,
+    this.color, {
+    this.inLegend = true,
+    this.inPlot = true,
+  });
 
   final String name;
   final _History history;
   final Color color;
+
+  /// Whether this series gets a swatch and a number above the graph.
+  ///
+  /// **Off for the device's cores.** The header prints one value per series,
+  /// which is fine for two and unreadable for twenty: a 20-thread machine
+  /// turned the title row into a wall of numbers nobody reads individually,
+  /// and it pushed the figure people *do* read off the end. The cores are
+  /// worth seeing as shapes — is one pinned while the rest idle — and their
+  /// individual percentages are not worth the room. The mean of them is
+  /// reported instead, once.
+  final bool inLegend;
+
+  /// Whether this series is drawn on the plot.
+  ///
+  /// **Off for the device total**, which is the mean of lines already on the
+  /// graph. Drawing it would add a shape carrying no information the cores do
+  /// not already carry, through the middle of the ones that do. It exists to
+  /// be read as a number.
+  final bool inPlot;
 }
 
 /// Thirty seconds of a measurement, drawn as lines over time.
@@ -853,7 +909,7 @@ class _GraphState extends State<_Graph> with SingleTickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            for (final s in widget.series) ...[
+            for (final s in widget.series.where((s) => s.inLegend)) ...[
               const SizedBox(width: 6),
               Container(
                 width: 7,
@@ -958,6 +1014,7 @@ class _GraphPainter extends CustomPainter {
     final step = size.width / _History.window;
 
     for (final s in series) {
+      if (!s.inPlot) continue;
       final samples = s.history.samples;
       if (samples.isEmpty) continue;
 

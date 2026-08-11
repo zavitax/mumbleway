@@ -721,6 +721,7 @@
   "diagLogEmpty": "Nothing logged yet.",
   "diagLogNoProblems": "No warnings or errors.",
   "diagAutoProfile": "Auto is using",
+  "diagChosenProfile": "Profile",
   "diagStageBackground": "Background",
   "diagClassifierOnCpu": "No accelerator here, so background detection runs on the processor — {ms} ms per check, once every two seconds.",
   "@diagClassifierOnCpu": {

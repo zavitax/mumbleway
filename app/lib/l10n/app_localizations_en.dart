@@ -1355,6 +1355,9 @@ class LEn extends L {
   String get diagAutoProfile => 'Auto is using';
 
   @override
+  String get diagChosenProfile => 'Profile';
+
+  @override
   String get diagStageBackground => 'Background';
 
   @override

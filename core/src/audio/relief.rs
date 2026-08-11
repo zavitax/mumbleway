@@ -403,17 +403,28 @@ pub const CPU_BUSY_PERCENT: f32 = 90.0;
 /// cope.
 pub const CPU_BUSY_SECONDS: f32 = 5.0;
 
-/// Busy share of a **single** core, above which that core is called saturated.
-///
-/// Lower than [`CPU_BUSY_PERCENT`] and it catches far more, which is the
-/// point. The whole-device rung is nearly unreachable on a phone with cores to
-/// spare — the OPPO has eight, so the 146% that prompted it is 18% of the
-/// device — while the thing that actually hurts is one core pinned, because
-/// the capture worker is one thread and a thread runs on one core at a time.
-pub const CPU_CORE_BUSY_PERCENT: f32 = 75.0;
-
-/// How long some core has to stay saturated before a rung goes.
-pub const CPU_CORE_BUSY_SECONDS: f32 = 5.0;
+// A third condition used to live here: any single core at or above 75% for
+// five seconds cost a rung. **Removed as impractical**, and the reasoning that
+// justified it is worth keeping so it is not reinvented.
+//
+// The argument was sound in the abstract — the capture worker is one thread, a
+// thread runs on one core at a time, and a phone with eight cores can be
+// comfortable overall while the one core that matters is pinned. The whole
+// device rarely reaches 90%, so this was the condition that could actually
+// fire.
+//
+// What it measures, though, is **the device's cores, not ours**: no platform
+// here will attribute a process's CPU time to particular cores, so anything
+// else on the machine pinning a core stepped this ladder down — permanently,
+// since the ladder never climbs back. On a desktop that is not an edge case
+// but the ordinary state. It fired on an i7-12700H at 30% overall and on a
+// MacBook whose enhancer measured 1.90 ms against a 9 ms budget: three
+// machines out of three, none of which was struggling.
+//
+// A condition that cannot tell "this device is too slow" from "this device is
+// busy with something else" is not measuring what the ladder is for. The block
+// deadline already answers within a second and is about *our* work, which is
+// the thing being judged.
 
 /// Tracks the ladder and decides when to give up the next rung.
 ///
@@ -428,8 +439,6 @@ pub struct ReliefLadder {
     run_of_overruns: u32,
     /// Seconds the CPU has been continuously at or above the busy mark.
     busy_seconds: f32,
-    /// Seconds some single core has been continuously at or above its mark.
-    core_busy_seconds: f32,
 }
 
 impl ReliefLadder {
@@ -447,7 +456,6 @@ impl ReliefLadder {
             level: (level != Relief::None).then_some(level),
             run_of_overruns: 0,
             busy_seconds: 0.0,
-            core_busy_seconds: 0.0,
         }
     }
 
@@ -496,54 +504,6 @@ impl ReliefLadder {
             return None;
         }
         self.busy_seconds = 0.0;
-        self.step()
-    }
-
-    /// Feeds one per-core reading in, with the time since the previous one.
-    ///
-    /// Steps a rung once **some** core has been at or above
-    /// [`CPU_CORE_BUSY_PERCENT`] for [`CPU_CORE_BUSY_SECONDS`] together.
-    ///
-    /// # Any core, not the same core
-    ///
-    /// A thread runs on one core at a time and the scheduler moves it, which
-    /// on a big.LITTLE phone it does constantly. Requiring the *same* core to
-    /// stay saturated would be defeated by migration — the load would move,
-    /// every counter would reset, and the condition would never fire on the
-    /// devices it exists for. So each sample asks whether any core is pinned.
-    ///
-    /// # This measures the device, and we are not the only thing on it
-    ///
-    /// [`crate::usage::per_core`] reports the cores, not our share of them,
-    /// because no platform here will attribute a process's time to particular
-    /// cores. So another app pinning a core can step this ladder down, and the
-    /// ladder does not climb back.
-    ///
-    /// That is the intended trade rather than an oversight: a core pinned by
-    /// something else is a core the capture worker is competing for, and the
-    /// rider hears the outcome either way. It is also why the mark is five
-    /// seconds of continuous saturation rather than a single reading — a
-    /// notification sync or a map redraw does not last five seconds, and one
-    /// sample under the mark forgives the whole run.
-    ///
-    /// Where the platform will not report per-core figures at all — Android
-    /// may not; see [`crate::usage::per_core`] — the caller passes an empty
-    /// slice and this never fires, leaving the other two conditions in charge.
-    pub fn note_core_cpu(&mut self, per_core: &[f32], elapsed_seconds: f32) -> Option<Relief> {
-        let pinned = per_core
-            .iter()
-            .any(|p| p.is_finite() && *p >= CPU_CORE_BUSY_PERCENT);
-        if !pinned {
-            self.core_busy_seconds = 0.0;
-            return None;
-        }
-        if elapsed_seconds > 0.0 {
-            self.core_busy_seconds += elapsed_seconds;
-        }
-        if self.core_busy_seconds < CPU_CORE_BUSY_SECONDS {
-            return None;
-        }
-        self.core_busy_seconds = 0.0;
         self.step()
     }
 
@@ -622,85 +582,6 @@ mod tests {
             assert_eq!(ladder.note_cpu(99.0, 0.5), None);
         }
         assert_eq!(ladder.level(), Relief::None, "the run restarted");
-    }
-
-    #[test]
-    fn five_seconds_of_one_pinned_core_costs_a_rung() {
-        let mut ladder = ReliefLadder::default();
-        // One core over the mark, the rest idle. Four seconds is not five.
-        let busy = [5.0, 80.0, 12.0, 3.0];
-        for _ in 0..8 {
-            assert_eq!(ladder.note_core_cpu(&busy, 0.5), None);
-        }
-        assert_eq!(ladder.note_core_cpu(&busy, 0.5), None);
-        assert_eq!(
-            ladder.note_core_cpu(&busy, 0.5),
-            Some(Relief::EnhancerReduced)
-        );
-    }
-
-    #[test]
-    fn the_pinned_core_may_move_between_samples() {
-        // The rule this exists for. A thread migrates between cores constantly
-        // on a big.LITTLE phone, so requiring the *same* core to stay busy
-        // would never fire on the devices this is for.
-        let mut ladder = ReliefLadder::default();
-        let rotating = [
-            [90.0, 10.0, 10.0, 10.0],
-            [10.0, 90.0, 10.0, 10.0],
-            [10.0, 10.0, 90.0, 10.0],
-            [10.0, 10.0, 10.0, 90.0],
-            [90.0, 10.0, 10.0, 10.0],
-        ];
-        for (i, sample) in rotating.iter().enumerate() {
-            let stepped = ladder.note_core_cpu(sample, 1.0);
-            if i < 4 {
-                assert_eq!(stepped, None, "sample {i}");
-            } else {
-                assert_eq!(stepped, Some(Relief::EnhancerReduced));
-            }
-        }
-    }
-
-    #[test]
-    fn every_core_below_the_mark_forgives_the_run() {
-        let mut ladder = ReliefLadder::default();
-        for _ in 0..4 {
-            assert_eq!(ladder.note_core_cpu(&[80.0, 10.0], 1.0), None);
-        }
-        // A map redraw ends; the run restarts rather than carrying on.
-        assert_eq!(ladder.note_core_cpu(&[40.0, 10.0], 1.0), None);
-        for _ in 0..4 {
-            assert_eq!(ladder.note_core_cpu(&[80.0, 10.0], 1.0), None);
-        }
-        assert_eq!(ladder.level(), Relief::None);
-    }
-
-    #[test]
-    fn exactly_the_mark_counts() {
-        // "at or over 75%", so 75.0 is saturated and 74.9 is not.
-        let mut ladder = ReliefLadder::default();
-        for _ in 0..5 {
-            ladder.note_core_cpu(&[CPU_CORE_BUSY_PERCENT], 1.0);
-        }
-        assert_eq!(ladder.level(), Relief::EnhancerReduced);
-
-        let mut just_under = ReliefLadder::default();
-        for _ in 0..20 {
-            just_under.note_core_cpu(&[CPU_CORE_BUSY_PERCENT - 0.1], 1.0);
-        }
-        assert_eq!(just_under.level(), Relief::None);
-    }
-
-    #[test]
-    fn no_per_core_figures_means_this_condition_never_fires() {
-        // Android may refuse them outright, and then the other two conditions
-        // are in charge rather than this one firing on an empty maximum.
-        let mut ladder = ReliefLadder::default();
-        for _ in 0..100 {
-            assert_eq!(ladder.note_core_cpu(&[], 1.0), None);
-        }
-        assert_eq!(ladder.level(), Relief::None);
     }
 
     #[test]

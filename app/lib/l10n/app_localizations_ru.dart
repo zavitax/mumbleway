@@ -1348,6 +1348,9 @@ class LRu extends L {
   String get diagAutoProfile => 'Авто выбрал';
 
   @override
+  String get diagChosenProfile => 'Профиль';
+
+  @override
   String get diagStageBackground => 'Фон';
 
   @override

@@ -216,7 +216,11 @@ class _SpectrumViewState extends State<SpectrumView>
                   (chain?.analyserDisabled ?? false)
                   ? const _AnalyserGivenUp()
                   : child!,
-              child: _SpectrumBody(spectrum: _spectrum, stalled: _stalledNow),
+              child: _SpectrumBody(
+                spectrum: _spectrum,
+                stalled: _stalledNow,
+                chain: _chain,
+              ),
             ),
           ),
         ),
@@ -226,17 +230,15 @@ class _SpectrumViewState extends State<SpectrumView>
           builder: (context, chain, _) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Only under Auto, and above the dots because it is the setting
-              // the dots are all measured under.
-              //
-              // Auto is the one setting whose effect a rider cannot read
-              // anywhere else: the settings screen can only say "Automatic",
-              // which is a rule rather than an answer. Under the other four
-              // the panel would just be repeating what the rider already
-              // chose.
-              if (chain != null &&
-                  AppStateScope.of(context).noise == NoiseSetting.auto)
-                _AutoProfile(profile: chain.effectiveProfile),
+              // Above the dots, because it is the setting they are all
+              // measured under. See [_AutoProfile] for why this is no longer
+              // limited to Auto.
+              if (chain != null)
+                _AutoProfile(
+                  profile: chain.effectiveProfile,
+                  automatic:
+                      AppStateScope.of(context).noise == NoiseSetting.auto,
+                ),
               // Directly under it, because it is the evidence behind it. The
               // classifier only runs under Auto, so this appears and
               // disappears with the line above without needing the condition
@@ -339,10 +341,23 @@ class _LegendBar extends StatelessWidget {
 
 /// The analyser itself, and the two states that stand in for it.
 class _SpectrumBody extends StatelessWidget {
-  const _SpectrumBody({required this.spectrum, required this.stalled});
+  const _SpectrumBody({
+    required this.spectrum,
+    required this.stalled,
+    required this.chain,
+  });
 
   final ValueListenable<UiSpectrum?> spectrum;
   final ValueListenable<bool> stalled;
+
+  /// Read for the two gate levels drawn across the amplitude axis.
+  ///
+  /// The numbers were already in the panel — the noise floor and the level a
+  /// block has to beat — but as figures in a column a long way from the trace
+  /// they describe. "Is this loud enough to be sent?" is a comparison, and a
+  /// comparison between a picture and a number several inches away is one the
+  /// reader has to do in their head.
+  final ValueListenable<UiChainStatus?> chain;
 
   @override
   Widget build(BuildContext context) {
@@ -359,14 +374,26 @@ class _SpectrumBody extends StatelessWidget {
                     ? l.diagSpectrumStalled
                     : l.diagSpectrumWaiting,
               )
-            : CustomPaint(
-                size: Size.infinite,
-                painter: _SpectrumPainter(
-                  spectrum: frame,
-                  sending: frame.transmitting && live,
-                  grid: scheme.onSurfaceVariant.withValues(alpha: 0.16),
-                  raw: scheme.onSurfaceVariant.withValues(alpha: 0.55),
-                  preGate: scheme.primary,
+            : ValueListenableBuilder<UiChainStatus?>(
+                valueListenable: chain,
+                builder: (context, status, _) => CustomPaint(
+                  size: Size.infinite,
+                  painter: _SpectrumPainter(
+                    spectrum: frame,
+                    sending: frame.transmitting && live,
+                    grid: scheme.onSurfaceVariant.withValues(alpha: 0.16),
+                    raw: scheme.onSurfaceVariant.withValues(alpha: 0.55),
+                    preGate: scheme.primary,
+                    // Only while the chain is telling the truth. During warm-up
+                    // the floor tracker has not settled, so a mark drawn then
+                    // would be a confident line in the wrong place.
+                    noiseFloorDb: (status == null || status.warmingUp)
+                        ? null
+                        : status.noiseFloorDb,
+                    opensAtDb: (status == null || status.warmingUp)
+                        ? null
+                        : status.activationThresholdDb,
+                  ),
                 ),
               ),
       ),
@@ -749,10 +776,27 @@ class _ClassRow extends StatelessWidget {
 }
 
 /// Where Auto has landed, as a name.
+/// Which noise profile the chain is running under, however it was arrived at.
+///
+/// **Shown for all five settings, not only `Auto`.** It used to appear only
+/// under `Auto`, on the reasoning that the other four would just repeat a
+/// choice the rider had already made. That reasoning does not survive contact:
+/// the panel is read when something sounds wrong, often on a device somebody
+/// else configured or that was set months ago, and "which profile is this even
+/// running?" is then the first question. Repeating an answer costs one line;
+/// withholding it sent three separate reports that the profile line was
+/// missing, when in every case the profile was simply set by hand.
+///
+/// The wording distinguishes the two, because *how* it was chosen matters:
+/// under `Auto` the name is a live verdict that can change mid-ride, and by
+/// hand it is an instruction that will not.
 class _AutoProfile extends StatelessWidget {
-  const _AutoProfile({required this.profile});
+  const _AutoProfile({required this.profile, required this.automatic});
 
   final NoiseSetting profile;
+
+  /// Whether `Auto` picked this, rather than the rider.
+  final bool automatic;
 
   @override
   Widget build(BuildContext context) {
@@ -762,10 +806,14 @@ class _AutoProfile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          Icon(Icons.auto_mode, size: 14, color: scheme.onSurfaceVariant),
+          Icon(
+            automatic ? Icons.auto_mode : Icons.tune,
+            size: 14,
+            color: scheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 6),
           Text(
-            l.diagAutoProfile,
+            automatic ? l.diagAutoProfile : l.diagChosenProfile,
             style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
           ),
           const SizedBox(width: 6),
@@ -851,7 +899,19 @@ class _SpectrumPainter extends CustomPainter {
     required this.grid,
     required this.raw,
     required this.preGate,
+    this.noiseFloorDb,
+    this.opensAtDb,
   });
+
+  /// The tracked noise floor and the level a block must beat to be sent, in
+  /// dBFS, or null while there is no trustworthy answer.
+  ///
+  /// **Both are measured after suppression**, which is the same signal the
+  /// pre-gate trace is drawn from — so the marks and that trace can honestly be
+  /// read against each other. The raw microphone trace is a different signal
+  /// and the marks say nothing about it.
+  final double? noiseFloorDb;
+  final double? opensAtDb;
 
   final UiSpectrum spectrum;
 
@@ -903,6 +963,37 @@ class _SpectrumPainter extends CustomPainter {
       canvas.drawLine(Offset(0, yy), Offset(size.width, yy), lines);
     }
 
+    // The two gate levels, under the traces so they read as a scale rather
+    // than as data. Dashed, because a solid line at this weight is
+    // indistinguishable from the 20 dB grid and would be read as one.
+    void mark(double? db, Color colour, String label) {
+      if (db == null || !db.isFinite || db < floor || db > 0) return;
+      final yy = y(db);
+      final dash = Paint()
+        ..color = colour
+        ..strokeWidth = 1;
+      for (var x = 0.0; x < size.width; x += 7) {
+        canvas.drawLine(Offset(x, yy), Offset(x + 4, yy), dash);
+      }
+      final text = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: TextStyle(fontSize: 9, color: colour),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      // Above its line where there is room, below it at the very top, so the
+      // label never leaves the plot.
+      final ty = yy - text.height - 1 < 0 ? yy + 1 : yy - text.height - 1;
+      text.paint(canvas, Offset(2, ty));
+    }
+
+    // Drawn floor first: where the two coincide — a quiet room, where the
+    // threshold sits just over the floor — the one that decides is the one
+    // that should be legible.
+    mark(noiseFloorDb, grid.withValues(alpha: 0.9), 'floor');
+    mark(opensAtDb, StatusColors.connecting.withValues(alpha: 0.7), 'opens at');
+
     final bands = spectrum.centresHz.length;
     final slot = size.width / bands;
 
@@ -945,7 +1036,14 @@ class _SpectrumPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SpectrumPainter old) =>
-      old.spectrum.seq != spectrum.seq || old.sending != sending;
+      old.spectrum.seq != spectrum.seq ||
+      old.sending != sending ||
+      // The gate marks move on their own clock: the floor tracker settles
+      // while the spectrum is unchanged, and a mark that only redrew when a
+      // new frame arrived would sit at a stale level through exactly the
+      // moments worth watching.
+      old.noiseFloorDb != noiseFloorDb ||
+      old.opensAtDb != opensAtDb;
 }
 
 /// The processing chain as a row of dots, in the order audio passes through it.
@@ -1064,14 +1162,28 @@ class _Dot extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 11,
-            color: disabled || degraded
+            // **Dimmed when switched off, amber only when degraded.**
+            //
+            // Both used to be amber, and the strike-through was amber on top
+            // of amber: at 11 px a same-coloured line through same-coloured
+            // glyphs is not a strike-through, it is slightly bolder text.
+            // Magnifying a screenshot five times showed the line was there and
+            // being drawn correctly the whole time — it simply could not be
+            // seen at the size it ships at, which is the only size that counts.
+            //
+            // So the two states are now told apart by more than a line nobody
+            // can see: a stage still doing most of its job keeps the amber
+            // name, and one that is not running at all goes quiet and gets a
+            // line across it that contrasts with the letters it crosses.
+            color: degraded
                 ? StatusColors.connecting
-                : scheme.onSurfaceVariant,
+                : scheme.onSurfaceVariant.withValues(alpha: disabled ? 0.6 : 1),
             // Struck through only when it is genuinely not running. A degraded
             // stage is still doing most of its job, and striking it out would
             // say otherwise.
             decoration: disabled ? TextDecoration.lineThrough : null,
             decorationColor: disabled ? StatusColors.connecting : null,
+            decorationThickness: disabled ? 2 : null,
           ),
         ),
       ],

@@ -3282,15 +3282,6 @@ where
                     cpu_sampled_at = std::time::Instant::now();
                     let (cpu_percent, _) = crate::usage::process_usage();
                     stepped = relief.note_cpu(cpu_percent, since.as_secs_f32());
-                    // A single pinned core, which is the condition that can
-                    // actually fire on a phone with cores to spare: the whole
-                    // device rarely reaches 90%, and one thread saturating one
-                    // core is what a rider hears. Empty where the platform
-                    // will not say, and then it simply never fires.
-                    if stepped.is_none() {
-                        let cores = crate::usage::per_core().unwrap_or_default();
-                        stepped = relief.note_core_cpu(&cores, since.as_secs_f32());
-                    }
                 }
             }
             if let Some(rung) = stepped {

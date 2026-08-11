@@ -2503,6 +2503,12 @@ abstract class L {
   /// **'Auto is using'**
   String get diagAutoProfile;
 
+  /// No description provided for @diagChosenProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get diagChosenProfile;
+
   /// No description provided for @diagStageBackground.
   ///
   /// In en, this message translates to:

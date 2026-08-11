@@ -876,6 +876,17 @@ class UiChainStatus {
   final bool classifierTopDisabled;
   final bool liveDotsDisabled;
 
+  /// The ladder has stopped running the classifier, so `Auto` can no longer
+  /// change its mind and the profile is pinned wherever it stood.
+  ///
+  /// **Distinct from `classifier_top_disabled`**, which only stops drawing
+  /// the three rows while the model keeps running for `Auto` to read. This
+  /// one stops the inference, and the cost is not cosmetic: a rider who set
+  /// `Auto` and rode from a car park onto a motorway will stay on the car
+  /// park's profile. The panel has to say so, because every other number on
+  /// it looks exactly as it did before.
+  final bool classifierDisabled;
+
   /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
   /// 3 bypassed.
   ///
@@ -904,6 +915,7 @@ class UiChainStatus {
     required this.analyserDisabled,
     required this.classifierTopDisabled,
     required this.liveDotsDisabled,
+    required this.classifierDisabled,
     required this.enhancerEffort,
   });
 
@@ -927,6 +939,7 @@ class UiChainStatus {
       analyserDisabled.hashCode ^
       classifierTopDisabled.hashCode ^
       liveDotsDisabled.hashCode ^
+      classifierDisabled.hashCode ^
       enhancerEffort.hashCode;
 
   @override
@@ -952,6 +965,7 @@ class UiChainStatus {
           analyserDisabled == other.analyserDisabled &&
           classifierTopDisabled == other.classifierTopDisabled &&
           liveDotsDisabled == other.liveDotsDisabled &&
+          classifierDisabled == other.classifierDisabled &&
           enhancerEffort == other.enhancerEffort;
 }
 

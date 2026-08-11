@@ -238,6 +238,12 @@ class _SpectrumViewState extends State<SpectrumView>
                   profile: chain.effectiveProfile,
                   automatic:
                       AppStateScope.of(context).noise == NoiseSetting.auto,
+                  // Only meaningful under Auto: a profile chosen by hand was
+                  // never going to change, so calling it pinned would be
+                  // reporting a loss that did not happen.
+                  pinned:
+                      AppStateScope.of(context).noise == NoiseSetting.auto &&
+                      chain.classifierDisabled,
                 ),
               // Directly under it, because it is the evidence behind it. The
               // classifier only runs under Auto, so this appears and
@@ -791,12 +797,24 @@ class _ClassRow extends StatelessWidget {
 /// under `Auto` the name is a live verdict that can change mid-ride, and by
 /// hand it is an instruction that will not.
 class _AutoProfile extends StatelessWidget {
-  const _AutoProfile({required this.profile, required this.automatic});
+  const _AutoProfile({
+    required this.profile,
+    required this.automatic,
+    this.pinned = false,
+  });
 
   final NoiseSetting profile;
 
   /// Whether `Auto` picked this, rather than the rider.
   final bool automatic;
+
+  /// `Auto` is chosen, but the ladder has stopped the classifier — so this
+  /// profile can no longer change and is stuck where it stood.
+  ///
+  /// Worth saying out loud rather than leaving the line looking normal: the
+  /// rider asked for a setting that adapts, and it has quietly stopped
+  /// adapting. Everything else on the panel reads exactly as it did before.
+  final bool pinned;
 
   @override
   Widget build(BuildContext context) {
@@ -819,8 +837,23 @@ class _AutoProfile extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             noiseProfileTitle(l, profile),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              // Amber, in the same vocabulary the rest of the panel uses for
+              // "this device gave something up".
+              color: pinned ? StatusColors.connecting : null,
+            ),
           ),
+          if (pinned) ...[
+            const SizedBox(width: 5),
+            // Grey and in brackets: it qualifies the name rather than
+            // competing with it, and the name is what is being read.
+            Text(
+              l.diagProfilePinned,
+              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+            ),
+          ],
         ],
       ),
     );

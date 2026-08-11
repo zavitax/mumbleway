@@ -1351,6 +1351,9 @@ class LRu extends L {
   String get diagChosenProfile => 'Профиль';
 
   @override
+  String get diagProfilePinned => '(закреплён)';
+
+  @override
   String get diagStageBackground => 'Фон';
 
   @override

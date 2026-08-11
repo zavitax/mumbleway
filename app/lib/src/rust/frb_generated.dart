@@ -2736,8 +2736,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 19)
-      throw Exception('unexpected arr length: expect 19 but see ${arr.length}');
+    if (arr.length != 20)
+      throw Exception('unexpected arr length: expect 20 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2757,7 +2757,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       analyserDisabled: dco_decode_bool(arr[15]),
       classifierTopDisabled: dco_decode_bool(arr[16]),
       liveDotsDisabled: dco_decode_bool(arr[17]),
-      enhancerEffort: dco_decode_u_32(arr[18]),
+      classifierDisabled: dco_decode_bool(arr[18]),
+      enhancerEffort: dco_decode_u_32(arr[19]),
     );
   }
 
@@ -3524,6 +3525,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_analyserDisabled = sse_decode_bool(deserializer);
     var var_classifierTopDisabled = sse_decode_bool(deserializer);
     var var_liveDotsDisabled = sse_decode_bool(deserializer);
+    var var_classifierDisabled = sse_decode_bool(deserializer);
     var var_enhancerEffort = sse_decode_u_32(deserializer);
     return UiChainStatus(
       stages: var_stages,
@@ -3544,6 +3546,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       analyserDisabled: var_analyserDisabled,
       classifierTopDisabled: var_classifierTopDisabled,
       liveDotsDisabled: var_liveDotsDisabled,
+      classifierDisabled: var_classifierDisabled,
       enhancerEffort: var_enhancerEffort,
     );
   }
@@ -4322,6 +4325,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.analyserDisabled, serializer);
     sse_encode_bool(self.classifierTopDisabled, serializer);
     sse_encode_bool(self.liveDotsDisabled, serializer);
+    sse_encode_bool(self.classifierDisabled, serializer);
     sse_encode_u_32(self.enhancerEffort, serializer);
   }
 

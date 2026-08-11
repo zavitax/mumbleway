@@ -1436,6 +1436,16 @@ pub struct UiChainStatus {
     pub analyser_disabled: bool,
     pub classifier_top_disabled: bool,
     pub live_dots_disabled: bool,
+    /// The ladder has stopped running the classifier, so `Auto` can no longer
+    /// change its mind and the profile is pinned wherever it stood.
+    ///
+    /// **Distinct from `classifier_top_disabled`**, which only stops drawing
+    /// the three rows while the model keeps running for `Auto` to read. This
+    /// one stops the inference, and the cost is not cosmetic: a rider who set
+    /// `Auto` and rode from a car park onto a motorway will stay on the car
+    /// park's profile. The panel has to say so, because every other number on
+    /// it looks exactly as it did before.
+    pub classifier_disabled: bool,
     /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
     /// 3 bypassed.
     ///
@@ -1713,6 +1723,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         participant_meters_disabled: rung_at(c.relief).skip_participant_meters(),
         analyser_disabled: rung_at(c.relief).skip_analyser(),
         classifier_top_disabled: rung_at(c.relief).skip_classifier_top(),
+        classifier_disabled: rung_at(c.relief).skip_classifier(),
         live_dots_disabled: rung_at(c.relief).skip_live_dots(),
         enhancer_effort: c.enhancer_effort as u32,
         enhancer_simple_model: c.enhancer_simple_model,

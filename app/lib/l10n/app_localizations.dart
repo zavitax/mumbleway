@@ -2509,6 +2509,12 @@ abstract class L {
   /// **'Profile'**
   String get diagChosenProfile;
 
+  /// No description provided for @diagProfilePinned.
+  ///
+  /// In en, this message translates to:
+  /// **'(pinned)'**
+  String get diagProfilePinned;
+
   /// No description provided for @diagStageBackground.
   ///
   /// In en, this message translates to:

@@ -508,6 +508,7 @@
   "diagLogNoProblems": "Предупреждений и ошибок нет.",
   "diagAutoProfile": "Авто выбрал",
   "diagChosenProfile": "Профиль",
+  "diagProfilePinned": "(закреплён)",
   "diagStageBackground": "Фон",
   "diagClassifierOnCpu": "Ускорителя здесь нет, поэтому распознавание фона считает процессор — {ms} мс на проверку, раз в две секунды.",
   "@diagClassifierOnCpu": {

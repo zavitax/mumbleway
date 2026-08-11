@@ -1358,6 +1358,9 @@ class LEn extends L {
   String get diagChosenProfile => 'Profile';
 
   @override
+  String get diagProfilePinned => '(pinned)';
+
+  @override
   String get diagStageBackground => 'Background';
 
   @override

@@ -3215,6 +3215,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_analyserDisabled = <bool>::sse_decode(deserializer);
         let mut var_classifierTopDisabled = <bool>::sse_decode(deserializer);
         let mut var_liveDotsDisabled = <bool>::sse_decode(deserializer);
+        let mut var_classifierDisabled = <bool>::sse_decode(deserializer);
         let mut var_enhancerEffort = <u32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiChainStatus {
             stages: var_stages,
@@ -3235,6 +3236,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             analyser_disabled: var_analyserDisabled,
             classifier_top_disabled: var_classifierTopDisabled,
             live_dots_disabled: var_liveDotsDisabled,
+            classifier_disabled: var_classifierDisabled,
             enhancer_effort: var_enhancerEffort,
         };
     }
@@ -4037,6 +4039,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.analyser_disabled.into_into_dart().into_dart(),
             self.classifier_top_disabled.into_into_dart().into_dart(),
             self.live_dots_disabled.into_into_dart().into_dart(),
+            self.classifier_disabled.into_into_dart().into_dart(),
             self.enhancer_effort.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -4910,6 +4913,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <bool>::sse_encode(self.analyser_disabled, serializer);
         <bool>::sse_encode(self.classifier_top_disabled, serializer);
         <bool>::sse_encode(self.live_dots_disabled, serializer);
+        <bool>::sse_encode(self.classifier_disabled, serializer);
         <u32>::sse_encode(self.enhancer_effort, serializer);
     }
 }

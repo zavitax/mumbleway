@@ -2787,6 +2787,11 @@ where
             // them in the core is what actually saves the work. The panel puts
             // a message where the analyser was.
             let analysing = shared.spectrum_wanted(block_index) && !relief.level().skip_analyser();
+            // One rung above switching the analyser off: the bars stop easing
+            // down and sit where each frame puts them. Set every block rather
+            // than on the step, because a device that started part-way down
+            // from the startup probe never sees a step at all.
+            analyser.set_skip_decay(relief.level().skip_analyser_decay());
             if analysing {
                 analyser.push(TAP_RAW, &block);
             }

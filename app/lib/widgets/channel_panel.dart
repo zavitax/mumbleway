@@ -236,12 +236,30 @@ class _UserRow extends StatelessWidget {
           const SizedBox(width: 8),
           // Same meter as everywhere else, so a given bar length means the
           // same loudness whether it is a participant or your own microphone.
-          VoiceMeter(
+          //
+          // **Unless the ladder has given it up.** One meter per person, each
+          // moving with every incoming frame, is several animated widgets on a
+          // busy channel — and this is the only rung the rider sees without
+          // opening the diagnostics panel, which is why it is the last display
+          // rung rather than an early one.
+          //
+          // The name still turns green and bold when somebody talks, so who is
+          // speaking survives; the amount does not. The row keeps the meter's
+          // width either way, because a layout that reflows when a device gets
+          // busy reads as a second fault.
+          SizedBox(
             width: 81,
-            levelDb:
-                state.runtimeFor(serverId).speakerLevels[user.session] ??
-                -120.0,
-            muted: user.muted || user.localMute,
+            child: state.participantMetersDisabled
+                ? null
+                : VoiceMeter(
+                    width: 81,
+                    levelDb:
+                        state
+                            .runtimeFor(serverId)
+                            .speakerLevels[user.session] ??
+                        -120.0,
+                    muted: user.muted || user.localMute,
+                  ),
           ),
           const SizedBox(width: 2),
           // Local mute always works and affects only us, so it is the primary

@@ -154,6 +154,19 @@ pub enum Relief {
     // continuously repainting `CustomPaint` above it. The two rungs after it
     // are much smaller and are here for completeness rather than for the
     // milliseconds.
+    /// The spectrum analyser stops easing its bars down; each bar sits where
+    /// the newest frame puts it.
+    ///
+    /// **The cheapest display rung, so it is the first.** The decay is pure
+    /// animation: any bar above its new value is redrawn every vsync until it
+    /// arrives, so a panel with nothing happening in it still repaints on a
+    /// phone that is missing audio deadlines. The reading is untouched — this
+    /// gives up the *fall*, not the measurement, which is why it sits above
+    /// [`Relief::NoAnalyser`] rather than replacing it.
+    ///
+    /// What it costs is small and real: a peak that used to linger long enough
+    /// to see now goes with the frame that made it.
+    NoAnalyserDecay,
     /// The spectrum analyser stops computing, in the core as well as on
     /// screen. The panel says why in its place.
     NoAnalyser,
@@ -163,6 +176,20 @@ pub enum Relief {
     /// The chain dots stop following the audio. Warnings and the rung keep
     /// updating, or this rung could hide the one after it.
     NoLiveDots,
+
+    /// Speakers show only *that* they are talking, not how loudly.
+    ///
+    /// One meter per participant, each moving with every incoming frame, so a
+    /// busy channel is several animated widgets at once. What is given up is
+    /// the amount; who is speaking still shows, which is the part a rider is
+    /// actually reading.
+    ///
+    /// **Last of the display rungs, because it is the only one on the main
+    /// screen.** Everything above it lives in the diagnostics panel, which is
+    /// open only when somebody has gone looking; this is visible to a rider
+    /// who never opens that panel at all. So it goes after every diagnostic
+    /// display and still before anything that changes what the far end hears.
+    NoParticipantMeters,
 
     /// The background classifier stops running and the profile is pinned to
     /// whatever is in force.
@@ -225,10 +252,12 @@ impl Relief {
             Relief::NoPaydown => Relief::NoPitch,
             Relief::NoPitch => Relief::NoFeedback,
             Relief::NoFeedback => Relief::NoRnnoise,
-            Relief::NoRnnoise => Relief::NoAnalyser,
+            Relief::NoRnnoise => Relief::NoAnalyserDecay,
+            Relief::NoAnalyserDecay => Relief::NoAnalyser,
             Relief::NoAnalyser => Relief::NoClassifierTop,
             Relief::NoClassifierTop => Relief::NoLiveDots,
-            Relief::NoLiveDots => Relief::NoClassifier,
+            Relief::NoLiveDots => Relief::NoParticipantMeters,
+            Relief::NoParticipantMeters => Relief::NoClassifier,
             Relief::NoClassifier => Relief::SimpleModel,
             Relief::SimpleModel => Relief::EnhancerOff,
             Relief::EnhancerOff => return None,
@@ -245,12 +274,14 @@ impl Relief {
             Relief::NoPitch => 4,
             Relief::NoFeedback => 5,
             Relief::NoRnnoise => 6,
-            Relief::NoAnalyser => 7,
-            Relief::NoClassifierTop => 8,
-            Relief::NoLiveDots => 9,
-            Relief::NoClassifier => 10,
-            Relief::SimpleModel => 11,
-            Relief::EnhancerOff => 12,
+            Relief::NoAnalyserDecay => 7,
+            Relief::NoAnalyser => 8,
+            Relief::NoClassifierTop => 9,
+            Relief::NoLiveDots => 10,
+            Relief::NoParticipantMeters => 11,
+            Relief::NoClassifier => 12,
+            Relief::SimpleModel => 13,
+            Relief::EnhancerOff => 14,
         }
     }
 
@@ -284,6 +315,21 @@ impl Relief {
     /// The enhancer runs the cheap model. See [`Relief::SimpleModel`].
     pub fn simple_model(self) -> bool {
         self >= Relief::SimpleModel
+    }
+
+    /// The analyser's bars stop easing down. See [`Relief::NoAnalyserDecay`].
+    ///
+    /// True once the analyser is switched off entirely as well, which is what
+    /// `>=` buys: a rung that stops the whole display must not report that the
+    /// animation is still running.
+    pub fn skip_analyser_decay(self) -> bool {
+        self >= Relief::NoAnalyserDecay
+    }
+
+    /// Speakers show only that they are talking, not how loudly. See
+    /// [`Relief::NoParticipantMeters`].
+    pub fn skip_participant_meters(self) -> bool {
+        self >= Relief::NoParticipantMeters
     }
 
     /// The spectrum analyser has been given up — in the core, not only on
@@ -527,9 +573,11 @@ mod tests {
             Relief::NoPitch,
             Relief::NoFeedback,
             Relief::NoRnnoise,
+            Relief::NoAnalyserDecay,
             Relief::NoAnalyser,
             Relief::NoClassifierTop,
             Relief::NoLiveDots,
+            Relief::NoParticipantMeters,
             Relief::NoClassifier,
             Relief::SimpleModel,
             Relief::EnhancerOff,

@@ -864,6 +864,14 @@ class UiChainStatus {
   /// consequence is the ladder's business and has already changed twice; a
   /// panel that re-derived it from an index drew the wrong thing the first
   /// time the order moved.
+  /// The analyser's bars stop easing down and sit where each frame puts
+  /// them. The reading is untouched; only the animation is given up.
+  final bool analyserDecayDisabled;
+
+  /// Speakers show only that they are talking, not how loudly. The only one
+  /// of these rungs visible outside the diagnostics panel, which is why it
+  /// is the last of them.
+  final bool participantMetersDisabled;
   final bool analyserDisabled;
   final bool classifierTopDisabled;
   final bool liveDotsDisabled;
@@ -891,6 +899,8 @@ class UiChainStatus {
     required this.disabledStages,
     required this.enhancerSimpleModel,
     required this.relief,
+    required this.analyserDecayDisabled,
+    required this.participantMetersDisabled,
     required this.analyserDisabled,
     required this.classifierTopDisabled,
     required this.liveDotsDisabled,
@@ -912,6 +922,8 @@ class UiChainStatus {
       disabledStages.hashCode ^
       enhancerSimpleModel.hashCode ^
       relief.hashCode ^
+      analyserDecayDisabled.hashCode ^
+      participantMetersDisabled.hashCode ^
       analyserDisabled.hashCode ^
       classifierTopDisabled.hashCode ^
       liveDotsDisabled.hashCode ^
@@ -935,6 +947,8 @@ class UiChainStatus {
           disabledStages == other.disabledStages &&
           enhancerSimpleModel == other.enhancerSimpleModel &&
           relief == other.relief &&
+          analyserDecayDisabled == other.analyserDecayDisabled &&
+          participantMetersDisabled == other.participantMetersDisabled &&
           analyserDisabled == other.analyserDisabled &&
           classifierTopDisabled == other.classifierTopDisabled &&
           liveDotsDisabled == other.liveDotsDisabled &&

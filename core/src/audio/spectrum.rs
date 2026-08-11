@@ -128,6 +128,9 @@ pub struct SpectrumAnalyser {
     edges: [(usize, usize); BANDS],
     /// Smoothed band levels, carried between frames.
     smoothed: [[f32; BANDS]; TAPS],
+    /// Whether the ladder has given up the fall. See
+    /// [`super::relief::Relief::NoAnalyserDecay`].
+    skip_decay: bool,
     /// Scratch for the transform. Two buffers, reused every time.
     re: Vec<f32>,
     im: Vec<f32>,
@@ -148,6 +151,7 @@ impl SpectrumAnalyser {
             window,
             edges: band_edges(),
             smoothed: [[FLOOR_DB; BANDS]; TAPS],
+            skip_decay: false,
             re: vec![0.0; FFT_SIZE],
             im: vec![0.0; FFT_SIZE],
             seq: 0,
@@ -229,11 +233,30 @@ impl SpectrumAnalyser {
             .max(FLOOR_DB);
 
             let prev = self.smoothed[tap][band];
-            let rate = if db > prev { ATTACK } else { RELEASE };
+            // `skip_decay` is the ladder's rung, and it only removes the
+            // *fall*. The attack stays immediate either way -- it already is,
+            // at 0.5 -- so what a rider loses is the slow return, not the
+            // reading: each bar drops straight to what this frame measured.
+            let rate = if db > prev {
+                ATTACK
+            } else if self.skip_decay {
+                1.0
+            } else {
+                RELEASE
+            };
             let next = prev + (db - prev) * rate;
             self.smoothed[tap][band] = next;
             out.bands[tap][band] = next;
         }
+    }
+
+    /// Gives up the bars' fall, or takes it back.
+    ///
+    /// Read from the ladder every frame rather than latched, because the
+    /// analyser outlives any one rung and a device that started part-way down
+    /// from the probe has to arrive here too.
+    pub fn set_skip_decay(&mut self, skip: bool) {
+        self.skip_decay = skip;
     }
 
     /// Spectral flatness of whatever is currently in the scratch buffers.

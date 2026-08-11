@@ -2383,10 +2383,29 @@ class AppState extends ChangeNotifier {
     // wrong.
   }
 
+  /// Whether the ladder has given up the per-participant volume meters.
+  ///
+  /// Read by the channel list rather than by the diagnostics panel, because
+  /// this is the one rung a rider sees without opening that panel. Polled on
+  /// the same two-second timer as [chainDegraded]; a meter that keeps moving
+  /// for two more seconds after the rung goes costs nothing, and polling it
+  /// per frame would be the thing this rung exists to avoid.
+  bool get participantMetersDisabled => _participantMetersDisabled;
+  bool _participantMetersDisabled = false;
+
   void _pollRelief() {
     final bool degraded;
     try {
-      degraded = audioChainStatus().relief > 0;
+      final status = audioChainStatus();
+      degraded = status.relief > 0;
+      // Set and cleared, unlike the warning flag below: this one describes
+      // what is running *now* rather than what this device turned out to be,
+      // and a meter that never came back after a rebuilt engine would look
+      // like a bug in the channel list.
+      if (status.participantMetersDisabled != _participantMetersDisabled) {
+        _participantMetersDisabled = status.participantMetersDisabled;
+        notifyListeners();
+      }
     } catch (_) {
       // No engine. Nothing has been given up that this can know about.
       return;

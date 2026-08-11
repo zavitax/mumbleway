@@ -1426,6 +1426,13 @@ pub struct UiChainStatus {
     /// consequence is the ladder's business and has already changed twice; a
     /// panel that re-derived it from an index drew the wrong thing the first
     /// time the order moved.
+    /// The analyser's bars stop easing down and sit where each frame puts
+    /// them. The reading is untouched; only the animation is given up.
+    pub analyser_decay_disabled: bool,
+    /// Speakers show only that they are talking, not how loudly. The only one
+    /// of these rungs visible outside the diagnostics panel, which is why it
+    /// is the last of them.
+    pub participant_meters_disabled: bool,
     pub analyser_disabled: bool,
     pub classifier_top_disabled: bool,
     pub live_dots_disabled: bool,
@@ -1702,6 +1709,8 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             off
         },
         relief: c.relief as u32,
+        analyser_decay_disabled: rung_at(c.relief).skip_analyser_decay(),
+        participant_meters_disabled: rung_at(c.relief).skip_participant_meters(),
         analyser_disabled: rung_at(c.relief).skip_analyser(),
         classifier_top_disabled: rung_at(c.relief).skip_classifier_top(),
         live_dots_disabled: rung_at(c.relief).skip_live_dots(),

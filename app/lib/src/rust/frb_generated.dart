@@ -2736,8 +2736,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 17)
-      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
+    if (arr.length != 19)
+      throw Exception('unexpected arr length: expect 19 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2752,10 +2752,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       disabledStages: dco_decode_list_String(arr[10]),
       enhancerSimpleModel: dco_decode_bool(arr[11]),
       relief: dco_decode_u_32(arr[12]),
-      analyserDisabled: dco_decode_bool(arr[13]),
-      classifierTopDisabled: dco_decode_bool(arr[14]),
-      liveDotsDisabled: dco_decode_bool(arr[15]),
-      enhancerEffort: dco_decode_u_32(arr[16]),
+      analyserDecayDisabled: dco_decode_bool(arr[13]),
+      participantMetersDisabled: dco_decode_bool(arr[14]),
+      analyserDisabled: dco_decode_bool(arr[15]),
+      classifierTopDisabled: dco_decode_bool(arr[16]),
+      liveDotsDisabled: dco_decode_bool(arr[17]),
+      enhancerEffort: dco_decode_u_32(arr[18]),
     );
   }
 
@@ -3517,6 +3519,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_disabledStages = sse_decode_list_String(deserializer);
     var var_enhancerSimpleModel = sse_decode_bool(deserializer);
     var var_relief = sse_decode_u_32(deserializer);
+    var var_analyserDecayDisabled = sse_decode_bool(deserializer);
+    var var_participantMetersDisabled = sse_decode_bool(deserializer);
     var var_analyserDisabled = sse_decode_bool(deserializer);
     var var_classifierTopDisabled = sse_decode_bool(deserializer);
     var var_liveDotsDisabled = sse_decode_bool(deserializer);
@@ -3535,6 +3539,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       disabledStages: var_disabledStages,
       enhancerSimpleModel: var_enhancerSimpleModel,
       relief: var_relief,
+      analyserDecayDisabled: var_analyserDecayDisabled,
+      participantMetersDisabled: var_participantMetersDisabled,
       analyserDisabled: var_analyserDisabled,
       classifierTopDisabled: var_classifierTopDisabled,
       liveDotsDisabled: var_liveDotsDisabled,
@@ -4311,6 +4317,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_String(self.disabledStages, serializer);
     sse_encode_bool(self.enhancerSimpleModel, serializer);
     sse_encode_u_32(self.relief, serializer);
+    sse_encode_bool(self.analyserDecayDisabled, serializer);
+    sse_encode_bool(self.participantMetersDisabled, serializer);
     sse_encode_bool(self.analyserDisabled, serializer);
     sse_encode_bool(self.classifierTopDisabled, serializer);
     sse_encode_bool(self.liveDotsDisabled, serializer);

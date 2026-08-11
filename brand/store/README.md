@@ -46,12 +46,43 @@ in a file listing, obvious on a phone.
 Apple additionally refuses any marketing icon with an alpha channel, so those
 two are written as RGB. The verify pass checks all of this.
 
-## Screenshots are not here, and cannot be generated
+## Screenshots: two kinds, and they are not interchangeable
 
-They need the app running on each device size, connected to a real server with
-people in the channel. A composed mock-up would be a picture of something that
-does not exist, which is both a poor listing and against every one of these
-stores' rules.
+This section used to say screenshots "are not here, and cannot be generated".
+Both halves have since stopped being true, and the reasoning that led to them is
+still worth keeping: a composed mock-up would be a picture of something that
+does not exist, which is a poor listing and against every one of these stores'
+rules. Nothing below is composed.
+
+**`<store>/screenshots/<lang>/` — the upload set.** Rendered by
+`app/test/store_screenshots_test.dart` from the shipping widgets at each store's
+required size, in both languages:
+
+```bash
+MUMBLEWAY_SHOTS_OUT=../brand/store flutter test test/store_screenshots_test.dart
+```
+
+Every file here is uploadable: the size matches its filename, matches a size the
+store accepts, and carries no alpha channel. The harness asserts all three. Only
+the roster is sample data — every pixel of interface comes from the same
+`HomeScreen` the app builds at runtime, so a UI change lands in these the next
+time they are run.
+
+What it cannot show is a live signal. There is no engine behind a widget test,
+so the analyser is empty and the listen sheet has no recording to draw.
+
+**`<store>/captures/<lang>/` — the real thing, on real hardware.** The app
+connected to a public server, driven and photographed: the analyser actually
+moving, the relief ladder actually stepping down, a real recording in the listen
+sheet. `CLAUDE.md` has the two procedures — `screencapture -l` for a Mac window,
+`idb` for the simulator.
+
+**These are not upload candidates.** They are at device resolution — 1206×2622
+on an iPhone 17, 2000×1440 for a 1000×720-point Mac window — and neither is a
+size Apple accepts. They exist for the website, for documentation, and for
+seeing what the product actually looks like. Do not upload one because it looks
+better; it will be refused, and the refusal comes after the listing form is
+filled in.
 
 What has to be captured, per store:
 

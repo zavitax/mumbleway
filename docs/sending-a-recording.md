@@ -74,11 +74,11 @@ button was never pressed.
   </figure>
   <figure>
     <img src="{{ '/assets/img/shots/listen-phone.webp' | relative_url }}"
-         alt="The listen-back sheet playing a recording: one chip per recording,
-              a waveform whose green stretches are the parts that went to the
-              server, a red playhead part way along, and the elapsed and total
-              time in minutes, seconds and milliseconds."
-         width="560" height="484" loading="lazy" decoding="async">
+         alt="The listen-back sheet: one chip per recording, a waveform whose
+              green stretches are the parts that went to the server, a red
+              playhead at the start, the two playback toggles filled in green
+              and amber, and the elapsed and total time."
+         width="560" height="552" loading="lazy" decoding="async">
     <figcaption>Listening back before sending. Green is what went out; drag,
     tap or pinch the waveform.</figcaption>
   </figure>

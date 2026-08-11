@@ -100,9 +100,17 @@ storage, along with what the noise suppression decided about each moment of it.
 It exists because faults like "it cut me off mid-sentence" cannot be diagnosed
 from a description.
 
-- The recordings stay on your device.
-- Nothing is uploaded automatically. They leave only if you choose to share
-  them, using your device's normal share sheet, to a destination you pick.
+- **The app uploads nothing, ever.** Recordings leave only if you choose to
+  share them, using your device's normal share sheet, to a destination you
+  pick.
+- **But your own device may sync the folder they are in.** The app writes them
+  to the ordinary documents folder — on Windows, `Documents\mumbleway-recordings`
+  — and if you have OneDrive set to back up your Documents folder, Windows will
+  upload them to *your* OneDrive account like anything else you put there. That
+  is your device's arrangement with your own cloud account and nothing to do
+  with this app, but "on your device" is not the whole truth on a PC set up that
+  way, so it is worth saying plainly. On Android, iOS and macOS the files live
+  inside the app's own storage, which no desktop folder-sync setting covers.
 - You can delete them from the same panel, or from your device's file manager.
 - If you send a recording to the developer, you are sending a recording of your
   own microphone. Please listen to it first.

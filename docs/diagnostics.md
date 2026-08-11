@@ -77,6 +77,18 @@ model does not run. When it is grey the line underneath says which.
 
 ### What the classifier is actually hearing
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/diag-classifier-phone.webp' | relative_url }}"
+         alt="Auto is using Standard, then three classifier rows with bars and
+              scores — silence 0.50, speech 0.04, inside a small room 0.02 —
+              above the row of stage dots."
+         width="560" height="274" loading="lazy" decoding="async">
+    <figcaption>The evidence behind the profile, in a quiet room: silence well
+    ahead, and nothing near the bar.</figcaption>
+  </figure>
+</div>
+
 Under **Automatic**, above the dots, three rows appear: the classifier's three
 most likely labels, each with a bar and a score between 0 and 1. A label has to
 clear **0.30** to count as heard.
@@ -167,6 +179,20 @@ block has to beat to be sent. On a bike at speed the floor climbs and the thresh
 which is what the noise profiles are for.
 
 ### Where a block's 10 ms goes
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/diag-block-phone.webp' | relative_url }}"
+         alt="The block budget on a slow phone: input and taps 0.01 ms,
+              enhancer 7.18 ms in amber, suppression 1.58 ms, feedback, de-hiss
+              and not-in-any-stage at zero, to the server 0.08 ms, encode
+              0.27 ms, whole block 9.14 ms mean against 104.1 worst, and
+              274 ms waiting to be processed."
+         width="560" height="391" loading="lazy" decoding="async">
+    <figcaption>A device with nothing to spare: the enhancer alone is
+    7.18 ms of a 10 ms block.</figcaption>
+  </figure>
+</div>
 
 The third column is the deadline itself, broken down by stage: **input and
 taps**, **enhancer**, **suppression**, **feedback**, **de-hiss**, **to the
@@ -271,11 +297,11 @@ recording]({{ '/sending-a-recording.html' | relative_url }}).
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/listen-phone.webp' | relative_url }}"
-         alt="The listen-back sheet playing a recording: one chip per recording,
-              a waveform whose green stretches are the parts that went to the
-              server, a red playhead part way along, and the elapsed and total
-              time in minutes, seconds and milliseconds."
-         width="560" height="484" loading="lazy" decoding="async">
+         alt="The listen-back sheet: one chip per recording, a waveform whose
+              green stretches are the parts that went to the server, a red
+              playhead at the start, the two playback toggles filled in green
+              and amber, and the elapsed and total time."
+         width="560" height="552" loading="lazy" decoding="async">
     <figcaption>Green is what went out. Drag, tap or pinch the
     waveform.</figcaption>
   </figure>

@@ -1370,7 +1370,7 @@ class LEn extends L {
 
   @override
   String get diagClassifierUnavailable =>
-      'Background detection runs on phones only, so the helmet profile is chosen from levels here.';
+      'Background detection is not available on this platform, so the helmet profile is chosen from levels here.';
 
   @override
   String get diagSpectrum => 'Voice chain';

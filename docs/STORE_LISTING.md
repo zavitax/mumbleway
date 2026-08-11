@@ -56,6 +56,39 @@ On a slow phone the noise chain steps down in a measured order and says which st
 motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,comms,murmur,headset
 ```
 
+## Russian subtitle — App Store, Mac App Store (30)
+
+```
+Mumble для мотоциклистов
+```
+
+## Russian short description — Google Play (80)
+
+```
+Разговор с группой через Mumble. Сделано под шум ветра и мотора в шлеме.
+```
+
+## Russian short description — Microsoft Store (500)
+
+```
+Клиент Mumble для разговора из-под мотоциклетного шлема на скорости. Ветер и гул мотора сводят на нет шумоподавление обычных приложений — оно настраивалось под офисы; у MumbleWay оно настроено под мотоцикл. Подключается к любому серверу Mumble, работает через Bluetooth-интеркомы, остаётся доступным поверх навигации и переподключается сам, когда сеть вернулась. Нужен сервер Mumble, чтобы было с кем говорить: это клиент, а не сервис, поэтому нет ни учётной записи, ни подписки.
+```
+
+## Russian promotional text — App Store (170)
+
+```
+На медленном телефоне цепочка отключает ступени в измеренном порядке и говорит, каких не стало. Начала слов целы. Запись можно услышать так, как её слышал собеседник.
+```
+
+## Russian keywords — App Store (100, comma-separated, no spaces)
+
+Latin terms stay Latin: somebody looking for a Mumble client types "mumble",
+not a transliteration of it, and the Russian App Store searches both alphabets.
+
+```
+мотоцикл,шлем,интерком,рация,связь,байкер,группа,гарнитура,mumble,voip,ptt,murmur,шум
+```
+
 ## Full description (4000 — fits App Store, Play and Microsoft Store)
 
 **Lives in [STORE_DESCRIPTION.md](STORE_DESCRIPTION.md)**, with the tagline, and

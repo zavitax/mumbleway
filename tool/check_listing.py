@@ -31,6 +31,16 @@ LIMITS = [
     ("## Promotional text", LISTING, 170, "App Store"),
     ("## Keywords", LISTING, 100, "App Store"),
     ("## Description", DESCRIPTION, 4000, "App Store, Play, Microsoft Store"),
+    # The Russian half, against the same limits -- the stores count characters,
+    # not bytes, so Cyrillic is measured exactly as Latin is. It still runs
+    # longer for the same meaning, which is the reason these need checking
+    # rather than assuming a translation of a passing field also passes.
+    ("## Russian subtitle", LISTING, 30, "App Store, Mac App Store (ru)"),
+    ("## Russian short description - Google Play", LISTING, 80, "Google Play (ru)"),
+    ("## Russian short description - Microsoft Store", LISTING, 500, "Microsoft Store (ru)"),
+    ("## Russian promotional text", LISTING, 170, "App Store (ru)"),
+    ("## Russian keywords", LISTING, 100, "App Store (ru)"),
+    ("## Russian description", DESCRIPTION, 4000, "App Store, Play, Microsoft Store (ru)"),
 ]
 
 

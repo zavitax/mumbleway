@@ -217,6 +217,47 @@ New user-facing strings need keys in **both** `app_en.arb` and `app_ru.arb`,
 with genuine Russian: a test fails on a key that is missing from one file or
 identical in both. Run `flutter gen-l10n` after editing them.
 
+### Read the Russian again, against these faults
+
+A translation written straight from the English passes every test here and can
+still say something the app does not do, or something faintly ridiculous. The
+tests check that a key exists and differs; nothing checks that it means what the
+English meant. So the Russian gets a second pass, and these are the faults it
+has actually had — each one shipped, in `docs/STORE_DESCRIPTION.md` or on the
+site, before somebody read it aloud.
+
+- **A word that is a false friend in context.** `a friend's box` became
+  «к машине друга» — correct for a server, and in an app for motorcyclists it
+  reads as *a friend's car*. The worst kind, because the sentence is fluent.
+- **A term translated instead of used.** `jitter buffer` became «буфер
+  дрожания»; the Russian term is «буфер джиттера», and «дрожание» is what hands
+  do. Same for `live ping` → «живой пинг» (it is «текущий»), and `in a measured
+  order` → «в измеренном порядке», which is not a phrase — «в заранее
+  измеренном».
+- **A verb that belongs to another sense.** `before anything else sees it` →
+  «до того, как их увидит что-либо ещё». Sound cannot be seen. Likewise a drone
+  that «переступает порог» is stepping over a threshold, in a sentence about
+  levels.
+- **A dangling gerund.** «вы в эфире, не глядя на экран» — the gerund attaches
+  to «вы», and being on air is not something one does while looking or not
+  looking. English tolerates the loose participle; Russian does not.
+- **An English opener, transliterated.** `Available in English and Russian` →
+  «Есть русский и английский языки». Drop the «есть».
+- **A comparison with no second half.** `240 ms ahead of its own decision` →
+  «раньше собственного решения», where the decision is compared to itself.
+
+Two habits catch most of it. **Read the Russian without the English beside it**
+— a calque is invisible while the original is in view and obvious once it is
+not. And **grep for the ones already found** before shipping new copy:
+
+```bash
+grep -rnE "к машине|дрожани|живой пинг|в измеренном порядке|^Есть [а-я]" docs/
+```
+
+Russian runs longer than English for the same meaning, so a field that fits in
+English may not fit translated: `tool/check_listing.py` measures both halves and
+is the only thing that will say so before a store form does.
+
 CI is the only real check for the Swift, Kotlin and plist changes — none of it
 compiles locally on Windows. It is also not a device test, and several classes
 of bug here only appear on one.

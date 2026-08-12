@@ -245,6 +245,18 @@ site, before somebody read it aloud.
   «Есть русский и английский языки». Drop the «есть».
 - **A comparison with no second half.** `240 ms ahead of its own decision` →
   «раньше собственного решения», where the decision is compared to itself.
+- **A phrasal verb translated by its parts.** `gives stages up` → «отдаёт
+  ступени», which says the device *hands them to somebody*. English phrasal
+  verbs mean something their words do not, and the Russian keeps the words: the
+  right verb here is «отключает». Same trap in «которому нечего больше
+  отдавать» for `runs out of things to give up` — «нечего отключать».
+
+**This one is the pattern to expect most, because it is the hardest to see.**
+Every example above except the false friend is a sentence that parses, sounds
+confident, and describes something else — a device donating its own audio
+stages, a microphone that lives somewhere, a drone stepping over a threshold.
+Fluency is not evidence. The check that works is asking, of each sentence,
+*what does this literally claim is happening*, and whether the app does that.
 
 Two habits catch most of it. **Read the Russian without the English beside it**
 — a calque is invisible while the original is in view and obvious once it is

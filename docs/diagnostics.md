@@ -47,19 +47,19 @@ switch to remember.
   <figure>
     <img src="{{ '/assets/img/shots/diag-lights-phone.webp' | relative_url }}"
          alt="The profile Automatic has landed on, then two rows of coloured
-              dots labelled echo, suppressor, voice detected, gate, levelling,
-              hiss, feedback, background and to the server, and a note saying
-              background detection is running on the processor at 130
-              milliseconds per check."
+              dots labelled enhancer, echo, suppressor, voice detected, gate,
+              levelling, hiss, feedback, background and to the server, and a
+              note saying background detection is running on the processor at
+              130 milliseconds per check."
          width="560" height="170" loading="lazy" decoding="async">
     <figcaption>Where Automatic landed, every stage of the chain, and what the
     classifier costs on this device.</figcaption>
   </figure>
 </div>
 
-One dot per stage of the capture chain: **echo**, **suppressor**, **voice
-detected**, **gate**, **levelling**, **hiss**, **feedback**, **background** and
-**to the server**. The colours mean the same thing at every stage — green is
+One dot per stage of the capture chain: **enhancer**, **echo**, **suppressor**,
+**voice detected**, **gate**, **levelling**, **hiss**, **feedback**,
+**background** and **to the server**. The colours mean the same thing at every stage — green is
 working and passing audio on, amber is working but holding something back, red
 is stopping audio here, and grey is switched off and therefore has no opinion.
 
@@ -148,7 +148,7 @@ depends on the panel being open.
     <img src="{{ '/assets/img/shots/diag-counters-phone.webp' | relative_url }}"
          alt="Two lists of counters: incoming audio, with decoded, invented,
               gaps concealed, jitter buffer and speakers tracked; and this
-              device, with playback gaps, microphone dropped, microphone level,
+              device, with playback gaps, microphone dropped, microphone peak,
               noise floor and the level the gate opens at."
          width="560" height="387" loading="lazy" decoding="async">
     <figcaption>A counter turns amber when it is the one worth reading.</figcaption>

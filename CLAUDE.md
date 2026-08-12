@@ -270,6 +270,63 @@ Russian runs longer than English for the same meaning, so a field that fits in
 English may not fit translated: `tool/check_listing.py` measures both halves and
 is the only thing that will say so before a store form does.
 
+### The same pass, for what the prose asserts about the app
+
+The faults above are about the language. These are about the facts, they are
+not specific to Russian, and they are in the site *and* the store copy — the
+listing is prose about a program too, and nothing regenerates it when the
+program changes. A full pass reads every page against four questions: **what
+was lost in translation, what is now faintly ridiculous, what is no longer
+true, and what is merely badly written.** The third is the one no reader will
+report, because it looks exactly like the rest.
+
+- **A control named something the app does not call it.** Both site languages
+  offered a mode called «по кнопке» / «Всегда включён»; the app has «По
+  нажатию» and «Открытый микрофон». Also «Лёгкий» and «Стандартный» for
+  profiles that are «Слабое» and «Обычное», a button called «Проверить
+  устройства заново» that reads «Обновить список устройств», and, in English,
+  a mode table row saying `Always on` where the app says `Open mic`. Every one
+  of these sends a reader looking in Settings for something that is not there.
+  The check is mechanical, so do it rather than trusting the memory of writing
+  it:
+
+  ```bash
+  grep -oE "«[А-ЯЁA-Z][^»]{2,40}»" docs/ru/*.md | sort -u   # then look each up
+  grep -nE '"(mic|noise|feedback|recheck)[A-Za-z]*":' app/lib/l10n/app_ru.arb
+  ```
+
+- **Alt text drifts first.** Three of the four wrong names above were in
+  `alt=` attributes, not in the prose — the sentence beside them was right.
+  Nobody proof-reads a string they cannot see, so read the alt text
+  deliberately, and remember it is the *only* text a screen reader gets for
+  that screenshot.
+
+- **A number that was measured once.** The README claimed 109 engine tests and
+  6 app tests against 364 and 202, and gave the ping timeout as 16 s two
+  sections after the paragraph correctly calling it the 15 s rule. A count in
+  prose has no owner and no test. Prefer naming the constant
+  (`SERVER_SILENCE_TIMEOUT`) or the file, and where a number is genuinely worth
+  stating, expect to check it — `STORE_DESCRIPTION.md` already says why a stale
+  count is worse than none.
+
+- **A term that means something else on the same page.** «Открывает канал» for
+  the transmit gate, on a page where «канал» is a Mumble channel six times, is
+  not a translation error and still misleads; «открывает передачу» costs
+  nothing. Same for «пропускает» meaning *skips* three sections after
+  «пропускает» meaning *passes through*, and «ступень» as a rung of the
+  performance ladder beside «ступень» as a stage of the chain.
+
+- **A claim that is stronger than the feature.** Reverb «чтобы собеседник не
+  обрывался на полуслове» — it does not prevent the cut, it softens it. This is
+  the literal-claim test again, pointed at the behaviour rather than the
+  grammar, and it catches things in the English too.
+
+Two things make the pass finite. **Go page by page and commit per page**, so a
+long file does not turn into a skim; and **check the store copy against the app
+in the same sitting**, because the listing repeats the site's wording and
+inherits every one of these faults a release later, where fixing it costs a
+submission.
+
 CI is the only real check for the Swift, Kotlin and plist changes — none of it
 compiles locally on Windows. It is also not a device test, and several classes
 of bug here only appear on one.

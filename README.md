@@ -7,6 +7,51 @@ talking from inside a motorcycle helmet at speed.
 
 Windows · macOS · iOS · iPadOS · Android phones and tablets.
 
+**[zavitax.github.io/mumbleway](https://zavitax.github.io/mumbleway/)** — what
+it does, what it costs you, and where it stops working, with screenshots.
+Also in [Russian](https://zavitax.github.io/mumbleway/ru/).
+
+## What it is
+
+A Bluetooth intercom pairs riders together and holds them within a few hundred
+metres of each other: lose the group at a junction and you lose the
+conversation. MumbleWay puts the conversation on the internet instead —
+everyone joins the same Mumble channel over mobile data, and it makes no
+difference whether the next rider is a hundred metres ahead or in another
+country.
+
+It is not a general-purpose voice app with a motorcycle icon. Every decision in
+the capture chain assumes a microphone a centimetre from your mouth, inside a
+helmet, at speed, with wind and an engine underneath.
+
+| | | |
+|---|---|---|
+| **Range** | Anywhere | Mobile data, not a radio link between helmets. |
+| **Codec** | Opus | 48 kHz, with forward error correction that rises as the link degrades. |
+| **Servers** | Yours | Any Mumble server. No account, no directory, no company in the middle. |
+
+It is a client, not a service, and that cuts both ways: there is nobody in the
+middle, and there is also a Mumble server to run or rent before anybody can
+talk. [docs/ru and docs/](docs/) hold the site; `docs/server.md` is the
+ten-minute version of standing one up.
+
+### What it will not do
+
+Worth knowing before relying on it, and none of it is fixable by a setting.
+
+- **No signal, no conversation.** A tunnel or a dead spot ends it, where an
+  intercom would still be working. Remote riding wants both.
+- **A couple of hundred milliseconds**, against near-zero for an intercom
+  between two adjacent helmets. Conversation works; interrupting somebody
+  mid-sentence does not land the way it does face to face.
+- **Music through the same headset drops to telephone bandwidth** while a call
+  is up. That is Bluetooth HFP, not this app, and every voice app has it.
+- **Voice activation still opens on music** occasionally — sharp plucked notes
+  read as speech to a detector trained to separate speech from noise. Push to
+  talk removes the possibility entirely.
+- **Battery.** Continuous voice over mobile data with the screen off warms a
+  phone up noticeably.
+
 ## Layout
 
 ```
@@ -59,6 +104,7 @@ that only appears on screen is something they will miss.
 * **The 15 s rule.** Fifteen seconds of total silence from the server counts as
   a drop and triggers reconnection. With a 5 s ping interval that is three
   missed pings.
+
 ## The floating call window
 
 Every platform can keep the call reachable after you leave the app, but no two
@@ -141,13 +187,63 @@ locally and never reach the far end.
 Wind and engine noise is the hard problem, and RNNoise alone does not solve it.
 The microphone chain, per 10 ms block:
 
-1. **4th-order high-pass** (180 Hz on the helmet profile) — strips wind and
-   engine rumble before anything else sees it.
-2. **RNNoise** (`nnnoiseless`) — a recurrent denoiser that handles the
+1. **A neural speech enhancer at the head of it** — DeepFilterNet 3, on the
+   phone, inside the 10 ms a block gets. It is the single largest lever here:
+   on the road it separates speech from the gaps between it by around 16 dB
+   where the rest of the chain manages 1.5, which is why it is the first thing
+   softened and the last thing given up when a device runs short.
+2. **Echo cancellation**, so a helmet speaker a few centimetres from the
+   microphone does not send everybody back to themselves.
+3. **4th-order high-pass** (180 Hz on the helmet profile) — strips wind and
+   engine rumble before anything else sees it — and a band limit above the
+   consonants.
+4. **RNNoise** (`nnnoiseless`) — a recurrent denoiser that handles the
    non-stationary broadband noise a moving bike produces.
-3. **SNR gate against a tracked noise floor** — see below.
-4. **AGC** — the rider shouts on the motorway and murmurs at the lights.
-5. **Limiter** — catches wind gusts before they clip.
+5. **Pitch-constrained harmonicity** — is this periodic at a *human* pitch?
+   The search is 75–350 Hz, so an engine's firing fundamental sits below it by
+   construction.
+6. **SNR gate against a tracked noise floor** — see below.
+7. **AGC** — the rider shouts on the motorway and murmurs at the lights.
+8. **Limiter** — catches wind gusts before they clip.
+
+Voice activation is deliberately **not causal**. A threshold decides
+mid-syllable, so by the time the gate opens the sound that opened it is gone;
+the audio is delayed and the decision is not, and a word starting on "s", "f"
+or "sh" keeps its first consonant instead of arriving as "ixty". The phrase
+opens **240 ms** ahead, and the debt is then repaid at 1.1× — pitch periods
+removed whole, so duration changes and pitch does not — until the delay settles
+at **60 ms**. The channel holds for a full second after you stop, fading over
+the last 30 ms, which is what stops a sentence arriving as four fragments.
+
+### When a phone cannot keep up
+
+A block arrives every 10 ms and the chain has to finish before the next one. The
+device is measured against that deadline at startup, before the first call, and
+watched while you talk. If it does not fit, stages are **given up one at a time,
+in an order that was measured rather than guessed** — the enhancer softens by
+two steps first, and switching it off entirely is the fourteenth and last thing
+tried. It does not climb back during a session: a device that was late once will
+be late again, and a chain that switched stages on and off as the load moved
+would sound worse than either state.
+
+Nothing here happens quietly. Dropped stages are struck through in the
+diagnostics panel, the toolbar icon turns amber so it is noticed without going
+looking, and the panel says in words what went and what it cost.
+
+### Watching it work
+
+The diagnostics panel draws a live spectrum with three traces from the same
+block — microphone, after suppression, and what is actually being sent — plus a
+light per stage. **The sent trace going flat while the other two do not** is the
+most useful thing it shows, and it is the answer to "it cut me off".
+
+It can also record what the microphone heard alongside what the chain decided
+about it, block by block, so a recording that cuts out can be read rather than
+guessed at. That exists because a whole round of measurements was once
+invalidated by discovering the recordings behind them had come from the phone's
+own microphone rather than the headset's: audio carries no record of what
+captured it, and recording from inside the app makes it the chain's own input by
+construction.
 
 ### Why the SNR gate exists
 
@@ -196,8 +292,9 @@ cue repeats every 4 s throughout, so "still trying" is audible without looking
 at the screen. The mechanism still supports growth for a caller with a
 different server population; only the default is flat.
 
-Ping timeout is detected as 16 s of total silence from the server (Mumble itself
-drops clients after 30 s without a ping, and we ping every 5 s).
+Ping timeout is detected as 15 s of total silence from the server
+(`SERVER_SILENCE_TIMEOUT`, three missed pings at a 5 s interval; Mumble itself
+drops clients after 30 s without a ping).
 
 ## Transport
 
@@ -327,9 +424,9 @@ can only be compiled on a Mac with Xcode.
 ## Testing
 
 ```bash
-cd core && cargo test                                              # 109 tests
-cd core && cargo test --test audio_hardware -- --ignored           # needs a mic
-cd app  && flutter test                                            # 6 tests
+cd core && cargo test                                    # the engine suite
+cd core && cargo test --test audio_hardware -- --ignored # needs a mic
+cd app  && flutter test                                  # widget and l10n tests
 ```
 
 The engine's test suite covers the parts that are hard to debug on a moving
@@ -379,14 +476,16 @@ with a notice in the job log saying so.
 
 | Job | Runner | Produces |
 |---|---|---|
-| Tests | Ubuntu | `cargo fmt --check`, clippy, 109 engine tests, `flutter analyze`, widget tests |
+| Tests | Ubuntu | `cargo fmt --check`, clippy, the engine suite, `flutter analyze`, widget tests |
 | Windows | windows-latest | `mumbleway-windows-x64.zip` |
 | macOS | macos-latest | `mumbleway-macos.zip` |
 | iOS | macos-latest | `mumbleway-ios-unsigned.zip` |
 | Android | Ubuntu | per-ABI APKs and an AAB |
 
-The platform builds are gated on the test job. Pushing a `v*` tag additionally
-publishes a GitHub release containing every artifact.
+The platform builds are gated on the test job. Pushing a `v*` tag also runs
+`.github/workflows/publish.yml`, which is what submits to the stores and
+publishes the GitHub release — `build.yml` never writes a release itself, so the
+two cannot race for the same tag.
 
 The hardware audio tests stay excluded in CI — the runners have no audio
 devices, so they would fail for reasons unrelated to the code. Run them locally

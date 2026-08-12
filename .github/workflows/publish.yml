@@ -398,6 +398,7 @@ jobs:
   # remains a working route.
   msix:
     name: Windows MSIX
+    needs: version
     runs-on: windows-latest
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
@@ -424,7 +425,8 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build windows --release
+          flutter build windows --release \
+            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
 
       # The version has to rise on its own, exactly as the build number does on
       # the other three platforms. Partner Center rejects a submission whose
@@ -714,6 +716,17 @@ jobs:
           if ($status -match "\b($inFlight)\b") {
             $what = $Matches[1]
             "ready=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            # **On a tag this is fatal.** A tagged release says the same build
+            # went to every store, and a Store submission that was quietly
+            # skipped makes that untrue while the run stays green -- the exact
+            # shape of failure CLAUDE.md warns about, where a summary reads
+            # "published" and one store never got it. Off a tag it is still a
+            # warning, because an internal Android release has no such claim to
+            # keep and there is no reason to fail a run over it.
+            if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+              Write-Output "::error::The Store has a submission at '$what' and one in flight blocks the next, so this tagged release could not be submitted. Wait for it to settle, then re-run this job; the MSIX is attached to this run."
+              exit 1
+            }
             Write-Output "::warning::The Store still has a submission at '$what', and one in flight blocks the next -- so this build was not sent. Wait for it to settle and run this again; the package is attached to this run if it needs to go in by hand."
             exit 0
           }
@@ -783,6 +796,7 @@ jobs:
   # Set the repository variable ENABLE_WINDOWS_ARM64 to "true" to run it.
   msix-arm64:
     name: Windows MSIX (ARM64)
+    needs: version
     if: vars.ENABLE_WINDOWS_ARM64 == 'true'
     runs-on: windows-11-arm
     env:
@@ -808,7 +822,8 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build windows --release
+          flutter build windows --release \
+            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
 
       # Same version rule as the x64 package. The two architectures of one
       # submission must carry the *same* version, so this is deliberately the
@@ -897,6 +912,7 @@ jobs:
   # package that uploads happily and is rejected some hours later.
   mac-app-store:
     name: Mac App Store
+    needs: version
     runs-on: macos-latest
     env:
       MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
@@ -1047,7 +1063,9 @@ jobs:
           # arrives after the build, not before it. run_number only ever goes
           # up, which is the whole requirement — the version in pubspec.yaml
           # stays the human-facing one.
-          flutter build macos --release --build-number=${{ github.run_number }}
+          flutter build macos --release \
+            --build-number=${{ github.run_number }} \
+            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
 
       # productbuild, not pkgbuild. The store wants a distribution package;
       # pkgbuild makes a component package, which uploads and is then rejected
@@ -1091,3 +1109,98 @@ jobs:
           name: mumbleway-macos-pkg
           path: app/build/macos/*.pkg
           if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # The GitHub release, for a tag.
+  #
+  # **Here rather than in `build.yml`, which also has one.** That one attaches
+  # the artifacts of an ordinary push: unsigned, built for CI's own checking.
+  # These are the packages that went to the stores — the same signed bytes, so
+  # somebody who downloads from the releases page gets what the store shipped
+  # rather than a lookalike built from the same commit.
+  #
+  # `if: always()` with a per-job success check rather than a plain `needs`.
+  # A publish can legitimately go half red — Apple's six-uploads-an-hour limit
+  # fails TestFlight and the Mac App Store while Play and Windows carry on — and
+  # a release of the three packages that did build is more use than no release
+  # at all. What did not build is simply absent, and the notes say so.
+  # ---------------------------------------------------------------------------
+  release:
+    name: GitHub release
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+    needs: [version, google-play, testflight, msix, mac-app-store]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # the changelog needs the history
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect what actually built
+        id: collect
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          find artifacts -type f \
+            \( -name '*.aab' -o -name '*.ipa' -o -name '*.msix' -o -name '*.pkg' \) \
+            -exec cp {} release/ \;
+          # Named for the version, so a downloaded file still says what it is
+          # once it is out of the browser and in a downloads folder.
+          for f in release/*; do
+            [ -e "$f" ] || continue
+            base=$(basename "$f")
+            mv "$f" "release/mumbleway-${{ needs.version.outputs.full }}-${base}"
+          done
+          ls -lh release || true
+          count=$(find release -type f | wc -l)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No packages built; refusing to publish an empty release."
+            exit 1
+          fi
+
+      - name: Write the changelog
+        id: notes
+        run: |
+          set -euo pipefail
+          previous=$(git describe --tags --abbrev=0 --match 'v*' \
+                       "${GITHUB_REF_NAME}^" 2>/dev/null || true)
+          {
+            echo "**Version ${{ needs.version.outputs.full }}** — build ${{ github.run_number }}."
+            echo
+            echo "The packages below are the ones submitted to the stores by this"
+            echo "run, signed identically. The iOS build is distributed through"
+            echo "TestFlight and the App Store; the \`.ipa\` here is for reference."
+            echo
+            if [ -n "$previous" ]; then
+              echo "## Changes since $previous"
+              echo
+              git log --no-merges --pretty='- %s' "$previous..${GITHUB_REF_NAME}"
+            else
+              echo "## Changes"
+              echo
+              git log --no-merges --pretty='- %s' -n 50 "${GITHUB_REF_NAME}"
+            fi
+          } > NOTES.md
+          echo "Wrote $(wc -l < NOTES.md) lines"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body_path: NOTES.md
+          # A full release: not a draft, not a pre-release, and the one the
+          # repository points at.
+          draft: false
+          prerelease: false
+          make_latest: true
+          # **Mutable on purpose.** Assets have to be replaceable — a package
+          # can fail certification after the release exists, and the fix is to
+          # attach the corrected one rather than to cut a version nobody asked
+          # for. Note that immutable releases are a *repository* setting: if it
+          # is enabled there, nothing in this file overrides it.
+          immutable: false

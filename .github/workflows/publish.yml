@@ -39,10 +39,48 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
+  # What this build calls itself.
+  #
+  # A tag is `vMAJOR.MINOR` and the version is `MAJOR.MINOR.RUN_NUMBER`. The
+  # third component is not chosen and cannot be: every store rejects a build
+  # number it has already seen, *after* the upload rather than before, so it has
+  # to rise on its own. `run_number` only ever goes up.
+  #
+  # Off a tag there is nothing to take a major and minor from, so the version in
+  # pubspec.yaml stays the human-facing one and only the build number moves.
+  # That keeps an ordinary `-f track=internal` publish exactly as it was.
+  # ---------------------------------------------------------------------------
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      tagged: ${{ steps.v.outputs.tagged }}
+      full: ${{ steps.v.outputs.full }}
+      build: ${{ github.run_number }}
+    steps:
+      - id: v
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF#refs/tags/v}"
+            if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag v$tag is not vMAJOR.MINOR. The third component
+                is the run number and must not be in the tag."
+              exit 1
+            fi
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+            echo "full=${tag}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "::notice::Building $tag.${{ github.run_number }}"
+          else
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            echo "full=" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------------------------------------------------------------------------
   # Google Play — signed App Bundle to the internal track
   # ---------------------------------------------------------------------------
   google-play:
     name: Google Play
+    needs: version
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -138,7 +176,9 @@ jobs:
           # arrives after the build, not before it. run_number only ever goes
           # up, which is the whole requirement — the version in pubspec.yaml
           # stays the human-facing one.
-          flutter build appbundle --release --build-number=${{ github.run_number }}
+          flutter build appbundle --release \
+            --build-number=${{ github.run_number }} \
+            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
 
       - name: Upload to Play
         if: steps.gate.outputs.ready == 'true' && env.PLAY_SERVICE_ACCOUNT != ''
@@ -179,6 +219,11 @@ jobs:
   # ---------------------------------------------------------------------------
   testflight:
     name: TestFlight
+    # Required, not decorative. Without it `needs.version.outputs.full` is empty
+    # rather than an error, so `--build-name` would be silently dropped and the
+    # tagged build would upload under whatever pubspec says — which looks like
+    # a working release right up until the version is read.
+    needs: version
     runs-on: macos-latest
     env:
       APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -295,7 +340,9 @@ jobs:
           # arrives after the build rather than before it. run_number only ever
           # goes up, which is the whole requirement — the version in
           # pubspec.yaml stays the human-facing one.
-          flutter build ipa --release --build-number=${{ github.run_number }} \
+          flutter build ipa --release \
+            --build-number=${{ github.run_number }} \
+            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }} \
             --export-options-plist=ios/ExportOptions.plist
 
       - name: Upload to TestFlight

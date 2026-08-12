@@ -332,7 +332,7 @@ app feels to use.
   <figure>
     <img src="{{ '/assets/img/shots/settings-mode-phone.webp' | relative_url }}"
          alt="The microphone mode section: voice activated, push to talk and
-              always on, with voice activated selected."
+              open mic, with voice activated selected."
          width="560" height="506" loading="lazy" decoding="async">
     <figcaption>Voice activated is the default.</figcaption>
   </figure>
@@ -344,7 +344,7 @@ app feels to use.
 |---|---|---|
 | Voice activated | Transmits automatically when you speak. The default. | Riding. You have no free hand, and the look-ahead means the first consonant survives. |
 | Push to talk | Transmits only while the talk button is held. | Loud passenger, music playing, or anywhere a false trigger would be worse than a missed word. |
-| Always on | Transmits constantly. | A quiet room. Uses the most data and sends every noise you make. |
+| Open mic | Transmits constantly. | A quiet room. Uses the most data and sends every noise you make. |
 
 </div>
 

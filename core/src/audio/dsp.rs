@@ -780,6 +780,29 @@ pub(crate) fn sq_diff(a: &[f32], b: &[f32]) -> f32 {
     sum
 }
 
+/// Sum of `(x[i] - c)^2` against a constant, in four lanes. See [`dot`].
+///
+/// Variance about a known mean, which is a reduction like the others and was
+/// costing a serial add chain in the same places.
+#[inline]
+pub(crate) fn sq_diff_const(x: &[f32], c: f32) -> f32 {
+    let mut acc = [0.0f32; 4];
+    let mut x4 = x.chunks_exact(4);
+    for v in x4.by_ref() {
+        let e = [v[0] - c, v[1] - c, v[2] - c, v[3] - c];
+        acc[0] += e[0] * e[0];
+        acc[1] += e[1] * e[1];
+        acc[2] += e[2] * e[2];
+        acc[3] += e[3] * e[3];
+    }
+    let mut sum = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+    for v in x4.remainder() {
+        let e = v - c;
+        sum += e * e;
+    }
+    sum
+}
+
 /// Sum of squares, in four lanes. See [`dot`].
 #[inline]
 pub(crate) fn energy(x: &[f32]) -> f32 {

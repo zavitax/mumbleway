@@ -3280,7 +3280,12 @@ where
                     // Send one terminator so the far end closes the stream
                     // immediately instead of waiting for its jitter buffer to
                     // time out.
-                    if let Ok(packet) = encoder.encode(&vec![0.0; FRAME_SAMPLES]) {
+                    // A const, not an allocation. This runs at the end of
+                    // every phrase — dozens of times a minute on voice
+                    // activation — and it was allocating a frame of silence
+                    // on the audio thread to do it.
+                    const SILENCE: [f32; FRAME_SAMPLES] = [0.0; FRAME_SAMPLES];
+                    if let Ok(packet) = encoder.encode(&SILENCE) {
                         on_frame(sequence, packet, true);
                         sequence += SEQ_UNITS_PER_FRAME;
                     }

@@ -212,6 +212,9 @@ struct Aligner {
     acc_n: usize,
     env_ref: VecDeque<f32>,
     env_mic: VecDeque<f32>,
+    /// Contiguous copies for the search, kept so it allocates nothing.
+    scratch_ref: Vec<f32>,
+    scratch_mic: Vec<f32>,
     since_search: usize,
     /// Current alignment in samples, applied to the reference.
     lag: usize,
@@ -235,6 +238,8 @@ impl Aligner {
             acc_n: 0,
             env_ref: VecDeque::with_capacity(ENV_POINTS),
             env_mic: VecDeque::with_capacity(ENV_POINTS),
+            scratch_ref: Vec::with_capacity(ENV_POINTS),
+            scratch_mic: Vec::with_capacity(ENV_POINTS),
             since_search: 0,
             lag: 0,
             span: DEFAULT_TAPS,
@@ -307,9 +312,28 @@ impl Aligner {
     fn search(&mut self) -> bool {
         let n = self.env_ref.len();
         let window = n - MAX_LAG_POINTS;
-        let mic: Vec<f32> = self.env_mic.iter().skip(MAX_LAG_POINTS).copied().collect();
+
+        // Copied into scratch once, not once per lag.
+        //
+        // This ran on the audio thread and allocated fifty-one vectors every
+        // time — one for the microphone envelope and one for every lag —
+        // copying 350 floats into each. The arithmetic was never the problem
+        // at once a second; **the allocation was**, because a `malloc` that
+        // takes a slow path inside a 10 ms deadline is a dropped block, and
+        // this chain has a rule against allocating here that this was quietly
+        // breaking.
+        //
+        // The deques are ring buffers, so a contiguous view needs one copy
+        // regardless. One is enough.
+        self.scratch_ref.clear();
+        self.scratch_ref.extend(self.env_ref.iter().copied());
+        self.scratch_mic.clear();
+        self.scratch_mic
+            .extend(self.env_mic.iter().skip(MAX_LAG_POINTS));
+        let mic = &self.scratch_mic[..];
+
         let mic_mean = mic.iter().sum::<f32>() / window as f32;
-        let mic_var: f32 = mic.iter().map(|v| (v - mic_mean).powi(2)).sum();
+        let mic_var = super::dsp::sq_diff_const(mic, mic_mean);
         if mic_var < 1.0 {
             return false; // nothing came back to correlate against
         }
@@ -318,23 +342,16 @@ impl Aligner {
         let mut scores = [0.0f32; MAX_LAG_POINTS];
         for (lag, score) in scores.iter_mut().enumerate() {
             let start = MAX_LAG_POINTS - lag;
-            let r: Vec<f32> = self
-                .env_ref
-                .iter()
-                .skip(start)
-                .take(window)
-                .copied()
-                .collect();
+            let r = &self.scratch_ref[start..start + window];
             let r_mean = r.iter().sum::<f32>() / window as f32;
-            let r_var: f32 = r.iter().map(|v| (v - r_mean).powi(2)).sum();
+            let r_var = super::dsp::sq_diff_const(r, r_mean);
             if r_var < 1.0 {
                 continue; // the far end was silent through this stretch
             }
-            let cov: f32 = r
-                .iter()
-                .zip(&mic)
-                .map(|(a, b)| (a - r_mean) * (b - mic_mean))
-                .sum();
+            // Σ(r-r̄)(m-m̄) expanded to Σrm − n·r̄·m̄, so the mean-removal does
+            // not need its own pass and the remaining sum is the shared
+            // four-lane dot product.
+            let cov = super::dsp::dot(r, mic) - window as f32 * r_mean * mic_mean;
             let corr = cov / (r_var * mic_var).sqrt();
             *score = corr;
             if corr > best.1 {

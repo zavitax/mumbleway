@@ -80,6 +80,16 @@ impl VoiceEncoder {
 
     /// Tells the encoder how much loss to protect against, 0..=100.
     ///
+    /// How hard the encoder is allowed to work, 0 to 10.
+    ///
+    /// Exposed so it can be measured; `tests/encode_cost.rs` reports what each
+    /// setting costs and what it does to intelligibility.
+    pub fn set_complexity(&mut self, complexity: i32) -> Result<()> {
+        self.enc
+            .set_complexity(complexity.clamp(0, 10))
+            .map_err(|e| CoreError::Codec(format!("setting Opus complexity: {e}")))
+    }
+
     /// It is a real trade and not a free dial. The FEC copy is carved out of
     /// the same bitrate as the audio, so protecting against 30% loss on a link
     /// that is losing nothing makes every packet worse for a benefit nobody

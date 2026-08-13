@@ -201,21 +201,21 @@ fn tonality(x: &[f32]) -> f32 {
     if x.len() <= MAX_LAG + 1 {
         return 0.0;
     }
-    let energy: f32 = x.iter().map(|s| s * s).sum();
+    let energy = super::dsp::energy(x);
     if energy <= f32::EPSILON {
         return 0.0;
     }
 
     let mut best = 0.0f32;
     for lag in MIN_LAG..=MAX_LAG {
-        let mut sum = 0.0;
-        for i in lag..x.len() {
-            sum += x[i] * x[i - lag];
-        }
+        // The signal against itself, shifted. Both slices are contiguous, so
+        // this is the shared four-lane dot product rather than a serial
+        // running total — and this loop runs once per lag, 281 times a block.
+        let sum = super::dsp::dot(&x[lag..], &x[..x.len() - lag]);
         // Normalised by the energy of the overlapping stretch, so a long lag
         // is not penalised for comparing fewer samples.
-        let tail: f32 = x[lag..].iter().map(|s| s * s).sum();
-        let head: f32 = x[..x.len() - lag].iter().map(|s| s * s).sum();
+        let tail = super::dsp::energy(&x[lag..]);
+        let head = super::dsp::energy(&x[..x.len() - lag]);
         let norm = (tail * head).sqrt();
         if norm > f32::EPSILON {
             best = best.max(sum / norm);

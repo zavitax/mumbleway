@@ -705,10 +705,23 @@ impl EchoCanceller {
                 continue;
             }
 
-            // Estimate the echo: w · history. Two contiguous slices, so this
-            // is a dot product and is compiled as one.
+            // Estimate the echo: w · history, over two contiguous slices.
+            //
+            // **Four accumulators rather than one, and that is the whole
+            // trick.** `iter().map(..).sum()` is a single running total, and
+            // floating-point addition is not associative, so LLVM is not
+            // allowed to reorder it — the adds stay a serial dependency chain
+            // one element at a time however wide the machine is, and the
+            // multiplies cannot get ahead of them. Summing into four
+            // independent lanes and combining at the end is a different
+            // summation order, which is exactly why it is faster and why it
+            // has to be written out rather than hoped for.
+            //
+            // The order change is immaterial here: this is a dot product of a
+            // learned filter against a signal, and the filter adapts to
+            // whatever the sum reports.
             let win = &self.hist[self.pos..self.pos + self.taps];
-            let estimate: f32 = self.w.iter().zip(win).map(|(a, b)| a * b).sum();
+            let estimate = super::dsp::dot(&self.w, win);
 
             let d = mic[i];
             let e = d - estimate;

@@ -184,7 +184,7 @@ impl PitchTracker {
 
         // The most recent window, compared against itself one lag earlier.
         let recent = &self.history[HISTORY - WINDOW..];
-        let energy: f32 = recent.iter().map(|s| s * s).sum();
+        let energy = super::dsp::energy(recent);
         if energy <= 1e-9 {
             return Pitch::NONE;
         }
@@ -200,12 +200,7 @@ impl PitchTracker {
         let mut diff = [0.0f32; MAX_LAG + 1];
         for (lag, d) in diff.iter_mut().enumerate().take(MAX_LAG + 1).skip(1) {
             let past = &self.history[HISTORY - WINDOW - lag..HISTORY - lag];
-            let mut sum = 0.0f32;
-            for i in 0..WINDOW {
-                let e = recent[i] - past[i];
-                sum += e * e;
-            }
-            *d = sum;
+            *d = super::dsp::sq_diff(recent, past);
         }
 
         // Divided by the running mean of every shorter lag, which is what

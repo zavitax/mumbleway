@@ -419,6 +419,7 @@
   "diagEchoDelay": "Echo found at",
   "diagEchoNotFound": "Not found",
   "diagEchoConfidence": "Confidence",
+  "diagEchoShortened": "Filter shortened to fit",
   "diagEchoSecondPath": "Second path, beyond reach",
   "diagPlotFloor": "floor",
   "diagPlotOpensAt": "opens at",

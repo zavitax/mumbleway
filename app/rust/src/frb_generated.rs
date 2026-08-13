@@ -3209,6 +3209,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         let mut var_disabledStages = <Vec<String>>::sse_decode(deserializer);
         let mut var_aecEnabled = <bool>::sse_decode(deserializer);
+        let mut var_aecShortened = <bool>::sse_decode(deserializer);
         let mut var_aecErleDb = <f32>::sse_decode(deserializer);
         let mut var_aecLagMs = <f32>::sse_decode(deserializer);
         let mut var_aecConfidence = <f32>::sse_decode(deserializer);
@@ -3236,6 +3237,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             effective_profile: var_effectiveProfile,
             disabled_stages: var_disabledStages,
             aec_enabled: var_aecEnabled,
+            aec_shortened: var_aecShortened,
             aec_erle_db: var_aecErleDb,
             aec_lag_ms: var_aecLagMs,
             aec_confidence: var_aecConfidence,
@@ -4043,6 +4045,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.effective_profile.into_into_dart().into_dart(),
             self.disabled_stages.into_into_dart().into_dart(),
             self.aec_enabled.into_into_dart().into_dart(),
+            self.aec_shortened.into_into_dart().into_dart(),
             self.aec_erle_db.into_into_dart().into_dart(),
             self.aec_lag_ms.into_into_dart().into_dart(),
             self.aec_confidence.into_into_dart().into_dart(),
@@ -4925,6 +4928,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);
         <Vec<String>>::sse_encode(self.disabled_stages, serializer);
         <bool>::sse_encode(self.aec_enabled, serializer);
+        <bool>::sse_encode(self.aec_shortened, serializer);
         <f32>::sse_encode(self.aec_erle_db, serializer);
         <f32>::sse_encode(self.aec_lag_ms, serializer);
         <f32>::sse_encode(self.aec_confidence, serializer);

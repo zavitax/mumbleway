@@ -822,6 +822,16 @@ impl CaptureProcessor {
         self.aec.is_enabled()
     }
 
+    /// Puts the echo canceller on its short filter, for the ladder.
+    pub fn set_short_aec(&mut self, short: bool) {
+        self.aec.set_short(short);
+    }
+
+    /// Whether the short filter is the one running.
+    pub fn short_aec(&self) -> bool {
+        self.aec.filter_span_ms() < 15.0
+    }
+
     /// What the echo canceller has worked out about the path: where the echo
     /// is, how sure it is, how wide the arrivals are spread, and how much of
     /// that the filter covers. All in milliseconds except the confidence.

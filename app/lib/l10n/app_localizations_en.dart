@@ -920,6 +920,9 @@ class LEn extends L {
   String get diagEchoConfidence => 'Confidence';
 
   @override
+  String get diagEchoShortened => 'Filter shortened to fit';
+
+  @override
   String get diagEchoSecondPath => 'Second path, beyond reach';
 
   @override

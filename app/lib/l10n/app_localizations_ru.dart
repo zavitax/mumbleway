@@ -928,6 +928,9 @@ class LRu extends L {
   String get diagEchoConfidence => 'Уверенность';
 
   @override
+  String get diagEchoShortened => 'Фильтр укорочен, чтобы успевать';
+
+  @override
   String get diagEchoSecondPath => 'Второй путь, вне досягаемости';
 
   @override

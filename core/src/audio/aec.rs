@@ -132,9 +132,23 @@ pub struct EchoCanceller {
     taps: usize,
     /// Filter coefficients.
     w: Vec<f32>,
-    /// Ring buffer of the most recent `taps` reference samples.
-    ring: Vec<f32>,
-    /// Index the next reference sample is written to.
+    /// The most recent `taps` reference samples, stored **twice**.
+    ///
+    /// A ring would be the obvious structure and it was the slow one. Walking
+    /// it backwards needs `idx = if idx == 0 { taps - 1 } else { idx - 1 }`,
+    /// a data-dependent branch on every tap, and neither the estimate nor the
+    /// update vectorises through it: measured 1.1 GFLOP/s for a pure
+    /// multiply-accumulate, which is scalar speed on a machine that should
+    /// manage several times that.
+    ///
+    /// Writing each sample at `pos` *and* at `pos + taps` costs one extra
+    /// store per sample and makes the window always contiguous:
+    /// `hist[pos .. pos + taps]` is the last `taps` samples, oldest first, at
+    /// every point in the cycle. Both loops become a plain walk over two
+    /// slices, which is the shape LLVM turns into SSE or NEON without being
+    /// asked.
+    hist: Vec<f32>,
+    /// Where the next reference sample goes, in `0..taps`.
     pos: usize,
     /// Running sum of squares of the ring, for NLMS normalisation.
     ref_power: f32,
@@ -436,7 +450,7 @@ impl EchoCanceller {
         Self {
             taps,
             w: vec![0.0; taps],
-            ring: vec![0.0; taps],
+            hist: vec![0.0; taps * 2],
             pos: 0,
             ref_power: 0.0,
             mu: 0.25,
@@ -466,7 +480,7 @@ impl EchoCanceller {
     /// Once per block: 1 024 multiply-adds against the ~1 000 000 the filter
     /// itself does in that time.
     fn audit(&mut self) {
-        self.ref_power = self.ring.iter().map(|v| v * v).sum();
+        self.ref_power = self.window().iter().map(|v| v * v).sum();
         if self.smooth_ref <= 1e-9 {
             return; // nothing playing; there is nothing to judge
         }
@@ -530,6 +544,32 @@ impl EchoCanceller {
         self.taps as f32 * 1000.0 / 48_000.0
     }
 
+    /// Switches between the full filter and the half-length one.
+    ///
+    /// The ladder's `ShortAec` rung. Cheap to act on — the coefficients are
+    /// thrown away either way, because a filter learned at one length does not
+    /// describe the same path at another — and it is nothing like as cheap to
+    /// *ignore*: the full filter is 612 µs a block while cancelling and the
+    /// short one is 131.
+    pub fn set_short(&mut self, short: bool) {
+        let want = if short {
+            DEFAULT_TAPS / 2
+        } else {
+            DEFAULT_TAPS
+        };
+        if want == self.taps {
+            return;
+        }
+        self.taps = want;
+        self.w = vec![0.0; want];
+        self.hist = vec![0.0; want * 2];
+        self.good_w = vec![0.0; want];
+        self.pos = 0;
+        self.ref_power = 0.0;
+        self.good_erle = 0.0;
+        self.idle_run = 0;
+    }
+
     /// How far apart the arrivals were measured to be, in milliseconds.
     ///
     /// Zero is the ordinary case: one path, and the filter is on it. A figure
@@ -564,7 +604,7 @@ impl EchoCanceller {
     /// the delay measurement that caused it is the one thing worth keeping.
     fn forget_path(&mut self) {
         self.w.iter_mut().for_each(|v| *v = 0.0);
-        self.ring.iter_mut().for_each(|v| *v = 0.0);
+        self.hist.iter_mut().for_each(|v| *v = 0.0);
         self.pos = 0;
         self.ref_power = 0.0;
         self.smooth_mic = 0.0;
@@ -589,15 +629,27 @@ impl EchoCanceller {
 
     #[inline]
     fn push_reference(&mut self, x: f32) {
-        let old = self.ring[self.pos];
+        // The sample about to be overwritten is the one leaving the window.
+        let old = self.hist[self.pos];
         // Maintained incrementally; recomputing the sum every sample would
-        // dominate the cost of the whole filter.
+        // dominate the cost of the whole filter. `audit` corrects the drift
+        // once a block.
         self.ref_power += x * x - old * old;
         if self.ref_power < 0.0 {
             self.ref_power = 0.0;
         }
-        self.ring[self.pos] = x;
-        self.pos = (self.pos + 1) % self.taps;
+        self.hist[self.pos] = x;
+        self.hist[self.pos + self.taps] = x;
+        self.pos += 1;
+        if self.pos == self.taps {
+            self.pos = 0;
+        }
+    }
+
+    /// The last `taps` reference samples, oldest first. Always contiguous.
+    #[inline]
+    fn window(&self) -> &[f32] {
+        &self.hist[self.pos..self.pos + self.taps]
     }
 
     /// Cancels echo from `mic` in place, using `reference` as the signal that
@@ -653,13 +705,10 @@ impl EchoCanceller {
                 continue;
             }
 
-            // Estimate the echo: w · history, most recent sample first.
-            let mut estimate = 0.0f32;
-            let mut idx = (self.pos + self.taps - 1) % self.taps;
-            for k in 0..self.taps {
-                estimate += self.w[k] * self.ring[idx];
-                idx = if idx == 0 { self.taps - 1 } else { idx - 1 };
-            }
+            // Estimate the echo: w · history. Two contiguous slices, so this
+            // is a dot product and is compiled as one.
+            let win = &self.hist[self.pos..self.pos + self.taps];
+            let estimate: f32 = self.w.iter().zip(win).map(|(a, b)| a * b).sum();
 
             let d = mic[i];
             let e = d - estimate;
@@ -680,10 +729,9 @@ impl EchoCanceller {
                 // does not depend on how loud the far end happens to be.
                 let norm = self.ref_power + 1e-6;
                 let step = self.mu * e / norm;
-                let mut idx = (self.pos + self.taps - 1) % self.taps;
-                for k in 0..self.taps {
-                    self.w[k] += step * self.ring[idx];
-                    idx = if idx == 0 { self.taps - 1 } else { idx - 1 };
+                let win = &self.hist[self.pos..self.pos + self.taps];
+                for (wk, x) in self.w.iter_mut().zip(win) {
+                    *wk += step * x;
                 }
             }
         }

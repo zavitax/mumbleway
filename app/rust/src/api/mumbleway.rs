@@ -1418,6 +1418,14 @@ pub struct UiChainStatus {
     /// found anything; `aec_spread_ms` against `aec_window_ms` says whether
     /// there is a second arrival outside what the filter reaches.
     pub aec_enabled: bool,
+    /// The ladder has it on the half-length filter: 512 taps instead of 1 024,
+    /// about 10 ms of echo path instead of 21, for a fifth of the cost.
+    ///
+    /// **This is the one performance state the canceller has.** It is never
+    /// switched off by the ladder — the feedback guard that would cover for it
+    /// is given up two rungs lower, so dropping it would leave a speakerphone
+    /// with nothing holding the loop open.
+    pub aec_shortened: bool,
     pub aec_erle_db: f32,
     pub aec_lag_ms: f32,
     pub aec_confidence: f32,
@@ -1586,6 +1594,11 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     // is failing, which is a different problem from one that never located it.
     let aec = if !shared.echo_cancellation_enabled() {
         StageState::Off
+    } else if c.aec_shortened && c.erle_db < 6.0 {
+        // On the short filter and not cancelling much: the two are worth
+        // showing together, because the shortened path is a plausible cause
+        // and the panel is the only place that connection can be made.
+        StageState::Warn
     } else if c.erle_db < 0.0 {
         // Adding rather than subtracting. Should be transient — the canceller
         // backtracks to its last working coefficients — so seeing this sit is
@@ -1752,6 +1765,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     Ok(UiChainStatus {
         stages,
         aec_enabled: c.aec_enabled,
+        aec_shortened: c.aec_shortened,
         aec_erle_db: c.erle_db,
         aec_lag_ms: c.aec_lag_ms,
         aec_confidence: c.aec_confidence,

@@ -854,6 +854,15 @@ class UiChainStatus {
   /// found anything; `aec_spread_ms` against `aec_window_ms` says whether
   /// there is a second arrival outside what the filter reaches.
   final bool aecEnabled;
+
+  /// The ladder has it on the half-length filter: 512 taps instead of 1 024,
+  /// about 10 ms of echo path instead of 21, for a fifth of the cost.
+  ///
+  /// **This is the one performance state the canceller has.** It is never
+  /// switched off by the ladder — the feedback guard that would cover for it
+  /// is given up two rungs lower, so dropping it would leave a speakerphone
+  /// with nothing holding the loop open.
+  final bool aecShortened;
   final double aecErleDb;
   final double aecLagMs;
   final double aecConfidence;
@@ -924,6 +933,7 @@ class UiChainStatus {
     required this.effectiveProfile,
     required this.disabledStages,
     required this.aecEnabled,
+    required this.aecShortened,
     required this.aecErleDb,
     required this.aecLagMs,
     required this.aecConfidence,
@@ -954,6 +964,7 @@ class UiChainStatus {
       effectiveProfile.hashCode ^
       disabledStages.hashCode ^
       aecEnabled.hashCode ^
+      aecShortened.hashCode ^
       aecErleDb.hashCode ^
       aecLagMs.hashCode ^
       aecConfidence.hashCode ^
@@ -986,6 +997,7 @@ class UiChainStatus {
           effectiveProfile == other.effectiveProfile &&
           disabledStages == other.disabledStages &&
           aecEnabled == other.aecEnabled &&
+          aecShortened == other.aecShortened &&
           aecErleDb == other.aecErleDb &&
           aecLagMs == other.aecLagMs &&
           aecConfidence == other.aecConfidence &&

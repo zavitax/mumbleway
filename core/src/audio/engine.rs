@@ -81,6 +81,9 @@ pub struct ChainStatus {
     pub erle_db: f32,
     /// Whether echo cancellation is switched on at all.
     pub aec_enabled: bool,
+    /// Whether the ladder has it on the short filter — half the taps, half the
+    /// echo path covered, a fifth of the cost.
+    pub aec_shortened: bool,
     /// Where the canceller has decided the echo is, how convinced it is
     /// (0..1), how far apart the arrivals are, and how much of that the filter
     /// covers. Milliseconds except the confidence.
@@ -171,6 +174,7 @@ impl Default for ChainStatus {
             muted: false,
             erle_db: 0.0,
             aec_enabled: true,
+            aec_shortened: false,
             aec_lag_ms: 0.0,
             aec_confidence: 0.0,
             aec_spread_ms: 0.0,
@@ -2872,6 +2876,13 @@ where
             if want_aec != processor.echo_cancellation_enabled() {
                 processor.set_echo_cancellation(want_aec);
             }
+            // Polled with everything else the ladder decides, so a rung taken
+            // mid-call takes effect on the next block rather than the next
+            // restart.
+            let want_short = relief.level().short_aec();
+            if want_short != processor.short_aec() {
+                processor.set_short_aec(want_short);
+            }
 
             // Taken *before* the chain touches it, and this ordering is the
             // whole point of the feature. Recording the output would record
@@ -3182,6 +3193,7 @@ where
                 muted: shared.is_muted(),
                 erle_db: analysis.erle_db,
                 aec_enabled: processor.echo_cancellation_enabled(),
+                aec_shortened: processor.short_aec(),
                 aec_lag_ms: aec_align.0,
                 aec_confidence: aec_align.1,
                 aec_spread_ms: aec_align.2,

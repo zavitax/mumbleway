@@ -132,6 +132,35 @@ pub enum Relief {
     /// always had rather than something worse.
     NoPaydown,
 
+    /// The echo canceller's filter is halved, 1 024 taps to 512.
+    ///
+    /// **Shortened, never switched off.** Losing echo cancellation on a
+    /// speakerphone is a howl, and the feedback guard that would cover for it
+    /// is given up two rungs below this — so by the time anything could
+    /// justify dropping the canceller there would be nothing left holding the
+    /// loop open. Halving keeps the direct path, which is the loud part, and
+    /// gives up about 10 ms of tail.
+    ///
+    /// Measured over a 138.8 s ride clip, per block, while actually
+    /// cancelling:
+    ///
+    /// | taps | mean | p99 | share of 10 ms |
+    /// |---|---|---|---|
+    /// | 1 024 | 612 µs | 3 083 µs | 6.1% |
+    /// | 512 | **131 µs** | **188 µs** | 1.3% |
+    ///
+    /// So the rung is worth **481 µs**, which puts it beside the feedback
+    /// guard and RNNoise rather than among the rounding errors — and the p99
+    /// improvement is the larger part of it.
+    ///
+    /// It sits above `NoPitch` because it is the smallest loss of the four
+    /// audio rungs: the others each remove a whole stage, and this one leaves
+    /// the stage working on a shorter path. The position is reasoned from that
+    /// and from the measurement above; it has not been re-measured on a device
+    /// in the ladder's own terms, which is what `chain_cost` on the phone
+    /// would settle.
+    ShortAec,
+
     /// The pitch search is skipped. AUC 0.564.
     NoPitch,
     /// The feedback guard is skipped. It does nothing on a headset, where
@@ -249,7 +278,8 @@ impl Relief {
             Relief::None => Relief::EnhancerReduced,
             Relief::EnhancerReduced => Relief::EnhancerLight,
             Relief::EnhancerLight => Relief::NoPaydown,
-            Relief::NoPaydown => Relief::NoPitch,
+            Relief::NoPaydown => Relief::ShortAec,
+            Relief::ShortAec => Relief::NoPitch,
             Relief::NoPitch => Relief::NoFeedback,
             Relief::NoFeedback => Relief::NoRnnoise,
             Relief::NoRnnoise => Relief::NoAnalyserDecay,
@@ -271,17 +301,18 @@ impl Relief {
             Relief::EnhancerReduced => 1,
             Relief::EnhancerLight => 2,
             Relief::NoPaydown => 3,
-            Relief::NoPitch => 4,
-            Relief::NoFeedback => 5,
-            Relief::NoRnnoise => 6,
-            Relief::NoAnalyserDecay => 7,
-            Relief::NoAnalyser => 8,
-            Relief::NoClassifierTop => 9,
-            Relief::NoLiveDots => 10,
-            Relief::NoParticipantMeters => 11,
-            Relief::NoClassifier => 12,
-            Relief::SimpleModel => 13,
-            Relief::EnhancerOff => 14,
+            Relief::ShortAec => 4,
+            Relief::NoPitch => 5,
+            Relief::NoFeedback => 6,
+            Relief::NoRnnoise => 7,
+            Relief::NoAnalyserDecay => 8,
+            Relief::NoAnalyser => 9,
+            Relief::NoClassifierTop => 10,
+            Relief::NoLiveDots => 11,
+            Relief::NoParticipantMeters => 12,
+            Relief::NoClassifier => 13,
+            Relief::SimpleModel => 14,
+            Relief::EnhancerOff => 15,
         }
     }
 
@@ -346,6 +377,11 @@ impl Relief {
     /// The chain dots no longer follow the audio.
     pub fn skip_live_dots(self) -> bool {
         self >= Relief::NoLiveDots
+    }
+
+    /// Whether the echo canceller should run its short filter.
+    pub fn short_aec(self) -> bool {
+        self >= Relief::ShortAec
     }
 
     pub fn skip_pitch(self) -> bool {
@@ -530,6 +566,7 @@ mod tests {
             Relief::EnhancerReduced,
             Relief::EnhancerLight,
             Relief::NoPaydown,
+            Relief::ShortAec,
             Relief::NoPitch,
             Relief::NoFeedback,
             Relief::NoRnnoise,

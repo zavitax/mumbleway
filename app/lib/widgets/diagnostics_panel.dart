@@ -446,6 +446,17 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   l.diagEchoConfidence,
                                   _chain!.aecConfidence.toStringAsFixed(2),
                                 ),
+                                // Only when the ladder has taken it. The row
+                                // is the answer to "why has the echo come
+                                // back on this phone and not that one", and
+                                // it appears exactly when that question is
+                                // worth asking.
+                                if (_chain!.aecShortened)
+                                  _Row(
+                                    l.diagEchoShortened,
+                                    '${_chain!.aecWindowMs.toStringAsFixed(0)} ms',
+                                    bad: true,
+                                  ),
                                 // Only when there is something to say. A
                                 // spread wider than the filter's window means
                                 // a second echo it is not reaching — the

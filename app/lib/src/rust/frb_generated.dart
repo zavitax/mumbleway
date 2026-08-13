@@ -2736,8 +2736,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 26)
-      throw Exception('unexpected arr length: expect 26 but see ${arr.length}');
+    if (arr.length != 27)
+      throw Exception('unexpected arr length: expect 27 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2751,20 +2751,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       effectiveProfile: dco_decode_noise_setting(arr[9]),
       disabledStages: dco_decode_list_String(arr[10]),
       aecEnabled: dco_decode_bool(arr[11]),
-      aecErleDb: dco_decode_f_32(arr[12]),
-      aecLagMs: dco_decode_f_32(arr[13]),
-      aecConfidence: dco_decode_f_32(arr[14]),
-      aecSpreadMs: dco_decode_f_32(arr[15]),
-      aecWindowMs: dco_decode_f_32(arr[16]),
-      enhancerSimpleModel: dco_decode_bool(arr[17]),
-      relief: dco_decode_u_32(arr[18]),
-      analyserDecayDisabled: dco_decode_bool(arr[19]),
-      participantMetersDisabled: dco_decode_bool(arr[20]),
-      analyserDisabled: dco_decode_bool(arr[21]),
-      classifierTopDisabled: dco_decode_bool(arr[22]),
-      liveDotsDisabled: dco_decode_bool(arr[23]),
-      classifierDisabled: dco_decode_bool(arr[24]),
-      enhancerEffort: dco_decode_u_32(arr[25]),
+      aecShortened: dco_decode_bool(arr[12]),
+      aecErleDb: dco_decode_f_32(arr[13]),
+      aecLagMs: dco_decode_f_32(arr[14]),
+      aecConfidence: dco_decode_f_32(arr[15]),
+      aecSpreadMs: dco_decode_f_32(arr[16]),
+      aecWindowMs: dco_decode_f_32(arr[17]),
+      enhancerSimpleModel: dco_decode_bool(arr[18]),
+      relief: dco_decode_u_32(arr[19]),
+      analyserDecayDisabled: dco_decode_bool(arr[20]),
+      participantMetersDisabled: dco_decode_bool(arr[21]),
+      analyserDisabled: dco_decode_bool(arr[22]),
+      classifierTopDisabled: dco_decode_bool(arr[23]),
+      liveDotsDisabled: dco_decode_bool(arr[24]),
+      classifierDisabled: dco_decode_bool(arr[25]),
+      enhancerEffort: dco_decode_u_32(arr[26]),
     );
   }
 
@@ -3525,6 +3526,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_effectiveProfile = sse_decode_noise_setting(deserializer);
     var var_disabledStages = sse_decode_list_String(deserializer);
     var var_aecEnabled = sse_decode_bool(deserializer);
+    var var_aecShortened = sse_decode_bool(deserializer);
     var var_aecErleDb = sse_decode_f_32(deserializer);
     var var_aecLagMs = sse_decode_f_32(deserializer);
     var var_aecConfidence = sse_decode_f_32(deserializer);
@@ -3552,6 +3554,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       effectiveProfile: var_effectiveProfile,
       disabledStages: var_disabledStages,
       aecEnabled: var_aecEnabled,
+      aecShortened: var_aecShortened,
       aecErleDb: var_aecErleDb,
       aecLagMs: var_aecLagMs,
       aecConfidence: var_aecConfidence,
@@ -4337,6 +4340,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_noise_setting(self.effectiveProfile, serializer);
     sse_encode_list_String(self.disabledStages, serializer);
     sse_encode_bool(self.aecEnabled, serializer);
+    sse_encode_bool(self.aecShortened, serializer);
     sse_encode_f_32(self.aecErleDb, serializer);
     sse_encode_f_32(self.aecLagMs, serializer);
     sse_encode_f_32(self.aecConfidence, serializer);

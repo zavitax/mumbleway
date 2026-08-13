@@ -1771,6 +1771,12 @@ abstract class L {
   /// **'Confidence'**
   String get diagEchoConfidence;
 
+  /// No description provided for @diagEchoShortened.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter shortened to fit'**
+  String get diagEchoShortened;
+
   /// No description provided for @diagEchoSecondPath.
   ///
   /// In en, this message translates to:

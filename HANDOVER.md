@@ -263,15 +263,49 @@ of noise suppression for this reason. **The comment that used to sit at that
 line said the ordering was "worth watching if echo behaviour changes"** — it
 changed, and that was the answer.
 
-**The echo reference has no time base. Not fixed.** `AudioShared::echo_reference`
-is a plain FIFO: filled only when there is something to play, so every silence
-between the far end's phrases is elided while the microphone runs on
-continuously; drained 480 samples a block and zero-padded when short, splicing
-silence that was never played into the middle of the reference; and cleared
-wholesale past 500 ms rather than trimmed. The offset between a reference sample
-and the moment it leaves the speaker therefore changes at every gap in the far
-end's speech, and the aligner measures one lag with 1.15× hysteresis. **This is
-the next thing to do.**
+**The echo reference has no time base. Not fixed, and — measured on build 123 —
+not the cause either.** The suspicion was that the FIFO's silences and clears
+were moving the alignment. `echo_ref_samples` says otherwise: of the loud echo
+blocks, **99.4% had a full 480-sample reference** and 100% had one within the
+preceding 250 ms. The reference was there. The blocks reading zero are far-end
+silence, which is correct.
+
+It still has to be fixed, but as a *prerequisite* rather than a cure — see §6.
+
+### 6. What build 123 actually measured, 14 August
+
+Reordering the canceller ahead of the enhancer was necessary and did not fix
+it. With a good reference and a confident alignment, on 1 776 loud echo blocks:
+
+```
+erle_db          p10 -6.00   median -0.20   p90  6.30      <- removing nothing
+aec_confidence   p10  0.91   median  0.96   p90  0.98      <- and sure of it
+aec_lag_ms                   median 30.00                  <- 4 changes in 71 s
+aec_spread_ms    p10 40      median 140     p90 440
+transmitted      1 756 of 1 776  (98.9%)
+```
+
+**The filter covers 21.3 ms and the echo is spread over 140 ms, median.** Every
+one of those 1 776 blocks had a spread wider than the filter — 100%, not most.
+At p90 the spread is 440 ms, twenty times the filter.
+
+That is not a bug. It is a room. An iPhone on a table has a reverberation tail
+of hundreds of milliseconds, and `DEFAULT_TAPS` was sized for a helmet, where
+the speaker is centimetres from the microphone and there is almost no tail.
+`echo_path()` in the tests is **64 taps — 1.3 ms**. The real room is two to
+three hundred times longer, and every test in the suite is built on that
+kernel.
+
+`_WHY_NO_GROWTH` already records that this filter cannot simply be made longer:
+a time-domain NLMS normalised by one total power converges worse the further it
+spans, which is why both production cancellers are frequency-domain. So the
+architecture cannot reach this case, and no amount of tuning changes that.
+
+**The next step is therefore a different canceller, not a longer one** — see the
+note on AEC3 that follows this file's discussion. Whichever is chosen, the
+render stream has to become continuous first: AEC3 and its ports expect exactly
+one 10 ms render frame per 10 ms capture frame, and today 44% of blocks push
+nothing at all because the far end happened to be quiet.
 
 ### Why the tests could not have caught either
 

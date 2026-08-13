@@ -596,6 +596,23 @@ impl Session {
             if state.is_locally_muted(session) {
                 return;
             }
+            // Our own voice, arriving back from the server, is dropped here.
+            //
+            // A Mumble server does not normally do this and this client never
+            // asks it to — `TARGET_LOOPBACK` is never set on anything we send.
+            // But the protocol has it, a relay or a mirrored channel has the
+            // same effect, and so does the same certificate logged in twice.
+            //
+            // The reason to check rather than trust: this arrives as ordinary
+            // speech from another session and is played out the speaker, where
+            // it is *indistinguishable from acoustic echo* to everyone
+            // downstream — except that the echo canceller cannot remove it at
+            // any filter length, because it never entered the reference as
+            // something we chose to play. It would be diagnosed as a broken
+            // canceller for as long as it took somebody to think of this.
+            if Some(session) == state.self_session {
+                return;
+            }
         }
         if let Some(session) = packet.session {
             if let Some(u) = state.users.get_mut(&session) {

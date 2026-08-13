@@ -38,9 +38,28 @@ Talk to your group over Mumble. Built for wind and engine noise inside a helmet.
 
 ## Short description — Microsoft Store (500)
 
+The limit is 500 and this uses a fifth of it, deliberately. The Microsoft Store
+shows this line under the app name in search results and on the product page
+above the fold, where it is read in the same glance as the title — a paragraph
+there is scrolled past, and the full description is directly below it anyway.
+
+```
+Voice for bikers. A Mumble client built for wind and engine noise inside a helmet. Talk through the wind!
+```
+
+<details>
+<summary>The paragraph-length version this replaced</summary>
+
+Written to the 500 and applied to the store before anyone had looked at how
+that store renders it. Kept because it is the one place the "you need a server"
+caveat and the office-tuning contrast are stated in one breath, and it may suit
+a store that gives the field more room.
+
 ```
 A Mumble voice client built for talking from inside a motorcycle helmet at speed. Wind and engine noise defeat the suppression in ordinary voice apps, which was tuned for offices; MumbleWay's is tuned for a bike. Connects to any Mumble server, works over Bluetooth intercom headsets, stays reachable over your navigation app, and reconnects itself when signal comes back. You need a Mumble server to talk to — it is a client, not a service, so there is no account and no subscription.
 ```
+
+</details>
 
 ## Promotional text — App Store (170)
 
@@ -70,9 +89,28 @@ Mumble для мотоциклистов
 
 ## Russian short description — Microsoft Store (500)
 
+Short for the same reason as the English above.
+
+```
+MumbleWay — клиент Mumble с крутым шумоподавлением для разговора в мотоциклетном шлеме на скорости.
+```
+
+**«Крутым» here is doing two jobs, and only one was meant.** In the chain it is
+the slope of a filter — «крутой фильтр верхних частот», which is what the
+description says and where the sense is unmistakable. Standing alone beside
+«шумоподавление» a general reader takes the colloquial one, *cool* noise
+suppression, which is a claim rather than a specification. Left as it is
+because it is what the store carries and it reads well; noted because the next
+person to edit this line should know which sense they are inheriting.
+
+<details>
+<summary>The paragraph-length version this replaced</summary>
+
 ```
 Клиент Mumble для разговора в мотоциклетном шлеме на скорости. Ветер и гул мотора сводят на нет шумоподавление обычных приложений — оно настраивалось под офисы; у MumbleWay оно настроено под мотоцикл. Приложение подключается к любому серверу Mumble, работает через Bluetooth-интеркомы, остаётся доступным поверх навигации и переподключается само, когда связь возвращается. Нужен сервер Mumble, чтобы было с кем говорить: это клиент, а не сервис, поэтому нет ни учётной записи, ни подписки.
 ```
+
+</details>
 
 ## Russian promotional text — App Store (170)
 
@@ -88,6 +126,28 @@ not a transliteration of it, and the Russian App Store searches both alphabets.
 ```
 мотоцикл,шлем,интерком,рация,связь,байкер,группа,гарнитура,mumble,voip,ptt,murmur,шум
 ```
+
+## Microsoft Store — features and search terms
+
+Two fields no other store has, and they were live for months without appearing
+in this file: read back out of the Store rather than written here first, which
+is why they read differently from everything above.
+
+**Features** (up to 20) are shown as a bulleted list on the product page.
+**Search terms** (up to 7) are never displayed and exist only for the store's
+own index, so they carry the phrases somebody would type rather than the
+vocabulary the rest of the listing uses.
+
+| | English | Russian |
+|---|---|---|
+| Features | Voice communication · Mumble client · Murmur client · Helmet noise cancellation | Шумоподавление · Созвон · Коммуникация · Шумодав |
+| Search terms | Mumble voice client · Mumble headset app · Motorcycle communication app · MumbleWay | Mumble клиент · Mumble с шумоподавлением |
+
+Both languages use under half of what the fields allow, and the Russian search
+terms are two of a possible seven — the cheapest discoverability left anywhere
+in this document, since nobody reads them and there is no cost to being wrong.
+Fill them with what a person would actually type: «рация для мотоциклистов»,
+«интерком», «связь в шлеме», «переговорное устройство».
 
 ## Full description (4000 — fits App Store, Play and Microsoft Store)
 

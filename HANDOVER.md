@@ -4,72 +4,48 @@ Written 13 August 2026, at the end of a session that ran out of room. This is
 in-flight state, not a convention: **delete it once the work below is done**,
 and do not let it become a second CLAUDE.md.
 
-Read this order: the bug on `main` first, then the stash, then the asks.
+> **Corrected 13 August, later the same evening.** The first version of this
+> file led with a divergence bug on `main` and a stash holding its fix. Both
+> statements were false when they were written: the fix landed in `82c148c`,
+> six commits before this file existed, and there is no stash. The file was
+> written from a session summary instead of from `git log`, which is the one
+> source that cannot be out of date about its own repository. **Check the
+> claims below against the tree before acting on them** — that is the lesson
+> this paragraph is here to pass on, and it applies to the rest of the file as
+> much as it applied to the two sections now deleted.
 
 ---
 
-## 1. There is a correctness bug on `main` right now
+## 1. What landed, so nobody goes looking for it
 
-`31e8566` shipped the aligner and a 1024-tap filter. It also shipped a
-divergence bug, found later in the same session and **fixed only in the stash**:
+`31e8566` shipped the aligner and a 1024-tap filter, and with it a divergence:
+`ref_power` is maintained incrementally, drifts low over millions of `f32`
+operations, and normalises the NLMS step — so a total that has drifted low makes
+every step too large. Measured at a 120 ms delay it ended up **30.9 dB worse
+than doing nothing**.
 
-`EchoCanceller::ref_power` is maintained incrementally — one add and one
-subtract per sample — because recomputing 1 024 squares per sample would cost
-more than the filter does. Over a call that is millions of `f32` operations
-against a running total, and the error accumulates. `ref_power` normalises the
-NLMS step, so a total that has drifted *low* makes every step too large.
+**`82c148c` fixed it**, along with two others found by the same delay sweep:
 
-Measured: at a 120 ms echo delay the canceller ended up **30.9 dB worse than
-doing nothing** — it stopped subtracting and started adding. Audibly that is a
-rising roar, worse than the echo it replaced. It arrives quietly, after minutes
-of working correctly, which is why no earlier test saw it.
+- **`audit()`** — recomputes `ref_power` exactly once per block and backtracks
+  to the last measurably-working coefficients when output exceeds input by 9 dB.
+- **A confident alignment pointing at nothing.** Arrivals 5 ms and 60 ms apart
+  made the envelope correlator report their *centroid* with a correlation of
+  1.00 — a delay at which nothing was ever emitted. It now detects arrivals
+  spread wider than the filter reaches and aims at the earliest real one.
+- **Hysteresis** (`MOVE_MARGIN`), because two comparable arrivals otherwise made
+  the alignment flap every second and the filter never converged.
 
-The fix in the stash is `audit()`, run once per block: recompute `ref_power`
-from the ring exactly, and forget the learned path if output power exceeds
-input by 9 dB. 1 024 multiply-adds against the ~1 000 000 the filter already
-does in that time.
-
-**Do not leave this on `main` longer than necessary.**
-
----
-
-## 2. What is in `stash@{0}`
-
-```
-git stash list
-git stash pop
-```
-
-Contains, against `core/src/audio/aec.rs` and `core/tests/echo_alignment.rs`:
-
-- **`audit()`** — the `ref_power` recompute and divergence guard above.
-- **Earliest-near-best lag selection.** Prefer the earliest lag scoring within
-  95% of the best, because sound cannot arrive before it was made. Without it a
-  25 ms delay (which falls between the 10 ms search bins) lost to a spurious
-  self-similarity match at 300 ms.
-- **Strongest-peak fallback.** When the accepted arrivals spread further than
-  `MAX_TAPS`, take the strongest alone. Without it, 250 ms and 400 ms delays
-  aimed the filter at the first 85 ms of a path whose echo is a quarter-second
-  later — reporting an alignment and cancelling nothing.
-- **`finds_the_echo_at_every_plausible_delay`** — the sweep that found all
-  three, across 0, 10, 25, 60, 120, 250, 400 and 600 ms.
-
-With these, the delay sweep goes from 6/8 to 8/8 on cancellation, and the voice
-sweep tightens (120 ms echo found at lag 110 + span 21, against 80 + 85 before).
-
-### The one thing blocking that stash
-
-**`cancels_an_internal_copy_and_its_acoustic_twin` regresses to 2.9 dB.** The
-filter does grow — the first assertion passes — but cancellation collapses.
-2.5× more convergence time changed nothing, so it is not settling time. The
-earliest-preference rule and the multi-arrival span are fighting each other and
-it needs diagnosing rather than tuning.
-
-That is the first task for whoever picks this up.
+**The two-arrival case was resolved by not growing the filter.** Growing it to
+4 096 taps measured 2.9 dB for four times the arithmetic, because a time-domain
+NLMS normalised by a single total power converges badly over a long span on
+coloured input. `_WHY_NO_GROWTH` in `aec.rs` records why, and why both
+production cancellers are frequency-domain instead. The test is
+`cancels_the_nearer_of_two_arrivals`: 2.15 dB is the whole of what is available
+to a filter that can only be in one place, and it takes 1.6 of them.
 
 ---
 
-## 3. Measured on the OPPO, 13 August
+## 2. Measured on the OPPO, 13 August
 
 Both harnesses cross-compile and run on the device. Numbers are means over
 20 s; **ignore the worst-case columns**, they are a phone doing other things.
@@ -87,7 +63,7 @@ whole block          7.808 ms   (78.1% of the 10 ms budget)
 
 **Caveat that matters:** `chain_cost.rs:116` passes an *empty* echo reference,
 so the canceller takes its idle shortcut and this run measures it doing
-nothing. It also folds the AEC into `suppression` with six other stages.
+nothing.
 
 ### The canceller alone — `cargo test --test aec_cost`
 
@@ -136,74 +112,112 @@ without it `tract-linalg`'s build script fails looking for
 
 ---
 
-## 4. Outstanding, in the order they unblock each other
+## 3. Outstanding
 
-### 4.1 Split the AEC out of `Stage::Suppression` — do this first
+**Nothing, on paper.** Every ask this file was written to hand over has landed;
+what is left is the one thing a keyboard cannot do, in §5. The rest of this
+section is what the work turned out to be, for whoever has to change it next.
 
-Three other asks need it and none can be done without it. The canceller is
-step 0 inside `process_with_reference`, so its time is currently indivisible
-from the rumble filter, RNNoise, the pitch search, the gate, AGC and limiter.
+### 3.1 `Stage::Echo` — the canceller has its own clock
 
-Needed for: attributing lateness to the AEC, the counters, and the dot.
+`CaptureProcessor::process_with_reference` is now `cancel_echo` followed by
+`suppress`, split for no reason except that the worker can put a stopwatch
+between them. Eight stages tile the block instead of seven.
 
-### 4.2 Constrain the AEC to the block budget
+Everything below needed this: with the canceller's time folded in with six
+other stages, "blocks are late because of the AEC" is not a sentence anything
+could evaluate.
 
-The rule as given: **once the ladder is walked, if blocks are still late and
-the AEC is the cause, start reducing taps.** From the measured line each step
-returns a known amount:
+### 3.2 The AEC is constrained to the block budget
 
-| step | taps | covers | returns |
-|---|---|---|---|
-| 1 | 768 | 16.0 ms | ~250 µs |
-| 2 | 512 | 10.7 ms | ~520 µs |
-| 3 | 256 | 5.3 ms | ~735 µs |
-| 4 | 128 | 2.7 ms | ~840 µs |
-| last | off | — | ~970 µs |
+`relief::AecCut`, entered only when the ladder has nothing left **and** the run
+of late blocks would have fitted without the canceller. Filter goes 512 → 384 →
+256 → 128 and stops.
 
-Stepping down costs echo *tail*, not the echo itself: the aligner already
-points the filter at the direct arrival, so 128 taps still cancels the loud
-part. That is what makes this a defensible last resort.
+Three things worth knowing about the shape:
+
+- **It is not a set of rungs, and could not be.** Every `Relief` rung costs the
+  same thing on every device; the canceller costs 16 µs or 970 depending on
+  whether somebody else is talking. `AecCut`'s doc comment carries the argument.
+- **It stops at 128 taps rather than reaching zero.** `Relief::ShortAec` already
+  argued this: losing echo cancellation on a speakerphone is a howl, and the
+  feedback guard that would cover for it goes eleven rungs earlier. The
+  originally sketched "last rung: off" would have created the fault it was
+  standing next to. Shortening is a different trade — the aligner has already
+  pointed the filter at the direct arrival, so what is given up is the tail.
+- **Attribution is on the run, not the block.** A hundred blocks late for other
+  reasons and one late because of the canceller is not evidence about the
+  canceller.
 
 **A superseded instruction, and why.** The original form was "if AEC measures
 4 ms or more during the startup probe, switch to half mode, then 750 ms, then
-500, then 250, then off". The measurement says no AEC configuration reaches
-4 ms on this device — full length is 970 µs — so that cascade would never be
-entered. The budget-driven form above replaced it. Also note that 750 ms cannot
-mean taps (36 000 taps ≈ 34 ms per 10 ms block); the history and search windows
-that *could* be meant cost nothing measurable.
+500, then 250, then off". No AEC configuration reaches 4 ms on this device —
+full length is 970 µs — so that cascade would never have been entered. Also,
+750 ms cannot mean taps: 36 000 taps is ≈34 ms per 10 ms block.
 
-### 4.3 DF3 to the cheap model at ≥4 ms on the startup probe
+**Still worth a decision from a human.** The tail only fires at the bottom of
+the ladder, where the enhancer is already off and a block costs a fraction of a
+millisecond — so on any device that is not extraordinarily slow it will never
+run. That is what was asked for and it is the right safety net. The *larger*
+fault it does not fix is one line up: while the ladder still has rungs, a phone
+that is late only because the far end started talking pays for it by selling
+the enhancer, the pitch search and RNNoise — none of which is the cause.
+`Stage::Echo` now makes preferring the cut over the rung possible. It would be
+a real change in ladder behaviour, so it is not made here.
 
-Straightforward and unblocked. **It fires on the OPPO every time** — DF3 at
-Full measures 6.93 ms — so expect this to change behaviour on that device
-immediately, and to be the change that actually buys the budget back.
+### 3.3 The model is timed against its own ceiling
 
-### 4.4 Diagnostics: counters and a dot for the AEC
+`probe::MODEL_CEILING_US`, 4 ms. Over it, the cheap model is loaded before the
+ladder is walked at all, through `deepfilter::simple_model_wanted` — the same
+mechanism single-core devices already used, which is why the worker needed no
+new message to act on it. **It fires on the OPPO** (6.93 ms) and on nothing on
+a development machine.
 
-Counters wanted: ERLE, alignment lag, confidence, filter span. `alignment()`
-and `filter_span_ms()` exist in Rust and reach nothing — no FFI, no UI. Needs
-`flutter_rust_bridge_codegen generate` and l10n keys in **both** arb files.
+Two decisions inside it that will look arbitrary later:
 
-The dot should also show *bypassed by the ladder*. **There is no such state
-today**: `relief.rs` has `skip_pitch`, `skip_feedback`, `skip_rnnoise` and the
-rest, and no `skip_aec`. 4.2 is what creates the state for the dot to show.
+- **The minimum block, not the mean or the second-worst.** Every other figure in
+  `probe.rs` is a worst case, because it is asking about deadlines. This asks
+  how expensive the arithmetic is, and every error in a wall-clock measurement
+  of arithmetic *adds* time. Written as a mean first, and it fired on a machine
+  whose model costs 1.9 ms, during a parallel test run — which is precisely the
+  "too slow versus merely busy" confusion that got the per-core CPU condition
+  deleted.
+- **`measure_ladder` does not touch the static; `probe` does.** The existing
+  split for `record_rung`, for the same reason.
 
-### 4.5 Dot ordering is wrong — confirmed
+### 3.4 Windows ships a build that runs
 
-`guard.process` is `engine.rs:2990`, de-hiss is `2999`. **Feedback runs before
-de-hiss and the UI lists hiss first.** Correct order:
+`publish.yml` zips `build/windows/x64/runner/Release` before `msix:create` runs
+— checked, not assumed, since that step writes into the same folder — and the
+release job now collects `*.zip` alongside the packages. Neither MSIX could be
+opened by a tester: the store one is unsigned because Partner Center re-signs
+it, and the sideload one needs its certificate trusted first.
 
-```
-enhancer, echo, suppressor, voice, gate, level, feedback, hiss, background, transmit
-```
+The ARM64 job is untouched. It is `if: vars.ENABLE_WINDOWS_ARM64 == 'true'` and
+blocked upstream — there is no Arm64 Flutter SDK for Windows.
 
-`spectrum_view.dart:1173-1182`.
+---
 
-### 4.6 Windows: ship a runnable EXE zip beside the MSIX
+## 4. Landed earlier, recorded here so it is not looked for twice
 
-Not started. Published Windows builds should attach a zip containing a portable
-EXE, in addition to the MSIX, so a build can be run locally without installing.
-`.github/workflows/publish.yml`.
+- **Diagnostics counters and the echo dot.** `aec_erle_db`, `aec_lag_ms`,
+  `aec_confidence`, `aec_spread_ms`, `aec_window_ms` and `aec_shortened` cross
+  the bridge and are on the panel. There is deliberately no "bypassed" state:
+  §3.2 never bypasses, and `aec_window_ms` shows exactly how short the filter
+  has become, which is the more useful of the two things a dot could say.
+- **Dot ordering.** `spectrum_view.dart` lists them in the order the chain runs
+  them: enhancer, echo, suppressor, voice, gate, level, feedback, hiss,
+  background, transmit.
+- **Three `.arb` keys were defined twice**, found while adding a fourth row to
+  the same table. `diagStageEnhancer`, `diagStageFeedback` and
+  `diagStageTransmit` each named a block-cost row *and* a chain dot, with
+  deliberately different wording; JSON keeps the last, so the dot labels won and
+  the cost table had been showing **To the server** for the row that times the
+  onset delay and the decision log. The site's own documentation had copied the
+  wrong labels out of a screenshot. The two lists are now `diagCost*` and
+  `diagStage*`, and `widget_test.dart` fails on a repeated key — which the
+  existing coverage test structurally could not see, because it reads the files
+  through `jsonDecode`.
 
 ---
 
@@ -215,5 +229,10 @@ everything proving the fix is synthesised: synthetic wind, a four-tap room, and
 a delay chosen by hand. The quantity the whole design turns on, the real
 tap-to-speaker latency on those two phones, has never been measured.
 
-4.4 is what makes the next two-phone call produce evidence instead of an
-impression. Doing it before the next publish is worth more than it looks.
+The panel now carries the numbers that would settle it — and, since §3.1, an
+**echo** row in the block-cost table that reads near zero on a quiet call and
+lifts when the other end talks. Two phones, one call, the panel open on both:
+that is the whole of what is left, and it is worth more than everything above
+it put together.
+
+**Then delete this file.** It has done its job.

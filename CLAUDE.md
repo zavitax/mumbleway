@@ -183,9 +183,9 @@ build on this platform.
 ## Verification, before saying something works
 
 ```bash
-cd core && cargo test          # 296 tests
+cd core && cargo test          # 375 tests
 cd app  && flutter analyze     # must be clean
-cd app  && flutter test        # 143 tests
+cd app  && flutter test        # 206 tests
 ```
 
 After any FFI change: `flutter_rust_bridge_codegen generate`, and commit

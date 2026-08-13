@@ -229,8 +229,15 @@ means the device could not afford the full filter and the chain
 </div>
 
 The third column is the deadline itself, broken down by stage: **input and
-taps**, **enhancer**, **suppression**, **feedback**, **de-hiss**, **to the
-server**, **encode**, and **not in any stage** for what is left over.
+taps**, **speech enhancer**, **echo cancellation**, **suppression**, **feedback
+guard**, **de-hiss**, **transmit decision**, **encode**, and **not in any
+stage** for what is left over.
+
+Echo cancellation is the one to read differently from the rest. Every other
+stage costs about the same whatever is happening; this one costs almost nothing
+while nobody on the other end is talking and rather more while they are, because
+there is only something to cancel in the second case. A figure near zero on a
+quiet call is the stage working, not the stage missing.
 
 Underneath are the two figures that decide whether this device is coping:
 

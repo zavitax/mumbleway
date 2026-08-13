@@ -93,6 +93,13 @@ your first call**, and watched while you talk. If it does not fit, stages are
 given up one at a time — in an order that was measured rather than guessed, and
 never quietly.
 
+The speech enhancer is also timed on its own at that point, because it is the
+one stage large enough to decide the answer by itself. A phone where the model
+alone takes 4 ms of the 10 has no room for the seven stages behind it, whatever
+the total happens to say on a device that is not yet in a call — so it loads
+the cheaper model straight away, rather than working down through eleven other
+stages to arrive at the same place a conversation later.
+
 {% include fig-ladder.svg lang=page.lang %}
 
 **The cheapest quality goes first.** The enhancer softens by two steps before
@@ -108,6 +115,15 @@ classifier, so *Automatic* stops noticing that the road has become a car park.
 Then a cheaper, more aggressive noise model. **Switching the enhancer off is
 the fifteenth and last thing tried**, because it is the one that turns 16 dB
 of separation between speech and gaps back into 1.5.
+
+**Below the ladder there is one thing left.** If every stage above has gone and
+blocks are *still* late, the chain asks what is actually taking the time. Echo
+cancellation is the only stage whose cost is set by the other end of the call
+rather than by your phone — it does almost nothing while nobody else is talking
+— so on the rare device where that is what the blocks are going over on, its
+filter is shortened again, in steps, until it covers the loud direct path and
+nothing more. It is never switched off: on a loudspeaker that is a howl, and
+the guard that would have caught one went eleven stages earlier.
 
 **It does not climb back during a session.** A device that was late once will
 be late again, and a chain that switched stages on and off as the load moved

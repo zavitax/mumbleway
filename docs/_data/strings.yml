@@ -120,13 +120,14 @@ en:
     ladder:
       title: What a slow device gives up, and in what order
       desc: >-
-        Seven steps descending from left to right. The speech enhancer softens
-        first, then the look-ahead pay-down stops, then three cheap detectors,
-        then the diagnostics panel's own drawing, then the background
-        classifier, then a cheaper noise model, and last of all the enhancer is
-        switched off altogether.
+        Eight steps descending from left to right. The speech enhancer softens
+        first, then the look-ahead pay-down stops, then the echo canceller's
+        filter halves, then three cheap detectors, then the diagnostics panel's
+        own drawing, then the background classifier, then a cheaper noise
+        model, and last of all the enhancer is switched off altogether.
       enhancer_soft: enhancer softens
       paydown: pay-down stops
+      echo_filter: echo filter halves
       detectors: cheap detectors
       display: panel drawing
       classifier: classifier stops
@@ -326,18 +327,20 @@ ru:
     ladder:
       title: Чем жертвует медленное устройство и в каком порядке
       desc: >-
-        Семь ступеней, спускающихся слева направо. Сначала слабеет очиститель
-        речи, затем перестаёт выплачиваться упреждение, затем отключаются три
-        дешёвых детектора, затем отрисовка панели диагностики, затем фоновый
+        Восемь ступеней, спускающихся слева направо. Сначала слабеет очиститель
+        речи, затем перестаёт выплачиваться упреждение, затем вдвое
+        укорачивается фильтр эхоподавителя, затем отключаются три дешёвых
+        детектора, затем отрисовка панели диагностики, затем фоновый
         классификатор, затем берётся более дешёвая модель шумоподавления, и в
         самом конце очиститель выключается совсем.
       enhancer_soft: очиститель слабеет
-      paydown: упреждение фиксируется
+      paydown: упреждение стоит
+      echo_filter: фильтр эха вдвое
       detectors: дешёвые детекторы
       display: отрисовка панели
-      classifier: классификатор остановлен
+      classifier: фон не слушают
       simple_model: модель попроще
-      enhancer_off: очиститель выключен
+      enhancer_off: без очистителя
       first: отдают первым
       last: отдают последним
       axis: сначала — то, что дешевле по качеству

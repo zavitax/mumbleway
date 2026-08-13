@@ -479,6 +479,62 @@ jobs:
           "MSIX_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Output "packaging as $version"
 
+      # A build somebody can just run, beside the one the Store gets.
+      #
+      # **Neither MSIX answers "let me try this build".** The store package is
+      # left unsigned here because Partner Center re-signs it, so Windows will
+      # not install it at all; the sideload package is test-signed, which means
+      # trusting a certificate before it will install. Every other platform in
+      # this workflow produces something a tester can open, and Windows did not.
+      #
+      # It has to run **before** `msix:create`, which writes its output into
+      # this same folder — a portable zip with a store package inside it would
+      # be a confusing thing to hand anybody, so the check below is not
+      # decoration.
+      #
+      # Self-contained by construction: `flutter build windows` copies the MSVC
+      # runtime DLLs into the bundle root (Flutter's own `windows/CMakeLists.txt`
+      # calls `InstallRequiredSystemLibraries`), beside `flutter_windows.dll`,
+      # the plugin DLLs and `data/`. Nothing in the zip needs the Visual C++
+      # redistributable installed first.
+      - name: Zip a build that runs without installing
+        shell: pwsh
+        working-directory: app
+        run: |
+          $release = "build/windows/x64/runner/Release"
+          if (-not (Test-Path (Join-Path $release 'mumbleway.exe'))) {
+            $found = (Get-ChildItem $release -ErrorAction SilentlyContinue).Name -join ', '
+            Write-Output "::error::No mumbleway.exe in $release; found: $found"
+            exit 1
+          }
+          if (Get-ChildItem $release -Filter *.msix -ErrorAction SilentlyContinue) {
+            Write-Output "::error::A .msix is already in the bundle folder. This step has to run before msix:create, or the portable zip ships a store package inside it."
+            exit 1
+          }
+
+          # Staged under its own name so the zip holds one sensibly named
+          # folder rather than scattering forty files into whatever directory
+          # it was opened in.
+          $name = "mumbleway-windows-x64-${{ env.MSIX_VERSION }}"
+          $stage = "build/windows/portable/$name"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Path "$release\*" -Destination $stage -Recurse -Force
+
+          $zip = (Resolve-Path "build/windows").Path + "\$name.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            (Resolve-Path "build/windows/portable").Path,
+            $zip,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $false)
+          Write-Output "portable: $name.zip ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-portable
+          path: app/build/windows/*.zip
+          if-no-files-found: error
+
       # Two different artifacts, and the difference matters. A store package is
       # unsigned here because Partner Center re-signs it, so it cannot be
       # installed locally; the sideload package is test-signed and can. Which
@@ -1146,8 +1202,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
+          # The `.zip` is the portable Windows build. It is the only asset here
+          # a reader can download and run, so it is worth having on the release
+          # page rather than only in a workflow run's artifacts, which expire.
           find artifacts -type f \
-            \( -name '*.aab' -o -name '*.ipa' -o -name '*.msix' -o -name '*.pkg' \) \
+            \( -name '*.aab' -o -name '*.ipa' -o -name '*.msix' -o -name '*.pkg' \
+               -o -name '*.zip' \) \
             -exec cp {} release/ \;
           # Named for the version, so a downloaded file still says what it is
           # once it is out of the browser and in a downloads folder.

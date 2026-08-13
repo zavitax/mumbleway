@@ -183,10 +183,18 @@ build on this platform.
 ## Verification, before saying something works
 
 ```bash
+cd core && cargo fmt --check   # CI runs this first, and it gates every job
 cd core && cargo test          # 375 tests
 cd app  && flutter analyze     # must be clean
 cd app  && flutter test        # 206 tests
 ```
+
+**`cargo fmt --check` is first for a reason**: it is the first step of the
+`Tests` job, and every other job in `build.yml` is `needs: test`. So one
+reformatted line takes the whole matrix down — Android, iOS, both Windows jobs
+and macOS all report *skipped*, and the run looks like a broad breakage rather
+than a line that is four characters too long. A green `cargo test` says nothing
+about it.
 
 After any FFI change: `flutter_rust_bridge_codegen generate`, and commit
 `app/lib/src/rust/**`. On this machine neither `cargo` nor `flutter` is on the

@@ -628,7 +628,9 @@ impl ReliefLadder {
             Some(rung) => Some(Step::Rung(rung)),
             // Nothing left on the ladder. See [`AecCut`] for why the canceller
             // is not simply another rung.
-            None => self.cut_the_canceller(block / blocks, echo / blocks).map(Step::Aec),
+            None => self
+                .cut_the_canceller(block / blocks, echo / blocks)
+                .map(Step::Aec),
         }
     }
 

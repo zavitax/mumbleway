@@ -400,6 +400,26 @@ jobs:
     name: Windows MSIX
     needs: version
     runs-on: windows-latest
+    # **Pinned, because the runner's default changed underneath this workflow.**
+    #
+    # A `run:` step with no `shell:` used to get Git bash on `windows-latest`.
+    # It now gets pwsh, and the failure is not a shell error — `\` at the end of
+    # a line stops being a continuation and becomes an argument, so
+    # `flutter build windows --release \` reports `Target file "\" not found.`
+    # A publish that worked on 11 August failed on 13 August with no change to
+    # this file, on an image that had moved to Visual Studio 18.
+    #
+    # `bash` rather than `pwsh` because that is what these steps were written
+    # for and what they were passing under. Steps that want PowerShell say so,
+    # and still get it — an explicit `shell:` wins over this.
+    #
+    # Job-level rather than workflow-level: an explicit `shell: bash` adds
+    # `-o pipefail`, which the Linux and macOS jobs do not have today, and
+    # changing how a pipeline fails in the store-upload jobs is not a thing to
+    # do in passing.
+    defaults:
+      run:
+        shell: bash
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
       # Not a secret in any real sense — the product ID is in the Store
@@ -855,6 +875,11 @@ jobs:
     needs: version
     if: vars.ENABLE_WINDOWS_ARM64 == 'true'
     runs-on: windows-11-arm
+    # See the `msix` job: the runner's default shell is not something to rely
+    # on, and this job has the same `\` continuation in its build step.
+    defaults:
+      run:
+        shell: bash
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
     steps:

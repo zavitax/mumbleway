@@ -59,8 +59,8 @@ switch to remember.
 
 One dot per stage of the capture chain: **enhancer**, **echo**, **suppressor**,
 **voice detected**, **gate**, **levelling**, **hiss**, **feedback**,
-**background** and **to the server**. The colours mean the same thing at every stage — green is
-working and passing audio on, amber is working but holding something back, red
+**background** and **to the server**. The colours mean the same thing at every
+stage — green is working and passing audio on, amber is working but holding something back, red
 is stopping audio here, and grey is switched off and therefore has no opinion.
 
 The last one is the one to read first. **To the server** red means your voice
@@ -175,8 +175,28 @@ The last three are the voice gate, in numbers, and they are all measured
 *after* suppression so that they can be compared with each other: **after
 suppression** is the level the gate is judging, **noise floor** is what the app
 has settled on as this environment's quiet, and **opens at** is the level a
-block has to beat to be sent. On a bike at speed the floor climbs and the threshold climbs with it —
-which is what the noise profiles are for.
+block has to beat to be sent. On a bike at speed the floor climbs and the
+threshold climbs with it — which is what the noise profiles are for.
+
+### Echo cancellation
+
+Four numbers, because one cannot answer the question. **Echo removed** on its
+own reads the same for a headset with no echo to remove, a canceller that never
+located the echo, and one that located it and failed — all three report
+nothing.
+
+So beside it: **echo found at**, which is how far behind the reference the echo
+actually arrives, and **confidence**, which says whether that is a measurement
+or the last one it managed. A confident delay with nothing removed is a
+canceller that knows where the echo is and cannot cancel it, which is a
+different fault with a different cause.
+
+Two rows appear only when there is something to say. **Second path, beyond
+reach** means the echo arrives twice — a phone mixing its own playback into the
+capture as well as the sound coming back through the room — and the filter can
+only be in one place, so the far copy survives. **Filter shortened to fit**
+means the device could not afford the full filter and the chain
+[gave up some of it]({{ '/index.html#keeping-up' | relative_url }}).
 
 <div class="shots">
   <figure>

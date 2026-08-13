@@ -51,8 +51,12 @@ it, and every stage is visible while it runs.
 - **Wind and engine suppression** tuned for a helmet, with lighter profiles for
   standing still and for indoors, and an automatic setting that picks between
   them from what it hears.
-- **Echo cancellation**, so a helmet speaker a few centimetres from the
-  microphone does not send everybody back to themselves.
+- **Echo cancellation that measures its own delay.** A helmet speaker sits
+  centimetres from the microphone and comes back almost at once; a phone on
+  loudspeaker comes back after everything between the app and the speaker has
+  had its turn, which is a different problem and used to be an unsolved one.
+  The canceller now finds where the echo actually is before trying to remove
+  it.
 - **Voice activation that is not causal.** A threshold decides mid-syllable, so
   by the time the gate opens the sound that opened it is already gone. The audio
   is delayed and the decision is not: the channel opens on the sound that *led
@@ -96,12 +100,13 @@ anything else is touched: they are the two largest savings on the chain and
 cost almost nothing, and on voice over music the first of them measured
 *better* than the full setting. Then the look-ahead stops being paid down,
 which changes no sample a listener hears — only the delay goes back up to what
-it was before that existed. Then three detectors whose work the level meter
-largely duplicates. Then the diagnostics panel's own drawing, which is free to
+it was before that existed. Then the echo canceller's filter halves, keeping
+the loud direct path and giving up about 10 ms of the tail behind it. Then
+three detectors whose work the level meter largely duplicates. Then the diagnostics panel's own drawing, which is free to
 give up because nobody's voice passes through it. Then the background
 classifier, so *Automatic* stops noticing that the road has become a car park.
 Then a cheaper, more aggressive noise model. **Switching the enhancer off is
-the fourteenth and last thing tried**, because it is the one that turns 16 dB
+the fifteenth and last thing tried**, because it is the one that turns 16 dB
 of separation between speech and gaps back into 1.5.
 
 **It does not climb back during a session.** A device that was late once will

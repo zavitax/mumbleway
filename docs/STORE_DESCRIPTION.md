@@ -74,7 +74,7 @@ Available in English and Russian.
 MumbleWay is free and open source. It is an independent client, not affiliated with the Mumble project.
 
 MADE BY
-Ilya Melamed — ilya77@gmail.com
+Ilya Melamed
 Site: https://zavitax.github.io/mumbleway/
 Source: https://github.com/zavitax/mumbleway
 Chat: https://discord.gg/NTASPRFjm
@@ -140,7 +140,7 @@ MumbleWay подключается к любому: к серверу друга
 MumbleWay — свободное приложение с открытым кодом. Независимый клиент, не связанный с проектом Mumble.
 
 АВТОР
-Илья Меламед — ilya77@gmail.com
+Илья Меламед
 Сайт: https://zavitax.github.io/mumbleway/ru/
 Исходный код: https://github.com/zavitax/mumbleway
 Чат: https://discord.gg/NTASPRFjm

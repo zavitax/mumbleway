@@ -176,22 +176,106 @@ fn single_core() -> bool {
     *SINGLE.get_or_init(|| crate::usage::cores() <= 1.0)
 }
 
+/// The expensive model measured too slow on this device to be worth laddering
+/// down to. Set once, by the startup probe.
+///
+/// Process-wide and never cleared, for the reason [`super::probe`] gives about
+/// its own floor: the worker restarts per call, and a fact about this device
+/// does not.
+static MEASURED_SLOW: AtomicBool = AtomicBool::new(false);
+
+/// Records that the probe timed the expensive model and it did not fit.
+pub fn note_model_too_slow() {
+    MEASURED_SLOW.store(true, Ordering::Relaxed);
+}
+
+/// Whether the probe reached that conclusion.
+pub fn model_measured_slow() -> bool {
+    MEASURED_SLOW.load(Ordering::Relaxed)
+}
+
+/// Forgets it, as an app restart would. For tests.
+pub fn forget_model_speed() {
+    MEASURED_SLOW.store(false, Ordering::Relaxed);
+}
+
+/// Serialises every test that asserts on which model gets loaded.
+///
+/// # Why a lock, and why it lives out here
+///
+/// Both flags above are process-wide by necessity — they have to reach the
+/// worker, the probe and the listen sheet's preview chain, none of which share
+/// an object with the setting. `cargo test` runs on as many threads as the
+/// machine has, so without this, one test's `set_force_simple_model(true)`
+/// lands in the middle of another test's `Enhancer::new()`, which then quietly
+/// builds the cheap model.
+///
+/// **That is not hypothetical and it is not a flake to retry.** It passed on
+/// this machine and failed on CI on the same commit, purely on thread ordering
+/// — `assertion failed: !e.simple_model()`, in a test that never mentions the
+/// flag.
+///
+/// It sits in the module body rather than in `mod tests` because **two modules
+/// assert on these statics**: this one, over the setting, and [`super::probe`],
+/// which decides the other flag and calls `Enhancer::new` while doing it. A
+/// lock only one of them can hold is not a lock. That was the second half of
+/// the same lesson, learned the same way — two tests, each correct, each
+/// failing only when the other ran beside it.
+#[cfg(test)]
+pub(crate) struct ModelFlags(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+#[cfg(test)]
+impl ModelFlags {
+    pub(crate) fn take() -> Self {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        // Poisoning is ignored deliberately: a panicking test has already
+        // reported itself, and refusing the lock afterwards would turn one real
+        // failure into a cascade that hides it.
+        let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        Self::clear();
+        Self(guard)
+    }
+
+    /// Every process-wide reason to load the cheap model, off.
+    fn clear() {
+        set_force_simple_model(false);
+        forget_model_speed();
+    }
+}
+
+#[cfg(test)]
+impl Drop for ModelFlags {
+    /// In `Drop` rather than at the end of each test, because a test that fails
+    /// *while a flag is set* would otherwise leave it set for everything after.
+    fn drop(&mut self) {
+        Self::clear();
+    }
+}
+
 /// Whether the cheap model is the one to load.
 ///
-/// **Single-core devices take it up front rather than laddering down to it.**
+/// **Slow devices take it up front rather than laddering down to it.**
 /// The ladder reaches [`super::relief::Relief::SimpleModel`] only after giving
 /// up the pitch search, RNNoise, the feedback guard and most of the panel — a
 /// sequence that costs about eleven seconds of a real conversation at one
-/// second a rung, and on a one-core phone every one of those rungs is sold
-/// before the thing that would actually have helped. The plain model costs a
-/// third of the low-latency one; a device with a single core to run a capture
-/// worker, a playback callback and a UI on has no plausible path to affording
-/// the expensive one.
+/// second a rung, and on such a phone every one of those rungs is sold before
+/// the thing that would actually have helped. The plain model costs a third of
+/// the low-latency one.
+///
+/// Two ways to be that device, and the second is the better evidence:
+///
+/// - **One core** to run a capture worker, a playback callback and a UI on.
+///   Inferred rather than measured, and a good inference — there is no
+///   plausible path to affording the expensive model there.
+/// - **The probe timed it.** [`super::probe::MODEL_CEILING_US`] is the ceiling,
+///   and a model over it has taken most of a 10 ms block before anything else
+///   in the chain has run. This is the same judgement the core count is
+///   standing in for, made on the device rather than about it.
 ///
 /// It is a floor and not a preference: the setting can ask for the cheap model
-/// on any device, and cannot ask a single-core device for the expensive one.
+/// on any device, and cannot ask either of these devices for the expensive one.
 pub fn simple_model_wanted() -> bool {
-    force_simple_model() || single_core()
+    force_simple_model() || single_core() || model_measured_slow()
 }
 
 /// How much it may attenuate, in dB.
@@ -975,44 +1059,8 @@ impl Default for Enhancer {
 mod tests {
     use super::*;
 
-    /// Serialises the tests that care which model is loaded.
-    ///
-    /// `FORCE_SIMPLE` is process-wide by necessity — it has to reach the
-    /// worker, the probe and the listen sheet's preview chain, none of which
-    /// share an object with the setting. `cargo test` runs these on as many
-    /// threads as the machine has, so without this one test's
-    /// `set_force_simple_model(true)` lands in the middle of another test's
-    /// `Enhancer::new()`, which then quietly builds the cheap model.
-    ///
-    /// **That is not hypothetical and it is not a flake to retry.** It passed
-    /// on this machine and failed on CI on the same commit, purely on thread
-    /// ordering — `assertion failed: !e.simple_model()`, in a test that never
-    /// mentions the flag.
-    static SIMPLE_FLAG: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// Holds [`SIMPLE_FLAG`] and puts the flag back on the way out.
-    ///
-    /// The reset is in `Drop` rather than at the end of each test because a
-    /// test that fails *while the flag is set* would otherwise leave it set for
-    /// everything that follows, turning one real failure into a cascade that
-    /// hides it. Poisoning is ignored for the same reason: a panicking test has
-    /// already reported itself, and refusing the lock afterwards would only add
-    /// noise.
-    struct SimpleFlag(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
-
-    impl SimpleFlag {
-        fn take() -> Self {
-            let guard = SIMPLE_FLAG.lock().unwrap_or_else(|e| e.into_inner());
-            set_force_simple_model(false);
-            Self(guard)
-        }
-    }
-
-    impl Drop for SimpleFlag {
-        fn drop(&mut self) {
-            set_force_simple_model(false);
-        }
-    }
+    /// See [`super::ModelFlags`], which the probe's tests hold as well.
+    use super::ModelFlags as SimpleFlag;
 
     /// The guard's shape, without needing the model or a ride.
     ///

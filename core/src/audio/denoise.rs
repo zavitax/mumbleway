@@ -386,6 +386,14 @@ pub struct CaptureProcessor {
     /// Runs first: echo is speech, so neither the gate nor RNNoise will remove
     /// it, and everything downstream works better without it.
     aec: EchoCanceller,
+    /// What [`CaptureProcessor::cancel_echo`] last measured, waiting to be put
+    /// in the analysis by [`CaptureProcessor::suppress`].
+    ///
+    /// A field rather than an argument because the two are separate calls only
+    /// so that the worker can time them separately, and threading a number
+    /// through the split would let a caller hand `suppress` an ERLE from a
+    /// different block.
+    erle_db: f32,
     gate: NoiseGate,
     agc: Agc,
     limiter: Limiter,
@@ -554,6 +562,7 @@ impl CaptureProcessor {
                 .map(|hz| SpeechBand::new(SAMPLE_RATE as f32, hz)),
             denoise: DenoiseState::new(),
             aec: EchoCanceller::new(DEFAULT_TAPS),
+            erle_db: 0.0,
             // Hold for ~15 blocks (150 ms) so short pauses inside a sentence do
             // not chop the tail off words.
             gate: NoiseGate::new(open_db, close_db, 15),
@@ -822,14 +831,20 @@ impl CaptureProcessor {
         self.aec.is_enabled()
     }
 
-    /// Puts the echo canceller on its short filter, for the ladder.
-    pub fn set_short_aec(&mut self, short: bool) {
-        self.aec.set_short(short);
+    /// Sets the echo canceller's filter length, for the ladder.
+    pub fn set_aec_taps(&mut self, taps: usize) {
+        self.aec.set_taps(taps);
     }
 
-    /// Whether the short filter is the one running.
+    /// How long that filter is now.
+    pub fn aec_taps(&self) -> usize {
+        self.aec.taps()
+    }
+
+    /// Whether the filter is shorter than its full length — the panel's
+    /// "the ladder has been at this" flag.
     pub fn short_aec(&self) -> bool {
-        self.aec.filter_span_ms() < 15.0
+        self.aec.taps() < DEFAULT_TAPS
     }
 
     /// What the echo canceller has worked out about the path: where the echo
@@ -856,16 +871,41 @@ impl CaptureProcessor {
         block: &mut [f32],
         reference: &[f32],
     ) -> BlockAnalysis {
-        debug_assert_eq!(block.len(), FRAME_SIZE);
+        self.cancel_echo(block, reference);
+        self.suppress(block)
+    }
 
-        // 0. Remove what our own speakers are feeding back into the microphone.
-        // This has to come first: echo is speech, so the gate and RNNoise both
-        // pass it happily, and the AGC would then amplify it.
-        let erle_db = if reference.is_empty() {
+    /// Step 0 alone: removes what our own speakers are feeding back into the
+    /// microphone. Returns the ERLE in dB.
+    ///
+    /// **It has to come first.** Echo is speech, so the gate and RNNoise both
+    /// pass it happily and the AGC would then amplify it.
+    ///
+    /// Split out from [`Self::process_with_reference`] so the capture worker
+    /// can hold a stopwatch over it — see [`super::timing::Stage::Echo`] for
+    /// why this one stage is worth timing on its own. Callers that do not care
+    /// go on using `process_with_reference`, which is these two in order.
+    ///
+    /// The ERLE is kept until the next call rather than returned into the
+    /// analysis directly, so [`Self::suppress`] reports the figure for the
+    /// block it is actually holding and the two halves cannot come apart.
+    pub fn cancel_echo(&mut self, block: &mut [f32], reference: &[f32]) -> f32 {
+        self.erle_db = if reference.is_empty() {
             0.0
         } else {
             self.aec.process(block, reference)
         };
+        self.erle_db
+    }
+
+    /// Everything after the echo canceller: the filters, RNNoise, the pitch
+    /// search, the gate, the AGC and the limiter.
+    ///
+    /// Expects [`Self::cancel_echo`] to have run on this same block, or not at
+    /// all — the ERLE it reports is whatever that call last measured.
+    pub fn suppress(&mut self, block: &mut [f32]) -> BlockAnalysis {
+        debug_assert_eq!(block.len(), FRAME_SIZE);
+        let erle_db = self.erle_db;
 
         // 0b. Where the energy sits, measured before any filter shapes it.
         //

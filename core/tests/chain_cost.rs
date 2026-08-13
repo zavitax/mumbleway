@@ -110,9 +110,11 @@ fn chain_cost() {
     let mut timings = StageTimings::default();
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
     // No far end in an offline run, so nothing to cancel. The canceller becomes
-    // a pass-through of its own accord when handed an empty reference, which is
-    // worth knowing when reading the suppression row: on a real call it does
-    // more than this says.
+    // a pass-through of its own accord when handed an empty reference, so **the
+    // echo row below reads about zero and that is this harness, not the phone**:
+    // a real call puts 970 µs there on the OPPO. `core/tests/aec_cost.rs`
+    // measures that half deliberately, and the two are meant to be read
+    // together.
     let echo_ref: Vec<f32> = Vec::new();
 
     for chunk in audio.chunks_exact(FRAME_SIZE) {
@@ -131,7 +133,10 @@ fn chain_cost() {
         enhancer.process(&mut block);
         timings.record(Stage::Enhancer, lap.split());
 
-        let analysis = processor.process_with_reference(&mut block, &echo_ref);
+        processor.cancel_echo(&mut block, &echo_ref);
+        timings.record(Stage::Echo, lap.split());
+
+        let analysis = processor.suppress(&mut block);
         timings.record(Stage::Suppression, lap.split());
 
         if !relief.skip_feedback() {
@@ -203,10 +208,11 @@ fn stage_at(i: usize) -> Stage {
     match i {
         0 => Stage::Input,
         1 => Stage::Enhancer,
-        2 => Stage::Suppression,
-        3 => Stage::Feedback,
-        4 => Stage::Dehiss,
-        5 => Stage::Transmit,
+        2 => Stage::Echo,
+        3 => Stage::Suppression,
+        4 => Stage::Feedback,
+        5 => Stage::Dehiss,
+        6 => Stage::Transmit,
         _ => Stage::Encode,
     }
 }

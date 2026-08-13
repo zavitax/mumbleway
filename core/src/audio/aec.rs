@@ -561,19 +561,27 @@ impl EchoCanceller {
         self.taps as f32 * 1000.0 / 48_000.0
     }
 
-    /// Switches between the full filter and the half-length one.
+    /// How long the filter is, in taps.
+    pub fn taps(&self) -> usize {
+        self.taps
+    }
+
+    /// Sets the filter length.
     ///
-    /// The ladder's `ShortAec` rung. Cheap to act on — the coefficients are
-    /// thrown away either way, because a filter learned at one length does not
-    /// describe the same path at another — and it is nothing like as cheap to
-    /// *ignore*: the full filter is 612 µs a block while cancelling and the
-    /// short one is 131.
-    pub fn set_short(&mut self, short: bool) {
-        let want = if short {
-            DEFAULT_TAPS / 2
-        } else {
-            DEFAULT_TAPS
-        };
+    /// The ladder's `ShortAec` rung asks for half, and the tail below the
+    /// ladder asks for less again — see [`super::relief::AecCut`]. Cheap to act
+    /// on, because the coefficients are thrown away either way: a filter
+    /// learned at one length does not describe the same path at another. It is
+    /// nothing like as cheap to *ignore* — the cost is linear in the length, at
+    /// ≈0.95 µs per tap per block on the OPPO.
+    ///
+    /// **The alignment survives.** It is a measurement of the playback path,
+    /// which a shorter filter does not change; throwing it away would mean
+    /// re-finding the echo from scratch on the device least able to afford the
+    /// search. This is [`Self::forget_path`]'s distinction, and the reason it
+    /// exists separately from [`Self::reset`].
+    pub fn set_taps(&mut self, taps: usize) {
+        let want = taps.max(16);
         if want == self.taps {
             return;
         }

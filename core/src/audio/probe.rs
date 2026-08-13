@@ -124,6 +124,30 @@ pub fn forget() {
 /// that measures 9 ms has a millisecond of room for the rest of the phone.
 pub const PROBE_BUDGET_US: u32 = 9_000;
 
+/// What the enhancer alone may cost before the cheap model is the one to load.
+///
+/// # Why the enhancer gets a rule of its own
+///
+/// Everything else here is judged on the whole block, deliberately — a stage
+/// that judges itself on its own stopwatch is how a model measured at 6.2 ms
+/// against a 10 ms budget came to switch itself off. This is the exception, and
+/// it is not a deadline test at all: it is the same judgement
+/// [`super::deepfilter::simple_model_wanted`] already makes from the core
+/// count, made from a measurement instead.
+///
+/// **The block budget cannot see this case.** Measured on the OPPO the whole
+/// block is 7.8 ms with the enhancer taking 6.9 of it, which fits the probe's
+/// 9 ms and clears the device at the top rung — and then the far end starts
+/// talking, the echo canceller wants its 970 µs, and there is nowhere for it to
+/// come from. A chain where one stage has taken 4 ms before anything else has
+/// run is not a chain with room in it, whatever the total says on a probe that
+/// has no far end.
+///
+/// Four milliseconds is 40% of the block for the first of eight stages. The
+/// cheap model costs about a third of the low-latency one, so this trades an
+/// enhancer that leaves no room for one that does.
+pub const MODEL_CEILING_US: u32 = 4_000;
+
 /// Blocks timed at each rung. 60 is 600 ms of audio.
 ///
 /// Long enough that the expensive branch is exercised many times and a single
@@ -155,6 +179,14 @@ pub struct Probed {
     /// there anyway — there is nothing further to give — and this is what the
     /// panel needs in order to say so rather than implying the device is fine.
     pub gave_up: bool,
+    /// The expensive model was timed over [`MODEL_CEILING_US`] and the cheap
+    /// one was loaded before the walk began. The rung beside this is therefore
+    /// the rung the *cheap* model needed, which is usually a much better one.
+    pub cheap_model: bool,
+    /// What the expensive model measured, in microseconds a block — the figure
+    /// [`Self::cheap_model`] was decided on. Zero when there is no model in
+    /// this build.
+    pub model_us: u32,
 }
 
 /// Voiced speech at a moderate SNR: what keeps the enhancer on its expensive
@@ -240,12 +272,59 @@ fn measure(
     (second, worst)
 }
 
+/// Times the enhancer on its own, and returns the **fastest** block, in
+/// microseconds.
+///
+/// # Why the fastest, when every other figure here is a worst case
+///
+/// They are answering different questions. The block rule asks *will this
+/// device miss deadlines*, which is about the bad blocks by definition — so it
+/// takes the second worst, one outlier forgiven. This asks *how expensive is
+/// this model on this CPU*, which is a property of the arithmetic, and every
+/// source of error in a wall-clock measurement of arithmetic adds time. The
+/// minimum is therefore the least contaminated estimate available: it is the
+/// one block that got a fair run at the processor.
+///
+/// **It has to be, because the consequence is permanent and the confusion is
+/// this project's known one.** `relief.rs` records a per-core CPU condition
+/// removed for exactly this — "a condition that cannot tell 'this device is too
+/// slow' from 'this device is busy with something else' is not measuring what
+/// the ladder is for". A probe runs while an app is opening, which is the
+/// busiest moment it will see; a mean over that window said 4 ms about a
+/// machine whose model really costs 1.9, and it said it while sixteen test
+/// threads were running models of their own. That is not a hypothetical, it is
+/// how this function came to be written this way.
+fn measure_enhancer(enhancer: &mut super::deepfilter::Enhancer, at: &mut usize) -> u32 {
+    let mut best = u32::MAX;
+    for i in 0..(BLOCKS + WARMUP) {
+        let mut block = worst_case_block(*at);
+        *at += FRAME_SIZE;
+        let started = Instant::now();
+        enhancer.process(&mut block);
+        let us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
+        if i >= WARMUP {
+            best = best.min(us);
+        }
+    }
+    if best == u32::MAX {
+        0
+    } else {
+        best
+    }
+}
+
 /// Walks the ladder until a block fits, and says where to start.
 ///
 /// Slow — it loads the model and runs up to a few hundred blocks — so it
 /// belongs off the audio thread and off the UI thread, at app start.
 pub fn probe(budget_us: u32) -> Probed {
     let got = measure_ladder(budget_us);
+    if got.cheap_model {
+        // Every enhancer built afterwards reads this — see
+        // `deepfilter::simple_model_wanted` — so the worker needs no rung and
+        // no message to act on it, and it survives the engine restarting.
+        super::deepfilter::note_model_too_slow();
+    }
     Probed {
         // Never shallower than anything already reached, so a probe cannot
         // undo a rung an earlier call gave up.
@@ -267,6 +346,28 @@ fn measure_ladder(budget_us: u32) -> Probed {
     let mut processor = CaptureProcessor::new(NoiseProfile::Helmet);
     let mut at = 0usize;
 
+    // Before the walk, not during it: **the model, on its own, against its own
+    // ceiling.** A device whose enhancer alone takes 4 ms has no room for the
+    // other seven stages however the total reads on a probe with no far end in
+    // it, and the ladder's route to the cheap model runs through eleven other
+    // rungs — eleven seconds of somebody's conversation, every one of them
+    // selling something that was not the problem. See [`MODEL_CEILING_US`].
+    //
+    // The switch is applied to this function's own enhancer and *not* to the
+    // process-wide flag, for the same reason `record_rung` is not called here:
+    // the tests have to be able to assert what the walk decides without
+    // fighting each other over a static that is, by design, written once.
+    // [`probe`] is what records it.
+    let mut model_us = 0;
+    let mut cheap_model = enhancer.simple_model();
+    if enhancer.active() && !cheap_model {
+        model_us = measure_enhancer(&mut enhancer, &mut at);
+        if model_us >= MODEL_CEILING_US {
+            enhancer.use_simple_model();
+            cheap_model = true;
+        }
+    }
+
     let mut rung = Relief::None;
     let mut steps = 0u8;
     loop {
@@ -279,6 +380,8 @@ fn measure_ladder(budget_us: u32) -> Probed {
                 outlier_us,
                 steps,
                 gave_up: false,
+                cheap_model,
+                model_us,
             };
         }
         let Some(next) = rung.weaker() else {
@@ -289,6 +392,8 @@ fn measure_ladder(budget_us: u32) -> Probed {
                 outlier_us,
                 steps,
                 gave_up: true,
+                cheap_model,
+                model_us,
             };
         };
         rung = next;
@@ -309,6 +414,7 @@ mod tests {
     /// zero-mask branch and the probe has quietly stopped measuring anything.
     #[test]
     fn the_probe_signal_reaches_the_expensive_path() {
+        let _flags = super::super::deepfilter::ModelFlags::take();
         let mut enhancer = super::super::deepfilter::Enhancer::new();
         if !enhancer.active() {
             return; // no model in this build; nothing to assert about it
@@ -330,6 +436,41 @@ mod tests {
         );
     }
 
+    /// The enhancer is judged on its own before the ladder is walked, and the
+    /// two answers have to agree about why.
+    ///
+    /// **This asserts the negative path on any normal machine**, which is worth
+    /// saying plainly: a development box and a CI runner both time DFN3 well
+    /// under [`MODEL_CEILING_US`], so what runs here is "measured, under the
+    /// ceiling, model kept". The OPPO is where the other branch is real — 6.93
+    /// ms — and nothing on this machine can stand in for it.
+    ///
+    /// What it can check is that the rule is *wired up*: that a figure was
+    /// taken, that it is a plausible one, and that the decision reported is the
+    /// decision the ceiling implies. A rule that silently never measured
+    /// anything would pass a test that only looked at `cheap_model`.
+    #[test]
+    fn the_model_is_timed_against_its_own_ceiling_before_the_walk() {
+        // Held for the whole test: this builds an `Enhancer`, and which model
+        // that loads is a process-wide question two modules' tests write to.
+        let _flags = super::super::deepfilter::ModelFlags::take();
+        if !super::super::deepfilter::Enhancer::new().active() {
+            return; // no model in this build
+        }
+        let got = measure_ladder(u32::MAX);
+        assert!(
+            got.model_us > 0,
+            "the enhancer was never timed, so the ceiling can never fire"
+        );
+        assert_eq!(
+            got.cheap_model,
+            got.model_us >= MODEL_CEILING_US,
+            "the decision and the measurement disagree: {} us against a {} us ceiling",
+            got.model_us,
+            MODEL_CEILING_US
+        );
+    }
+
     /// The floor only ever deepens: nothing can put a rider back on a rung
     /// their device has already been taken off.
     ///
@@ -343,6 +484,10 @@ mod tests {
     /// against it would race each other by construction.
     #[test]
     fn the_floor_deepens_and_never_lifts() {
+        // `probe` also records "the model was too slow here", which is
+        // process-wide and which `deepfilter`'s own tests read. The guard both
+        // clears it and keeps those tests out while this one runs.
+        let _flags = super::super::deepfilter::ModelFlags::take();
         forget();
         assert_eq!(start_rung(), None, "nothing learned yet is not a rung");
 

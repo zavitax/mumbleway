@@ -3338,12 +3338,16 @@ impl SseDecode for crate::api::mumbleway::UiProbe {
         let mut var_outlierUs = <u32>::sse_decode(deserializer);
         let mut var_steps = <u32>::sse_decode(deserializer);
         let mut var_gaveUp = <bool>::sse_decode(deserializer);
+        let mut var_cheapModel = <bool>::sse_decode(deserializer);
+        let mut var_modelUs = <u32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiProbe {
             relief: var_relief,
             worst_us: var_worstUs,
             outlier_us: var_outlierUs,
             steps: var_steps,
             gave_up: var_gaveUp,
+            cheap_model: var_cheapModel,
+            model_us: var_modelUs,
         };
     }
 }
@@ -4168,6 +4172,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiProbe {
             self.outlier_us.into_into_dart().into_dart(),
             self.steps.into_into_dart().into_dart(),
             self.gave_up.into_into_dart().into_dart(),
+            self.cheap_model.into_into_dart().into_dart(),
+            self.model_us.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4997,6 +5003,8 @@ impl SseEncode for crate::api::mumbleway::UiProbe {
         <u32>::sse_encode(self.outlier_us, serializer);
         <u32>::sse_encode(self.steps, serializer);
         <bool>::sse_encode(self.gave_up, serializer);
+        <bool>::sse_encode(self.cheap_model, serializer);
+        <u32>::sse_encode(self.model_us, serializer);
     }
 }
 

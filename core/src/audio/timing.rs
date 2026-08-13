@@ -42,7 +42,7 @@ use std::time::Instant;
 /// decision available: each of these can be turned off, made cheaper, or
 /// moved, and the ones below them cannot be told apart from outside.
 /// Each variant is a **contiguous span of the worker's loop**, in the order it
-/// runs, so seven splits tile a block exactly and nothing falls between two
+/// runs, so eight splits tile a block exactly and nothing falls between two
 /// stages without being charged to one of them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stage {
@@ -56,8 +56,18 @@ pub enum Stage {
     Input = 0,
     /// DeepFilterNet.
     Enhancer,
-    /// Echo cancellation, the filters, RNNoise, the pitch search, the gate,
-    /// the AGC and the limiter — `CaptureProcessor::process_with_reference`.
+    /// Echo cancellation — `CaptureProcessor::cancel_echo`.
+    ///
+    /// **Its own line because its cost depends on what the far end is doing,
+    /// and nothing else in the chain does.** Measured on the OPPO it is 16 µs
+    /// while nobody is playing anything and 970 µs while somebody is talking,
+    /// so a phone that keeps up all the way through a monologue can miss the
+    /// deadline the moment the conversation becomes one. Folded in with six
+    /// stages of near-fixed cost, that reads as a block that went late for no
+    /// reason — and the ladder cannot sell what it cannot see.
+    Echo,
+    /// The filters, RNNoise, the pitch search, the gate, the AGC and the
+    /// limiter — `CaptureProcessor::suppress`.
     Suppression,
     /// The howl guard.
     Feedback,
@@ -70,12 +80,13 @@ pub enum Stage {
     Encode,
 }
 
-pub const STAGES: usize = 7;
+pub const STAGES: usize = 8;
 
 /// In [`Stage`] order. Used by the offline harness; the app localises its own.
 pub const STAGE_NAMES: [&str; STAGES] = [
     "input",
     "enhancer",
+    "echo",
     "suppression",
     "feedback",
     "de-hiss",

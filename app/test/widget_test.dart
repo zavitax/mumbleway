@@ -606,6 +606,35 @@ void main() {
       ];
       expect(untranslated, isEmpty, reason: 'English left in the Russian file');
     });
+
+    // The test above cannot see this one, and that is the point of having both:
+    // it reads the files through `jsonDecode`, which keeps the last value for a
+    // repeated key and throws nothing away noisily. So a key defined twice
+    // passes every check here — it exists, it exists in both files, and the
+    // translations differ — while one of the two definitions is dead.
+    //
+    // That shipped. `diagStageEnhancer`, `diagStageFeedback` and
+    // `diagStageTransmit` each named a row of the block-cost table *and* a dot
+    // on the chain, with deliberately different wording, and the dot won: the
+    // cost table showed `To the server` for the row that times the onset delay
+    // and the decision log. The two lists now live in separate namespaces
+    // (`diagCost*` and `diagStage*`) and this is what keeps them there.
+    test('no key is defined twice', () async {
+      // Top-level entries are indented two spaces in these files; anything
+      // deeper belongs to an `@key` metadata block, where `description` and
+      // `type` repeat legitimately.
+      final top = RegExp(r'^  "([^"]+)"\s*:', multiLine: true);
+      for (final name in ['app_en.arb', 'app_ru.arb']) {
+        final text = await File('lib/l10n/$name').readAsString();
+        final seen = <String>{};
+        final twice = <String>[];
+        for (final m in top.allMatches(text)) {
+          final key = m.group(1)!;
+          if (!seen.add(key)) twice.add(key);
+        }
+        expect(twice, isEmpty, reason: 'defined more than once in $name');
+      }
+    });
   });
 
   group('what the bundles have to declare', () {

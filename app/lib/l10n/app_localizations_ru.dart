@@ -1064,25 +1064,28 @@ class LRu extends L {
   String get diagBlockCost => 'На что уходят 10 мс блока';
 
   @override
-  String get diagStageInput => 'Вход и отводы';
+  String get diagCostInput => 'Вход и отводы';
 
   @override
-  String get diagStageEnhancer => 'Очистка';
+  String get diagCostEnhancer => 'Улучшение речи';
 
   @override
-  String get diagStageSuppression => 'Шумоподавление';
+  String get diagCostEcho => 'Подавление эха';
 
   @override
-  String get diagStageFeedback => 'Обратная связь';
+  String get diagCostSuppression => 'Шумоподавление';
 
   @override
-  String get diagStageDehiss => 'Подавление шипения';
+  String get diagCostFeedback => 'Защита от самовозбуждения';
 
   @override
-  String get diagStageTransmit => 'На сервер';
+  String get diagCostDehiss => 'Подавление шипения';
 
   @override
-  String get diagStageEncode => 'Кодирование';
+  String get diagCostTransmit => 'Решение о передаче';
+
+  @override
+  String get diagCostEncode => 'Кодирование';
 
   @override
   String get diagBlockUnattributed => 'Вне этапов';
@@ -1441,6 +1444,9 @@ class LRu extends L {
   String get diagTraceSentIdle => 'Не передаётся';
 
   @override
+  String get diagStageEnhancer => 'Очистка';
+
+  @override
   String get diagStageEcho => 'Эхо';
 
   @override
@@ -1457,6 +1463,12 @@ class LRu extends L {
 
   @override
   String get diagStageHiss => 'Шипение';
+
+  @override
+  String get diagStageFeedback => 'Обратная связь';
+
+  @override
+  String get diagStageTransmit => 'На сервер';
 
   @override
   String get website => 'Сайт';

@@ -223,14 +223,24 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   ///
   /// A `switch` rather than a map lookup so a stage added in Rust and not here
   /// fails to compile rather than showing a rider `de-hiss`.
+  ///
+  /// **`diagCost*`, not `diagStage*`.** These are the rows of the block-cost
+  /// table; `diagStage*` belongs to the chain dots above it. The two lists name
+  /// overlapping things differently on purpose — a dot says `Feedback` and a
+  /// cost row says `Feedback guard` — and for three of them they shared a key
+  /// and the same `.arb` file defined it twice. JSON keeps the last, so the dot
+  /// labels quietly won and the cost table had been showing `To the server` for
+  /// a row that times the onset delay and the decision log. Nothing failed:
+  /// both keys existed, both files had them, both translations were real.
   static String _stageLabel(L l, String id) => switch (id) {
-    'input' => l.diagStageInput,
-    'enhancer' => l.diagStageEnhancer,
-    'suppression' => l.diagStageSuppression,
-    'feedback' => l.diagStageFeedback,
-    'de-hiss' => l.diagStageDehiss,
-    'transmit' => l.diagStageTransmit,
-    'encode' => l.diagStageEncode,
+    'input' => l.diagCostInput,
+    'enhancer' => l.diagCostEnhancer,
+    'echo' => l.diagCostEcho,
+    'suppression' => l.diagCostSuppression,
+    'feedback' => l.diagCostFeedback,
+    'de-hiss' => l.diagCostDehiss,
+    'transmit' => l.diagCostTransmit,
+    'encode' => l.diagCostEncode,
     _ => id,
   };
 

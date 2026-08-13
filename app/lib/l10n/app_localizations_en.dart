@@ -1063,25 +1063,28 @@ class LEn extends L {
   String get diagBlockCost => 'Where a block\'s 10 ms goes';
 
   @override
-  String get diagStageInput => 'Input and taps';
+  String get diagCostInput => 'Input and taps';
 
   @override
-  String get diagStageEnhancer => 'Enhancer';
+  String get diagCostEnhancer => 'Speech enhancer';
 
   @override
-  String get diagStageSuppression => 'Suppression';
+  String get diagCostEcho => 'Echo cancellation';
 
   @override
-  String get diagStageFeedback => 'Feedback';
+  String get diagCostSuppression => 'Suppression';
 
   @override
-  String get diagStageDehiss => 'De-hiss';
+  String get diagCostFeedback => 'Feedback guard';
 
   @override
-  String get diagStageTransmit => 'To the server';
+  String get diagCostDehiss => 'De-hiss';
 
   @override
-  String get diagStageEncode => 'Encode';
+  String get diagCostTransmit => 'Transmit decision';
+
+  @override
+  String get diagCostEncode => 'Encode';
 
   @override
   String get diagBlockUnattributed => 'Not in any stage';
@@ -1448,6 +1451,9 @@ class LEn extends L {
   String get diagTraceSentIdle => 'Not sending';
 
   @override
+  String get diagStageEnhancer => 'Enhancer';
+
+  @override
   String get diagStageEcho => 'Echo';
 
   @override
@@ -1464,6 +1470,12 @@ class LEn extends L {
 
   @override
   String get diagStageHiss => 'Hiss';
+
+  @override
+  String get diagStageFeedback => 'Feedback';
+
+  @override
+  String get diagStageTransmit => 'To the server';
 
   @override
   String get website => 'Website';

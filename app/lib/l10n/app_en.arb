@@ -534,13 +534,14 @@
   "@diagBlockCost": {
     "description": "Title of the group breaking one capture block down by stage"
   },
-  "diagStageInput": "Input and taps",
-  "diagStageEnhancer": "Speech enhancer",
-  "diagStageSuppression": "Suppression",
-  "diagStageFeedback": "Feedback guard",
-  "diagStageDehiss": "De-hiss",
-  "diagStageTransmit": "Transmit decision",
-  "diagStageEncode": "Encode",
+  "diagCostInput": "Input and taps",
+  "diagCostEnhancer": "Speech enhancer",
+  "diagCostEcho": "Echo cancellation",
+  "diagCostSuppression": "Suppression",
+  "diagCostFeedback": "Feedback guard",
+  "diagCostDehiss": "De-hiss",
+  "diagCostTransmit": "Transmit decision",
+  "diagCostEncode": "Encode",
   "diagBlockUnattributed": "Not in any stage",
   "@diagBlockUnattributed": {
     "description": "The part of a block no stage was timing: scheduling, mostly. A large value means the worker is being interrupted rather than running slowly"

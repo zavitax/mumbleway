@@ -2023,47 +2023,53 @@ abstract class L {
   /// **'Where a block\'s 10 ms goes'**
   String get diagBlockCost;
 
-  /// No description provided for @diagStageInput.
+  /// No description provided for @diagCostInput.
   ///
   /// In en, this message translates to:
   /// **'Input and taps'**
-  String get diagStageInput;
+  String get diagCostInput;
 
-  /// No description provided for @diagStageEnhancer.
+  /// No description provided for @diagCostEnhancer.
   ///
   /// In en, this message translates to:
-  /// **'Enhancer'**
-  String get diagStageEnhancer;
+  /// **'Speech enhancer'**
+  String get diagCostEnhancer;
 
-  /// No description provided for @diagStageSuppression.
+  /// No description provided for @diagCostEcho.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo cancellation'**
+  String get diagCostEcho;
+
+  /// No description provided for @diagCostSuppression.
   ///
   /// In en, this message translates to:
   /// **'Suppression'**
-  String get diagStageSuppression;
+  String get diagCostSuppression;
 
-  /// No description provided for @diagStageFeedback.
+  /// No description provided for @diagCostFeedback.
   ///
   /// In en, this message translates to:
-  /// **'Feedback'**
-  String get diagStageFeedback;
+  /// **'Feedback guard'**
+  String get diagCostFeedback;
 
-  /// No description provided for @diagStageDehiss.
+  /// No description provided for @diagCostDehiss.
   ///
   /// In en, this message translates to:
   /// **'De-hiss'**
-  String get diagStageDehiss;
+  String get diagCostDehiss;
 
-  /// No description provided for @diagStageTransmit.
+  /// No description provided for @diagCostTransmit.
   ///
   /// In en, this message translates to:
-  /// **'To the server'**
-  String get diagStageTransmit;
+  /// **'Transmit decision'**
+  String get diagCostTransmit;
 
-  /// No description provided for @diagStageEncode.
+  /// No description provided for @diagCostEncode.
   ///
   /// In en, this message translates to:
   /// **'Encode'**
-  String get diagStageEncode;
+  String get diagCostEncode;
 
   /// The part of a block no stage was timing: scheduling, mostly. A large value means the worker is being interrupted rather than running slowly
   ///
@@ -2671,6 +2677,12 @@ abstract class L {
   /// **'Not sending'**
   String get diagTraceSentIdle;
 
+  /// No description provided for @diagStageEnhancer.
+  ///
+  /// In en, this message translates to:
+  /// **'Enhancer'**
+  String get diagStageEnhancer;
+
   /// No description provided for @diagStageEcho.
   ///
   /// In en, this message translates to:
@@ -2706,6 +2718,18 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Hiss'**
   String get diagStageHiss;
+
+  /// No description provided for @diagStageFeedback.
+  ///
+  /// In en, this message translates to:
+  /// **'Feedback'**
+  String get diagStageFeedback;
+
+  /// No description provided for @diagStageTransmit.
+  ///
+  /// In en, this message translates to:
+  /// **'To the server'**
+  String get diagStageTransmit;
 
   /// Menu item opening the app’s own website in a browser.
   ///

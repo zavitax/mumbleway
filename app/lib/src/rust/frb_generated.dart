@@ -2828,14 +2828,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiProbe dco_decode_ui_probe(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return UiProbe(
       relief: dco_decode_u_32(arr[0]),
       worstUs: dco_decode_u_32(arr[1]),
       outlierUs: dco_decode_u_32(arr[2]),
       steps: dco_decode_u_32(arr[3]),
       gaveUp: dco_decode_bool(arr[4]),
+      cheapModel: dco_decode_bool(arr[5]),
+      modelUs: dco_decode_u_32(arr[6]),
     );
   }
 
@@ -3651,12 +3653,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_outlierUs = sse_decode_u_32(deserializer);
     var var_steps = sse_decode_u_32(deserializer);
     var var_gaveUp = sse_decode_bool(deserializer);
+    var var_cheapModel = sse_decode_bool(deserializer);
+    var var_modelUs = sse_decode_u_32(deserializer);
     return UiProbe(
       relief: var_relief,
       worstUs: var_worstUs,
       outlierUs: var_outlierUs,
       steps: var_steps,
       gaveUp: var_gaveUp,
+      cheapModel: var_cheapModel,
+      modelUs: var_modelUs,
     );
   }
 
@@ -4405,6 +4411,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.outlierUs, serializer);
     sse_encode_u_32(self.steps, serializer);
     sse_encode_bool(self.gaveUp, serializer);
+    sse_encode_bool(self.cheapModel, serializer);
+    sse_encode_u_32(self.modelUs, serializer);
   }
 
   @protected

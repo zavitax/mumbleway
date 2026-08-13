@@ -462,6 +462,74 @@ pub const CPU_BUSY_SECONDS: f32 = 5.0;
 // deadline already answers within a second and is about *our* work, which is
 // the thing being judged.
 
+/// How far the echo canceller has been shortened *below* the bottom of the
+/// ladder, to make the block fit.
+///
+/// # Why this is not a set of rungs
+///
+/// Every rung of [`Relief`] costs the same thing on every device: the pitch
+/// search costs a pitch search. The canceller does not. It is 16 µs a block
+/// while nobody is playing anything and 970 while the far end talks — measured
+/// on the OPPO, `core/tests/aec_cost.rs` — so its cost is set by *the other end
+/// of the call*, and a rung whose price depends on whether somebody else is
+/// speaking is not a rung.
+///
+/// That asymmetry is also the fault this exists to fix. A phone that keeps up
+/// through a monologue starts missing blocks the moment the conversation
+/// becomes two-way, and the ladder answers by selling the enhancer, then the
+/// pitch search, then RNNoise — none of which is what went over. So this is a
+/// separate tail, entered only when the ladder has nothing left, and only when
+/// the canceller is demonstrably the reason the block did not fit.
+///
+/// # Why it stops rather than reaching zero
+///
+/// [`Relief::ShortAec`] already argues it: losing echo cancellation on a
+/// speakerphone is a howl, and the feedback guard that would cover for it is
+/// given up long before this point, so by the bottom of the ladder there would
+/// be nothing left holding the loop open. Shortening is not the same trade —
+/// [`super::aec::Aligner`] has already pointed the filter at the direct
+/// arrival, so what a shorter filter gives up is the *tail* of the echo, and
+/// even 128 taps still cancels the loud part.
+///
+/// Priced off the measured line, ≈0.95 µs per tap per block. The canceller is
+/// necessarily already at 512 taps here, because `ShortAec` is rung 4:
+///
+/// | cut | taps | covers | saves |
+/// |---|---|---|---|
+/// | `Taps384` | 384 | 8.0 ms | ~104 µs |
+/// | `Taps256` | 256 | 5.3 ms | ~212 µs |
+/// | `Taps128` | 128 | 2.7 ms | ~319 µs |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum AecCut {
+    /// The filter is whatever the rung says it should be.
+    #[default]
+    None,
+    Taps384,
+    Taps256,
+    Taps128,
+}
+
+impl AecCut {
+    /// The next cut down, or `None` at the floor.
+    fn weaker(self) -> Option<AecCut> {
+        Some(match self {
+            AecCut::None => AecCut::Taps384,
+            AecCut::Taps384 => AecCut::Taps256,
+            AecCut::Taps256 => AecCut::Taps128,
+            AecCut::Taps128 => return None,
+        })
+    }
+}
+
+/// What the ladder just gave up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// A rung of the ladder proper.
+    Rung(Relief),
+    /// A shorter echo filter, below the bottom of the ladder. See [`AecCut`].
+    Aec(AecCut),
+}
+
 /// Tracks the ladder and decides when to give up the next rung.
 ///
 /// **Driven by the whole block, not by any one stage.** The enhancer used to
@@ -473,8 +541,15 @@ pub const CPU_BUSY_SECONDS: f32 = 5.0;
 pub struct ReliefLadder {
     level: Option<Relief>,
     run_of_overruns: u32,
+    /// The run's block and echo-canceller time, so the decision below the
+    /// ladder is made on a hundred blocks rather than on whichever one happened
+    /// to be the hundredth. Same reasoning as "read the mean, not the worst" in
+    /// [`Relief`]'s own table.
+    run_block_us: u64,
+    run_echo_us: u64,
     /// Seconds the CPU has been continuously at or above the busy mark.
     busy_seconds: f32,
+    cut: AecCut,
 }
 
 impl ReliefLadder {
@@ -491,7 +566,10 @@ impl ReliefLadder {
         Self {
             level: (level != Relief::None).then_some(level),
             run_of_overruns: 0,
+            run_block_us: 0,
+            run_echo_us: 0,
             busy_seconds: 0.0,
+            cut: AecCut::None,
         }
     }
 
@@ -499,19 +577,81 @@ impl ReliefLadder {
         self.level.unwrap_or(Relief::None)
     }
 
-    /// Feeds one block's wall-clock cost in. Returns the new rung when it
-    /// stepped, so the caller can say so once rather than every block.
-    pub fn note_block(&mut self, us: u32) -> Option<Relief> {
+    /// How long the echo canceller's filter should be, in taps.
+    ///
+    /// One number with one owner. The rung halves it at [`Relief::ShortAec`]
+    /// and the tail below the ladder shortens it further, and if those were two
+    /// setters they could disagree about which of them last had the say.
+    pub fn aec_taps(&self) -> usize {
+        match self.cut {
+            AecCut::None => {
+                if self.level().short_aec() {
+                    super::aec::DEFAULT_TAPS / 2
+                } else {
+                    super::aec::DEFAULT_TAPS
+                }
+            }
+            AecCut::Taps384 => 384,
+            AecCut::Taps256 => 256,
+            AecCut::Taps128 => 128,
+        }
+    }
+
+    /// How far the canceller has been cut below the ladder. `None` on almost
+    /// every device.
+    pub fn aec_cut(&self) -> AecCut {
+        self.cut
+    }
+
+    /// Feeds one block's wall-clock cost in, and the echo canceller's share of
+    /// it. Returns what was given up when something was, so the caller can say
+    /// so once rather than every block.
+    ///
+    /// `echo_us` is [`super::timing::Stage::Echo`], and it is passed separately
+    /// rather than read out of the timings because it is the one stage whose
+    /// cost the ladder has to be able to attribute — see [`AecCut`].
+    pub fn note_block(&mut self, us: u32, echo_us: u32) -> Option<Step> {
         if us <= BUDGET_US {
-            self.run_of_overruns = 0;
+            self.forget_the_run();
             return None;
         }
         self.run_of_overruns += 1;
+        self.run_block_us += us as u64;
+        self.run_echo_us += echo_us as u64;
         if self.run_of_overruns < STEP_DOWN_AFTER {
             return None;
         }
+        let (block, echo) = (self.run_block_us, self.run_echo_us);
+        let blocks = self.run_of_overruns as u64;
+        self.forget_the_run();
+        match self.step() {
+            Some(rung) => Some(Step::Rung(rung)),
+            // Nothing left on the ladder. See [`AecCut`] for why the canceller
+            // is not simply another rung.
+            None => self.cut_the_canceller(block / blocks, echo / blocks).map(Step::Aec),
+        }
+    }
+
+    fn forget_the_run(&mut self) {
         self.run_of_overruns = 0;
-        self.step()
+        self.run_block_us = 0;
+        self.run_echo_us = 0;
+    }
+
+    /// Shortens the echo filter, but only when it is why the block did not fit.
+    ///
+    /// **"Due to the AEC" made checkable:** would the block have fitted without
+    /// the canceller at all? If it would not, the canceller is not what is
+    /// costing the deadline, and shortening it would sell echo cancellation for
+    /// nothing — which is the rule the whole ladder is built on and the reason
+    /// the per-core CPU condition was removed.
+    fn cut_the_canceller(&mut self, block_us: u64, echo_us: u64) -> Option<AecCut> {
+        if block_us.saturating_sub(echo_us) > BUDGET_US as u64 {
+            return None;
+        }
+        let next = self.cut.weaker()?;
+        self.cut = next;
+        Some(next)
     }
 
     /// Feeds a CPU reading in, with the time since the previous one.
@@ -526,7 +666,12 @@ impl ReliefLadder {
     /// five seconds where the deadline needs one, and like the deadline a
     /// single reading below the mark forgives the run entirely — this measures
     /// a device that is *staying* saturated, not one that touched it.
-    pub fn note_cpu(&mut self, percent: f32, elapsed_seconds: f32) -> Option<Relief> {
+    ///
+    /// It can only ever cost a rung, never a cut to the canceller: a saturated
+    /// CPU says nothing about *which* stage is holding the block, and the tail
+    /// below the ladder exists precisely because that attribution is available
+    /// for the deadline and not here.
+    pub fn note_cpu(&mut self, percent: f32, elapsed_seconds: f32) -> Option<Step> {
         if !percent.is_finite() || percent < CPU_BUSY_PERCENT {
             self.busy_seconds = 0.0;
             return None;
@@ -540,7 +685,7 @@ impl ReliefLadder {
             return None;
         }
         self.busy_seconds = 0.0;
-        self.step()
+        self.step().map(Step::Rung)
     }
 
     /// Gives up the next rung, if there is one left.
@@ -581,15 +726,17 @@ mod tests {
         ];
         for want in expected {
             for _ in 0..STEP_DOWN_AFTER - 1 {
-                assert_eq!(ladder.note_block(BUDGET_US + 1), None);
+                assert_eq!(ladder.note_block(BUDGET_US + 1, 0), None);
             }
-            assert_eq!(ladder.note_block(BUDGET_US + 1), Some(want));
+            assert_eq!(ladder.note_block(BUDGET_US + 1, 0), Some(Step::Rung(want)));
         }
-        // The bottom is the bottom.
+        // The bottom is the bottom — with the canceller costing nothing, which
+        // is what stops the tail below it from firing. See the tests for that.
         for _ in 0..STEP_DOWN_AFTER * 2 {
-            assert_eq!(ladder.note_block(BUDGET_US + 1), None);
+            assert_eq!(ladder.note_block(BUDGET_US + 1, 0), None);
         }
         assert_eq!(ladder.level(), Relief::EnhancerOff);
+        assert_eq!(ladder.aec_cut(), AecCut::None);
     }
 
     #[test]
@@ -602,7 +749,10 @@ mod tests {
         assert_eq!(ladder.level(), Relief::None);
         // The ninth half-second is still 4.5; the tenth reaches five.
         assert_eq!(ladder.note_cpu(95.0, 0.5), None);
-        assert_eq!(ladder.note_cpu(95.0, 0.5), Some(Relief::EnhancerReduced));
+        assert_eq!(
+            ladder.note_cpu(95.0, 0.5),
+            Some(Step::Rung(Relief::EnhancerReduced))
+        );
     }
 
     #[test]
@@ -648,10 +798,104 @@ mod tests {
         // device that is coping.
         let mut ladder = ReliefLadder::default();
         for _ in 0..STEP_DOWN_AFTER * 10 {
-            assert_eq!(ladder.note_block(BUDGET_US + 1), None);
-            assert_eq!(ladder.note_block(BUDGET_US), None);
+            assert_eq!(ladder.note_block(BUDGET_US + 1, 0), None);
+            assert_eq!(ladder.note_block(BUDGET_US, 0), None);
         }
         assert_eq!(ladder.level(), Relief::None);
+    }
+
+    /// Walks a ladder to its last rung, cheaply.
+    fn at_the_bottom() -> ReliefLadder {
+        let ladder = ReliefLadder::starting_at(Relief::EnhancerOff);
+        assert_eq!(ladder.level().weaker(), None, "not the bottom any more");
+        assert_eq!(ladder.aec_cut(), AecCut::None);
+        ladder
+    }
+
+    /// Feeds a run of late blocks and returns whatever the last one cost.
+    fn a_run_of(ladder: &mut ReliefLadder, block_us: u32, echo_us: u32) -> Option<Step> {
+        let mut last = None;
+        for _ in 0..STEP_DOWN_AFTER {
+            last = ladder.note_block(block_us, echo_us);
+        }
+        last
+    }
+
+    #[test]
+    fn below_the_bottom_the_canceller_is_shortened_a_step_at_a_time() {
+        let mut ladder = at_the_bottom();
+        // Late by 500 µs with the canceller costing 600: it would have fitted
+        // without it, so it is the reason.
+        for want in [AecCut::Taps384, AecCut::Taps256, AecCut::Taps128] {
+            assert_eq!(
+                a_run_of(&mut ladder, BUDGET_US + 500, 600),
+                Some(Step::Aec(want))
+            );
+        }
+        // 128 taps is the floor. Losing the canceller outright on a
+        // speakerphone is a howl, and the feedback guard went eleven rungs ago.
+        for _ in 0..STEP_DOWN_AFTER * 3 {
+            assert_eq!(ladder.note_block(BUDGET_US + 500, 600), None);
+        }
+        assert_eq!(ladder.aec_cut(), AecCut::Taps128);
+    }
+
+    #[test]
+    fn a_block_that_would_be_late_anyway_costs_the_canceller_nothing() {
+        // **The condition that makes this defensible.** A device 5 ms over
+        // budget with a canceller costing 600 µs is not late because of the
+        // canceller, and shortening it would sell echo cancellation for
+        // nothing — the same rule that removed the per-core CPU condition.
+        let mut ladder = at_the_bottom();
+        for _ in 0..STEP_DOWN_AFTER * 5 {
+            assert_eq!(ladder.note_block(BUDGET_US + 5_000, 600), None);
+        }
+        assert_eq!(ladder.aec_cut(), AecCut::None);
+    }
+
+    #[test]
+    fn the_canceller_is_not_cut_while_the_ladder_still_has_rungs() {
+        // Rungs first, always. A device that has not yet given up the pitch
+        // search has cheaper things to sell than the echo it is cancelling.
+        let mut ladder = ReliefLadder::default();
+        assert_eq!(
+            a_run_of(&mut ladder, BUDGET_US + 500, 600),
+            Some(Step::Rung(Relief::EnhancerReduced))
+        );
+        assert_eq!(ladder.aec_cut(), AecCut::None);
+    }
+
+    #[test]
+    fn the_filter_length_is_the_rung_and_the_cut_resolved_into_one_number() {
+        use super::super::aec::DEFAULT_TAPS;
+        let mut ladder = ReliefLadder::default();
+        assert_eq!(ladder.aec_taps(), DEFAULT_TAPS);
+
+        // The rung halves it.
+        ladder = ReliefLadder::starting_at(Relief::ShortAec);
+        assert_eq!(ladder.aec_taps(), DEFAULT_TAPS / 2);
+        // And every rung below it, since the ladder never climbs.
+        ladder = ReliefLadder::starting_at(Relief::EnhancerOff);
+        assert_eq!(ladder.aec_taps(), DEFAULT_TAPS / 2);
+
+        // The tail takes it further.
+        for want in [384, 256, 128] {
+            a_run_of(&mut ladder, BUDGET_US + 500, 600);
+            assert_eq!(ladder.aec_taps(), want);
+        }
+    }
+
+    #[test]
+    fn the_decision_is_made_on_the_run_rather_than_on_its_last_block() {
+        // A hundred blocks that are late for other reasons, and one that is
+        // late because of the canceller, is not evidence about the canceller.
+        // The ladder reads means for the same reason its own table does.
+        let mut ladder = at_the_bottom();
+        for _ in 0..STEP_DOWN_AFTER - 1 {
+            assert_eq!(ladder.note_block(BUDGET_US + 5_000, 10), None);
+        }
+        assert_eq!(ladder.note_block(BUDGET_US + 500, 600), None);
+        assert_eq!(ladder.aec_cut(), AecCut::None);
     }
 
     #[test]

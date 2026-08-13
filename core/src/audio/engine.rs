@@ -2879,9 +2879,12 @@ where
             // Polled with everything else the ladder decides, so a rung taken
             // mid-call takes effect on the next block rather than the next
             // restart.
-            let want_short = relief.level().short_aec();
-            if want_short != processor.short_aec() {
-                processor.set_short_aec(want_short);
+            // The rung halves the filter and the tail below the ladder shortens
+            // it further; `aec_taps` is both of those resolved into one number,
+            // so nothing here has to know which of them last had the say.
+            let want_taps = relief.aec_taps();
+            if want_taps != processor.aec_taps() {
+                processor.set_aec_taps(want_taps);
             }
 
             // Taken *before* the chain touches it, and this ordering is the
@@ -2973,7 +2976,19 @@ where
             enhancer.process(&mut block);
             timings.record(Stage::Enhancer, lap.split());
 
-            let analysis = processor.process_with_reference(&mut block, &echo_ref);
+            // Two calls rather than one, and only so that the clock can go
+            // between them: `process_with_reference` is exactly these in order.
+            // The canceller is the one stage whose cost is set by the far end
+            // rather than by this device, and the ladder needs to be able to
+            // see that separately from the six stages it shares a span with.
+            processor.cancel_echo(&mut block, &echo_ref);
+            // Kept as well as recorded: the ladder needs this block's figure,
+            // and `timings` is a running total the panel can reset underneath
+            // it. See `relief::AecCut`.
+            let echo_us = lap.split();
+            timings.record(Stage::Echo, echo_us);
+
+            let analysis = processor.suppress(&mut block);
             if analysing {
                 analyser.push(TAP_PRE_GATE, processor.pre_gate());
             }
@@ -3318,7 +3333,7 @@ where
             // for a phone that is saturated without any single block being
             // late — see `relief::note_cpu`. Whichever fires, the same rung
             // goes, so a device failing both does not skip any.
-            let mut stepped = relief.note_block(block_us);
+            let mut stepped = relief.note_block(block_us, echo_us);
             if stepped.is_none() {
                 let since = cpu_sampled_at.elapsed();
                 if since.as_secs_f32() >= 1.0 {
@@ -3327,7 +3342,20 @@ where
                     stepped = relief.note_cpu(cpu_percent, since.as_secs_f32());
                 }
             }
-            if let Some(rung) = stepped {
+            // Below the bottom of the ladder there is one thing left to give,
+            // and it is not a rung — see `relief::AecCut`. Applied here rather
+            // than beside the rung because the filter length is read every
+            // block from `relief.aec_taps()` a few hundred lines up; this only
+            // has to say it happened.
+            if let Some(relief::Step::Aec(cut)) = stepped {
+                tracing::warn!(
+                    "the chain is still over {} ms with nothing left to give up, \
+                     and the echo canceller is why: shortening its filter to {:?}",
+                    relief::BUDGET_US / 1000,
+                    cut,
+                );
+            }
+            if let Some(relief::Step::Rung(rung)) = stepped {
                 // Into the process-wide floor, so this survives the worker.
                 // The worker is per device-open, which is per call — without
                 // this, everything a hard conversation taught the ladder was

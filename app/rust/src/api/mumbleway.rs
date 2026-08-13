@@ -1265,6 +1265,7 @@ pub fn audio_stage_costs() -> anyhow::Result<UiStageCosts> {
     let order = [
         Stage::Input,
         Stage::Enhancer,
+        Stage::Echo,
         Stage::Suppression,
         Stage::Feedback,
         Stage::Dehiss,
@@ -1530,6 +1531,16 @@ pub struct UiProbe {
     /// The bottom of the ladder still did not fit. The session starts there
     /// because there is nothing further to give.
     pub gave_up: bool,
+    /// The expensive speech-enhancement model was timed over its ceiling and
+    /// the cheap one was loaded before the ladder was walked at all.
+    ///
+    /// Worth showing on its own, because it changes how `relief` reads: the
+    /// rung beside it is the rung the *cheap* model needed, which is usually a
+    /// much better one than the expensive model would have reached.
+    pub cheap_model: bool,
+    /// What the expensive model measured, in microseconds a block. 0 when there
+    /// is no model in this build.
+    pub model_us: u32,
 }
 
 /// Measures this device against the block deadline and dials the ladder.
@@ -1551,11 +1562,23 @@ pub fn audio_probe_chain() -> anyhow::Result<UiProbe> {
         mumbleway_core::diag::LogLevel::Info,
         "probe",
         format!(
-            "startup probe: rung {} after {} steps, worst {:.1} ms (outlier {:.1} ms){}",
+            "startup probe: rung {} after {} steps, worst {:.1} ms (outlier {:.1} ms){}{}",
             got.rung.index(),
             got.steps,
             got.worst_us as f32 / 1000.0,
             got.outlier_us as f32 / 1000.0,
+            if got.cheap_model {
+                // Said before the rung is read, because it changes what the
+                // rung means: everything after this was measured with the
+                // cheap model loaded.
+                format!(
+                    "; the low-latency model measured {:.1} ms a block and the plain \
+                     one was loaded instead",
+                    got.model_us as f32 / 1000.0
+                )
+            } else {
+                String::new()
+            },
             if got.gave_up {
                 ", still over budget at the bottom of the ladder"
             } else {
@@ -1569,6 +1592,8 @@ pub fn audio_probe_chain() -> anyhow::Result<UiProbe> {
         outlier_us: got.outlier_us,
         steps: got.steps as u32,
         gave_up: got.gave_up,
+        cheap_model: got.cheap_model,
+        model_us: got.model_us,
     })
 }
 

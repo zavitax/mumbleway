@@ -1228,12 +1228,26 @@ class UiProbe {
   /// because there is nothing further to give.
   final bool gaveUp;
 
+  /// The expensive speech-enhancement model was timed over its ceiling and
+  /// the cheap one was loaded before the ladder was walked at all.
+  ///
+  /// Worth showing on its own, because it changes how `relief` reads: the
+  /// rung beside it is the rung the *cheap* model needed, which is usually a
+  /// much better one than the expensive model would have reached.
+  final bool cheapModel;
+
+  /// What the expensive model measured, in microseconds a block. 0 when there
+  /// is no model in this build.
+  final int modelUs;
+
   const UiProbe({
     required this.relief,
     required this.worstUs,
     required this.outlierUs,
     required this.steps,
     required this.gaveUp,
+    required this.cheapModel,
+    required this.modelUs,
   });
 
   @override
@@ -1242,7 +1256,9 @@ class UiProbe {
       worstUs.hashCode ^
       outlierUs.hashCode ^
       steps.hashCode ^
-      gaveUp.hashCode;
+      gaveUp.hashCode ^
+      cheapModel.hashCode ^
+      modelUs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1253,7 +1269,9 @@ class UiProbe {
           worstUs == other.worstUs &&
           outlierUs == other.outlierUs &&
           steps == other.steps &&
-          gaveUp == other.gaveUp;
+          gaveUp == other.gaveUp &&
+          cheapModel == other.cheapModel &&
+          modelUs == other.modelUs;
 }
 
 /// Whether a diagnostic recording is running, and how it is doing.

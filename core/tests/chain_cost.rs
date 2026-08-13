@@ -130,11 +130,12 @@ fn chain_cost() {
         std::hint::black_box(peak);
         timings.record(Stage::Input, lap.split());
 
-        enhancer.process(&mut block);
-        timings.record(Stage::Enhancer, lap.split());
-
+        // The canceller first, as the worker runs it — see `engine.rs`.
         processor.cancel_echo(&mut block, &echo_ref);
         timings.record(Stage::Echo, lap.split());
+
+        enhancer.process(&mut block);
+        timings.record(Stage::Enhancer, lap.split());
 
         let analysis = processor.suppress(&mut block);
         timings.record(Stage::Suppression, lap.split());
@@ -207,8 +208,8 @@ fn chain_cost() {
 fn stage_at(i: usize) -> Stage {
     match i {
         0 => Stage::Input,
-        1 => Stage::Enhancer,
-        2 => Stage::Echo,
+        1 => Stage::Echo,
+        2 => Stage::Enhancer,
         3 => Stage::Suppression,
         4 => Stage::Feedback,
         5 => Stage::Dehiss,

@@ -55,6 +55,15 @@ const ROTATE_BYTES: u64 = 16 * 1024 * 1024;
 const QUEUE_BLOCKS: usize = 200;
 
 /// One block of audio and what the chain made of it.
+/// `Default` is for **tests only**, so that adding a column does not mean
+/// editing every one of them — this struct has now grown three times and each
+/// time the cost was paid in unrelated files.
+///
+/// The worker fills every field explicitly and must go on doing so. A default
+/// here is a zero, and a zero in this log is a claim: `aec_on: false` says
+/// cancellation was off, `echo_ref_samples: 0` says there was no reference.
+/// Both are exactly the confusion the columns were added to end.
+#[derive(Default)]
 pub struct Recorded {
     pub samples: Vec<f32>,
     /// The values worth keeping. Deliberately a fixed set rather than the whole
@@ -107,6 +116,45 @@ pub struct Recorded {
     /// who turns it down mid-ride would otherwise leave a file whose header
     /// describes a setting that was true for the first ten seconds.
     pub gain_db: f32,
+
+    /// How many real samples of playback the echo canceller had for this block,
+    /// out of [`super::denoise::FRAME_SIZE`].
+    ///
+    /// **The column this whole group was added for.** A recording arrived from
+    /// an iPhone alone in a room, hearing nothing but its own loudspeaker, and
+    /// 88% of the loud blocks were sent back to the far end. The canceller
+    /// removed 36 dB one second and 12 dB the next, on a path that had not
+    /// moved — which is not what an adaptive filter does unless its *reference*
+    /// is moving. Nothing in the file could say whether it had one.
+    ///
+    /// The reference is a queue filled by the output callback and drained 480
+    /// samples a block by the capture worker, and short reads are padded with
+    /// silence. A block that reads 480 had a reference; one that reads 0 had
+    /// none and could not have cancelled anything; anything between is the
+    /// queue running dry mid-block, which splices silence into the middle of
+    /// the reference and moves every alignment measured after it.
+    pub echo_ref_samples: u16,
+    /// Whether echo cancellation was switched on at all.
+    ///
+    /// The same lesson as `mode` and `muted` above: a stage that was off looks
+    /// exactly like a stage that was broken, and arguing about which costs more
+    /// than the column does.
+    pub aec_on: bool,
+    /// Echo return loss enhancement, dB. How much the canceller removed.
+    pub erle_db: f32,
+    /// Where the canceller believes the echo is, in milliseconds behind the
+    /// reference, and how convincing that measurement was (0..1).
+    ///
+    /// The pair, not either alone: the aligner aims deliberately early, so a
+    /// lag that reads low is the design working rather than a miss. A
+    /// confidence that will not rise is the estimator failing to find the echo.
+    pub aec_lag_ms: f32,
+    pub aec_confidence: f32,
+    /// How far apart the arrivals were measured to be, milliseconds. Larger
+    /// than the filter's own span means a second echo it cannot reach.
+    pub aec_spread_ms: f32,
+    /// The filter's length in taps, which the performance ladder shortens.
+    pub aec_taps: u16,
 }
 
 enum Message {
@@ -213,7 +261,8 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
         log,
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
          block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,\
-         modulation,mode,muted,gain_db"
+         modulation,mode,muted,gain_db,echo_ref_samples,aec_on,erle_db,aec_lag_ms,\
+         aec_confidence,aec_spread_ms,aec_taps"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -251,7 +300,8 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
 
         let _ = writeln!(
             sink.log,
-            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1}",
+            "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1},\
+             {},{},{:.1},{:.1},{:.2},{:.1},{}",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -265,6 +315,13 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.mode,
             block.muted as u8,
             block.gain_db,
+            block.echo_ref_samples,
+            block.aec_on as u8,
+            block.erle_db,
+            block.aec_lag_ms,
+            block.aec_confidence,
+            block.aec_spread_ms,
+            block.aec_taps,
         );
         block_index += 1;
 
@@ -312,9 +369,14 @@ mod tests {
             floor_db: -40.0,
             harmonicity: 0.5,
             modulation: 0.4,
-            mode: 0,
-            muted: false,
-            gain_db: 0.0,
+            echo_ref_samples: 480,
+            aec_on: true,
+            erle_db: 14.0,
+            aec_lag_ms: 120.0,
+            aec_confidence: 0.8,
+            aec_spread_ms: 3.0,
+            aec_taps: 1024,
+            ..Default::default()
         }
     }
 

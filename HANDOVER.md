@@ -221,18 +221,76 @@ blocked upstream — there is no Arm64 Flutter SDK for Windows.
 
 ---
 
-## 5. Still true, still unverified
+## 5. It ran on a device, and the device disagreed
 
-**None of the echo work has run on a device.** The fault came from two real
-phones — an iPhone and an Android, each hearing itself through the other — and
-everything proving the fix is synthesised: synthetic wind, a four-tap room, and
-a delay chosen by hand. The quantity the whole design turns on, the real
-tap-to-speaker latency on those two phones, has never been measured.
+**14 August, build 122** — an iPhone alone in a room with its speaker and
+microphone open, a second phone in an acoustically isolated room doing all the
+talking. Every sound in that recording is echo. `20260814-0108-000` in the
+corpus.
 
-The panel now carries the numbers that would settle it — and, since §3.1, an
-**echo** row in the block-cost table that reads near zero on a quiet call and
-lifts when the other end talks. Two phones, one call, the panel open on both:
-that is the whole of what is left, and it is worth more than everything above
-it put together.
+Build 122 is `da2239c`, so the aligner, the divergence fix and everything in
+§1–§3 were all in it. The echo came back anyway:
 
-**Then delete this file.** It has done its job.
+```
+588 blocks with the microphone over -35 dBFS   (all of it echo)
+520 of them transmitted                         88.4%
+median   mic -16.8 dB  ->  sent -45.5 dB
+loudest  mic -10.1 dB  ->  sent -19.0 dB
+```
+
+**The variance is the finding, not the average.** Three seconds of one
+recording, one room, a phone that did not move:
+
+```
+10.50 s   mic -12.2  sent -48.4    36.2 dB removed
+11.50 s   mic  -8.5  sent -36.4    27.9 dB
+15.50 s   mic  -8.5  sent -20.9    12.4 dB
+```
+
+An adaptive filter does not lose 24 dB on a path that has not moved. The
+reference is moving underneath it.
+
+### Two causes, one fixed here
+
+**The enhancer was in front of the canceller.** Fixed: `cancel_echo` now runs
+before `enhancer.process`. NLMS learns a *linear time-invariant* map, which is
+the only reason a thousand taps can describe a room; DeepFilterNet is a
+per-frame gain mask that returns exact zeros below `MIN_DB`. In front of the
+filter there is no fixed set of taps that models what it sees, and on the
+zero-mask frames the canceller reads zero error as perfect cancellation and
+snapshots a filter that is doing nothing. Every production canceller runs ahead
+of noise suppression for this reason. **The comment that used to sit at that
+line said the ordering was "worth watching if echo behaviour changes"** — it
+changed, and that was the answer.
+
+**The echo reference has no time base. Not fixed.** `AudioShared::echo_reference`
+is a plain FIFO: filled only when there is something to play, so every silence
+between the far end's phrases is elided while the microphone runs on
+continuously; drained 480 samples a block and zero-padded when short, splicing
+silence that was never played into the middle of the reference; and cleared
+wholesale past 500 ms rather than trimmed. The offset between a reference sample
+and the moment it leaves the speaker therefore changes at every gap in the far
+end's speech, and the aligner measures one lag with 1.15× hysteresis. **This is
+the next thing to do.**
+
+### Why the tests could not have caught either
+
+Every echo test hands the canceller a contiguous slice of the far-end signal —
+`let r = &far[chunk * BLOCK..(chunk + 1) * BLOCK]`, `echo_alignment.rs:162`.
+The reference is perfect and continuous by construction, silences included. The
+fault lives entirely in the plumbing between the output callback and the capture
+worker, which no test touches. CLAUDE.md's rule about synthetic signals agreeing
+with whoever wrote them, landing on the fix rather than on a feature.
+
+### The recording could not say any of this
+
+Thirteen columns and not one of them about the canceller — no ERLE, no lag, no
+confidence, not even whether it was switched on. All of the above had to be
+inferred from level arithmetic and read out of the source. Seven columns are now
+in the decision log, and `echo_ref_samples` is the one that matters: it counts
+how much of each block's reference was real before the zero-fill hid the
+difference. A block reading 0 had no reference and cannot have cancelled
+anything; anything between 0 and 480 is the queue running dry mid-block.
+
+**The next recording from build 123 or later settles the reference question
+without any inference at all.**

@@ -1172,8 +1172,9 @@ class _ChainDots extends StatelessWidget {
   String _label(L l, UiStage stage) => switch (stage.id) {
     // Listed in the order the chain runs them, matching the order the bridge
     // sends. A lookup does not care, but the next person reading it does.
-    'enhancer' => l.diagStageEnhancer,
+    // The canceller is ahead of the enhancer — `engine.rs` says why.
     'aec' => l.diagStageEcho,
+    'enhancer' => l.diagStageEnhancer,
     'rnnoise' => l.diagStageSuppressor,
     'vad' => l.diagStageVoice,
     'gate' => l.diagStageGate,

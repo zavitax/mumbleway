@@ -57,7 +57,7 @@ switch to remember.
   </figure>
 </div>
 
-One dot per stage of the capture chain: **enhancer**, **echo**, **suppressor**,
+One dot per stage of the capture chain: **echo**, **enhancer**, **suppressor**,
 **voice detected**, **gate**, **levelling**, **hiss**, **feedback**,
 **background** and **to the server**. The colours mean the same thing at every
 stage — green is working and passing audio on, amber is working but holding something back, red
@@ -229,7 +229,7 @@ means the device could not afford the full filter and the chain
 </div>
 
 The third column is the deadline itself, broken down by stage: **input and
-taps**, **speech enhancer**, **echo cancellation**, **suppression**, **feedback
+taps**, **echo cancellation**, **speech enhancer**, **suppression**, **feedback
 guard**, **de-hiss**, **transmit decision**, **encode**, and **not in any
 stage** for what is left over.
 

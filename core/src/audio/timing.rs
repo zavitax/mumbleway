@@ -54,9 +54,10 @@ pub enum Stage {
     /// while a panel is open and the copy only while recording is on — so this
     /// is the stage a rider can shrink by closing something.
     Input = 0,
-    /// DeepFilterNet.
-    Enhancer,
     /// Echo cancellation — `CaptureProcessor::cancel_echo`.
+    ///
+    /// **First, ahead of the enhancer**, because an adaptive filter cannot
+    /// learn a room through a neural mask. `engine.rs` carries the argument.
     ///
     /// **Its own line because its cost depends on what the far end is doing,
     /// and nothing else in the chain does.** Measured on the OPPO it is 16 µs
@@ -66,6 +67,8 @@ pub enum Stage {
     /// stages of near-fixed cost, that reads as a block that went late for no
     /// reason — and the ladder cannot sell what it cannot see.
     Echo,
+    /// DeepFilterNet.
+    Enhancer,
     /// The filters, RNNoise, the pitch search, the gate, the AGC and the
     /// limiter — `CaptureProcessor::suppress`.
     Suppression,
@@ -85,8 +88,8 @@ pub const STAGES: usize = 8;
 /// In [`Stage`] order. Used by the offline harness; the app localises its own.
 pub const STAGE_NAMES: [&str; STAGES] = [
     "input",
-    "enhancer",
     "echo",
+    "enhancer",
     "suppression",
     "feedback",
     "de-hiss",

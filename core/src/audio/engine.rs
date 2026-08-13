@@ -2856,6 +2856,14 @@ where
                     }
                 }
             }
+            // **How much of the reference was real**, before the zero-fill
+            // below hides the difference. A short read is not the same as a
+            // quiet far end: it is the queue running dry, which splices silence
+            // into the reference that was never played and moves every
+            // alignment measured afterwards. It goes in the decision log
+            // because a recording arrived that could not be explained without
+            // it — see `record::Recorded::echo_ref_samples`.
+            let echo_ref_had = echo_ref.len();
             echo_ref.resize(FRAME_SIZE, 0.0);
 
             // Picked up here rather than at construction so the switch takes
@@ -2968,25 +2976,44 @@ where
             // for the background, and this removes the background; fed the
             // output of the enhancer it would never hear music again.
             //
-            // It is in front of the echo canceller too, which is worth
-            // watching: the AEC adapts against a reference of what was played,
-            // and it is now adapting on a signal something else has already
-            // altered. `docs/MUSIC_GATE.md` records this as the thing to check
-            // if echo behaviour changes.
-            enhancer.process(&mut block);
-            timings.record(Stage::Enhancer, lap.split());
-
-            // Two calls rather than one, and only so that the clock can go
-            // between them: `process_with_reference` is exactly these in order.
-            // The canceller is the one stage whose cost is set by the far end
-            // rather than by this device, and the ladder needs to be able to
-            // see that separately from the six stages it shares a span with.
+            // **The echo canceller runs first, ahead of the enhancer.**
+            //
+            // It used to run after, and that was wrong in a way that took a
+            // recording from a real room to see. An NLMS filter learns a
+            // *linear, time-invariant* map from the reference to the echo, and
+            // that is the only reason a thousand coefficients can describe a
+            // room. DeepFilterNet is neither: it applies a per-frame, per-band
+            // gain mask from its own SNR estimate, and below
+            // `deepfilter::MIN_DB` it returns an exact zero frame. Put that in
+            // front of the filter and there is no fixed set of taps that models
+            // what it sees — the target moves every frame, the filter chases it,
+            // and the coefficients it settles on are wrong for the next one.
+            //
+            // The zero-mask branch is the worst of it: the canceller sees no
+            // error at all, reads that as perfect cancellation, and snapshots a
+            // filter that is doing nothing as its best-known-good.
+            //
+            // Every production canceller is ahead of noise suppression for this
+            // reason — WebRTC puts AEC3 first in the capture chain, SpeexDSP
+            // says so in as many words. The comment that used to sit here
+            // flagged the ordering as "worth watching if echo behaviour
+            // changes"; it changed, and this is the answer.
+            //
+            // Nothing else moves. The raw taps — the recorder, the classifier,
+            // the analyser's grey trace — are all above both stages, and every
+            // stage that reads a *level* is below both.
             processor.cancel_echo(&mut block, &echo_ref);
             // Kept as well as recorded: the ladder needs this block's figure,
             // and `timings` is a running total the panel can reset underneath
             // it. See `relief::AecCut`.
             let echo_us = lap.split();
             timings.record(Stage::Echo, echo_us);
+            // Read here, while they describe this block: the recorder is
+            // written further down, after the transmit decision.
+            let (aec_lag, aec_conf, aec_spread, _) = processor.aec_alignment();
+
+            enhancer.process(&mut block);
+            timings.record(Stage::Enhancer, lap.split());
 
             let analysis = processor.suppress(&mut block);
             if analysing {
@@ -3019,6 +3046,18 @@ where
                     floor_db: analysis.noise_floor_db,
                     harmonicity: analysis.harmonicity,
                     modulation: analysis.modulation,
+                    // What the canceller had and what it did with it. Read
+                    // `echo_ref_samples` first: a filter with no reference
+                    // cannot have cancelled anything, and until this column
+                    // existed there was no way to tell that apart from a filter
+                    // that had one and failed.
+                    echo_ref_samples: echo_ref_had as u16,
+                    aec_on: processor.echo_cancellation_enabled(),
+                    erle_db: analysis.erle_db,
+                    aec_lag_ms: aec_lag,
+                    aec_confidence: aec_conf,
+                    aec_spread_ms: aec_spread,
+                    aec_taps: processor.aec_taps() as u16,
                 });
             }
 
@@ -3470,9 +3509,7 @@ mod tests {
             floor_db: -40.0,
             harmonicity: 0.8,
             modulation: 0.5,
-            mode: 0,
-            muted: false,
-            gain_db: 0.0,
+            ..Default::default()
         });
         assert!(!shared.is_diagnostic_recording());
     }
@@ -3503,9 +3540,7 @@ mod tests {
                 floor_db: -45.0,
                 harmonicity: 0.6,
                 modulation: 0.4,
-                mode: 0,
-                muted: false,
-                gain_db: 0.0,
+                ..Default::default()
             });
         }
 

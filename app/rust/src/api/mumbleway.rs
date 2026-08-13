@@ -1264,8 +1264,8 @@ pub fn audio_stage_costs() -> anyhow::Result<UiStageCosts> {
     let t = app()?.shared.stage_timings();
     let order = [
         Stage::Input,
-        Stage::Enhancer,
         Stage::Echo,
+        Stage::Enhancer,
         Stage::Suppression,
         Stage::Feedback,
         Stage::Dehiss,
@@ -1650,8 +1650,8 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     //
     // | # | stage | where |
     // |---|---|---|
-    // | 1 | enhancer | `engine.rs`, before the capture processor is called |
-    // | 2 | aec | `denoise.rs` step 0, first thing inside it |
+    // | 1 | aec | `engine.rs`, before the enhancer — see the note there |
+    // | 2 | enhancer | `engine.rs`, on what the canceller left |
     // | 3 | rnnoise | `denoise.rs` step 2, after the rumble filter |
     // | 4 | vad | `denoise.rs` step 4, the speech decision |
     // | 5 | gate | `denoise.rs` step 5 |
@@ -1660,15 +1660,24 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     // | 8 | dehiss | `engine.rs`, straight after the feedback guard |
     // | 9 | transmit | the encoder |
     //
-    // Two were wrong. **The enhancer was second from last and runs first** —
-    // it is the largest stage in the chain and the first thing the ladder
-    // touches, shown after everything it precedes. And de-hiss was listed
-    // before the feedback guard, where the guard runs first.
+    // Two were wrong when this list was first written. **The enhancer was
+    // second from last and ran first** — the largest stage in the chain, shown
+    // after everything it preceded. And de-hiss was listed before the feedback
+    // guard, where the guard runs first.
+    //
+    // The canceller has since moved ahead of the enhancer, so the first two
+    // have swapped again. `engine.rs` says why; the short version is that an
+    // adaptive filter cannot learn a room through a neural mask.
     //
     // `background` is not a stage at all: no audio passes through the
     // classifier. It sits before `transmit` because that is where it stopped
     // being confusing, not because anything flows through it.
     let stages = vec![
+        UiStage {
+            id: "aec".into(),
+            state: aec,
+            value: c.erle_db,
+        },
         UiStage {
             id: "enhancer".into(),
             // Four states worth telling apart. Green: enhancing at full
@@ -1690,11 +1699,6 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             // Worst frame in milliseconds, against a 10 ms budget. The mean
             // would hide exactly the frame that matters.
             value: c.enhancer_worst_us as f32 / 1000.0,
-        },
-        UiStage {
-            id: "aec".into(),
-            state: aec,
-            value: c.erle_db,
         },
         UiStage {
             id: "rnnoise".into(),

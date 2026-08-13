@@ -92,13 +92,19 @@ jobs:
     needs: test
     runs-on: windows-latest
     # Pinned for the reason `publish.yml`'s `msix` job gives at length: the
-    # runner's default `run:` shell changed from Git bash to pwsh, which turns
-    # a `\` continuation into an argument. Nothing here has one *today*, so
-    # this job did not break — which is precisely why it is worth pinning
-    # before somebody writes the next multi-line command.
+    # runner's default `run:` shell changed from Git bash to pwsh under a
+    # workflow that had not moved. Nothing here broke, because nothing here has
+    # a line continuation — which is exactly why it is worth pinning now rather
+    # than when somebody writes the next multi-line command.
+    #
+    # **`pwsh`, and Rust is the reason.** Under bash, Git's `usr/bin` comes
+    # ahead of the MSVC tools on PATH and `cargo build` picks up Git's
+    # coreutils `link` instead of `link.exe`, failing with
+    # `/usr/bin/link: missing operand` — which looks like a broken toolchain
+    # and is a PATH. This job builds the engine with cargo directly.
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     env:
       # Lifted to job level so the signing steps can test for its presence in
       # an `if:` — secrets are not readable from `if:` expressions directly.
@@ -251,7 +257,7 @@ jobs:
     # See the `windows` job above.
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     env:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:

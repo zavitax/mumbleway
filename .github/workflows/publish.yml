@@ -403,23 +403,25 @@ jobs:
     # **Pinned, because the runner's default changed underneath this workflow.**
     #
     # A `run:` step with no `shell:` used to get Git bash on `windows-latest`.
-    # It now gets pwsh, and the failure is not a shell error — `\` at the end of
-    # a line stops being a continuation and becomes an argument, so
-    # `flutter build windows --release \` reports `Target file "\" not found.`
+    # It now gets pwsh, and the failure was not a shell error — `\` at the end
+    # of a line stops being a continuation and becomes an argument, so
+    # `flutter build windows --release \` reported `Target file "\" not found.`
     # A publish that worked on 11 August failed on 13 August with no change to
     # this file, on an image that had moved to Visual Studio 18.
     #
-    # `bash` rather than `pwsh` because that is what these steps were written
-    # for and what they were passing under. Steps that want PowerShell say so,
-    # and still get it — an explicit `shell:` wins over this.
+    # **`pwsh` and not `bash`, and that was learned the expensive way.** Pinning
+    # these jobs back to bash — which is what they had been passing under — put
+    # `C:\Program Files\Git\usr\bin` ahead of the MSVC tools on PATH, so
+    # `link.exe` resolved to Git's coreutils `link` and every Rust build died
+    # with `/usr/bin/link: missing operand`, which reads as a broken Visual
+    # Studio installation and is a PATH ordering. Nothing in these jobs needs
+    # bash: the one continuation is gone, and the rest are single commands.
     #
-    # Job-level rather than workflow-level: an explicit `shell: bash` adds
-    # `-o pipefail`, which the Linux and macOS jobs do not have today, and
-    # changing how a pipeline fails in the store-upload jobs is not a thing to
-    # do in passing.
+    # Job-level rather than workflow-level, so the Linux and macOS jobs are
+    # untouched. Steps that ask for a shell still get the one they ask for.
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
       # Not a secret in any real sense — the product ID is in the Store
@@ -441,12 +443,14 @@ jobs:
           channel: stable
           cache: true
 
+      # One line, not two with a continuation. The argument is conditional and
+      # is usually empty, so the readable form was a `\` and a substitution on
+      # the next line — which is bash and only bash. See the `defaults:` above.
       - name: Build
         working-directory: app
         run: |
           flutter pub get
-          flutter build windows --release \
-            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
+          flutter build windows --release ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
 
       # The version has to rise on its own, exactly as the build number does on
       # the other three platforms. Partner Center rejects a submission whose
@@ -876,10 +880,10 @@ jobs:
     if: vars.ENABLE_WINDOWS_ARM64 == 'true'
     runs-on: windows-11-arm
     # See the `msix` job: the runner's default shell is not something to rely
-    # on, and this job has the same `\` continuation in its build step.
+    # on, and this job had the same continuation in its build step.
     defaults:
       run:
-        shell: bash
+        shell: pwsh
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
     steps:
@@ -903,8 +907,7 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build windows --release \
-            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
+          flutter build windows --release ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
 
       # Same version rule as the x64 package. The two architectures of one
       # submission must carry the *same* version, so this is deliberately the

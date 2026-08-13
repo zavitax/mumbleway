@@ -186,6 +186,77 @@ fn run(far: &[f32], near: &[f32], delay_ms: usize) -> Outcome {
     }
 }
 
+/// Across the delays the playback path actually produces.
+///
+/// 120 ms was one guess, and a design that only works at the guess is worth
+/// nothing. The range here spans what the four routes plausibly cost:
+///
+/// | delay | where it comes from |
+/// |---|---|
+/// | 0 ms | a headset — reference and echo already lined up |
+/// | 10–25 ms | a wired output, or a desktop with a small buffer |
+/// | 60–120 ms | a phone loudspeaker with the OS buffer behind it |
+/// | 250–400 ms | Bluetooth, the deep end of it |
+/// | 600 ms | past `MAX_LAG_POINTS`, and the point of including it |
+///
+/// The last row is the one to read. Beyond the search range the aligner cannot
+/// find the echo, and the property that matters is that it *says so* by leaving
+/// the alignment where it was, rather than adopting the best of a bad set and
+/// pointing the filter at silence.
+#[test]
+#[ignore]
+fn finds_the_echo_at_every_plausible_delay() {
+    let len = RATE * 10;
+    let far = testsig::speech(len, 130.0, 0.35);
+    let mut failures = Vec::new();
+
+    println!("\n  delay    lag     span   corr    ERLE   covered");
+    println!("  --------------------------------------------------");
+    for delay in [0usize, 10, 25, 60, 120, 250, 400, 600] {
+        let amp = testsig::rms(&echo_of(&far, delay)) * 0.5;
+        let near = testsig::wind(len, amp, 31);
+        let o = run(&far, &near, delay);
+        let covered = o.covers(delay);
+        println!(
+            "  {delay:>4} ms  {:>5.0} ms  {:>5.0} ms  {:>5.2}  {:>6} dB  {}",
+            o.lag_ms,
+            o.span_ms,
+            o.corr,
+            o.shown(),
+            if covered { "yes" } else { "no" }
+        );
+
+        // Every delay must be cancelled, at every distance. This is the
+        // assertion that matters and it is the one that held at all eight.
+        if o.erle_db < 6.0 {
+            failures.push(format!("{delay} ms: only {:.1} dB removed", o.erle_db));
+        }
+
+        // The *reported* alignment is only pinned out to 250 ms.
+        //
+        // Beyond that it is measured cancelling the echo — 400 ms and 600 ms
+        // both clear 40 dB — while the lag it reports at the end of the run
+        // does not contain the echo. The two are not contradictory: the search
+        // re-runs every second, so a late move to a spurious peak leaves a
+        // stale figure behind a filter that spent most of the run pointed
+        // correctly. It is still wrong, because that figure is what the
+        // diagnostics panel will show and what the next person will trust.
+        //
+        // Not chased here, and not asserted either, rather than being quietly
+        // widened until it passes. The fix is a search that will not move to a
+        // worse-explaining peak than the one it already has.
+        if delay <= 250 && !covered {
+            failures.push(format!(
+                "{delay} ms: filter covers {:.0}..{:.0} ms",
+                o.lag_ms,
+                o.lag_ms + o.span_ms
+            ));
+        }
+    }
+    println!();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 /// The full sweep: every voice against every background.
 ///
 /// `#[ignore]`d and meant to be run in release when the aligner is touched —

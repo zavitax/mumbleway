@@ -1409,6 +1409,21 @@ pub struct UiChainStatus {
     /// Ids rather than a rung number, because the mapping from rung to stages
     /// is the ladder's business and it will change as rungs are added.
     pub disabled_stages: Vec<String>,
+    /// What the echo canceller worked out about the path it is cancelling.
+    ///
+    /// **Four numbers because one is not enough to tell working from idle.**
+    /// ERLE alone reads the same for a headset with no echo, a filter that
+    /// never located the echo, and a filter that located it and failed:
+    /// nothing removed. `aec_lag_ms` with `aec_confidence` says whether it
+    /// found anything; `aec_spread_ms` against `aec_window_ms` says whether
+    /// there is a second arrival outside what the filter reaches.
+    pub aec_enabled: bool,
+    pub aec_erle_db: f32,
+    pub aec_lag_ms: f32,
+    pub aec_confidence: f32,
+    pub aec_spread_ms: f32,
+    pub aec_window_ms: f32,
+
     /// Whether the cheap noise model is the one loaded.
     ///
     /// Separate from `enhancer_effort`, which names a rung *within* whichever
@@ -1561,17 +1576,83 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     // Thresholds live here rather than in Dart because they are judgements
     // about the audio, not about the display, and they belong beside the values
     // they judge.
+    // The echo canceller has four states worth telling apart, and the ERLE
+    // alone distinguishes none of them.
+    //
+    // Nothing removed reads identically whether there is no echo to remove,
+    // the filter has not found the one that is there, or it found it and
+    // cannot cancel it. The alignment confidence is what separates those: a
+    // confident lag with no ERLE is a filter that knows where the echo is and
+    // is failing, which is a different problem from one that never located it.
     let aec = if !shared.echo_cancellation_enabled() {
         StageState::Off
     } else if c.erle_db < 0.0 {
+        // Adding rather than subtracting. Should be transient — the canceller
+        // backtracks to its last working coefficients — so seeing this sit is
+        // worth reporting.
         StageState::Bad
+    } else if c.aec_confidence < 0.5 {
+        // Never located the echo. Ordinary on a headset, where there is no
+        // acoustic path and nothing to find; it is only a fault beside a
+        // speaker, and the panel cannot tell which this is.
+        StageState::Warn
     } else if c.erle_db < 6.0 {
         StageState::Warn
     } else {
         StageState::Good
     };
 
+    // **In the order the chain runs them**, which is not the order they were
+    // in and not an arrangement anyone should have to reconstruct from the
+    // code. The panel draws this list left to right and a rider reads it as a
+    // journey from the microphone to the wire, so an out-of-order dot does not
+    // look wrong, it looks like the chain works differently than it does.
+    //
+    // Verified against the source, not remembered:
+    //
+    // | # | stage | where |
+    // |---|---|---|
+    // | 1 | enhancer | `engine.rs`, before the capture processor is called |
+    // | 2 | aec | `denoise.rs` step 0, first thing inside it |
+    // | 3 | rnnoise | `denoise.rs` step 2, after the rumble filter |
+    // | 4 | vad | `denoise.rs` step 4, the speech decision |
+    // | 5 | gate | `denoise.rs` step 5 |
+    // | 6 | agc | `denoise.rs` step 6, with the limiter |
+    // | 7 | feedback | `engine.rs`, after the processor returns |
+    // | 8 | dehiss | `engine.rs`, straight after the feedback guard |
+    // | 9 | transmit | the encoder |
+    //
+    // Two were wrong. **The enhancer was second from last and runs first** —
+    // it is the largest stage in the chain and the first thing the ladder
+    // touches, shown after everything it precedes. And de-hiss was listed
+    // before the feedback guard, where the guard runs first.
+    //
+    // `background` is not a stage at all: no audio passes through the
+    // classifier. It sits before `transmit` because that is where it stopped
+    // being confusing, not because anything flows through it.
     let stages = vec![
+        UiStage {
+            id: "enhancer".into(),
+            // Four states worth telling apart. Green: enhancing at full
+            // effort. Amber: still enhancing, but stepped down because this
+            // phone could not return a frame inside 10 ms — which sounds
+            // different and is a fact about the device, so it must not read as
+            // green. Red: it stepped all the way down to pass-through. Grey:
+            // it never loaded at all, which is a build problem rather than
+            // theirs.
+            state: if c.enhancer_on && c.enhancer_effort == 0 {
+                StageState::Good
+            } else if c.enhancer_on {
+                StageState::Warn
+            } else if c.enhancer_gave_up {
+                StageState::Bad
+            } else {
+                StageState::Off
+            },
+            // Worst frame in milliseconds, against a 10 ms budget. The mean
+            // would hide exactly the frame that matters.
+            value: c.enhancer_worst_us as f32 / 1000.0,
+        },
         UiStage {
             id: "aec".into(),
             state: aec,
@@ -1620,15 +1701,6 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             value: c.agc_gain_db,
         },
         UiStage {
-            id: "dehiss".into(),
-            state: if c.dehiss_mode == 0 {
-                StageState::Off
-            } else {
-                StageState::Good
-            },
-            value: 0.0,
-        },
-        UiStage {
             id: "feedback".into(),
             state: if c.feedback_mode == 0 {
                 StageState::Off
@@ -1638,26 +1710,13 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             value: 0.0,
         },
         UiStage {
-            id: "enhancer".into(),
-            // Four states worth telling apart. Green: enhancing at full
-            // effort. Amber: still enhancing, but stepped down because this
-            // phone could not return a frame inside 10 ms — which sounds
-            // different and is a fact about the device, so it must not read as
-            // green. Red: it stepped all the way down to pass-through. Grey:
-            // it never loaded at all, which is a build problem rather than
-            // theirs.
-            state: if c.enhancer_on && c.enhancer_effort == 0 {
-                StageState::Good
-            } else if c.enhancer_on {
-                StageState::Warn
-            } else if c.enhancer_gave_up {
-                StageState::Bad
-            } else {
+            id: "dehiss".into(),
+            state: if c.dehiss_mode == 0 {
                 StageState::Off
+            } else {
+                StageState::Good
             },
-            // Worst frame in milliseconds, against a 10 ms budget. The mean
-            // would hide exactly the frame that matters.
-            value: c.enhancer_worst_us as f32 / 1000.0,
+            value: 0.0,
         },
         UiStage {
             id: "background".into(),
@@ -1692,6 +1751,12 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
 
     Ok(UiChainStatus {
         stages,
+        aec_enabled: c.aec_enabled,
+        aec_erle_db: c.erle_db,
+        aec_lag_ms: c.aec_lag_ms,
+        aec_confidence: c.aec_confidence,
+        aec_spread_ms: c.aec_spread_ms,
+        aec_window_ms: c.aec_window_ms,
         would_pass_voice_activated: c.would_pass_voice_activated,
         transmitting: c.transmitting,
         warming_up: c.warming_up,

@@ -902,6 +902,27 @@ class LEn extends L {
   String get diagOpensAt => 'Opens at';
 
   @override
+  String get diagEchoGroup => 'Echo cancellation';
+
+  @override
+  String get diagEchoRemoved => 'Echo removed';
+
+  @override
+  String get diagEchoOff => 'Switched off';
+
+  @override
+  String get diagEchoDelay => 'Echo found at';
+
+  @override
+  String get diagEchoNotFound => 'Not found';
+
+  @override
+  String get diagEchoConfidence => 'Confidence';
+
+  @override
+  String get diagEchoSecondPath => 'Second path, beyond reach';
+
+  @override
   String get diagPlotFloor => 'floor';
 
   @override

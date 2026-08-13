@@ -822,6 +822,23 @@ impl CaptureProcessor {
         self.aec.is_enabled()
     }
 
+    /// What the echo canceller has worked out about the path: where the echo
+    /// is, how sure it is, how wide the arrivals are spread, and how much of
+    /// that the filter covers. All in milliseconds except the confidence.
+    ///
+    /// For the diagnostics panel. A canceller that is doing nothing and one
+    /// with nothing to do look identical from outside, and these four numbers
+    /// are what tell them apart.
+    pub fn aec_alignment(&self) -> (f32, f32, f32, f32) {
+        let (lag_ms, confidence) = self.aec.alignment();
+        (
+            lag_ms,
+            confidence,
+            self.aec.measured_spread_ms(),
+            self.aec.filter_span_ms(),
+        )
+    }
+
     /// Processes one block, using `reference` — the audio recently sent to the
     /// speakers — to cancel echo. `reference` may be empty or shorter.
     pub fn process_with_reference(

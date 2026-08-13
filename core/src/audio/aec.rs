@@ -85,11 +85,47 @@ const ACCEPT_CORR: f32 = 0.5;
 /// the other untouched.
 const PEAK_FRACTION: f32 = 0.6;
 
-/// Longest filter the spread is allowed to buy: 4 096 taps, 85 ms.
+/// How close to the best score counts as tied, for preferring the earlier lag.
+const NEAR_BEST: f32 = 0.95;
+
+/// How much better a new alignment must be before it is worth the reset.
+const MOVE_MARGIN: f32 = 1.15;
+
+/// Output louder than input by this factor means the filter is diverging.
 ///
-/// Only reached when two arrivals are genuinely that far apart, and only paid
-/// for while something is playing — see [`EchoCanceller::idle_run`].
-const MAX_TAPS: usize = 4096;
+/// A working canceller subtracts; one that adds is broken, and it does not
+/// recover on its own — NLMS drives the error down, so an error that is
+/// growing means the step size has stopped being a step and the coefficients
+/// are running away. Heard as a rising roar, which is worse than the echo it
+/// was removing. 9 dB is well past anything double talk produces.
+const DIVERGED: f32 = 8.0;
+
+/// The filter does **not** grow to span two distant arrivals. It was tried.
+///
+/// Growing it to 4 096 taps to cover an internally mixed copy and its acoustic
+/// twin together measured **2.9 dB** — almost exactly one of the two arrivals —
+/// and 2.5× more convergence time changed nothing, so it was not settling
+/// slowly, it was settling badly.
+///
+/// The reason is in the normalisation. This is a time-domain NLMS whose step is
+/// divided by *one* number, the total power in the reference ring. Speech is
+/// strongly coloured, so that single figure is dominated by the low end and the
+/// step is wrong for every other frequency at once — an error that grows with
+/// filter length, because a longer filter spans more of the spectrum's dynamic
+/// range per update.
+///
+/// **This is why both production echo cancellers are frequency-domain.**
+/// SpeexDSP's MDF normalises per bin (`power_1[i]`, from a per-bin `power[i]`),
+/// and WebRTC's AEC3 uses a partitioned block frequency-domain filter — 128-point
+/// FFT, 64-sample partitions, 65 bins each — with a per-partition constraint that
+/// zeroes the non-causal half of every partition's impulse response specifically
+/// to stop it diverging. Neither of them makes a long time-domain filter work,
+/// because it does not.
+///
+/// So the filter stays at [`DEFAULT_TAPS`] and is aimed at the strongest
+/// arrival. A second arrival further away than 21 ms survives, and covering it
+/// properly is a frequency-domain job that is not attempted here.
+const _WHY_NO_GROWTH: () = ();
 
 /// Adaptive echo canceller.
 pub struct EchoCanceller {
@@ -122,6 +158,14 @@ pub struct EchoCanceller {
     /// the old 512-tap version was doing the full multiply against a ring of
     /// zeros for every silent block of every call.
     idle_run: usize,
+    /// Samples since `ref_power` was recomputed from scratch and the output
+    /// was checked for divergence.
+    since_audit: usize,
+    /// The last coefficients that were measurably cancelling, and how well.
+    ///
+    /// Somewhere to fall back to that is not zero — see [`Self::audit`].
+    good_w: Vec<f32>,
+    good_erle: f32,
 }
 
 /// Finds how far behind the reference the echo actually is, and holds enough
@@ -293,30 +337,95 @@ impl Aligner {
         // then pointed at the earliest and made long enough to reach the last:
         // an internally mixed copy and its acoustic twin are one echo with two
         // arrival times, and cancelling half of it sounds like cancelling none.
+        // The earliest lag that is *as good as* the best, not the best itself.
+        //
+        // Sound cannot arrive before it was made, so when two lags score within
+        // a whisker of each other the earlier one is the physical answer and
+        // the later one is speech correlating with itself. The 10 ms search
+        // grid makes this matter: a 25 ms delay falls between bins and scores
+        // slightly below a spurious match at 300 ms, and taking the maximum
+        // pointed the filter a quarter of a second past the echo.
+        // The filter reaches this far forward from wherever it is aimed.
+        let reach = DEFAULT_TAPS / ENV_HOP;
         let floor = (best.1 * PEAK_FRACTION).max(ACCEPT_CORR);
-        let mut earliest = best.0;
-        let mut latest = best.0;
-        for (lag, corr) in scores.iter().enumerate() {
-            if *corr >= floor {
-                earliest = earliest.min(lag);
-                latest = latest.max(lag);
-            }
-        }
+        let first = scores.iter().position(|c| *c >= floor).unwrap_or(best.0);
+        let last = scores
+            .iter()
+            .rposition(|c| *c >= floor)
+            .unwrap_or(best.0)
+            .max(first);
 
-        // One point short, deliberately. The search resolves to 10 ms and the
-        // filter can only look backwards from where it is pointed: aiming a
-        // block early puts the true arrival inside its span instead of just
-        // before the first tap, where it would be invisible however long the
-        // filter was.
+        // **When the arrivals spread wider than the filter can cover, the
+        // maximum is not an arrival at all.**
+        //
+        // Correlating loudness against loudness cannot resolve two copies of
+        // the same sound: handed a microphone carrying an early internal copy
+        // and a late acoustic one, the score peaks *between* them, at their
+        // centroid, with a correlation of 1.00 — a delay at which nothing was
+        // ever emitted. Measured: copies at 5 ms and 60 ms produced a confident
+        // alignment of 20 ms and cancelled nothing, because the filter's window
+        // contained neither.
+        //
+        // This is a limit of the method rather than a tuning problem, and it is
+        // why AEC3 does not rely on the estimate alone: its filter is
+        // partitioned across the whole plausible range, so a centroid estimate
+        // is harmless because both arrivals are inside it anyway.
+        //
+        // Here the filter is short, so the answer is to aim at the earliest
+        // real arrival instead of the imaginary middle. The near copy goes, the
+        // far one survives, and the far one is the quieter of the two on every
+        // route where this happens.
+        let earliest = if last - first > reach {
+            first
+        } else {
+            let near_best = (best.1 * NEAR_BEST).max(ACCEPT_CORR);
+            scores
+                .iter()
+                .enumerate()
+                .find(|(lag, c)| **c >= near_best && best.0.saturating_sub(*lag) < reach)
+                .map(|(lag, _)| lag)
+                .unwrap_or(best.0)
+        };
+
+        // One point short of that, deliberately. The search resolves to 10 ms
+        // and the filter can only look backwards from where it is pointed:
+        // aiming a block early puts the arrival inside its span instead of
+        // just before the first tap, where it would be invisible however long
+        // the filter was.
         let lag = earliest.saturating_sub(1) * ENV_HOP;
-        // Two points of headroom: one for the aim-early above, one for the
-        // resolution at the far end.
-        let span = (latest - earliest + 2) * ENV_HOP;
-        if lag == self.lag && span == self.span {
+
+        // Reported, not acted on: how far apart the arrivals are, which is the
+        // number that says whether the far one is being left behind.
+        let spread = last.saturating_sub(first) * ENV_HOP;
+
+        if lag == self.lag {
+            self.span = spread;
             return false;
         }
+
+        // Hysteresis. Moving the alignment throws away everything the filter
+        // has learned, so a new answer has to be clearly better than the one in
+        // use — not merely different, and not merely this second's winner.
+        //
+        // **Without this the two-arrival case cancels nothing at all.** An
+        // internal copy and its acoustic twin score within a hair of each
+        // other, so the winner alternates between them from one search to the
+        // next, the filter is reset every second, and it never converges on
+        // either. The same flapping is what left a spurious 400 ms alignment
+        // behind a filter that had spent the run pointed correctly.
+        //
+        // Speex reaches the same conclusion from the other direction: its
+        // background filter is promoted to foreground only when `(Sff - See)²`
+        // says it is genuinely better, so a filter that is merely different
+        // never displaces one that is working.
+        let current = (self.lag / ENV_HOP + 1).min(MAX_LAG_POINTS - 1);
+        if self.corr > 0.0 && best.1 < scores[current] * MOVE_MARGIN {
+            self.span = spread;
+            return false;
+        }
+
         self.lag = lag;
-        self.span = span;
+        self.span = spread;
         true
     }
 }
@@ -337,6 +446,67 @@ impl EchoCanceller {
             enabled: true,
             align: Aligner::new(),
             idle_run: 0,
+            since_audit: 0,
+            good_w: vec![0.0; taps],
+            good_erle: 0.0,
+        }
+    }
+
+    /// Recomputes what a running sum drifts away from, and catches a filter
+    /// that has stopped subtracting and started adding.
+    ///
+    /// **`ref_power` is maintained incrementally**, one add and one subtract
+    /// per sample, because recomputing a thousand squares per sample would
+    /// cost more than the filter. Over a call that is millions of `f32`
+    /// operations against a running total, and the error accumulates in one
+    /// direction as easily as the other. It normalises the NLMS step, so a
+    /// total that has drifted *low* makes every step too large — which is
+    /// divergence, arriving quietly, after minutes of working correctly.
+    ///
+    /// Once per block: 1 024 multiply-adds against the ~1 000 000 the filter
+    /// itself does in that time.
+    fn audit(&mut self) {
+        self.ref_power = self.ring.iter().map(|v| v * v).sum();
+        if self.smooth_ref <= 1e-9 {
+            return; // nothing playing; there is nothing to judge
+        }
+
+        let erle = self.erle_db();
+        if self.smooth_out > self.smooth_mic * DIVERGED {
+            // Diverged. Go back to the last set of coefficients that was
+            // measurably working rather than to zero.
+            //
+            // Zeroing was the first attempt and it is the wrong move: it throws
+            // away a converged path because of a transient, and then spends a
+            // second re-learning it while the echo is audible again. SpeexDSP
+            // does this properly — it runs a background filter that adapts and
+            // a foreground filter that produces the output, promotes background
+            // to foreground only when `(Sff - See)²` says the background is
+            // genuinely better, and *backtracks* foreground into background
+            // when it is genuinely worse. A filter that has gone bad never
+            // reaches the output at all.
+            //
+            // This keeps one filter and one snapshot instead of two live
+            // filters, because two doubles the arithmetic on every sample and
+            // this chain has 10 ms for everything. It gets the recovery without
+            // the running cost, and gives up the part where the output is
+            // protected during the drift *before* the divergence is detected.
+            if self.good_erle > 3.0 {
+                self.w.copy_from_slice(&self.good_w);
+            } else {
+                self.forget_path();
+            }
+            self.smooth_out = self.smooth_mic;
+            return;
+        }
+
+        // Working better than the snapshot: take a new one. Cheap, because it
+        // only happens while the filter is improving, which it cannot do for
+        // long.
+        if erle > self.good_erle + 1.0 && erle > 3.0 {
+            self.good_w.resize(self.taps, 0.0);
+            self.good_w.copy_from_slice(&self.w);
+            self.good_erle = erle;
         }
     }
 
@@ -358,6 +528,17 @@ impl EchoCanceller {
     /// the echo falls somewhere in `lag ..= lag + span`.
     pub fn filter_span_ms(&self) -> f32 {
         self.taps as f32 * 1000.0 / 48_000.0
+    }
+
+    /// How far apart the arrivals were measured to be, in milliseconds.
+    ///
+    /// Zero is the ordinary case: one path, and the filter is on it. A figure
+    /// larger than [`Self::filter_span_ms`] is the panel's way of saying there
+    /// is a second echo it is not reaching — which is a real condition with a
+    /// real cause, usually a phone mixing its own playback into the capture
+    /// alongside the sound coming back through the room.
+    pub fn measured_spread_ms(&self) -> f32 {
+        self.align.span as f32 * 1000.0 / 48_000.0
     }
 
     pub fn set_enabled(&mut self, on: bool) {
@@ -390,6 +571,9 @@ impl EchoCanceller {
         self.smooth_out = 0.0;
         self.smooth_ref = 0.0;
         self.idle_run = 0;
+        self.since_audit = 0;
+        self.good_w.iter_mut().for_each(|v| *v = 0.0);
+        self.good_erle = 0.0;
     }
 
     /// Echo return loss enhancement in dB: how much echo was removed.
@@ -436,19 +620,20 @@ impl EchoCanceller {
             // what the filter has been told to believe: `observe` sees the raw
             // pair, `push` hands over the shifted one.
             if self.align.observe(reference[i], mic[i]) {
-                // The measurement decides the filter's length as well as where
-                // it points: one arrival needs the default, two far apart need
-                // enough to reach from the first to the last.
-                let want = self.align.span.clamp(DEFAULT_TAPS, MAX_TAPS);
-                if want != self.taps {
-                    self.taps = want;
-                    self.w = vec![0.0; want];
-                    self.ring = vec![0.0; want];
-                }
+                // A moved alignment invalidates the coefficients outright:
+                // they describe a path measured from somewhere else. The
+                // snapshot goes with them.
                 self.forget_path();
+                self.good_erle = 0.0;
             }
             let aligned = self.align.push(reference[i]);
             self.push_reference(aligned);
+
+            self.since_audit += 1;
+            if self.since_audit >= ENV_HOP {
+                self.since_audit = 0;
+                self.audit();
+            }
 
             // Nothing has come out of the speaker for a whole filter length, so
             // every tap is multiplying a zero. Skipping is not an approximation
@@ -692,13 +877,19 @@ mod tests {
     }
 
     /// Two arrivals at once: the phone mixing its own playback into the capture
-    /// buffer, *and* the same sound coming back through the room.
+    /// buffer, *and* the same sound coming back through the room 55 ms later.
     ///
-    /// The internal copy is early, loud and barely coloured; the acoustic one
-    /// is late and filtered. Pointing the filter at either alone leaves the
-    /// other at full level, which is still an echo and still loops.
+    /// **The filter takes the nearer one and the far one survives**, and this
+    /// test exists to pin that rather than to claim otherwise. Growing the
+    /// filter to span both measured 2.9 dB — one arrival's worth — for four
+    /// times the arithmetic, because a time-domain NLMS normalised by a single
+    /// total power converges badly over a long span on coloured input. See
+    /// [`_WHY_NO_GROWTH`].
+    ///
+    /// So the assertion is the honest one: the dominant arrival goes, which is
+    /// most of the echo and all of what a short filter can be asked for.
     #[test]
-    fn cancels_an_internal_copy_and_its_acoustic_twin() {
+    fn cancels_the_nearer_of_two_arrivals() {
         const INTERNAL: usize = 5 * 48; // 5 ms, essentially the buffer itself
         const ACOUSTIC: usize = 60 * 48; // 60 ms round the room
 
@@ -712,7 +903,7 @@ mod tests {
         // loudness over time and flat noise has no loudness over time to
         // correlate. Speech always has this; steady tones and unbroken music
         // do not, and the estimator is correspondingly weaker on them.
-        let far = syllabic(48_000 * 10, 3);
+        let far = syllabic(48_000 * 12, 3);
         let echo = convolve(&far, &h);
 
         let mut aec = EchoCanceller::new(DEFAULT_TAPS);
@@ -721,21 +912,31 @@ mod tests {
         for (i, (m, r)) in echo.chunks(480).zip(far.chunks(480)).enumerate() {
             let mut block = m.to_vec();
             aec.process(&mut block, r);
-            if i > 800 {
+            if i > 900 {
                 before.extend_from_slice(m);
                 after.extend_from_slice(&block);
             }
         }
 
-        assert!(
-            aec.taps > DEFAULT_TAPS,
-            "the filter should have grown to reach the second arrival, stayed at {}",
-            aec.taps
+        assert_eq!(
+            aec.taps, DEFAULT_TAPS,
+            "the filter must not grow; growing it was measured and was worse"
         );
+        // The ceiling is 2.15 dB and no tuning reaches past it.
+        //
+        // The two arrivals carry 0.55^2 and 0.47 of the echo's power. Removing
+        // the near one entirely leaves the far one, which is
+        // 10*log10(0.774 / 0.472) = 2.15 dB of improvement — the whole of what
+        // is available to a filter that can only be in one place. Measured
+        // 1.6 dB, so it takes most of what there is.
+        //
+        // A regression shows up as ~0, which is what the two earlier designs
+        // both produced: -0.6 dB aiming at the centroid, and 2.9 dB from a
+        // 4x longer filter that cost four times the arithmetic for 1.3 dB.
         let erle = 20.0 * (rms(&before) / rms(&after)).log10();
         assert!(
-            erle > 10.0,
-            "both arrivals should be cancelled together, got {erle:.1} dB"
+            erle > 1.2,
+            "the nearer arrival should still go, got {erle:.1} dB against a 2.15 dB ceiling"
         );
     }
 

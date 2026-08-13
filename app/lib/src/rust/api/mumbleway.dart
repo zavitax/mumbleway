@@ -845,6 +845,21 @@ class UiChainStatus {
   /// is the ladder's business and it will change as rungs are added.
   final List<String> disabledStages;
 
+  /// What the echo canceller worked out about the path it is cancelling.
+  ///
+  /// **Four numbers because one is not enough to tell working from idle.**
+  /// ERLE alone reads the same for a headset with no echo, a filter that
+  /// never located the echo, and a filter that located it and failed:
+  /// nothing removed. `aec_lag_ms` with `aec_confidence` says whether it
+  /// found anything; `aec_spread_ms` against `aec_window_ms` says whether
+  /// there is a second arrival outside what the filter reaches.
+  final bool aecEnabled;
+  final double aecErleDb;
+  final double aecLagMs;
+  final double aecConfidence;
+  final double aecSpreadMs;
+  final double aecWindowMs;
+
   /// Whether the cheap noise model is the one loaded.
   ///
   /// Separate from `enhancer_effort`, which names a rung *within* whichever
@@ -908,6 +923,12 @@ class UiChainStatus {
     required this.inputClipped,
     required this.effectiveProfile,
     required this.disabledStages,
+    required this.aecEnabled,
+    required this.aecErleDb,
+    required this.aecLagMs,
+    required this.aecConfidence,
+    required this.aecSpreadMs,
+    required this.aecWindowMs,
     required this.enhancerSimpleModel,
     required this.relief,
     required this.analyserDecayDisabled,
@@ -932,6 +953,12 @@ class UiChainStatus {
       inputClipped.hashCode ^
       effectiveProfile.hashCode ^
       disabledStages.hashCode ^
+      aecEnabled.hashCode ^
+      aecErleDb.hashCode ^
+      aecLagMs.hashCode ^
+      aecConfidence.hashCode ^
+      aecSpreadMs.hashCode ^
+      aecWindowMs.hashCode ^
       enhancerSimpleModel.hashCode ^
       relief.hashCode ^
       analyserDecayDisabled.hashCode ^
@@ -958,6 +985,12 @@ class UiChainStatus {
           inputClipped == other.inputClipped &&
           effectiveProfile == other.effectiveProfile &&
           disabledStages == other.disabledStages &&
+          aecEnabled == other.aecEnabled &&
+          aecErleDb == other.aecErleDb &&
+          aecLagMs == other.aecLagMs &&
+          aecConfidence == other.aecConfidence &&
+          aecSpreadMs == other.aecSpreadMs &&
+          aecWindowMs == other.aecWindowMs &&
           enhancerSimpleModel == other.enhancerSimpleModel &&
           relief == other.relief &&
           analyserDecayDisabled == other.analyserDecayDisabled &&

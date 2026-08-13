@@ -1170,14 +1170,16 @@ class _ChainDots extends StatelessWidget {
   /// translated, and a message built in the engine would be the one string a
   /// translator could not reach.
   String _label(L l, UiStage stage) => switch (stage.id) {
+    // Listed in the order the chain runs them, matching the order the bridge
+    // sends. A lookup does not care, but the next person reading it does.
     'enhancer' => l.diagStageEnhancer,
     'aec' => l.diagStageEcho,
     'rnnoise' => l.diagStageSuppressor,
     'vad' => l.diagStageVoice,
     'gate' => l.diagStageGate,
     'agc' => l.diagStageLevel,
-    'dehiss' => l.diagStageHiss,
     'feedback' => l.diagStageFeedback,
+    'dehiss' => l.diagStageHiss,
     'background' => l.diagStageBackground,
     'transmit' => l.diagStageTransmit,
     _ => stage.id,

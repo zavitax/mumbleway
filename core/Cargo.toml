@@ -123,3 +123,25 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 [patch.crates-io]
 tract-core = { path = "../third_party/tract-core" }
 
+
+# The same three pins `app/rust/Cargo.toml` carries, and for the same reason.
+#
+# The `cmake` crate infers `CMAKE_BUILD_TYPE` from `opt-level`, so an
+# unoptimised build compiles libopus against the *debug* CRT (`/MDd`) while
+# Rust's MSVC target always links the release one. The link then fails with
+# `unresolved external symbol __imp__CrtDbgReportW`, from every Opus object
+# that contains an `assert`.
+#
+# It was missing here and the tests still passed, because the artifacts had
+# been built once under conditions that happened to work and nothing since had
+# forced a rebuild. A `cargo clean` was enough to expose it. These also run on
+# every 10 ms block and are too slow unoptimised to hold realtime, so the pin
+# is correct on its own merits.
+[profile.dev.package.audiopus_sys]
+opt-level = 2
+
+[profile.dev.package.opus]
+opt-level = 2
+
+[profile.dev.package.nnnoiseless]
+opt-level = 2

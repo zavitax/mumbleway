@@ -407,6 +407,61 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               ),
                             ],
                           ),
+                          // Echo cancellation, which until now reported one
+                          // number — how much it removed — and that number
+                          // cannot tell the three cases apart that matter.
+                          //
+                          // Nothing removed reads identically for a headset
+                          // with no echo to remove, a filter that never found
+                          // the echo, and a filter that found it and failed.
+                          // The alignment separates them: a confident lag with
+                          // no ERLE is a filter that knows where the echo is
+                          // and cannot cancel it, which is a different fault
+                          // with a different cause.
+                          if (_chain != null)
+                            _Group(
+                              title: l.diagEchoGroup,
+                              rows: [
+                                _Row(
+                                  l.diagEchoRemoved,
+                                  _chain!.aecEnabled
+                                      ? '${_chain!.aecErleDb.toStringAsFixed(1)} dB'
+                                      : l.diagEchoOff,
+                                  bad: _chain!.aecEnabled &&
+                                      _chain!.aecErleDb < 0,
+                                ),
+                                // Where the echo is, and whether that is a
+                                // measurement or a guess. Below the accept
+                                // threshold the filter is pointed wherever it
+                                // was last told, so the lag alone would be
+                                // misleading without the confidence beside it.
+                                _Row(
+                                  l.diagEchoDelay,
+                                  _chain!.aecConfidence < 0.5
+                                      ? l.diagEchoNotFound
+                                      : '${_chain!.aecLagMs.toStringAsFixed(0)} ms'
+                                          ' ±${_chain!.aecWindowMs.toStringAsFixed(0)}',
+                                ),
+                                _Row(
+                                  l.diagEchoConfidence,
+                                  _chain!.aecConfidence.toStringAsFixed(2),
+                                ),
+                                // Only when there is something to say. A
+                                // spread wider than the filter's window means
+                                // a second echo it is not reaching — the
+                                // phone mixing its own playback into the
+                                // capture as well as the sound coming back
+                                // through the room — and that is a real
+                                // finding rather than a number to watch.
+                                if (_chain!.aecSpreadMs >
+                                    _chain!.aecWindowMs)
+                                  _Row(
+                                    l.diagEchoSecondPath,
+                                    '${_chain!.aecSpreadMs.toStringAsFixed(0)} ms',
+                                    bad: true,
+                                  ),
+                              ],
+                            ),
                         ],
                         // Where a block's 10 ms actually goes.
                         //

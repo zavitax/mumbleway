@@ -79,6 +79,21 @@ pub struct ChainStatus {
     pub muted: bool,
     /// Echo removed on the last block, in dB.
     pub erle_db: f32,
+    /// Whether echo cancellation is switched on at all.
+    pub aec_enabled: bool,
+    /// Where the canceller has decided the echo is, how convinced it is
+    /// (0..1), how far apart the arrivals are, and how much of that the filter
+    /// covers. Milliseconds except the confidence.
+    ///
+    /// **`erle_db` alone cannot distinguish a canceller that is failing from
+    /// one with no echo to cancel** — both report nothing removed. The
+    /// alignment is what separates them: a confident lag with no ERLE is a
+    /// filter that found the echo and cannot remove it, and no confidence at
+    /// all is a filter that never found it.
+    pub aec_lag_ms: f32,
+    pub aec_confidence: f32,
+    pub aec_spread_ms: f32,
+    pub aec_window_ms: f32,
     /// Gain the AGC is applying, in dB.
     pub agc_gain_db: f32,
     /// Post-suppression level, the noise floor under it, and the level a block
@@ -155,6 +170,11 @@ impl Default for ChainStatus {
             transmitting: false,
             muted: false,
             erle_db: 0.0,
+            aec_enabled: true,
+            aec_lag_ms: 0.0,
+            aec_confidence: 0.0,
+            aec_spread_ms: 0.0,
+            aec_window_ms: 0.0,
             agc_gain_db: 0.0,
             level_db: -120.0,
             noise_floor_db: -100.0,
@@ -3151,6 +3171,7 @@ where
             // Unconditional. It is a few dozen bytes behind an uncontended
             // lock, and paying it always is cheaper than the class of bug where
             // the dots are stale because the analyser happened to be disarmed.
+            let aec_align = processor.aec_alignment();
             shared.publish_chain_status(ChainStatus {
                 warming_up: analysis.warming_up,
                 vad_says_speech: analysis.vad_says_speech,
@@ -3160,6 +3181,11 @@ where
                 transmitting: allowed,
                 muted: shared.is_muted(),
                 erle_db: analysis.erle_db,
+                aec_enabled: processor.echo_cancellation_enabled(),
+                aec_lag_ms: aec_align.0,
+                aec_confidence: aec_align.1,
+                aec_spread_ms: aec_align.2,
+                aec_window_ms: aec_align.3,
                 agc_gain_db: analysis.agc_gain_db,
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,

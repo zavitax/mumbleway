@@ -1735,6 +1735,48 @@ abstract class L {
   /// **'Opens at'**
   String get diagOpensAt;
 
+  /// No description provided for @diagEchoGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo cancellation'**
+  String get diagEchoGroup;
+
+  /// No description provided for @diagEchoRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo removed'**
+  String get diagEchoRemoved;
+
+  /// No description provided for @diagEchoOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Switched off'**
+  String get diagEchoOff;
+
+  /// No description provided for @diagEchoDelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo found at'**
+  String get diagEchoDelay;
+
+  /// No description provided for @diagEchoNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Not found'**
+  String get diagEchoNotFound;
+
+  /// No description provided for @diagEchoConfidence.
+  ///
+  /// In en, this message translates to:
+  /// **'Confidence'**
+  String get diagEchoConfidence;
+
+  /// No description provided for @diagEchoSecondPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Second path, beyond reach'**
+  String get diagEchoSecondPath;
+
   /// No description provided for @diagPlotFloor.
   ///
   /// In en, this message translates to:

@@ -910,6 +910,27 @@ class LRu extends L {
   String get diagOpensAt => 'Порог открытия';
 
   @override
+  String get diagEchoGroup => 'Подавление эха';
+
+  @override
+  String get diagEchoRemoved => 'Убрано эха';
+
+  @override
+  String get diagEchoOff => 'Выключено';
+
+  @override
+  String get diagEchoDelay => 'Эхо найдено на';
+
+  @override
+  String get diagEchoNotFound => 'Не найдено';
+
+  @override
+  String get diagEchoConfidence => 'Уверенность';
+
+  @override
+  String get diagEchoSecondPath => 'Второй путь, вне досягаемости';
+
+  @override
   String get diagPlotFloor => 'шум';
 
   @override

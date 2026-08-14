@@ -452,10 +452,29 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                       : '${_chain!.aecLagMs.toStringAsFixed(0)} ms'
                                           ' ±${_chain!.aecWindowMs.toStringAsFixed(0)}',
                                 ),
+                                // Which canceller produced everything above it.
+                                //
+                                // **The rows do not mean the same thing for
+                                // both.** A recording that cannot say which one
+                                // it came from cannot be read, and the same is
+                                // true of a panel somebody is describing over
+                                // the phone.
                                 _Row(
-                                  l.diagEchoConfidence,
-                                  _chain!.aecConfidence.toStringAsFixed(2),
+                                  l.diagEchoCanceller,
+                                  _chain!.aec3
+                                      ? l.diagEchoCancellerAec3
+                                      : l.diagEchoCancellerFilter,
                                 ),
+                                // AEC3's confidence is 0 or 1 — its delay
+                                // estimator has an answer or it has not — so
+                                // printing `1.00` would dress a yes up as a
+                                // measurement. The old filter reports a real
+                                // correlation and the fraction is worth seeing.
+                                if (!_chain!.aec3)
+                                  _Row(
+                                    l.diagEchoConfidence,
+                                    _chain!.aecConfidence.toStringAsFixed(2),
+                                  ),
                                 // Only when the ladder has taken it. The row
                                 // is the answer to "why has the echo come
                                 // back on this phone and not that one", and
@@ -474,8 +493,19 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 // capture as well as the sound coming back
                                 // through the room — and that is a real
                                 // finding rather than a number to watch.
-                                if (_chain!.aecSpreadMs >
-                                    _chain!.aecWindowMs)
+                                //
+                                // **Never under AEC3**, which measures no
+                                // spread at all: it is partitioned across the
+                                // whole plausible range instead of aimed at one
+                                // arrival, so there is no "outside the window"
+                                // for a second path to be in. Its zero is the
+                                // absence of a measurement rather than a
+                                // measurement of absence, and the guard below
+                                // would otherwise be comparing one against a
+                                // window it does not describe.
+                                if (!_chain!.aec3 &&
+                                    _chain!.aecSpreadMs >
+                                        _chain!.aecWindowMs)
                                   _Row(
                                     l.diagEchoSecondPath,
                                     '${_chain!.aecSpreadMs.toStringAsFixed(0)} ms',

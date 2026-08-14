@@ -3215,6 +3215,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_aecConfidence = <f32>::sse_decode(deserializer);
         let mut var_aecSpreadMs = <f32>::sse_decode(deserializer);
         let mut var_aecWindowMs = <f32>::sse_decode(deserializer);
+        let mut var_aec3 = <bool>::sse_decode(deserializer);
         let mut var_enhancerSimpleModel = <bool>::sse_decode(deserializer);
         let mut var_relief = <u32>::sse_decode(deserializer);
         let mut var_analyserDecayDisabled = <bool>::sse_decode(deserializer);
@@ -3243,6 +3244,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             aec_confidence: var_aecConfidence,
             aec_spread_ms: var_aecSpreadMs,
             aec_window_ms: var_aecWindowMs,
+            aec3: var_aec3,
             enhancer_simple_model: var_enhancerSimpleModel,
             relief: var_relief,
             analyser_decay_disabled: var_analyserDecayDisabled,
@@ -4055,6 +4057,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.aec_confidence.into_into_dart().into_dart(),
             self.aec_spread_ms.into_into_dart().into_dart(),
             self.aec_window_ms.into_into_dart().into_dart(),
+            self.aec3.into_into_dart().into_dart(),
             self.enhancer_simple_model.into_into_dart().into_dart(),
             self.relief.into_into_dart().into_dart(),
             self.analyser_decay_disabled.into_into_dart().into_dart(),
@@ -4940,6 +4943,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <f32>::sse_encode(self.aec_confidence, serializer);
         <f32>::sse_encode(self.aec_spread_ms, serializer);
         <f32>::sse_encode(self.aec_window_ms, serializer);
+        <bool>::sse_encode(self.aec3, serializer);
         <bool>::sse_encode(self.enhancer_simple_model, serializer);
         <u32>::sse_encode(self.relief, serializer);
         <bool>::sse_encode(self.analyser_decay_disabled, serializer);

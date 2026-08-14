@@ -1771,6 +1771,24 @@ abstract class L {
   /// **'Confidence'**
   String get diagEchoConfidence;
 
+  /// Which of the two echo cancellers is running. The numbers above this row do not mean the same thing for both, so the panel has to say which one produced them.
+  ///
+  /// In en, this message translates to:
+  /// **'Canceller'**
+  String get diagEchoCanceller;
+
+  /// The frequency-domain canceller from WebRTC. A proper noun; do not translate.
+  ///
+  /// In en, this message translates to:
+  /// **'AEC3'**
+  String get diagEchoCancellerAec3;
+
+  /// The older time-domain filter, kept as a fallback. Named by what it is rather than by an acronym, because a rider reading this aloud to somebody should not have to spell NLMS.
+  ///
+  /// In en, this message translates to:
+  /// **'Adaptive filter'**
+  String get diagEchoCancellerFilter;
+
   /// No description provided for @diagEchoShortened.
   ///
   /// In en, this message translates to:

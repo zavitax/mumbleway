@@ -869,6 +869,18 @@ class UiChainStatus {
   final double aecSpreadMs;
   final double aecWindowMs;
 
+  /// Which canceller produced the five numbers above — AEC3, or the
+  /// time-domain filter it replaced.
+  ///
+  /// **They do not mean the same thing for both, so the panel has to say
+  /// which.** AEC3's confidence is only ever 0 or 1: it has located the echo
+  /// or it has not, and it reports no fraction in between. It measures no
+  /// spread at all, because it is partitioned across the whole plausible
+  /// range rather than aimed at one arrival — so a spread of `0.0 ms` from it
+  /// is the absence of a measurement, not a measurement of absence, and the
+  /// panel hides the row rather than printing a number nothing established.
+  final bool aec3;
+
   /// Whether the cheap noise model is the one loaded.
   ///
   /// Separate from `enhancer_effort`, which names a rung *within* whichever
@@ -939,6 +951,7 @@ class UiChainStatus {
     required this.aecConfidence,
     required this.aecSpreadMs,
     required this.aecWindowMs,
+    required this.aec3,
     required this.enhancerSimpleModel,
     required this.relief,
     required this.analyserDecayDisabled,
@@ -970,6 +983,7 @@ class UiChainStatus {
       aecConfidence.hashCode ^
       aecSpreadMs.hashCode ^
       aecWindowMs.hashCode ^
+      aec3.hashCode ^
       enhancerSimpleModel.hashCode ^
       relief.hashCode ^
       analyserDecayDisabled.hashCode ^
@@ -1003,6 +1017,7 @@ class UiChainStatus {
           aecConfidence == other.aecConfidence &&
           aecSpreadMs == other.aecSpreadMs &&
           aecWindowMs == other.aecWindowMs &&
+          aec3 == other.aec3 &&
           enhancerSimpleModel == other.enhancerSimpleModel &&
           relief == other.relief &&
           analyserDecayDisabled == other.analyserDecayDisabled &&

@@ -596,6 +596,10 @@ void main() {
         'appTitle',
         'proxyHostPortHint',
         'serverAddressHint',
+        // The name of WebRTC's echo canceller. Translating it would invent a
+        // Russian name for a thing that has one, and a rider reading it out to
+        // somebody needs the name the rest of the world uses.
+        'diagEchoCancellerAec3',
       };
       final untranslated = [
         for (final k in enKeys)

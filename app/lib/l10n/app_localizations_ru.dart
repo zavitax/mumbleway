@@ -928,6 +928,15 @@ class LRu extends L {
   String get diagEchoConfidence => 'Уверенность';
 
   @override
+  String get diagEchoCanceller => 'Эхоподавитель';
+
+  @override
+  String get diagEchoCancellerAec3 => 'AEC3';
+
+  @override
+  String get diagEchoCancellerFilter => 'Адаптивный фильтр';
+
+  @override
   String get diagEchoShortened => 'Фильтр укорочен, чтобы успевать';
 
   @override

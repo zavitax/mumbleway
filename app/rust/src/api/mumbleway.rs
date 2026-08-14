@@ -1432,6 +1432,17 @@ pub struct UiChainStatus {
     pub aec_confidence: f32,
     pub aec_spread_ms: f32,
     pub aec_window_ms: f32,
+    /// Which canceller produced the five numbers above — AEC3, or the
+    /// time-domain filter it replaced.
+    ///
+    /// **They do not mean the same thing for both, so the panel has to say
+    /// which.** AEC3's confidence is only ever 0 or 1: it has located the echo
+    /// or it has not, and it reports no fraction in between. It measures no
+    /// spread at all, because it is partitioned across the whole plausible
+    /// range rather than aimed at one arrival — so a spread of `0.0 ms` from it
+    /// is the absence of a measurement, not a measurement of absence, and the
+    /// panel hides the row rather than printing a number nothing established.
+    pub aec3: bool,
 
     /// Whether the cheap noise model is the one loaded.
     ///
@@ -1617,24 +1628,35 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
     // cannot cancel it. The alignment confidence is what separates those: a
     // confident lag with no ERLE is a filter that knows where the echo is and
     // is failing, which is a different problem from one that never located it.
+    // The order of these arms is the diagnosis, not a preference: each one is
+    // a different reason for the same reading, and the earlier arms are the
+    // ones that explain the later ones.
     let aec = if !shared.echo_cancellation_enabled() {
         StageState::Off
-    } else if c.aec_shortened && c.erle_db < 6.0 {
+    } else if !c.aec3 && c.aec_shortened && c.erle_db < 6.0 {
         // On the short filter and not cancelling much: the two are worth
         // showing together, because the shortened path is a plausible cause
         // and the panel is the only place that connection can be made.
+        //
+        // Only for the old filter. AEC3 has no tap count and `aec_shortened`
+        // is always false for it, but saying so is cheaper than leaving the
+        // next reader to work out why the arm cannot fire.
         StageState::Warn
     } else if c.erle_db < 0.0 {
-        // Adding rather than subtracting. Should be transient — the canceller
-        // backtracks to its last working coefficients — so seeing this sit is
-        // worth reporting.
+        // Adding rather than subtracting. Should be transient — the old filter
+        // backtracks to its last working coefficients and AEC3 has its own
+        // divergence handling — so seeing this sit is worth reporting.
         StageState::Bad
     } else if c.aec_confidence < 0.5 {
-        // Never located the echo. Ordinary on a headset, where there is no
-        // acoustic path and nothing to find; it is only a fault beside a
-        // speaker, and the panel cannot tell which this is.
+        // **Has not located the echo**, which for AEC3 is the literal state of
+        // its delay estimator rather than a weak correlation. Ordinary on a
+        // headset, where there is no acoustic path and nothing to find; a fault
+        // only beside a speaker, and the panel cannot tell which this is.
         StageState::Warn
     } else if c.erle_db < 6.0 {
+        // Found it and is not removing much of it. On AEC3 this is the state
+        // that would have said something on build 123, where the canceller was
+        // confident and removing 0.2 dB.
         StageState::Warn
     } else {
         StageState::Good
@@ -1800,6 +1822,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         aec_confidence: c.aec_confidence,
         aec_spread_ms: c.aec_spread_ms,
         aec_window_ms: c.aec_window_ms,
+        aec3: c.aec3,
         would_pass_voice_activated: c.would_pass_voice_activated,
         transmitting: c.transmitting,
         warming_up: c.warming_up,

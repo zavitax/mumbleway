@@ -419,6 +419,18 @@
   "diagEchoDelay": "Echo found at",
   "diagEchoNotFound": "Not found",
   "diagEchoConfidence": "Confidence",
+  "diagEchoCanceller": "Canceller",
+  "@diagEchoCanceller": {
+    "description": "Which of the two echo cancellers is running. The numbers above this row do not mean the same thing for both, so the panel has to say which one produced them."
+  },
+  "diagEchoCancellerAec3": "AEC3",
+  "@diagEchoCancellerAec3": {
+    "description": "The frequency-domain canceller from WebRTC. A proper noun; do not translate."
+  },
+  "diagEchoCancellerFilter": "Adaptive filter",
+  "@diagEchoCancellerFilter": {
+    "description": "The older time-domain filter, kept as a fallback. Named by what it is rather than by an acronym, because a rider reading this aloud to somebody should not have to spell NLMS."
+  },
   "diagEchoShortened": "Filter shortened to fit",
   "diagEchoSecondPath": "Second path, beyond reach",
   "diagPlotFloor": "floor",

@@ -184,7 +184,7 @@ build on this platform.
 
 ```bash
 cd core && cargo fmt --check   # CI runs this first, and it gates every job
-cd core && cargo test          # 375 tests
+cd core && cargo test          # 381 tests
 cd app  && flutter analyze     # must be clean
 cd app  && flutter test        # 206 tests
 ```

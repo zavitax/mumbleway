@@ -97,6 +97,17 @@ pub struct ChainStatus {
     pub aec_confidence: f32,
     pub aec_spread_ms: f32,
     pub aec_window_ms: f32,
+    /// Which of the two cancellers is running.
+    ///
+    /// **The four numbers above do not mean the same thing for both**, and
+    /// without this the panel would present them as if they did. AEC3 reports a
+    /// confidence that is only ever 0 or 1 — it has found the echo or it has
+    /// not — and no spread at all, because it is partitioned across the whole
+    /// range instead of aimed at one arrival. The old filter reports a real
+    /// fraction and a real spread, and a rider reading `0.0 ms` of spread off a
+    /// canceller that never measures it would be reading a fact that was never
+    /// established.
+    pub aec3: bool,
     /// Gain the AGC is applying, in dB.
     pub agc_gain_db: f32,
     /// Post-suppression level, the noise floor under it, and the level a block
@@ -179,6 +190,7 @@ impl Default for ChainStatus {
             aec_confidence: 0.0,
             aec_spread_ms: 0.0,
             aec_window_ms: 0.0,
+            aec3: false,
             agc_gain_db: 0.0,
             level_db: -120.0,
             noise_floor_db: -100.0,
@@ -3323,6 +3335,7 @@ where
                 aec_confidence: aec_align.1,
                 aec_spread_ms: aec_align.2,
                 aec_window_ms: aec_align.3,
+                aec3: processor.aec_is_aec3(),
                 agc_gain_db: analysis.agc_gain_db,
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,

@@ -35,11 +35,11 @@ const BLOCKS_PER_SECOND: u32 = SAMPLE_RATE / FRAME_SIZE as u32;
 
 /// How fast the trim comes off while the input is clipping.
 ///
-/// 0.25 dB a block is 25 dB/s, so the whole of a +30 dB boost is gone inside
-/// about a second and a quarter. Fast enough that a rider does not sit clipped
-/// through a sentence, slow enough to be a fade rather than a step — a single
-/// jump of 30 dB mid-word is its own artefact.
-const ATTACK_DB_PER_BLOCK: f32 = 0.25;
+/// 0.1 dB a block is 10 dB/s, so the whole of a +30 dB boost takes three
+/// seconds and a more typical +6 dB is gone in under one. Slow enough that the
+/// correction is a fade nobody hears as a step — a fast jump mid-word is its
+/// own artefact, and the clipping it is fixing lasts only until it arrives.
+const ATTACK_DB_PER_BLOCK: f32 = 0.1;
 
 /// Clean audio required before any of the trim is given back, in blocks.
 ///
@@ -50,10 +50,11 @@ const HOLD_BLOCKS: u32 = 3 * BLOCKS_PER_SECOND;
 
 /// Blocks to give back one dB.
 ///
-/// Twelve seconds a dB, which is roughly twenty times slower than it came off.
-/// Asymmetry is the point: clipping is audible immediately and the correction
-/// should be too, while the return should be slow enough that nobody hears it
-/// happening and it cannot oscillate against a source that clips periodically.
+/// Twelve seconds a dB — 1/12 dB/s against the attack's 10, so it goes back
+/// about 120 times slower than it came off. Asymmetry is the point: clipping is
+/// audible immediately and the correction should be too, while the return
+/// should be slow enough that nobody hears it happening and it cannot oscillate
+/// against a source that clips periodically.
 const RECOVERY_BLOCKS_PER_DB: u32 = 12 * BLOCKS_PER_SECOND;
 
 const RECOVERY_DB_PER_BLOCK: f32 = 1.0 / RECOVERY_BLOCKS_PER_DB as f32;
@@ -201,7 +202,9 @@ mod tests {
     #[test]
     fn the_gain_comes_back_after_sustained_clean_audio() {
         let mut g = ClipGuard::new();
-        run(&mut g, 8, 5, 12.0);
+        // 30 blocks is 0.3 s of clipping, which at 10 dB/s is a 3 dB dip --
+        // comfortably clear of the recovery step this test then measures.
+        run(&mut g, 30, 5, 12.0);
         let dipped = g.trim_db();
         assert!(dipped < -1.0, "expected a real dip, got {dipped}");
 
@@ -293,7 +296,7 @@ mod tests {
         assert_eq!(BLOCKS_PER_SECOND, 100, "10 ms blocks at 48 kHz");
         assert_eq!(HOLD_BLOCKS, 300, "three seconds");
         assert_eq!(RECOVERY_BLOCKS_PER_DB, 1200, "twelve seconds a dB");
-        // 25 dB/s off, 1/12 dB/s back: the asymmetry the module comment claims.
-        assert!((ATTACK_DB_PER_BLOCK * BLOCKS_PER_SECOND as f32 - 25.0).abs() < 1e-6);
+        // 10 dB/s off, 1/12 dB/s back: the asymmetry the module comment claims.
+        assert!((ATTACK_DB_PER_BLOCK * BLOCKS_PER_SECOND as f32 - 10.0).abs() < 1e-6);
     }
 }

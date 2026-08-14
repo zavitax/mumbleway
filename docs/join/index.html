@@ -21,16 +21,40 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Join a server &middot; MumbleWay</title>
+<title>Add a server &middot; MumbleWay</title>
 <style>
   :root { color-scheme: dark light; }
   body {
     font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     margin: 0; padding: 32px 20px; background: #0f1115; color: #e8eaed;
     display: flex; justify-content: center;
+    /* Room at the foot for the bars, so the last line of content never sits
+       under them however short the page is. */
+    min-height: 100vh; box-sizing: border-box; padding-bottom: 190px;
   }
-  main { width: 100%; max-width: 30rem; }
-  h1 { font-size: 1.5rem; margin: 0 0 1.5rem; }
+  main { width: 100%; max-width: 30rem; position: relative; z-index: 1; }
+  /* Uppercase in the markup rather than by `text-transform`, so the casing is
+     in the text itself. The letter-spacing is the part that matters: caps set
+     at normal tracking read as shouting rather than as a heading. */
+  h1 { font-size: 1.5rem; margin: 0 0 1.5rem; text-align: center; letter-spacing: 0.06em; }
+
+  /* The wordmark, and then a clear gap. The logo is the only thing on this
+     page that says which app is asking, so it wants air around it rather than
+     to read as the first line of the card. */
+  .brand { text-align: center; margin: 8px 0 44px; }
+  .brand img { width: 143px; max-width: 45%; height: auto; }
+
+  /* The analyser from the home page's hero, along the foot of the page.
+     Fixed rather than in the flow: it belongs to the page, not to the content,
+     and on a short page there is nothing below the button to anchor it to.
+     `pointer-events: none` so it never swallows a tap meant for the button. */
+  #analyser {
+    position: fixed; inset: auto 0 0 0;
+    width: 100%; height: 160px;
+    opacity: 0.34; pointer-events: none; z-index: 0;
+    mask-image: linear-gradient(to top, #000 0%, #000 30%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to top, #000 0%, #000 30%, transparent 100%);
+  }
   .card {
     background: #1a1d23; border: 1px solid #2a2e37; border-radius: 12px;
     padding: 20px; margin-bottom: 24px;
@@ -50,8 +74,17 @@
   code { background: #22262e; padding: 2px 6px; border-radius: 4px; word-break: break-all; }
 </style>
 
+<canvas id="analyser" aria-hidden="true"></canvas>
+
 <main>
-  <h1>Join a server</h1>
+  <!-- The wordmark goes home, as a site's logo is expected to. It is the same
+       destination as the link at the foot; somebody who wants to know what
+       this is will reach for one or the other, and both should work. -->
+  <p class="brand">
+    <a href="../"><img src="../assets/img/mumbleway-wordmark.svg" alt="MumbleWay"
+                       width="537" height="256"></a>
+  </p>
+  <h1>ADD A SERVER</h1>
   <div id="detail" class="card" hidden><dl id="rows"></dl></div>
   <a id="open" class="open" hidden>Open in MumbleWay</a>
   <p id="empty" class="muted" hidden>
@@ -135,3 +168,9 @@
   });
 })();
 </script>
+<!-- The home page's hero animation, unchanged and unforked: the same file,
+     drawing the same three traces. It honours prefers-reduced-motion and stops
+     itself when the tab is hidden, so nothing here has to. Loaded last and
+     deferred, because a page whose whole job is to open an app must not wait on
+     decoration to become tappable. -->
+<script src="../assets/js/analyser.js" defer></script>

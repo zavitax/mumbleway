@@ -858,6 +858,36 @@ jobs:
             Write-Output "::warning::The Store still has a submission at '$what', and one in flight blocks the next -- so this build was not sent. Wait for it to settle and run this again; the package is attached to this run if it needs to go in by hand."
             exit 0
           }
+          # **Settled is not the same as gone**, and the difference is a pending
+          # submission that is still sitting there.
+          #
+          # `Canceled` is on the settled list above for a good reason and stays
+          # there. But a cancelled submission can still exist as a *pending* one
+          # in Partner Center, and if it was created by hand rather than through
+          # the API, the API cannot clear it: `msstore` tries to delete it first
+          # and comes back with "Ingestion API can only update, delete, and
+          # commit submissions that are created through the API". Only a person
+          # can remove it, in Partner Center.
+          #
+          # Caught here rather than there because the submit step reaches that
+          # error after building and uploading a package, and the message it
+          # prints says nothing about which submission or where to go. Note this
+          # branch can only fire in a state that already fails hard a few seconds
+          # later, so it cannot block a publish that would otherwise have worked.
+          if ($status -match 'Found Pending Submission' -and
+              $status -match '\b(Canceled|Cancelled)\b') {
+            "ready=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            $msg = "Partner Center has a pending submission in the Canceled state. " +
+                   "The Ingestion API can only delete submissions it created, so this one has to go by hand: " +
+                   "open the app in Partner Center, delete the in-progress submission, then run this again. " +
+                   "The MSIX is attached to this run either way."
+            if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+              Write-Output "::error::$msg"
+              exit 1
+            }
+            Write-Output "::warning::$msg"
+            exit 0
+          }
           if ($status -match "\b($settled)\b") {
             "ready=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             Write-Output "the last submission is settled ($($Matches[1])); safe to submit"

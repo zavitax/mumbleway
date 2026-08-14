@@ -179,7 +179,10 @@ impl EchoCanceller {
 
     pub fn aec3() -> Self {
         Self {
-            inner: Inner::Aec3(Box::new(super::aec3::Aec3::new())),
+            // `Box::default()` rather than `Box::new(Aec3::new())`: the two are
+            // the same call, since `Default for Aec3` is `Self::new()`, and
+            // clippy's `box_default` rejects the longer one.
+            inner: Inner::Aec3(Box::<super::aec3::Aec3>::default()),
         }
     }
 

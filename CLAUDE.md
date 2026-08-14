@@ -184,10 +184,17 @@ build on this platform.
 
 ```bash
 cd core && cargo fmt --check   # CI runs this first, and it gates every job
+cd core && cargo clippy --all-targets -- -D warnings   # same job, right after
 cd core && cargo test          # 381 tests
 cd app  && flutter analyze     # must be clean
 cd app  && flutter test        # 206 tests
 ```
+
+**Clippy is on this list because leaving it off cost a red build.** It sits in
+the `Tests` job between `fmt` and the engine tests, on the same `needs: test`
+that every other job hangs from, and `-D warnings` means a lint is an error.
+`cargo test` and `flutter analyze` both pass on code it rejects, so nothing else
+here stands in for it.
 
 **`cargo fmt --check` is first for a reason**: it is the first step of the
 `Tests` job, and every other job in `build.yml` is `needs: test`. So one

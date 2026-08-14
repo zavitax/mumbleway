@@ -1669,6 +1669,12 @@ abstract class L {
   /// **'Microphone clipped'**
   String get diagInputClipped;
 
+  /// How much the clip guard is holding back off the rider's input gain, because that gain was driving the microphone into clipping. Negative dB. The gain slider deliberately does not move, so this row is the only place the difference is visible.
+  ///
+  /// In en, this message translates to:
+  /// **'Gain backed off'**
+  String get diagInputTrim;
+
   /// No description provided for @diagMicrophoneLevel.
   ///
   /// In en, this message translates to:

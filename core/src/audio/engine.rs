@@ -27,6 +27,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use super::clipguard::ClipGuard;
 use super::codec::{Quality, VoiceEncoder, FRAME_SAMPLES, SEQ_UNITS_PER_FRAME};
 use super::deepfilter::Enhancer;
 use super::dehiss::{DehissMode, Expander, SpectralSubtractor};
@@ -110,6 +111,15 @@ pub struct ChainStatus {
     pub aec3: bool,
     /// Gain the AGC is applying, in dB.
     pub agc_gain_db: f32,
+    /// What the clip guard is holding back off the rider's input gain, in dB.
+    ///
+    /// Never positive, and zero whenever the guard is idle. **The gain slider
+    /// does not move with it** — the rider's setting is theirs and is what gets
+    /// saved, so this is the only place the difference between the two is
+    /// visible. A rider who has set the slider to +18 on a microphone that
+    /// cannot take it sees `-6` here and the reason their voice is quieter than
+    /// the slider suggests.
+    pub input_trim_db: f32,
     /// Post-suppression level, the noise floor under it, and the level a block
     /// has to reach to count as speech. All dBFS.
     pub level_db: f32,
@@ -192,6 +202,7 @@ impl Default for ChainStatus {
             aec_window_ms: 0.0,
             aec3: false,
             agc_gain_db: 0.0,
+            input_trim_db: 0.0,
             level_db: -120.0,
             noise_floor_db: -100.0,
             activation_threshold_db: -100.0,
@@ -2677,6 +2688,10 @@ where
     // costs nothing and neither has to learn from scratch on every change.
     let mut expander = Expander::standard();
     let mut subtractor = SpectralSubtractor::new();
+    // Holds the correction to the rider's gain across blocks. Worker-local, so
+    // it starts at zero on every stream and cannot outlive the microphone it
+    // was measured from.
+    let mut clip_guard = ClipGuard::new();
     // Allocated once, like everything else this thread touches. It does no work
     // at all unless the diagnostics panel is asking for frames.
     let mut analyser = SpectrumAnalyser::new();
@@ -2827,7 +2842,15 @@ where
 
             // Microphone gain goes in ahead of the DSP chain, so the level
             // meter, the gate and the far end all see the same signal.
-            let gain = 10f32.powf(shared.input_gain_db() / 20.0);
+            //
+            // The rider's setting plus whatever the clip guard is holding back.
+            // The trim is only ever negative and never takes the total below
+            // unity; the guard's own comment has the reasoning, and the short
+            // version is that clipping happens *here*, so it is the only place
+            // it can be prevented. `input_gain_db()` is left alone — the slider
+            // keeps the rider's number and is what gets saved.
+            let user_gain_db = shared.input_gain_db();
+            let gain = 10f32.powf((user_gain_db + clip_guard.trim_db()) / 20.0);
             if (gain - 1.0).abs() > 1e-3 {
                 for s in block.iter_mut() {
                     *s *= gain;
@@ -2866,6 +2889,12 @@ where
                 sum_sq += (s as f64) * (s as f64);
             }
             shared.note_input_peak(peak, clipped);
+
+            // Fed the count measured *after* the gain, which is what makes this
+            // a reading of the gain in force rather than of the microphone
+            // alone. One block of delay before the correction reaches the
+            // multiply above — 10 ms, which is a fade rather than a lag.
+            clip_guard.observe(clipped, user_gain_db);
 
             // **The meter shows the microphone, not the chain's opinion of
             // it.** This used to be `analysis.level_db`, measured after
@@ -3337,6 +3366,7 @@ where
                 aec_window_ms: aec_align.3,
                 aec3: processor.aec_is_aec3(),
                 agc_gain_db: analysis.agc_gain_db,
+                input_trim_db: clip_guard.trim_db(),
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,
                 activation_threshold_db: analysis.activation_threshold_db,

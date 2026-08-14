@@ -824,6 +824,17 @@ class UiChainStatus {
   final double inputPeakDb;
   final BigInt inputClipped;
 
+  /// What the clip guard is holding back off the gain slider, in dB. Never
+  /// positive, and `0.0` when it is idle.
+  ///
+  /// **The slider does not move with this, deliberately**, so the panel is
+  /// the only place the two can be reconciled. A rider who set +18 on a
+  /// microphone that cannot take it has a slider saying +18, a voice quieter
+  /// than that implies, and — without this row — nothing at all connecting
+  /// the two. It is runtime only: the rider's number is what gets saved, and
+  /// this starts at zero every launch.
+  final double inputTrimDb;
+
   /// The suppression profile actually in force.
   ///
   /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -942,6 +953,7 @@ class UiChainStatus {
     required this.activationThresholdDb,
     required this.inputPeakDb,
     required this.inputClipped,
+    required this.inputTrimDb,
     required this.effectiveProfile,
     required this.disabledStages,
     required this.aecEnabled,
@@ -974,6 +986,7 @@ class UiChainStatus {
       activationThresholdDb.hashCode ^
       inputPeakDb.hashCode ^
       inputClipped.hashCode ^
+      inputTrimDb.hashCode ^
       effectiveProfile.hashCode ^
       disabledStages.hashCode ^
       aecEnabled.hashCode ^
@@ -1008,6 +1021,7 @@ class UiChainStatus {
           activationThresholdDb == other.activationThresholdDb &&
           inputPeakDb == other.inputPeakDb &&
           inputClipped == other.inputClipped &&
+          inputTrimDb == other.inputTrimDb &&
           effectiveProfile == other.effectiveProfile &&
           disabledStages == other.disabledStages &&
           aecEnabled == other.aecEnabled &&

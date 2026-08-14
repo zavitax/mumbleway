@@ -3205,6 +3205,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_activationThresholdDb = <f32>::sse_decode(deserializer);
         let mut var_inputPeakDb = <f32>::sse_decode(deserializer);
         let mut var_inputClipped = <u64>::sse_decode(deserializer);
+        let mut var_inputTrimDb = <f32>::sse_decode(deserializer);
         let mut var_effectiveProfile =
             <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         let mut var_disabledStages = <Vec<String>>::sse_decode(deserializer);
@@ -3235,6 +3236,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             activation_threshold_db: var_activationThresholdDb,
             input_peak_db: var_inputPeakDb,
             input_clipped: var_inputClipped,
+            input_trim_db: var_inputTrimDb,
             effective_profile: var_effectiveProfile,
             disabled_stages: var_disabledStages,
             aec_enabled: var_aecEnabled,
@@ -4048,6 +4050,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.activation_threshold_db.into_into_dart().into_dart(),
             self.input_peak_db.into_into_dart().into_dart(),
             self.input_clipped.into_into_dart().into_dart(),
+            self.input_trim_db.into_into_dart().into_dart(),
             self.effective_profile.into_into_dart().into_dart(),
             self.disabled_stages.into_into_dart().into_dart(),
             self.aec_enabled.into_into_dart().into_dart(),
@@ -4934,6 +4937,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <f32>::sse_encode(self.activation_threshold_db, serializer);
         <f32>::sse_encode(self.input_peak_db, serializer);
         <u64>::sse_encode(self.input_clipped, serializer);
+        <f32>::sse_encode(self.input_trim_db, serializer);
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);
         <Vec<String>>::sse_encode(self.disabled_stages, serializer);
         <bool>::sse_encode(self.aec_enabled, serializer);

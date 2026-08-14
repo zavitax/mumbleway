@@ -869,6 +869,9 @@ class LEn extends L {
   String get diagInputClipped => 'Microphone clipped';
 
   @override
+  String get diagInputTrim => 'Gain backed off';
+
+  @override
   String get diagMicrophoneLevel => 'After suppression';
 
   @override

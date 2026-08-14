@@ -389,6 +389,7 @@
   "diagMicrophoneDropped": "Потеряно с микрофона",
   "diagInputPeak": "Пик микрофона",
   "diagInputClipped": "Перегрузка микрофона",
+  "diagInputTrim": "Усиление снижено",
   "diagMicrophoneLevel": "После шумоподавления",
   "diagReconnectAttempts": "Попыток переподключения",
   "diagReset": "Сбросить",

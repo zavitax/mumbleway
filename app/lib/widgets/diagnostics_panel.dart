@@ -395,6 +395,22 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   '${_chain!.inputClipped} samples',
                                   bad: true,
                                 ),
+                              // **The one place the slider and the gain in
+                              // force can be reconciled.** The guard backs the
+                              // rider's boost off when it clips and does not
+                              // move the slider doing it, so without this row a
+                              // rider sees +18 on screen, hears something
+                              // quieter, and has nothing connecting the two.
+                              //
+                              // Shown only while it is holding something back.
+                              // A row that reads `0.0 dB` whenever the input
+                              // behaves is a row nobody reads, and this one has
+                              // to be noticed on the one occasion it matters.
+                              if ((_chain?.inputTrimDb ?? 0) < -0.05)
+                                _Row(
+                                  l.diagInputTrim,
+                                  '${_chain!.inputTrimDb.toStringAsFixed(1)} dB',
+                                ),
                               // All three from the chain, and all three after
                               // suppression, because they are only meaningful
                               // against each other: the level the gate sees,

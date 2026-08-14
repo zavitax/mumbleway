@@ -877,6 +877,9 @@ class LRu extends L {
   String get diagInputClipped => 'Перегрузка микрофона';
 
   @override
+  String get diagInputTrim => 'Усиление снижено';
+
+  @override
   String get diagMicrophoneLevel => 'После шумоподавления';
 
   @override

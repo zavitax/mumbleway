@@ -26,7 +26,7 @@ A new Flutter FFI plugin project.
   s.frameworks = 'AudioToolbox', 'AVFoundation', 'CoreAudio'
 
   # Matches IPHONEOS_DEPLOYMENT_TARGET in Runner.xcodeproj.
-  s.platform = :ios, '13.0'
+  s.platform = :ios, '15.0'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }

@@ -380,8 +380,16 @@ frameworks explicitly.
 
 **Deployment targets (macOS and iOS).** Left unset, libopus's C objects follow
 the SDK while Rust targets a much older OS, and the linker complains the objects
-are "built for newer 'iOS' version". The podspecs and workflow pin iOS 13.0 and
+are "built for newer 'iOS' version". The podspecs and workflow pin iOS 15.0 and
 macOS 10.15 to match the Xcode projects.
+
+The iOS floor is 15.0 rather than something lower because the App Store is
+moving to require it. It costs no hardware: iOS 13 and iOS 15 run on exactly the
+same iPhones, 6s and later. **Three places have to move together** — the three
+`IPHONEOS_DEPLOYMENT_TARGET` entries in `Runner.xcodeproj`, `s.platform` in
+`app/rust_builder/ios/rust_lib_mumbleway.podspec`, and the workflow `env:` in
+both `build.yml` and `publish.yml` — because it is the *disagreement* between
+them that produces the linker error above, not the value itself.
 
 The remaining two are Windows-specific, and neither shows up when you build the
 Rust crate on its own with `cargo build`.

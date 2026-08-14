@@ -332,7 +332,7 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         working-directory: app
         env:
-          IPHONEOS_DEPLOYMENT_TARGET: '13.0'
+          IPHONEOS_DEPLOYMENT_TARGET: '15.0'
         run: |
           flutter pub get
           # The build number has to rise with every upload: App Store Connect

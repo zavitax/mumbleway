@@ -459,7 +459,7 @@ jobs:
           # Match the Xcode project, so libopus's C objects and the Rust code
           # agree. Left unset, the C build follows the SDK (26.5) while Rust
           # targets 10.0, and the linker complains the objects are too new.
-          IPHONEOS_DEPLOYMENT_TARGET: '13.0'
+          IPHONEOS_DEPLOYMENT_TARGET: '15.0'
         run: |
           rustup target add aarch64-apple-ios
           cargo check --release --target aarch64-apple-ios
@@ -479,7 +479,7 @@ jobs:
       - name: Build (unsigned)
         working-directory: app
         env:
-          IPHONEOS_DEPLOYMENT_TARGET: '13.0'
+          IPHONEOS_DEPLOYMENT_TARGET: '15.0'
         run: |
           flutter pub get
           if ! flutter build ios --release --no-codesign --verbose > /tmp/ios-build.log 2>&1; then

@@ -281,7 +281,8 @@ fn run_aec3(far: &[f32], echo: &[f32], measured_from: usize) -> (f32, f64) {
         let r = &far[i * BLOCK..(i + 1) * BLOCK];
         let m = &echo[i * BLOCK..(i + 1) * BLOCK];
         let t = Instant::now();
-        apm.process_render_f32(&[r], &mut [&mut render_out]).unwrap();
+        apm.process_render_f32(&[r], &mut [&mut render_out])
+            .unwrap();
         apm.process_capture_f32(&[m], &mut [&mut capture_out])
             .unwrap();
         let us = t.elapsed().as_secs_f64() * 1e6;
@@ -301,7 +302,8 @@ fn run_aec3(far: &[f32], echo: &[f32], measured_from: usize) -> (f32, f64) {
     let s = apm.statistics();
     println!(
         "      [aec3 says: erle {:?} dB, erl {:?}, delay {:?} ms, divergent {:?}]",
-        s.echo_return_loss_enhancement.map(|v| (v * 10.0).round() / 10.0),
+        s.echo_return_loss_enhancement
+            .map(|v| (v * 10.0).round() / 10.0),
         s.echo_return_loss.map(|v| (v * 10.0).round() / 10.0),
         s.delay_ms,
         s.divergent_filter_fraction,

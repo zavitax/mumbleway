@@ -2112,7 +2112,7 @@ impl Default for AudioConfig {
 /// far-end signal, and an adaptive filter told that the person at the
 /// microphone is the echo will duly learn to remove them — heard as one's own
 /// voice disappearing under a howl, which is the opposite of a microphone test.
-fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
+fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) -> usize {
     out.clear();
     {
         let mut queue = shared.playback_queue.lock();
@@ -2144,20 +2144,65 @@ fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) {
     // Taken after the cues, because they genuinely come out of the speaker and
     // genuinely echo back into the microphone, and at 48 kHz before resampling
     // so it matches what the capture chain sees.
+    //
+    // Returns how much went in, because **the caller has to keep this stream in
+    // step with real time** and cannot do that without knowing. See
+    // [`record_played_silence`].
+    let recorded = out.len();
     {
         let mut echo = shared.echo_reference.lock();
-        if echo.len() + out.len() <= MAX_QUEUED_OUTPUT_SAMPLES {
-            echo.extend(out.iter().copied());
-        } else {
-            // The worker has fallen behind; resync rather than feed the
-            // canceller a stale reference.
-            echo.clear();
+        // Trimmed from the front rather than cleared.
+        //
+        // Clearing threw away the *recent* samples along with the stale ones,
+        // and the recent ones are precisely what the worker is about to ask
+        // for — so a single stall cost the canceller its whole reference and
+        // forced it to find the path again. Dropping the oldest keeps the
+        // newest, which is the half worth keeping.
+        let over = (echo.len() + out.len()).saturating_sub(MAX_QUEUED_OUTPUT_SAMPLES);
+        if over > 0 {
+            let drop = over.min(echo.len());
+            echo.drain(..drop);
         }
+        echo.extend(out.iter().copied());
     }
 
     // Monitoring is mixed in last, after the reference has been taken, so the
     // canceller never sees the near-end talker as its own far-end signal.
     mix_in(&shared.monitor_queue, want, out);
+    recorded
+}
+
+/// Records that the speaker played `samples` of silence that no mixer produced.
+///
+/// # Why silence has to be written down
+///
+/// [`fill_output_block`] only records what it had to play. When nobody is
+/// talking it pulls nothing, records nothing, and the output callback fills the
+/// device with zeros — real silence, genuinely out of the speaker, and absent
+/// from the reference. So the reference was not a recording of the speaker at
+/// all: it was a recording of the speaker *with every pause cut out*, and the
+/// offset between a reference sample and the moment it was heard moved at every
+/// gap in the far end's speech.
+///
+/// Measured on build 123: **44% of blocks handed the canceller an empty
+/// reference** while the far end was talking, which the decision log could not
+/// distinguish from a far end that was quiet until `echo_ref_samples` existed.
+///
+/// It is not what broke that recording — the loud blocks did have a reference,
+/// and the fault was a filter far shorter than the room. It is a precondition
+/// for anything better: AEC3 and every port of it expect exactly one 10 ms
+/// render frame per 10 ms capture frame, in step with the clock, for ever.
+fn record_played_silence(shared: &AudioShared, samples: usize) {
+    if samples == 0 {
+        return;
+    }
+    let mut echo = shared.echo_reference.lock();
+    let over = (echo.len() + samples).saturating_sub(MAX_QUEUED_OUTPUT_SAMPLES);
+    if over > 0 {
+        let drop = over.min(echo.len());
+        echo.drain(..drop);
+    }
+    echo.extend(std::iter::repeat_n(0.0, samples));
 }
 
 /// Mixes up to `want` samples from `queue` over `out`, extending it when the
@@ -2491,6 +2536,12 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
     let mut pending: VecDeque<f32> = VecDeque::with_capacity(4096);
     let mut pull: Vec<f32> = Vec::with_capacity(2048);
     let mut converted: Vec<f32> = Vec::with_capacity(2048);
+    // Two running totals that keep the echo reference honest about time: how
+    // many frames the device has actually played, and how many 48 kHz samples
+    // have been written into the reference. See the end of the callback.
+    //
+    // `u64` at 48 kHz overflows after six million years, so neither wraps.
+    let (mut played, mut referenced) = (0u64, 0u64);
 
     let out_stream = output
         .build_output_stream(
@@ -2501,7 +2552,7 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                 // Top up the device-rate buffer from the 48 kHz mix.
                 while pending.len() < frames_needed {
                     let want = 480;
-                    fill_output_block(&play_shared, want, &mut pull);
+                    referenced += fill_output_block(&play_shared, want, &mut pull) as u64;
                     if pull.is_empty() {
                         break; // nothing to play; the rest becomes silence
                     }
@@ -2548,6 +2599,25 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                         .fetch_add(underruns, Ordering::Relaxed);
                 }
                 play_shared.store_output_level(super::dsp::to_dbfs(peak));
+
+                // **Keep the echo reference in step with the clock.**
+                //
+                // The device has now consumed `frames_needed` frames whatever
+                // the mixers produced, so that much time has passed at the
+                // speaker. Anything the loop above did not record was silence
+                // the device played, and it belongs in the reference exactly as
+                // much as the speech does — see `record_played_silence`.
+                //
+                // Running totals rather than per-callback arithmetic, because
+                // the loop deliberately runs *ahead* to keep `pending` full:
+                // per callback the two are meant to disagree, and only the
+                // totals say whether the stream has actually fallen behind.
+                played += frames_needed as u64;
+                let owed = played * SAMPLE_RATE as u64 / out_rate.max(1) as u64;
+                if owed > referenced {
+                    record_played_silence(&play_shared, (owed - referenced) as usize);
+                    referenced = owed;
+                }
 
                 // Ask for more only while somebody is actually streaming.
                 // An empty queue is the normal state when nobody is talking,
@@ -4306,6 +4376,90 @@ mod tests {
         let echo = shared.echo_reference.lock();
         assert_eq!(echo.len(), 480);
         assert!(echo.iter().all(|s| (*s - 0.4).abs() < 1e-6));
+    }
+
+    /// The reference is a recording of the speaker, and a speaker that is
+    /// silent is still a speaker.
+    ///
+    /// **This is the shape of the bug, not a style preference.** The reference
+    /// used to be written only when a mixer produced something, so every pause
+    /// between the far end's phrases was cut out of it while the microphone ran
+    /// on continuously — a recording with the gaps spliced away, whose offset
+    /// from real time changed at every gap. Build 123 measured 44% of blocks
+    /// arriving at the canceller with nothing in them.
+    ///
+    /// Asserted as a *rate*, because that is what actually matters: over any
+    /// stretch of playing, the reference has to grow by one sample per sample
+    /// the device consumed, whether or not anybody was talking.
+    #[test]
+    fn the_reference_keeps_time_when_nothing_is_playing() {
+        let shared = AudioShared::new();
+
+        // Two blocks of real audio, then nothing, which is the ordinary shape
+        // of a conversation.
+        shared
+            .playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.25, 960));
+
+        let mut out = Vec::new();
+        let mut referenced = 0u64;
+        for _ in 0..2 {
+            referenced += fill_output_block(&shared, 480, &mut out) as u64;
+        }
+        assert_eq!(referenced, 960, "real audio should record itself");
+
+        // Now the queue is dry and the device plays silence anyway. Nothing is
+        // pulled, so nothing records itself — and the caller has to say so.
+        let empty = fill_output_block(&shared, 480, &mut out);
+        assert_eq!(empty, 0, "there was nothing to pull");
+        record_played_silence(&shared, 480);
+
+        assert_eq!(
+            shared.echo_reference.lock().len(),
+            960 + 480,
+            "the silence the speaker played is part of what it played"
+        );
+
+        // And it is silence rather than a gap: the last block has to be there
+        // and has to be zero, or the canceller is being handed a splice.
+        let echo = shared.echo_reference.lock();
+        assert!(
+            echo.iter().skip(960).all(|s| *s == 0.0),
+            "the padding must be silence, not whatever was there before"
+        );
+        assert!(
+            echo.iter().take(960).all(|s| (*s - 0.25).abs() < 1e-6),
+            "and it must not disturb what came before it"
+        );
+    }
+
+    /// A stall costs the oldest audio, not all of it.
+    ///
+    /// Clearing the queue outright threw away the samples the worker was about
+    /// to ask for along with the stale ones, so one late block cost the
+    /// canceller its whole reference and a second of re-convergence.
+    #[test]
+    fn an_overfull_reference_drops_the_oldest_and_keeps_the_newest() {
+        let shared = AudioShared::new();
+        shared
+            .echo_reference
+            .lock()
+            .extend(std::iter::repeat_n(0.1, MAX_QUEUED_OUTPUT_SAMPLES));
+
+        shared
+            .playback_queue
+            .lock()
+            .extend(std::iter::repeat_n(0.9, 480));
+        let mut out = Vec::new();
+        fill_output_block(&shared, 480, &mut out);
+
+        let echo = shared.echo_reference.lock();
+        assert_eq!(echo.len(), MAX_QUEUED_OUTPUT_SAMPLES, "the cap still holds");
+        assert!(
+            echo.iter().rev().take(480).all(|s| (*s - 0.9).abs() < 1e-6),
+            "the newest audio — the part the worker is about to want — survived"
+        );
     }
 
     #[test]

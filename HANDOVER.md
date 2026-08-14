@@ -340,14 +340,47 @@ was nearly believing the 1.7: cross-checking AEC3's own `get_statistics()`
 against the measured figure is what caught it, and its reported ERL of −30.0 dB
 and delay of 288 ms were the tell.
 
-### 8. Still required either way: a continuous render stream
+### 8. The render stream keeps time now — done
 
 AEC3 and every port of it expect exactly **one 10 ms render frame per 10 ms
-capture frame**. Today 44% of blocks push nothing into `echo_reference` because
-the far end happened to be quiet, and the queue is cleared wholesale past
-500 ms. That has to be a real-time stream before any of the above can be
-adopted. It is not the cause of the current fault — §5 measured that — but it
-is a precondition for the fix.
+capture frame**, for ever. The reference could not supply that: it was written
+only when a mixer produced something, so every pause between the far end's
+phrases was cut out of it while the microphone ran on continuously. Build 123
+measured 44% of blocks arriving empty.
+
+Two changes in `engine.rs`:
+
+- **`record_played_silence`.** The output callback keeps two running totals —
+  frames the device has played, and 48 kHz samples written to the reference —
+  and tops the second up with silence whenever it falls behind the first.
+  Totals rather than per-callback arithmetic, because the pull loop runs ahead
+  on purpose to keep `pending` full; per callback the two are *meant* to
+  disagree.
+- **The overflow trims from the front instead of clearing.** Clearing threw the
+  recent samples away with the stale ones — the recent ones being exactly what
+  the worker was about to ask for — so one stall cost the canceller its whole
+  reference.
+
+Two tests pin it: the reference grows by one sample per sample the device
+consumed whether or not anybody is talking, and an overfull queue keeps its
+newest audio.
+
+This was never the cause of the reported echo — §5 and §6 measured that — and
+it should not be expected to change what a rider hears on its own. It is what
+makes §7 adoptable.
+
+### 9. What is left
+
+1. **Decide on AEC3.** §7 says it is better and cheaper on the phone that
+   matters. Against that: `sonora-aec3` is two weeks old at 0.2.0.
+2. **If adopted:** put it behind the existing `EchoCanceller` interface with
+   the current filter still reachable, so a bad build can be compared rather
+   than argued about. `sonora` is a dev-dependency today and nothing outside
+   the two harnesses may import it.
+3. **The test room is 64 taps.** `echo_path()` is 1.3 ms and every echo test in
+   the suite is built on it, which is why the whole suite passed while the
+   phone did not. `tools/aec3bench` and `core/tests/aec3_cost.rs` have a room
+   calibrated to what was measured; the rest of the suite does not.
 
 ### Why the tests could not have caught either
 

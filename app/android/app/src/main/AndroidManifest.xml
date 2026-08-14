@@ -66,7 +66,7 @@
                  and the invitation is lost. Nothing about it looks like a deep
                  link problem from the outside: the intent filter below resolves
                  correctly, `MainActivity` parses the URI correctly, and
-                 `DeepLinks` on the Dart side is waiting correctly -- the engine
+                 `DeepLinks` on the Dart side is waiting correctly. The engine
                  simply never gives any of them the intent. Confirmed on the
                  device, 2026-08-14, by firing the intent with `am start` and
                  reading the stack trace out of logcat.

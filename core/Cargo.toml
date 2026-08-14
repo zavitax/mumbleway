@@ -74,6 +74,27 @@ cpal = "0.18"
 opus = "0.3"
 nnnoiseless = { version = "0.5", default-features = false }
 
+# WebRTC's AEC3, for `audio::aec3`.
+#
+# **Why a new echo canceller at all:** build 123 measured a real room at 140 ms
+# of echo spread (440 at p90) against a filter covering 21.3, and it removed a
+# median of 0.2 dB. `audio::aec::_WHY_NO_GROWTH` records why that filter cannot
+# simply be made longer — a single-power normalisation converges worse the
+# further it spans. AEC3 is a partitioned block frequency-domain filter with
+# per-bin normalisation, which is the property the time-domain one lacks. On
+# the OPPO it measured 400 µs against 970 and forty decibels better.
+#
+# **Why this port and not WebRTC's own module:** Sonora is pure Rust (M145),
+# BSD-3-Clause — which this repository's GPL-3.0-or-later can absorb — and needs
+# no C++ toolchain across five cross-compiled targets. The alternative is the
+# extraction PulseAudio and PipeWire use, with a Meson build in front of iOS,
+# Android, macOS and Windows.
+#
+# **The risk, stated:** 0.2.0, published a fortnight before this landed. That is
+# why `audio::aec` keeps the time-domain filter reachable behind `set_use_aec3`
+# rather than deleting it.
+sonora = "0.2"
+
 # --- misc ------------------------------------------------------------------
 thiserror = "2"
 anyhow = "1"
@@ -119,24 +140,6 @@ mach2 = "0.6"
 # Windows, where sysinfo works and there is nothing to work around.
 [target.'cfg(target_os = "windows")'.dependencies]
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
-
-# A candidate replacement for `audio::aec`, here to be measured rather than to
-# be shipped — which is why it is a dev-dependency and nothing outside
-# `tests/aec3_cost.rs` may import it.
-#
-# The case for looking: build 123 measured a real room at 140 ms of echo spread
-# (440 at p90) against a filter that covers 21.3, and removed a median of
-# 0.2 dB. `audio::aec::_WHY_NO_GROWTH` records why that filter cannot simply be
-# made longer. AEC3 is a partitioned block frequency-domain filter with per-bin
-# normalisation, which is the property the time-domain one lacks.
-#
-# Sonora is a pure-Rust port of it (WebRTC M145), BSD-3-Clause — compatible with
-# this repository's GPL-3.0-or-later — and needs no C++ toolchain, which is the
-# whole reason to prefer it over the upstream module across five cross-compiled
-# targets. **It is version 0.2.0 and two weeks old**, so it is a measurement
-# candidate and not yet a dependency anybody should rely on.
-[dev-dependencies]
-sonora = "0.2"
 
 [patch.crates-io]
 tract-core = { path = "../third_party/tract-core" }

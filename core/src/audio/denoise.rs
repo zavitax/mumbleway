@@ -841,6 +841,12 @@ impl CaptureProcessor {
         self.aec.taps()
     }
 
+    /// Whether AEC3 is the canceller running, rather than the time-domain
+    /// filter. For the decision log and the panel.
+    pub fn aec_is_aec3(&self) -> bool {
+        self.aec.is_aec3()
+    }
+
     /// Whether the filter is shorter than its full length — the panel's
     /// "the ladder has been at this" flag.
     pub fn short_aec(&self) -> bool {

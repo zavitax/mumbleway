@@ -3128,6 +3128,7 @@ where
                     aec_confidence: aec_conf,
                     aec_spread_ms: aec_spread,
                     aec_taps: processor.aec_taps() as u16,
+                    aec3: processor.aec_is_aec3(),
                 });
             }
 

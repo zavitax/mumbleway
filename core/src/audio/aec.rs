@@ -28,6 +28,7 @@
 //! run out long before the echo arrives.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Filter length in taps.
 ///
@@ -127,8 +128,156 @@ const DIVERGED: f32 = 8.0;
 /// properly is a frequency-domain job that is not attempted here.
 const _WHY_NO_GROWTH: () = ();
 
-/// Adaptive echo canceller.
+/// Which canceller a new [`EchoCanceller`] should be.
+///
+/// Process-wide, and read when one is built rather than per block: swapping
+/// mid-call would hand the new one a room it has never heard and the rider a
+/// second of echo while it learned.
+static USE_AEC3: AtomicBool = AtomicBool::new(true);
+
+/// Chooses the canceller for every [`EchoCanceller`] built afterwards.
+///
+/// **Default is AEC3**, on the measurement in [`super::aec3`]: on the OPPO it
+/// is 400 µs against 970 and 40 dB better on a real room. The old filter stays
+/// reachable because `sonora-aec3` was a fortnight old when this landed, and a
+/// bad build should be comparable rather than arguable.
+pub fn set_use_aec3(on: bool) {
+    USE_AEC3.store(on, Ordering::Relaxed);
+}
+
+pub fn use_aec3() -> bool {
+    USE_AEC3.load(Ordering::Relaxed)
+}
+
+/// Echo cancellation: whichever of the two is in force.
+///
+/// The pair sit behind one type deliberately. Everything upstream — the capture
+/// processor, the worker, the performance ladder, the diagnostics panel — asks
+/// the same questions of both, and a chain that had to know which canceller it
+/// was talking to would grow that knowledge in a dozen places.
 pub struct EchoCanceller {
+    inner: Inner,
+}
+
+enum Inner {
+    /// The time-domain filter. Kept, not deleted: it is the only one of the two
+    /// that has ever shipped, and it is the fallback if the port has to be
+    /// abandoned.
+    Nlms(Box<Nlms>),
+    Aec3(Box<super::aec3::Aec3>),
+}
+
+impl EchoCanceller {
+    /// Whichever [`set_use_aec3`] last said.
+    pub fn new(taps: usize) -> Self {
+        if use_aec3() {
+            Self::aec3()
+        } else {
+            Self::nlms(taps)
+        }
+    }
+
+    pub fn aec3() -> Self {
+        Self {
+            inner: Inner::Aec3(Box::new(super::aec3::Aec3::new())),
+        }
+    }
+
+    pub fn nlms(taps: usize) -> Self {
+        Self {
+            inner: Inner::Nlms(Box::new(Nlms::new(taps))),
+        }
+    }
+
+    /// True when AEC3 is the one running, for the panel.
+    pub fn is_aec3(&self) -> bool {
+        matches!(self.inner, Inner::Aec3(_))
+    }
+
+    pub fn process(&mut self, mic: &mut [f32], reference: &[f32]) -> f32 {
+        match &mut self.inner {
+            Inner::Nlms(a) => a.process(mic, reference),
+            Inner::Aec3(a) => a.process(mic, reference),
+        }
+    }
+
+    pub fn set_enabled(&mut self, on: bool) {
+        match &mut self.inner {
+            Inner::Nlms(a) => a.set_enabled(on),
+            Inner::Aec3(a) => a.set_enabled(on),
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        match &self.inner {
+            Inner::Nlms(a) => a.is_enabled(),
+            Inner::Aec3(a) => a.is_enabled(),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        match &mut self.inner {
+            Inner::Nlms(a) => a.reset(),
+            Inner::Aec3(a) => a.reset(),
+        }
+    }
+
+    pub fn erle_db(&self) -> f32 {
+        match &self.inner {
+            Inner::Nlms(a) => a.erle_db(),
+            Inner::Aec3(a) => a.erle_db(),
+        }
+    }
+
+    pub fn alignment(&self) -> (f32, f32) {
+        match &self.inner {
+            Inner::Nlms(a) => a.alignment(),
+            Inner::Aec3(a) => a.alignment(),
+        }
+    }
+
+    pub fn filter_span_ms(&self) -> f32 {
+        match &self.inner {
+            Inner::Nlms(a) => a.filter_span_ms(),
+            Inner::Aec3(a) => a.filter_span_ms(),
+        }
+    }
+
+    pub fn measured_spread_ms(&self) -> f32 {
+        match &self.inner {
+            Inner::Nlms(a) => a.measured_spread_ms(),
+            Inner::Aec3(a) => a.measured_spread_ms(),
+        }
+    }
+
+    pub fn taps(&self) -> usize {
+        match &self.inner {
+            Inner::Nlms(a) => a.taps(),
+            // Not a number AEC3 has. Reported as the full length so the
+            // ladder's "is it already shortened" check answers no, which is
+            // true: there is nothing here to shorten.
+            Inner::Aec3(_) => DEFAULT_TAPS,
+        }
+    }
+
+    /// **Only the old filter has taps to set**, so this is where the
+    /// performance ladder's `AecCut` stops applying.
+    ///
+    /// That is not an oversight and it is not free. `relief::AecCut` exists to
+    /// claw back up to 840 µs from a device that has given up everything else,
+    /// and AEC3 offers no equivalent dial. What makes it acceptable is that the
+    /// thing it was clawing back *from* is gone: the filter it was shortening
+    /// cost 970 µs on the OPPO and AEC3 costs 400, so the rung is trying to
+    /// recover less than the swap already saved.
+    pub fn set_taps(&mut self, taps: usize) {
+        if let Inner::Nlms(a) = &mut self.inner {
+            a.set_taps(taps);
+        }
+    }
+}
+
+/// Adaptive echo canceller, time domain.
+struct Nlms {
     taps: usize,
     /// Filter coefficients.
     w: Vec<f32>,
@@ -461,8 +610,8 @@ impl Aligner {
     }
 }
 
-impl EchoCanceller {
-    pub fn new(taps: usize) -> Self {
+impl Nlms {
+    fn new(taps: usize) -> Self {
         let taps = taps.max(16);
         Self {
             taps,
@@ -886,7 +1035,7 @@ mod tests {
         let far = noise(48_000 * 8, 1, 0.3);
         let echo = convolve(&far, &delayed_path(DELAY));
 
-        let mut aec = EchoCanceller::new(DEFAULT_TAPS);
+        let mut aec = Nlms::new(DEFAULT_TAPS);
         let mut before = Vec::new();
         let mut after = Vec::new();
 
@@ -916,7 +1065,7 @@ mod tests {
         // signal, the same everything except that it is never told where the
         // echo is. This is what shipped, and what "echo cancellation is on and
         // makes no difference" looked like from the outside.
-        let mut blind = EchoCanceller::new(DEFAULT_TAPS);
+        let mut blind = Nlms::new(DEFAULT_TAPS);
         blind.align.searching = false;
         let mut blind_after = Vec::new();
         for (i, (m, r)) in echo.chunks(480).zip(far.chunks(480)).enumerate() {
@@ -940,7 +1089,7 @@ mod tests {
         let far = noise(48_000, 1, 0.3);
         let echo = convolve(&far, &echo_path());
 
-        let mut aec = EchoCanceller::new(DEFAULT_TAPS);
+        let mut aec = Nlms::new(DEFAULT_TAPS);
         let mut residual_tail = Vec::new();
 
         for (i, (m, r)) in echo.chunks(480).zip(far.chunks(480)).enumerate() {
@@ -992,7 +1141,7 @@ mod tests {
         let far = syllabic(48_000 * 12, 3);
         let echo = convolve(&far, &h);
 
-        let mut aec = EchoCanceller::new(DEFAULT_TAPS);
+        let mut aec = Nlms::new(DEFAULT_TAPS);
         let mut before = Vec::new();
         let mut after = Vec::new();
         for (i, (m, r)) in echo.chunks(480).zip(far.chunks(480)).enumerate() {
@@ -1040,7 +1189,7 @@ mod tests {
         let near = noise(far.len(), 9, 0.05);
 
         let run = |skip: bool| {
-            let mut aec = EchoCanceller::new(DEFAULT_TAPS);
+            let mut aec = Nlms::new(DEFAULT_TAPS);
             let mut out = Vec::new();
             for (i, (e, r)) in echo.chunks(480).zip(far.chunks(480)).enumerate() {
                 let mut block: Vec<f32> =
@@ -1076,7 +1225,7 @@ mod tests {
         let near = noise(9600, 7, 0.2);
         let silence = vec![0.0f32; 9600];
 
-        let mut aec = EchoCanceller::new(DEFAULT_TAPS);
+        let mut aec = Nlms::new(DEFAULT_TAPS);
         let mut out = Vec::new();
         for (m, r) in near.chunks(480).zip(silence.chunks(480)) {
             let mut block = m.to_vec();
@@ -1104,7 +1253,7 @@ mod tests {
         let echo = convolve(&far, &echo_path());
         let near = noise(96_000, 9, 0.35);
 
-        let mut aec = EchoCanceller::new(DEFAULT_TAPS);
+        let mut aec = Nlms::new(DEFAULT_TAPS);
 
         // Converge on echo alone first.
         for (m, r) in echo.chunks(480).zip(far.chunks(480)).take(60) {
@@ -1146,7 +1295,7 @@ mod tests {
 
     #[test]
     fn disabled_canceller_is_a_pass_through() {
-        let mut aec = EchoCanceller::new(128);
+        let mut aec = Nlms::new(128);
         aec.set_enabled(false);
         let reference = noise(480, 2, 0.3);
         let original = noise(480, 5, 0.2);
@@ -1159,7 +1308,7 @@ mod tests {
     fn reset_clears_the_learned_path() {
         let far = noise(9600, 11, 0.3);
         let echo = convolve(&far, &echo_path());
-        let mut aec = EchoCanceller::new(256);
+        let mut aec = Nlms::new(256);
         for (m, r) in echo.chunks(480).zip(far.chunks(480)) {
             let mut b = m.to_vec();
             aec.process(&mut b, r);
@@ -1174,7 +1323,7 @@ mod tests {
     #[test]
     fn output_stays_finite_on_pathological_input() {
         // Loud, sustained, correlated input is what makes naive LMS explode.
-        let mut aec = EchoCanceller::new(256);
+        let mut aec = Nlms::new(256);
         for i in 0..200 {
             let reference = vec![0.9f32; 480];
             let mut mic = vec![if i % 2 == 0 { 0.9 } else { -0.9 }; 480];

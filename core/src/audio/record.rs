@@ -154,7 +154,16 @@ pub struct Recorded {
     /// than the filter's own span means a second echo it cannot reach.
     pub aec_spread_ms: f32,
     /// The filter's length in taps, which the performance ladder shortens.
+    /// Meaningless when [`Self::aec3`] is set — AEC3 has no such dial.
     pub aec_taps: u16,
+    /// Which canceller produced this block: AEC3, or the time-domain filter.
+    ///
+    /// **The same lesson as every other column here.** Two cancellers now sit
+    /// behind one interface and they fail differently — the old one runs out of
+    /// filter on a long room, the new one has a fortnight of history — so a
+    /// recording that cannot say which one it came from cannot be read at all.
+    /// It costs one bit and it settles an argument.
+    pub aec3: bool,
 }
 
 enum Message {
@@ -262,7 +271,7 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
          block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,\
          modulation,mode,muted,gain_db,echo_ref_samples,aec_on,erle_db,aec_lag_ms,\
-         aec_confidence,aec_spread_ms,aec_taps"
+         aec_confidence,aec_spread_ms,aec_taps,aec3"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -301,7 +310,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
         let _ = writeln!(
             sink.log,
             "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1},\
-             {},{},{:.1},{:.1},{:.2},{:.1},{}",
+             {},{},{:.1},{:.1},{:.2},{:.1},{},{}",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -322,6 +331,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.aec_confidence,
             block.aec_spread_ms,
             block.aec_taps,
+            block.aec3 as u8,
         );
         block_index += 1;
 
@@ -376,6 +386,7 @@ mod tests {
             aec_confidence: 0.8,
             aec_spread_ms: 3.0,
             aec_taps: 1024,
+            aec3: true,
             ..Default::default()
         }
     }

@@ -600,12 +600,37 @@ class MainActivity : FlutterActivity() {
         takeLink(intent)
     }
 
-    /// The `mumble://` link [intent] carries, if it carries one.
+    /// The invitation [intent] carries, if it carries one.
+    ///
+    /// **Two shapes, because there are two filters in the manifest.** The
+    /// `mumble://` scheme is what the official client registers and what a
+    /// camera app offers for a scanned code. The https form is the one that
+    /// survives a messaging app, and Android delivers it here rather than to a
+    /// browser once the domain is verified.
+    ///
+    /// Letting only the scheme through was a real bug, and a quiet one: with
+    /// verification working, Android hands the https link straight to this
+    /// activity, this function returned null, and the invitation vanished with
+    /// no error and no browser fallback to rescue it. Verification *succeeding*
+    /// was what broke it.
+    ///
+    /// The host and path are matched here only to decide whether a link is
+    /// worth passing on. What it actually contains is the core's business:
+    /// `session::profile::parse_url` unwraps the fragment and rejects anything
+    /// that is not an invitation.
     private fun linkIn(intent: Intent?): String? {
         if (intent?.action != Intent.ACTION_VIEW) return null
-        return intent.data
-            ?.takeIf { it.scheme.equals("mumble", ignoreCase = true) }
-            ?.toString()
+        val uri = intent.data ?: return null
+        val scheme = uri.scheme?.lowercase()
+        if (scheme == "mumble") return uri.toString()
+        if (scheme == "https" || scheme == "http") {
+            val host = uri.host?.lowercase()
+            val path = uri.path.orEmpty()
+            if (host == WEB_INVITE_HOST && path.startsWith(WEB_INVITE_PATH)) {
+                return uri.toString()
+            }
+        }
+        return null
     }
 
     /// Delivers a link that arrived while the app was already running.
@@ -643,6 +668,14 @@ class MainActivity : FlutterActivity() {
         /// releases and a truncated tag cannot be filtered on.
         const val LOG_TAG = "MumbleWay"
         const val MIC_REQUEST = 4712
+
+        /// Host and path of an https invitation. **Must agree with the
+        /// `autoVerify` intent-filter in AndroidManifest.xml and with
+        /// `WEB_INVITE_BASE` in core/src/session/profile.rs** — three copies of
+        /// the same fact, in three languages, and a disagreement between any
+        /// two of them loses invitations silently.
+        const val WEB_INVITE_HOST = "zavitax.github.io"
+        const val WEB_INVITE_PATH = "/mumbleway/join"
 
         init {
             // Loading it here rather than leaving it to the first Dart call

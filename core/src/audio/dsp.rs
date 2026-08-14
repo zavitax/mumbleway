@@ -233,6 +233,11 @@ pub struct NoiseFloorTracker {
     sub_len: u32,
     /// Added to the raw minimum, since a minimum under-estimates the mean level.
     bias_db: f32,
+    /// The floor actually reported, which may lag the minimum on the way up.
+    ///
+    /// `INFINITY` until the first update, so a fresh tracker still reports the
+    /// permissive default rather than a rate-limited climb from nowhere.
+    published_db: f32,
 }
 
 impl NoiseFloorTracker {
@@ -240,6 +245,41 @@ impl NoiseFloorTracker {
     /// anomalously quiet block would otherwise pin the floor for the whole
     /// window, which is exactly what a codec warm-up transient produces.
     const SUB_WINDOWS: usize = 6;
+
+    /// The most the reported floor may **rise** in one 10 ms block: 0.06 dB,
+    /// which is 6 dB/s. Falling is not limited at all.
+    ///
+    /// **This is the fix for a floor that climbed onto the voice and cut it
+    /// off**, reported from two recordings on 2026-08-14 — one of long spoken
+    /// phrases, one of singing. Minimum statistics assumes what the comment
+    /// above says it assumes: *speech is intermittent*, so some sub-window
+    /// inside the memory holds a gap. Hold a phrase past 1.5 s and every
+    /// sub-window is full of voice, the minimum **is** the voice, and the SNR
+    /// the gate runs on collapses to nothing. In the sung clip the floor rose
+    /// 53 dB in half a second, went 0.6 dB *above* the singing, and 58% of the
+    /// voiced blocks fell under the gate's margin. Singing is the worst case
+    /// only because a held note has no gaps at all; the spoken clip showed the
+    /// same climb, 56 dB of it.
+    ///
+    /// A rise limit fixes it without trusting anybody's speech detector, which
+    /// matters: this estimator exists precisely *because* RNNoise's VAD cannot
+    /// be trusted on a helmet, so freezing on that VAD would undo the reason
+    /// for the class. It needs no extra signal at all — it simply declines to
+    /// believe that background noise changed faster than background noise can.
+    ///
+    /// 6 dB/s was chosen by replaying both recordings through the candidates,
+    /// not by taste. 12 dB/s still lost 17% of the sung voice; 6 and 3 both
+    /// lost none, and 6 is the faster of the two, so it keeps as much of the
+    /// original responsiveness as the fix allows.
+    ///
+    /// **The cost, stated plainly:** a genuine background rise is now followed
+    /// at 6 dB/s once the sub-windows have flushed, so hard acceleration under
+    /// a 30 dB swing takes about five seconds to track instead of arriving with
+    /// the window. During that lag the floor under-reads and the gate is too
+    /// permissive rather than too strict — noise gets through for a moment
+    /// instead of speech being cut, which is the better way round, and the VAD
+    /// and harmonicity gates still have to agree before anything transmits.
+    const MAX_RISE_DB_PER_BLOCK: f32 = 0.06;
 
     /// `sub_len_blocks` sub-windows of this length span the tracking window;
     /// six 0.25 s sub-windows give a ~1.5 s memory, longer than a normal breath
@@ -252,6 +292,7 @@ impl NoiseFloorTracker {
             count: 0,
             sub_len: sub_len_blocks.max(1),
             bias_db: 3.0,
+            published_db: f32::INFINITY,
         }
     }
 
@@ -265,10 +306,39 @@ impl NoiseFloorTracker {
             self.sub_min = f32::INFINITY;
             self.count = 0;
         }
-        self.floor_db()
+
+        let raw = self.raw_floor_db();
+        self.published_db = if !self.published_db.is_finite() {
+            // First block: nothing to rate-limit against, and starting the
+            // climb from the permissive default would mute the opening word.
+            raw
+        } else if raw < self.published_db {
+            // **Down is instant.** A room that went quiet is a fact, and a
+            // floor that lags downward would hold the gate shut on a voice
+            // that is now well clear of it.
+            raw
+        } else {
+            (self.published_db + Self::MAX_RISE_DB_PER_BLOCK).min(raw)
+        };
+        self.published_db
     }
 
+    /// The reported floor: the minimum statistic, held back on the way up by
+    /// [`Self::MAX_RISE_DB_PER_BLOCK`].
     pub fn floor_db(&self) -> f32 {
+        if self.published_db.is_finite() {
+            self.published_db
+        } else {
+            self.raw_floor_db()
+        }
+    }
+
+    /// The minimum statistic itself, before the rise limit.
+    ///
+    /// Kept separate so the limit has something to be limited against, and so a
+    /// test can tell "the estimator is wrong" from "the estimator is right and
+    /// has not been allowed there yet".
+    fn raw_floor_db(&self) -> f32 {
         let completed = self.mins.iter().copied().fold(f32::INFINITY, f32::min);
         let m = completed.min(self.sub_min);
         if m.is_finite() {
@@ -288,6 +358,10 @@ impl NoiseFloorTracker {
         self.mins = [f32::INFINITY; Self::SUB_WINDOWS];
         self.idx = 0;
         self.count = 0;
+        // Back to "not yet set" rather than to a number, so the first block
+        // after a reset lands on the estimate instead of climbing to it at
+        // 6 dB/s from wherever the previous device left it.
+        self.published_db = f32::INFINITY;
     }
 }
 
@@ -1230,12 +1304,95 @@ mod tests {
         }
         assert!(t.floor_db() < -50.0);
 
-        for _ in 0..400 {
+        // It still gets there, and this is the assertion that matters: a floor
+        // that could not follow the road would let a helmet at speed key the
+        // transmitter continuously, which is the fault the estimator exists to
+        // prevent.
+        //
+        // **It is allowed to take its time.** 400 blocks was enough before the
+        // rise limit and is not now: the sub-windows have to flush (300 blocks
+        // here) and then 30 dB at 6 dB/s is 500 more. Eight seconds is the
+        // documented cost of not cutting a held note in half.
+        for _ in 0..1000 {
             t.update(-30.0);
         }
         assert!(
             t.floor_db() > -36.0,
             "floor failed to follow the louder background: {}",
+            t.floor_db()
+        );
+    }
+
+    /// The rise limit is real, and this is what stops the floor climbing onto a
+    /// voice. Half a second of anything cannot move the floor more than 3 dB.
+    #[test]
+    fn the_floor_cannot_leap_upward() {
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..600 {
+            t.update(-90.0);
+        }
+        let quiet = t.floor_db();
+
+        // The step the sung recording actually produced: silence, then a held
+        // note 70 dB louder.
+        for _ in 0..50 {
+            t.update(-20.0);
+        }
+        let after_half_a_second = t.floor_db();
+        assert!(
+            after_half_a_second - quiet <= 3.0 + 1e-3,
+            "floor rose {:.1} dB in half a second; the limit is 6 dB/s",
+            after_half_a_second - quiet
+        );
+    }
+
+    /// The regression from the 2026-08-14 recordings, in the shape that caused
+    /// it: a phrase held far longer than the 1.5 s memory.
+    ///
+    /// Before the rise limit the minimum statistic *became* the voice — every
+    /// sub-window was full of it — and the floor ended up level with, or above,
+    /// the thing it was supposed to be measuring underneath.
+    #[test]
+    fn a_long_held_note_does_not_drag_the_floor_onto_the_voice() {
+        // The gate's own tracker: six 0.25 s sub-windows, a 1.5 s memory.
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..300 {
+            t.update(-90.0);
+        }
+
+        // Six seconds of unbroken voice at -20 dBFS, which is roughly what the
+        // sung clip did and four times the tracker's memory.
+        let mut worst_snr = f32::INFINITY;
+        for _ in 0..600 {
+            let floor = t.update(-20.0);
+            worst_snr = worst_snr.min(-20.0 - floor);
+        }
+
+        // The gate needs a clear margin. Before the limit this went negative --
+        // the floor passed *above* the voice -- and the note was cut.
+        assert!(
+            worst_snr > 6.0,
+            "the floor climbed onto a held note: worst SNR {worst_snr:.1} dB"
+        );
+    }
+
+    /// Down is not rate-limited: a room that goes quiet is a fact, and lagging
+    /// on the way down would hold the gate shut on a voice already clear of it.
+    #[test]
+    fn the_floor_still_drops_immediately() {
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..600 {
+            t.update(-30.0);
+        }
+        assert!(t.floor_db() > -34.0);
+
+        // One sub-window of silence is enough to bring it down.
+        for _ in 0..25 {
+            t.update(-95.0);
+        }
+        assert!(
+            t.floor_db() < -85.0,
+            "floor should fall at once, was {}",
             t.floor_db()
         );
     }

@@ -185,7 +185,7 @@ build on this platform.
 ```bash
 cd core && cargo fmt --check   # CI runs this first, and it gates every job
 cd core && cargo clippy --all-targets -- -D warnings   # same job, right after
-cd core && cargo test          # 392 tests
+cd core && cargo test          # 395 tests
 cd app  && flutter analyze     # must be clean
 cd app  && flutter test        # 206 tests
 ```

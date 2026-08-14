@@ -45,6 +45,41 @@
 //! **So: check how a clip was captured before trusting anything this prints.**
 //! Headset-recorded audio needs its own baseline; none of the numbers from the
 //! phone-mic set carry over.
+//!
+//! # What it found, 2026-08-14: the floor climbing onto the voice
+//!
+//! Two clips came in through the app's own diagnostic capture — one of long
+//! spoken phrases, one of singing — reporting that the chain cut pieces out of
+//! both. This harness is what turned that into a number, and the number is the
+//! reason `NoiseFloorTracker` now rate-limits how fast its estimate may rise.
+//!
+//! The singing clip is 36.4% strongly voiced. Before the limit:
+//!
+//! ```text
+//!     Off         58.5% transmitted   floor -40.8
+//!     Standard    29.0% transmitted   floor -52.3
+//!     Helmet      24.8% transmitted   floor -56.1
+//! ```
+//!
+//! **Standard put less on the wire than the clip has voiced audio in it.**
+//! After the limit, with nothing else changed:
+//!
+//! ```text
+//!     Off         67.9% transmitted   floor -44.1
+//!     Standard    54.5% transmitted   floor -63.6
+//!     Helmet      54.5% transmitted   floor -68.8
+//! ```
+//!
+//! Two things in that are worth keeping. **`Off` improved too**, which places
+//! the fault in the gate's floor rather than in the suppressor — the profiles
+//! only changed how much of the voice was left for the floor to climb onto.
+//! And **`Auto` settled differently**: `Helmet` before, `Standard` after, because
+//! an inflated floor reads as a noisier room and Auto reached for the more
+//! aggressive profile. That is a second, quieter symptom of the same bug.
+//!
+//! The spoken clip barely moved (64.3% -> 64.5%), which matches what was
+//! reported about it: chewing rather than dropouts, because the hold and fade
+//! envelope around a voiced block covers a gate that closes only briefly.
 
 use std::fs;
 use std::path::PathBuf;

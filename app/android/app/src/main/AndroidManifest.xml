@@ -53,6 +53,31 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- **Off, or the engine eats the link before the app sees it.**
+                 Flutter's own deep linking is on by default on Android, and it
+                 treats an incoming VIEW intent as *route information*: it hands
+                 the URI's path to `Navigator.pushNamed`. For
+                 `mumble://host/Riders` that is a push of `/Riders`, which is
+                 not a route this app has, so `onUnknownRoute` runs and throws
+
+                     Null check operator used on a null value
+                       _WidgetsAppState._onUnknownRoute
+
+                 and the invitation is lost. Nothing about it looks like a deep
+                 link problem from the outside: the intent filter below resolves
+                 correctly, `MainActivity` parses the URI correctly, and
+                 `DeepLinks` on the Dart side is waiting correctly -- the engine
+                 simply never gives any of them the intent. Confirmed on the
+                 device, 2026-08-14, by firing the intent with `am start` and
+                 reading the stack trace out of logcat.
+
+                 This app routes invitations itself, through the
+                 `mumbleway/links` MethodChannel, because a `mumble://` URL is
+                 an address to connect to rather than a screen to open. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

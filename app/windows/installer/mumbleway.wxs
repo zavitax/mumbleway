@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  The Windows installer.
+
+  This is the third Windows artifact and the three do not overlap. The MSIX goes
+  to the Microsoft Store and cannot be installed by hand, because Partner Center
+  re-signs it. The portable zip runs from wherever it is unpacked and installs
+  nothing. Neither of those is what somebody means by "install it": a Start Menu
+  entry, an uninstall entry, and an upgrade that replaces the old version rather
+  than sitting beside it. That is what this is for.
+
+  Built with WiX 5 (`wix build`), not WiX 3's candle/light. Two reasons, and the
+  first is the load-bearing one:
+
+    * **`<Files Include="...">` harvests the bundle at build time.** The bundle
+      is 38 files across `data/flutter_assets` and `blobs/`, and its contents
+      change whenever an asset or a plugin does. WiX 3 has no such element, so
+      the alternative is `heat.exe` generating a fragment as a build step, or a
+      hand-maintained file list that goes stale the first time somebody adds an
+      asset and nobody notices until a user reports a missing icon.
+
+    * WiX 3.14 is preinstalled on the GitHub runners and WiX 5 is a `dotnet tool
+      install` away. Depending on the image was the more tempting option and is
+      the wrong one here: this workflow has already been broken once by the
+      runner image changing underneath it, which is what the long comment about
+      `pwsh` in publish.yml is about. A pinned tool version cannot move.
+
+  Three values come from the command line, so nothing here has to be edited to
+  cut a release:
+
+    -d Version=1.0.123     three fields, see the note on ProductVersion below
+    -d Stage=<path>        the built bundle, harvested whole
+    -d License=<path>      RTF, generated from LICENSE so it cannot drift
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!--
+    ProductVersion is not the same shape as the MSIX version, and the limits are
+    tighter rather than merely different: major 0-255, minor 0-255, build
+    0-65535. The publish workflow checks them before building, in the same
+    spirit as the MSIX check beside it — a version Windows Installer rejects
+    should be a line in the log, not a failure at the end of a 20-minute job.
+
+    **Only the first three fields are compared.** A fourth is legal and is
+    silently ignored for upgrade decisions, so two builds differing only in the
+    fourth field look identical to the installer and the newer one refuses to
+    replace the older. Hence three fields here, with the run number as the
+    build, exactly as the MSIX version does it.
+  -->
+  <Package
+      Name="MumbleWay"
+      Manufacturer="MumbleWay"
+      Version="$(Version)"
+      UpgradeCode="D1E9B53E-EED2-4B23-BD59-AE2BFF8BE7ED"
+      Scope="perMachine"
+      Compressed="yes"
+      Language="1033"
+      Codepage="1252">
+
+    <!--
+      The UpgradeCode above identifies the product across all its versions and
+      **must never change**: it is what tells a new MSI that an older MumbleWay
+      is present. Changing it produces an installer that cheerfully installs a
+      second copy alongside the first, each with its own uninstall entry.
+    -->
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of MumbleWay is already installed. Uninstall it first if you want to go back to this one." />
+
+    <!-- One embedded cab. The payload is ~106 MB, nearly all of it the Flutter
+         assets and the TensorFlow Lite blob, and a single self-contained .msi
+         is the thing that is easy to hand somebody. -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!--
+      x64 only, and said out loud rather than discovered.
+
+      Windows 11 on ARM runs x64 through emulation, so this installer works
+      there; it is simply not a native build. There is no ARM64 MSI for the same
+      reason there is no ARM64 MSIX: no ARM64 Flutter SDK for Windows exists and
+      `flutter build windows` cannot cross-compile one, so neither route can
+      produce an ARM binary today. Both ARM jobs are off behind
+      `ENABLE_WINDOWS_ARM64` waiting on that. When it lands, this file needs
+      nothing but a second `wix build` at `-arch arm64`.
+
+      On 32-bit Windows the install would otherwise succeed and the app would
+      not start, which is the failure the condition below actually prevents.
+    -->
+    <Launch
+        Condition="VersionNT64"
+        Message="MumbleWay is 64-bit and this is a 32-bit version of Windows." />
+
+    <!-- Shown in Apps &amp; features, beside the uninstall entry. -->
+    <Icon Id="AppIcon.exe" SourceFile="$(Stage)\mumbleway.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/zavitax/mumbleway" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/zavitax/mumbleway/issues" />
+    <!-- ARPNOMODIFY is deliberately not set here: WixUI_InstallDir sets it
+         already, and declaring it twice is a build error rather than a
+         last-one-wins. -->
+
+
+    <!--
+      GPL-3, converted from the repository's own LICENSE at build time.
+
+      Generated rather than committed as an .rtf: a second copy of a 674-line
+      licence in the tree is a copy that can silently disagree with the first,
+      and the licence shown by an installer is exactly the wrong place for that.
+    -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(License)" />
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="MumbleWay" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="MumbleWay" Level="1">
+      <ComponentGroupRef Id="BundleFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <!--
+      The whole build output, harvested at build time.
+
+      `Include` takes the bundle root and everything under it, so `data/`,
+      `data/flutter_assets/` and `blobs/` come across with their structure
+      intact — which matters, because the app looks for the TensorFlow Lite
+      library at `blobs/libtensorflowlite_c-win.dll` relative to the executable
+      and for its assets under `data/`. Nothing here enumerates a filename, so
+      adding an asset or a plugin needs no edit to this file.
+
+      The Visual C++ runtime DLLs beside the executable are part of that sweep.
+      They are there because `app/windows/CMakeLists.txt` installs them; see the
+      comment there for why the bundle is not self-contained without them.
+    -->
+    <ComponentGroup Id="BundleFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(Stage)\**" />
+    </ComponentGroup>
+
+    <!--
+      Straight into the Start Menu rather than a "MumbleWay" folder holding one
+      shortcut. A folder is for a suite; this is one application.
+
+      The registry value is the component's key path. A shortcut cannot be one
+      under a perMachine install, and without a key path the component is keyed
+      on its own directory — which here is the Start Menu itself, shared with
+      every other application on the machine.
+    -->
+    <Component Id="StartMenuShortcut"
+               Directory="ProgramMenuFolder"
+               Guid="135C19C9-617C-4E8A-8BD3-614D3997D3F7">
+      <Shortcut Id="MumbleWayShortcut"
+                Name="MumbleWay"
+                Description="Voice for motorcyclists"
+                Target="[INSTALLFOLDER]mumbleway.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKLM"
+                     Key="Software\MumbleWay"
+                     Name="installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+  </Package>
+</Wix>

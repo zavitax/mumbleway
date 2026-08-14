@@ -503,6 +503,15 @@ jobs:
           "MSIX_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Output "packaging as $version"
 
+          # The MSI takes the same major.minor.build and stops there. Windows
+          # Installer compares only three fields, so the trailing .0 the Store
+          # requires would be accepted and then ignored — two builds differing
+          # only in it look identical, and the newer refuses to replace the
+          # older. Its component limits are also tighter than the Store's
+          # (major and minor 0-255, not 0-65535); the installer script checks
+          # them and fails with a message naming the offending field.
+          "MSI_VERSION=$major.$minor.$build" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       # A build somebody can just run, beside the one the Store gets.
       #
       # **Neither MSIX answers "let me try this build".** The store package is
@@ -516,11 +525,23 @@ jobs:
       # be a confusing thing to hand anybody, so the check below is not
       # decoration.
       #
-      # Self-contained by construction: `flutter build windows` copies the MSVC
-      # runtime DLLs into the bundle root (Flutter's own `windows/CMakeLists.txt`
-      # calls `InstallRequiredSystemLibraries`), beside `flutter_windows.dll`,
-      # the plugin DLLs and `data/`. Nothing in the zip needs the Visual C++
-      # redistributable installed first.
+      # Self-contained, but not by construction — **this was wrong when first
+      # written and the zip shipped without the runtime for as long as it
+      # stood.** The claim was that Flutter's own `windows/CMakeLists.txt`
+      # calls `InstallRequiredSystemLibraries`. It does not, and no template
+      # version of it ever has: it installs the executable, the ICU data, the
+      # engine and plugin DLLs and the assets, and stops there.
+      #
+      # Every binary in the bundle imports `MSVCP140.dll` and
+      # `VCRUNTIME140.dll`, which Windows does not ship. What Windows does ship
+      # is the UCRT (`api-ms-win-crt-*`), and that is the half that made the
+      # mistake invisible: any machine with Visual Studio — or with almost any
+      # other native application — already has the redistributable, so the zip
+      # ran everywhere it was tried and would have failed on a clean install.
+      #
+      # `app/windows/CMakeLists.txt` now installs the runtime beside the
+      # executable, so the sentence is true. The installer script checks for it
+      # rather than trusting this comment.
       - name: Zip a build that runs without installing
         shell: pwsh
         working-directory: app
@@ -557,6 +578,33 @@ jobs:
         with:
           name: mumbleway-windows-portable
           path: app/build/windows/*.zip
+          if-no-files-found: error
+
+      # The third Windows artifact, and the one somebody means by "install it":
+      # a Start Menu entry, an uninstall entry, and an upgrade that replaces the
+      # previous version instead of sitting beside it. The Store package cannot
+      # be installed by hand at all, and the portable zip installs nothing.
+      #
+      # **Between the zip and `msix:create`, and that ordering is not
+      # decoration.** The installer harvests the bundle folder whole, so a
+      # `.msix` written there first would be packaged inside the `.msi`. The
+      # script fails rather than doing that, which turns an ordering mistake in
+      # this file into a build error instead of a 65 MB surprise.
+      #
+      # The work is in `app/windows/installer/build.ps1` rather than in steps
+      # here, so that the installer can be built and opened locally exactly as
+      # CI builds it. An installer that only exists inside a workflow cannot be
+      # changed without pushing to find out.
+      # No working-directory and no -Output: the script derives both the bundle
+      # and its output folder from its own location, so it behaves the same here
+      # as it does when run by hand from anywhere in the tree.
+      - name: Build the MSI
+        run: ./app/windows/installer/build.ps1 -Version "${{ env.MSI_VERSION }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mumbleway-windows-msi
+          path: app/build/windows/installer/*.msi
           if-no-files-found: error
 
       # Two different artifacts, and the difference matters. A store package is
@@ -1230,12 +1278,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
-          # The `.zip` is the portable Windows build. It is the only asset here
-          # a reader can download and run, so it is worth having on the release
-          # page rather than only in a workflow run's artifacts, which expire.
+          # The `.zip` and the `.msi` are the two Windows assets a reader can
+          # actually use: the zip runs in place, the installer installs. Both
+          # belong on the release page rather than only in a workflow run's
+          # artifacts, which expire. The `.msix` is here for completeness and
+          # cannot be installed by hand -- Partner Center re-signs it.
+          #
+          # `*.msi` does not also match `*.msix`; they are separate patterns on
+          # purpose, and dropping either one silently ships one fewer asset.
           find artifacts -type f \
-            \( -name '*.aab' -o -name '*.ipa' -o -name '*.msix' -o -name '*.pkg' \
-               -o -name '*.zip' \) \
+            \( -name '*.aab' -o -name '*.ipa' -o -name '*.msi' -o -name '*.msix' \
+               -o -name '*.pkg' -o -name '*.zip' \) \
             -exec cp {} release/ \;
           # Named for the version, so a downloaded file still says what it is
           # once it is out of the browser and in a downloads folder.

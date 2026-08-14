@@ -586,10 +586,49 @@ workflow created while it is open.
 | Store | Artifact | Notes |
 |---|---|---|
 | Microsoft Store | `.msix` | Partner Center re-signs it, so it is submitted unsigned; uploaded on a tag or on request — see 4f |
-| Direct download | signed `.zip` | what CI publishes today; this is the one SignPath signs |
+| Direct download | signed `.zip` | runs from wherever it is unpacked and installs nothing; this is the one SignPath signs |
+| Direct download | `.msi` | a real install: Start Menu entry, uninstall entry, upgrade in place — see 5a |
 | App Store | `.ipa` | uploaded to TestFlight first; review takes days |
 | Google Play | `.aab` | APKs are for direct install only; Play requires a bundle |
 | Mac App Store | `.pkg` | two certificates, one for the app and one for the installer; see 2g |
+
+### 5a. The Windows installer
+
+Three Windows artifacts, and they answer three different questions. The `.msix`
+goes to the Store and **cannot be installed by hand** — Partner Center re-signs
+it, so the one CI produces is unsigned and Windows refuses it. The `.zip` runs
+in place and installs nothing, which is what you want for "try this build".
+The `.msi` is the one for somebody who wants to keep the app.
+
+It installs per-machine into `Program Files\MumbleWay`, adds a Start Menu entry
+and an uninstall entry, and upgrades in place: installing a newer version
+replaces the older one rather than sitting beside it.
+
+Built by `app/windows/installer/build.ps1`, which CI runs and you can too:
+
+```powershell
+cd app; flutter build windows --release; cd ..
+.\app\windows\installer\build.ps1 -Version 1.0.0
+```
+
+That is deliberate — an installer that only exists inside a workflow cannot be
+changed without pushing to find out whether the change worked.
+
+Two things about it are worth knowing before editing:
+
+* **The version is three fields, not four.** Windows Installer compares only
+  `major.minor.build`, and its limits are tighter than the Store's: 0–255,
+  0–255, 0–65535. A fourth field is accepted and then ignored, so two builds
+  differing only there are indistinguishable and the newer one refuses to
+  install over the older. The script rejects anything else by hand.
+* **It runs before `msix:create`.** The installer harvests the build folder
+  whole, so a `.msix` written there first would be packaged inside the `.msi`.
+  The script fails rather than doing it.
+
+Signing is not wired up: SignPath signs the `.zip` (section 1), and the `.msi`
+is unsigned today. An unsigned installer trips SmartScreen exactly as an
+unsigned `.exe` does, so a signed one is the obvious next step — the artifact
+configuration in SignPath would need to cover the `.msi`.
 
 ---
 

@@ -118,3 +118,31 @@ install(
   FILES "${CMAKE_CURRENT_SOURCE_DIR}/../blobs/libtensorflowlite_c-win.dll"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/../blobs/"
   COMPONENT Runtime)
+
+# The Visual C++ runtime, beside the executable.
+#
+# **Without this the bundle is not self-contained, and the way it fails is
+# quiet.** Every binary here imports `MSVCP140.dll` and `VCRUNTIME140.dll` --
+# the exe, the engine, all three plugins and the TensorFlow Lite blob -- and
+# Windows does not ship them. It ships only the UCRT (`api-ms-win-crt-*`, part
+# of the OS since Windows 10), which is why the missing half went unnoticed:
+# any machine with Visual Studio, or with almost any other native application
+# installed, already has the redistributable and starts the app fine. A clean
+# Windows install gets a missing-DLL dialog naming a file that means nothing to
+# the person reading it.
+#
+# `CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP` suppresses the module's own install
+# rule, which targets `bin/` -- wrong for a Flutter bundle, where everything
+# sits beside the executable. So the rule is written out here instead.
+#
+# App-local deployment rather than chaining the redistributable installer:
+# Microsoft documents both, and local deployment needs no elevation, no reboot
+# and no second package, which suits a portable zip and an MSI equally.
+#
+# If MSVC is not the compiler the variable comes back empty and `install` is a
+# no-op, so this stays harmless anywhere else.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+include(InstallRequiredSystemLibraries)
+install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS}
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)

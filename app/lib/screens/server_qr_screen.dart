@@ -2,7 +2,6 @@ import 'dart:io' show File;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -75,16 +74,25 @@ class _ServerQrScreenState extends State<ServerQrScreen> {
               )
             : _link == null
             ? const Center(child: CircularProgressIndicator())
-            : _Body(server: widget.server, link: _link!),
+            : _Body(
+                server: widget.server,
+                channel: widget.channel,
+                link: _link!,
+              ),
       ),
     );
   }
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.server, required this.link});
+  const _Body({required this.server, required this.channel, required this.link});
 
   final SavedServer server;
+
+  /// Carried down so the share button below invites to the same channel the
+  /// code does, rather than to the server's default.
+  final String? channel;
+
   final String link;
 
   /// Side of the code as rendered for sharing, in pixels.
@@ -177,10 +185,17 @@ class _Body extends StatelessWidget {
           label: Text(l.shareQrImage),
         ),
         const SizedBox(height: 8),
+        // The same share sheet the server card offers, and deliberately the
+        // same *link*: the https invitation, not the `mumble://` one in the
+        // code above it. A code is scanned by a camera, which acts on the
+        // scheme directly; a link is pasted into a messaging app, which is
+        // where `mumble://` stops working. Copying the raw scheme to the
+        // clipboard was the old behaviour here and was the thing most likely
+        // to be pasted into exactly the app that cannot open it.
         TextButton.icon(
-          onPressed: () => _copy(context),
+          onPressed: () => _share(context),
           icon: const Icon(Icons.link, size: 18),
-          label: Text(l.copyMumbleUrl),
+          label: Text(l.shareInviteLink),
         ),
         const SizedBox(height: 12),
         // The link itself, selectable. Somebody on a desktop without a phone to
@@ -198,11 +213,21 @@ class _Body extends StatelessWidget {
     );
   }
 
-  Future<void> _copy(BuildContext context) async {
-    final l = L.of(context);
+  /// Shares the invitation through the platform's own share sheet.
+  ///
+  /// **With the password**, matching the code on screen rather than asking
+  /// again: this screen already puts a scannable password on display, so a
+  /// prompt here would be guarding a door that is standing open. The server
+  /// card asks, because there the question is still live.
+  Future<void> _share(BuildContext context) async {
+    final state = AppStateScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    await Clipboard.setData(ClipboardData(text: link));
-    messenger.showSnackBar(SnackBar(content: Text(l.linkCopied)));
+    final error = await state.shareInviteLink(
+      server,
+      channel: channel,
+      includePassword: true,
+    );
+    if (error != null) showError(messenger, error);
   }
 
   Future<void> _shareImage(BuildContext context) async {

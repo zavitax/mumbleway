@@ -752,12 +752,6 @@ class LRu extends L {
   String get shareQrImage => 'Отправить код';
 
   @override
-  String get copyMumbleUrl => 'Скопировать ссылку mumble://';
-
-  @override
-  String get linkCopied => 'Ссылка скопирована';
-
-  @override
   String get qrCouldNotRender => 'Не удалось построить код.';
 
   @override

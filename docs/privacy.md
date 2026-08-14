@@ -6,7 +6,7 @@ description: What MumbleWay does with your voice, and what it does not.
 ---
 
 **MumbleWay** — voice for bikers.
-Developer: Ilya Melamed. Last updated: 7 August 2026.
+Developer: Ilya Melamed. Last updated: 15 August 2026.
 
 ## The short version
 
@@ -71,10 +71,34 @@ stops further syncing.
 |---|---|---|
 | The Mumble server you chose | While connected | Your voice, your username, your IP address |
 | `publist.mumble.info` | Only when you open the public server directory | Your IP address, as any website would |
+| `zavitax.github.io` | Only when an invitation link is *followed* in a browser | Your IP address. **Not** the server, channel or password in the invitation |
 | Your local network | Only if you connect to a server on it | — |
 
 The public directory is run by the Mumble project, not by MumbleWay. If you
-never open it, the app never contacts it. No other network connections are made.
+never open it, the app never contacts it.
+
+### Invitation links
+
+An invitation you share is an ordinary `https://zavitax.github.io/mumbleway/join/`
+link, because a `mumble://` link is not something most messaging apps will let
+anyone tap. **The invitation itself is in the part of the link after the `#`,
+which browsers never send to a server.** So the server address, the channel and
+any password stay on the device even when the link is opened over the network,
+and nothing about who invited whom appears in a web server's logs.
+
+Usually the page is not fetched at all: MumbleWay registers those links with
+your phone, so tapping one opens the app directly. The page loads only when it
+cannot — the app is not installed, or the link was opened on a computer.
+
+The site is hosted by GitHub Pages, which sees the IP address of anyone
+fetching a page, as any website does. MumbleWay adds no analytics, no cookies
+and no trackers to it.
+
+Android also fetches a small file from that domain when the app is installed or
+updated, to confirm the app is allowed to open its own links. It says nothing
+about you, and happens whether or not you ever use an invitation.
+
+No other network connections are made.
 
 ## Permissions, and why
 

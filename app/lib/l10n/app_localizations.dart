@@ -1441,18 +1441,6 @@ abstract class L {
   /// **'Share the code'**
   String get shareQrImage;
 
-  /// No description provided for @copyMumbleUrl.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy mumble:// URL'**
-  String get copyMumbleUrl;
-
-  /// No description provided for @linkCopied.
-  ///
-  /// In en, this message translates to:
-  /// **'Link copied'**
-  String get linkCopied;
-
   /// No description provided for @qrCouldNotRender.
   ///
   /// In en, this message translates to:

@@ -348,8 +348,6 @@
   "shareQrCode": "Share QR code",
   "qrCarriesPassword": "This code contains the password. Anyone who can see it — including over your shoulder, or in a photograph — can connect as you.",
   "shareQrImage": "Share the code",
-  "copyMumbleUrl": "Copy mumble:// URL",
-  "linkCopied": "Link copied",
   "qrCouldNotRender": "The code could not be drawn.",
   "joinMeOn": "Join me on {name}",
   "@joinMeOn": {

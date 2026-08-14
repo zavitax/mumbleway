@@ -746,12 +746,6 @@ class LEn extends L {
   String get shareQrImage => 'Share the code';
 
   @override
-  String get copyMumbleUrl => 'Copy mumble:// URL';
-
-  @override
-  String get linkCopied => 'Link copied';
-
-  @override
   String get qrCouldNotRender => 'The code could not be drawn.';
 
   @override

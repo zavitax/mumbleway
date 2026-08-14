@@ -97,6 +97,47 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mumble"/>
             </intent-filter>
+            <!-- The same invitation as an ordinary https link, because
+                 `mumble://` does not survive a messaging app.
+
+                 **Measured on the device, 2026-08-15, not assumed.** Telegram
+                 is inconsistent about turning a `mumble://` URL into something
+                 tappable at all: one sent through the bot rendered as dead
+                 plain text. And when it does linkify one, tapping it opens
+                 Telegram's in-app browser, a Chrome Custom Tab, which tries to
+                 *load* `mumble://` as a web address and fails. Neither can be
+                 fixed from inside this app: nothing here changes what another
+                 app does with the text of a message. An https link is
+                 linkified by every messenger there is, and `autoVerify` is
+                 what makes Android hand it to us instead of to a browser.
+
+                 The scheme filter above stays and is not redundant: it is what
+                 the phone's camera app offers for a scanned QR code, what the
+                 official Mumble client publishes, and what works with no
+                 network and no domain.
+
+                 **Verification needs
+                 `https://zavitax.github.io/.well-known/assetlinks.json`** to be
+                 reachable anonymously, carrying this app's Play App Signing
+                 fingerprint. Play re-signs every upload, so the fingerprint
+                 that matters is the one on the installed artifact rather than
+                 the upload key's. If that file stops being served, Android
+                 silently stops treating these as app links and sends them to
+                 the browser instead, which looks exactly like this feature
+                 never existing.
+
+                 The server, channel and any password ride in the URL
+                 **fragment**, which browsers never send to the server. So the
+                 page below is fetched without them, and no invitation ends up
+                 in a GitHub access log. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"
+                      android:host="zavitax.github.io"
+                      android:pathPrefix="/mumbleway/join"/>
+            </intent-filter>
         </activity>
         <!-- Shows a crash instead of the app simply disappearing.
 

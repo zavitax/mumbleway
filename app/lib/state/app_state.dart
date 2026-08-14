@@ -1549,7 +1549,19 @@ class AppState extends ChangeNotifier {
     bool includePassword = false,
   }) async {
     try {
-      final link = await buildInviteLink(
+      // **The https form, not `mumble://`, because this one goes into a
+      // messaging app.** Measured on a device: Telegram is inconsistent about
+      // making a `mumble://` URL tappable at all, and when it does, tapping
+      // opens its in-app browser, which tries to load the scheme as a web
+      // address and fails. Nothing in this app can change what another app
+      // does with the text of a message; an https link is the only shape that
+      // survives the trip, and Android hands a verified one straight to us.
+      //
+      // The server, channel and password ride in the fragment, which a browser
+      // never sends to a server, so sharing this does not put the invitation
+      // in anybody's access log. `buildInviteLink` is still there for the QR
+      // code and for anything expecting what the official client registers.
+      final link = await buildInviteWebLink(
         config: s.toConfig(),
         channel: channel,
         includePassword: includePassword,

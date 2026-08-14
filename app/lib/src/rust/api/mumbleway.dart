@@ -443,6 +443,28 @@ Future<String> buildInviteLink({
   includePassword: includePassword,
 );
 
+/// Builds the same invitation as an ordinary https link.
+///
+/// **This is the one to send somebody.** A `mumble://` link does not survive a
+/// messaging app: Telegram is inconsistent about making one tappable at all,
+/// and when it does, tapping opens its in-app browser, which tries to load the
+/// scheme as a web address and fails. Both were measured on a device rather
+/// than assumed. Every messenger linkifies https, and Android's App Links hand
+/// a verified https URL to the app instead of to a browser.
+///
+/// The `mumble://` form above stays for the places it is better: a QR code a
+/// phone's camera app can act on with no network, and anything expecting what
+/// the official client registers.
+Future<String> buildInviteWebLink({
+  required ServerConfig config,
+  String? channel,
+  required bool includePassword,
+}) => RustLib.instance.api.crateApiMumblewayBuildInviteWebLink(
+  config: config,
+  channel: channel,
+  includePassword: includePassword,
+);
+
 /// Builds a shareable JSON profile file for one server.
 Future<String> buildInviteFile({
   required ServerConfig config,

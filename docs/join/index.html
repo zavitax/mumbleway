@@ -1,0 +1,133 @@
+<!doctype html>
+<!--
+  The page an invitation lands on when the app did not take it.
+
+  Deliberately plain HTML with no Jekyll front matter, so it is copied verbatim
+  and carries no layout, no navigation and no analytics. An invitation is a
+  thing somebody was handed by a friend; it should open, not market.
+
+  **On a phone with MumbleWay installed this page is usually never seen.** The
+  https link is registered as an Android App Link, so Android hands it straight
+  to the app. This is what happens when it cannot: the app is not installed,
+  the link was opened on a desktop, or the Digital Asset Links file stopped
+  being served and Android quietly went back to treating it as an ordinary URL.
+
+  **The invitation is in the fragment**, after the `#`. Browsers never send a
+  fragment to the server, so the host, the channel and any password stay on
+  this device; nothing about who is inviting whom reaches a GitHub log. That is
+  also why every bit of the work below is done in the page rather than by
+  anything server-side: there is nothing on the server to do it with.
+-->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Join a server &middot; MumbleWay</title>
+<style>
+  :root { color-scheme: dark light; }
+  body {
+    font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 32px 20px; background: #0f1115; color: #e8eaed;
+    display: flex; justify-content: center;
+  }
+  main { width: 100%; max-width: 30rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 1.5rem; }
+  .card {
+    background: #1a1d23; border: 1px solid #2a2e37; border-radius: 12px;
+    padding: 20px; margin-bottom: 24px;
+  }
+  .row { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; }
+  .row dt { color: #9aa0aa; }
+  .row dd { margin: 0; text-align: right; word-break: break-all; }
+  dl { margin: 0; }
+  a.open {
+    display: block; text-align: center; text-decoration: none;
+    background: #4c8dff; color: #06121f; font-weight: 600; font-size: 1.05rem;
+    padding: 16px; border-radius: 10px; margin-bottom: 20px;
+  }
+  .stores a { color: #8ab4f8; }
+  .muted { color: #9aa0aa; font-size: 0.9rem; }
+  code { background: #22262e; padding: 2px 6px; border-radius: 4px; word-break: break-all; }
+</style>
+
+<main>
+  <h1>Join a server</h1>
+  <div id="detail" class="card" hidden><dl id="rows"></dl></div>
+  <a id="open" class="open" hidden>Open in MumbleWay</a>
+  <p id="empty" class="muted" hidden>
+    This link carries no invitation. Ask whoever sent it for the full link &mdash;
+    everything after the <code>#</code> is the part that matters.
+  </p>
+  <p id="hint" class="muted" hidden>
+    Nothing happened? MumbleWay may not be installed yet.
+  </p>
+  <p class="muted stores">
+    MumbleWay for
+    <a href="https://play.google.com/store/apps/details?id=com.mumbleway.mumbleway">Android</a>,
+    <a href="https://apps.apple.com/app/mumbleway/id6753178942">iPhone and iPad</a>,
+    <a href="../">Windows, macOS and the rest</a>.
+  </p>
+</main>
+
+<script>
+(function () {
+  // Everything after the first '#'. Not `location.hash.slice(1)` alone,
+  // because a mumble:// link may itself contain a '#' in a channel name and
+  // splitting on the first one is what keeps the rest intact.
+  var raw = location.href.indexOf('#') >= 0
+    ? location.href.slice(location.href.indexOf('#') + 1)
+    : '';
+
+  // A messenger, a QR reader or a browser may hand it back percent-encoded.
+  // Try to decode, but keep the original if that fails or produces nothing
+  // useful: a half-decoded link is worse than the one that arrived.
+  var link = raw;
+  try {
+    var decoded = decodeURIComponent(raw);
+    if (decoded.toLowerCase().indexOf('mumble:') === 0) link = decoded;
+  } catch (e) { /* malformed escapes: keep raw */ }
+
+  if (link.toLowerCase().indexOf('mumble:') !== 0) {
+    document.getElementById('empty').hidden = false;
+    return;
+  }
+
+  // Shown so the reader can see where they are being invited before tapping.
+  // **The password is never displayed**, though it may be in the link: it is
+  // the server's, shared with everyone who has the invitation, and putting it
+  // on screen only helps whoever is standing behind them.
+  try {
+    var u = new URL(link);
+    var rows = [
+      ['Server', u.hostname],
+      ['Port', u.port || '64738'],
+      ['Channel', decodeURIComponent(u.pathname.replace(/^\/+|\/+$/g, '')) || '—'],
+    ];
+    var title = u.searchParams.get('title');
+    if (title) rows.unshift(['Name', title]);
+
+    var dl = document.getElementById('rows');
+    rows.forEach(function (r) {
+      var d = document.createElement('div'); d.className = 'row';
+      var dt = document.createElement('dt'); dt.textContent = r[0];
+      var dd = document.createElement('dd'); dd.textContent = r[1];
+      d.appendChild(dt); d.appendChild(dd); dl.appendChild(d);
+    });
+    document.getElementById('detail').hidden = false;
+  } catch (e) {
+    // An unparseable link is still worth offering to the app, which has a
+    // better parser than this one and can say what is wrong with it.
+  }
+
+  var open = document.getElementById('open');
+  open.href = link;
+  open.hidden = false;
+
+  // No automatic redirect. A page that navigates to a custom scheme on load
+  // gets an error dialog from the browser when nothing handles it, and on iOS
+  // it can fire before the reader has seen where they are going. One tap, on
+  // purpose, is both clearer and more reliable.
+  open.addEventListener('click', function () {
+    setTimeout(function () { document.getElementById('hint').hidden = false; }, 1200);
+  });
+})();
+</script>

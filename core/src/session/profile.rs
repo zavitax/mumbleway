@@ -16,6 +16,24 @@ use crate::session::ServerProfile;
 /// Mumble's default port, used when a link omits one.
 pub const DEFAULT_PORT: u16 = 64738;
 
+/// Where a shareable invitation points.
+///
+/// **An https link exists because `mumble://` does not survive a messaging
+/// app.** Measured on a device rather than assumed: Telegram is inconsistent
+/// about linkifying a `mumble://` URL at all, and when it does, tapping it
+/// opens its in-app Chrome Custom Tab, which tries to load the scheme as a web
+/// address and fails. Every messenger linkifies https, and Android's App Links
+/// hand a verified https URL to the app instead of to a browser.
+///
+/// The `mumble://` form is not going anywhere: it is what the official client
+/// registers, what a phone's camera app offers for a scanned QR code, and what
+/// works with no domain and no network.
+pub const WEB_INVITE_BASE: &str = "https://zavitax.github.io/mumbleway/join/";
+
+/// Host and path of [`WEB_INVITE_BASE`], for recognising one on the way back in.
+const WEB_INVITE_HOST: &str = "zavitax.github.io";
+const WEB_INVITE_PATH: &str = "/mumbleway/join";
+
 /// On-disk shape of a profile file. Deliberately forgiving: everything except
 /// the host has a sensible default, so a minimal hand-written file works.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +78,17 @@ pub fn parse_url(input: &str, fallback_username: &str) -> Result<ServerProfile> 
     let trimmed = input.trim();
     let parsed =
         url::Url::parse(trimmed).map_err(|e| CoreError::Other(format!("not a valid link: {e}")))?;
+
+    // An invitation shared as an https link carries the real one in its
+    // fragment, so unwrap that and carry on as if it had arrived directly.
+    //
+    // **The fragment is the point, not a detail.** A browser never sends it to
+    // the server, so the host, the channel and any password stay on the device
+    // even though the link was fetched over the network. Putting them in the
+    // path or the query would write every invitation into a GitHub access log.
+    if let Some(inner) = web_invite_payload(&parsed) {
+        return parse_url(&inner, fallback_username);
+    }
 
     if !parsed.scheme().eq_ignore_ascii_case("mumble") {
         return Err(CoreError::Other(format!(
@@ -113,6 +142,36 @@ pub fn parse_url(input: &str, fallback_username: &str) -> Result<ServerProfile> 
     profile.password = password;
     profile.auto_join_channel = channel;
     Ok(profile)
+}
+
+/// The `mumble://` link inside a web invitation, if `parsed` is one.
+///
+/// Deliberately strict about host and path: this is what decides whether a
+/// fragment is treated as a link to follow, and the whole tree of links from
+/// somebody else's site should not be.
+fn web_invite_payload(parsed: &url::Url) -> Option<String> {
+    if !matches!(parsed.scheme(), "https" | "http") {
+        return None;
+    }
+    if !parsed.host_str()?.eq_ignore_ascii_case(WEB_INVITE_HOST) {
+        return None;
+    }
+    if !parsed.path().starts_with(WEB_INVITE_PATH) {
+        return None;
+    }
+    let fragment = parsed.fragment()?.trim();
+    // Percent-decoded because a messenger, a QR reader or a browser may hand it
+    // back encoded, and `mumble://` survives either way.
+    let decoded = percent_decode(fragment);
+    let candidate = if decoded.trim().is_empty() {
+        fragment.to_string()
+    } else {
+        decoded
+    };
+    candidate
+        .to_ascii_lowercase()
+        .starts_with("mumble:")
+        .then_some(candidate)
 }
 
 fn percent_decode(s: &str) -> String {
@@ -231,6 +290,24 @@ pub fn build_url(profile: &ServerProfile, channel: Option<&str>, include_passwor
         url.push_str(&format!("?title={}", percent_encode(&profile.name)));
     }
     url
+}
+
+/// Builds the shareable https invitation: [`WEB_INVITE_BASE`] with the
+/// `mumble://` link in the fragment.
+///
+/// The fragment is written verbatim rather than percent-encoded. Every
+/// character [`build_url`] emits is legal in a fragment, and a link somebody
+/// might read out or paste by hand is worth keeping readable; the parser
+/// accepts either form on the way back.
+pub fn build_web_url(
+    profile: &ServerProfile,
+    channel: Option<&str>,
+    include_password: bool,
+) -> String {
+    format!(
+        "{WEB_INVITE_BASE}#{}",
+        build_url(profile, channel, include_password)
+    )
 }
 
 /// Builds a JSON profile file for sharing, optionally with the password.
@@ -429,6 +506,68 @@ mod tests {
         assert_eq!(back.port, DEFAULT_PORT);
         assert_eq!(back.password.as_deref(), Some("s3cret pass"));
         assert_eq!(back.username, "fallback");
+    }
+
+    /// The shareable form, which is what actually gets sent to somebody.
+    #[test]
+    fn a_web_invitation_round_trips() {
+        let mut p = ServerProfile::new("Sunday Ride", "voice.example.com", 64744, "alice");
+        p.password = Some("s3cret pass".into());
+
+        let url = build_web_url(&p, Some("Riders"), true);
+        assert!(url.starts_with(WEB_INVITE_BASE), "unexpected shape: {url}");
+        // The payload rides in the fragment, which a browser never sends to the
+        // server. If this ever moves into the path or the query, every
+        // invitation starts appearing in somebody's access log.
+        let (_, fragment) = url.split_once('#').expect("no fragment");
+        assert!(fragment.starts_with("mumble://"), "fragment: {fragment}");
+
+        let back = parse_url(&url, "fallback").unwrap();
+        assert_eq!(back.host, "voice.example.com");
+        assert_eq!(back.port, 64744);
+        assert_eq!(back.password.as_deref(), Some("s3cret pass"));
+        assert_eq!(back.auto_join_channel.as_deref(), Some("Riders"));
+        assert_eq!(back.name, "Sunday Ride");
+        // Still no username in an invitation; the device supplies its own.
+        assert_eq!(back.username, "fallback");
+    }
+
+    /// A messenger or QR reader may hand the fragment back percent-encoded.
+    #[test]
+    fn a_web_invitation_survives_being_percent_encoded() {
+        let p = ServerProfile::new("S", "h.example", DEFAULT_PORT, "alice");
+        let encoded = format!("{WEB_INVITE_BASE}#mumble%3A%2F%2Fh.example%2FRiders");
+        let back = parse_url(&encoded, "fallback").unwrap();
+        assert_eq!(back.host, "h.example");
+        assert_eq!(back.auto_join_channel.as_deref(), Some("Riders"));
+        let _ = p;
+    }
+
+    /// Only our own invitation path unwraps a fragment. Any other https link is
+    /// still an error rather than something to go looking inside.
+    #[test]
+    fn other_https_links_are_not_treated_as_invitations() {
+        for url in [
+            "https://example.com/join/#mumble://h.example/Riders",
+            "https://zavitax.github.io/mumbleway/#mumble://h.example/Riders",
+            "https://zavitax.github.io/mumbleway/join/#not-a-mumble-link",
+            "https://zavitax.github.io/mumbleway/join/",
+        ] {
+            assert!(
+                parse_url(url, "x").is_err(),
+                "should not have been read as an invitation: {url}"
+            );
+        }
+    }
+
+    /// `parse_any` is what the paste box and the QR reader both go through.
+    #[test]
+    fn parse_any_takes_a_web_invitation() {
+        let p = ServerProfile::new("S", "h.example", DEFAULT_PORT, "alice");
+        let url = build_web_url(&p, Some("Riders"), false);
+        let got = parse_any(&url, "rider").unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].host, "h.example");
     }
 
     #[test]

@@ -2292,6 +2292,27 @@ pub fn build_invite_link(
     mumbleway_core::session::profile::build_url(&profile, channel.as_deref(), include_password)
 }
 
+/// Builds the same invitation as an ordinary https link.
+///
+/// **This is the one to send somebody.** A `mumble://` link does not survive a
+/// messaging app: Telegram is inconsistent about making one tappable at all,
+/// and when it does, tapping opens its in-app browser, which tries to load the
+/// scheme as a web address and fails. Both were measured on a device rather
+/// than assumed. Every messenger linkifies https, and Android's App Links hand
+/// a verified https URL to the app instead of to a browser.
+///
+/// The `mumble://` form above stays for the places it is better: a QR code a
+/// phone's camera app can act on with no network, and anything expecting what
+/// the official client registers.
+pub fn build_invite_web_link(
+    config: ServerConfig,
+    channel: Option<String>,
+    include_password: bool,
+) -> String {
+    let profile = config_to_profile(config);
+    mumbleway_core::session::profile::build_web_url(&profile, channel.as_deref(), include_password)
+}
+
 /// Builds a shareable JSON profile file for one server.
 pub fn build_invite_file(
     config: ServerConfig,

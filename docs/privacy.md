@@ -86,9 +86,14 @@ which browsers never send to a server.** So the server address, the channel and
 any password stay on the device even when the link is opened over the network,
 and nothing about who invited whom appears in a web server's logs.
 
-Usually the page is not fetched at all: MumbleWay registers those links with
-your phone, so tapping one opens the app directly. The page loads only when it
-cannot — the app is not installed, or the link was opened on a computer.
+**On Android** the page is usually not fetched at all: MumbleWay registers
+those links with the system, so tapping one opens the app directly. It loads
+only when it cannot — the app is not installed, or the system has not verified
+the link.
+
+On iPhone, iPad, Mac and Windows the page is always fetched, because MumbleWay
+does not register the address on those platforms. Tapping the button on the
+page is what opens the app.
 
 The site is hosted by GitHub Pages, which sees the IP address of anyone
 fetching a page, as any website does. MumbleWay adds no analytics, no cookies

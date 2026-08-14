@@ -88,7 +88,7 @@
     <a href="../"><img src="../assets/img/mumbleway-wordmark.svg" alt="MumbleWay"
                        width="537" height="256"></a>
   </p>
-  <h1>ADD A SERVER</h1>
+  <h1 id="heading">ADD A SERVER</h1>
   <div id="detail" class="card" hidden><dl id="rows"></dl></div>
   <a id="open" class="open" hidden>Open in MumbleWay</a>
   <p id="empty" class="muted" hidden>
@@ -105,12 +105,76 @@
        store links here also meant three URLs to keep correct from a page
        nobody would notice had gone stale. -->
   <p class="muted stores">
-    <a href="../">Learn more about MumbleWay</a>
+    <a id="more" href="../">Learn more about MumbleWay</a>
   </p>
 </main>
 
 <script>
 (function () {
+  // ---- language -------------------------------------------------------
+  //
+  // **One URL, translated at run time**, unlike the rest of the site, which
+  // has a `/ru/` copy of every page. It cannot work that way here: this path
+  // is registered with Android as an App Link on the prefix `/mumbleway/join`,
+  // and `/mumbleway/ru/join/` would not match it — a Russian reader would get
+  // a browser instead of the app, which is the entire thing this page exists
+  // to avoid. So the invitation keeps one address and the words move.
+  //
+  // English is what is in the markup, so a reader with no JavaScript, or with
+  // any other language, gets a page that reads correctly rather than a set of
+  // empty elements.
+  var STRINGS = {
+    ru: {
+      title: 'Добавить сервер · MumbleWay',
+      heading: 'ДОБАВИТЬ СЕРВЕР',
+      name: 'Название',
+      server: 'Сервер',
+      port: 'Порт',
+      channel: 'Канал',
+      open: 'Открыть в MumbleWay',
+      empty: 'Эта ссылка не содержит приглашения. Попросите отправителя прислать её целиком — важна именно часть после «#».',
+      hint: 'Ничего не произошло? Возможно, MumbleWay ещё не установлен.',
+      more: 'Подробнее о MumbleWay',
+      moreHref: '../ru/',
+      htmlLang: 'ru',
+    },
+  };
+
+  // `?lang=` first, so a link can force one and so this is testable without
+  // changing a device's settings. Otherwise the browser's ordered preference
+  // list, which is the actual answer to "what does this reader read".
+  var forced = (location.search.match(/[?&]lang=([a-z-]+)/i) || [])[1];
+  var prefs = forced ? [forced]
+    : (navigator.languages && navigator.languages.length
+        ? navigator.languages
+        : [navigator.language || '']);
+  var T = null;
+  for (var p = 0; p < prefs.length; p++) {
+    // Prefix match: `ru`, `ru-RU` and `ru-BY` are all the same reader here.
+    var tag = String(prefs[p]).toLowerCase();
+    if (tag === 'ru' || tag.indexOf('ru-') === 0) { T = STRINGS.ru; break; }
+    // Stop at the first language that is not Russian: somebody whose first
+    // preference is English should get English even if Russian is second.
+    if (tag) break;
+  }
+
+  function put(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  if (T) {
+    document.documentElement.lang = T.htmlLang;
+    document.title = T.title;
+    put('heading', T.heading);
+    put('open', T.open);
+    put('empty', T.empty);
+    put('hint', T.hint);
+    put('more', T.more);
+    var more = document.getElementById('more');
+    if (more) more.href = T.moreHref;
+  }
+
   // Everything after the first '#'. Not `location.hash.slice(1)` alone,
   // because a mumble:// link may itself contain a '#' in a channel name and
   // splitting on the first one is what keeps the rest intact.
@@ -139,12 +203,13 @@
   try {
     var u = new URL(link);
     var rows = [
-      ['Server', u.hostname],
-      ['Port', u.port || '64738'],
-      ['Channel', decodeURIComponent(u.pathname.replace(/^\/+|\/+$/g, '')) || '—'],
+      [T ? T.server : 'Server', u.hostname],
+      [T ? T.port : 'Port', u.port || '64738'],
+      [T ? T.channel : 'Channel',
+       decodeURIComponent(u.pathname.replace(/^\/+|\/+$/g, '')) || '—'],
     ];
     var title = u.searchParams.get('title');
-    if (title) rows.unshift(['Name', title]);
+    if (title) rows.unshift([T ? T.name : 'Name', title]);
 
     var dl = document.getElementById('rows');
     rows.forEach(function (r) {

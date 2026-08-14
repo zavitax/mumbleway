@@ -1,0 +1,34 @@
+[package]
+name = "aec3bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "What WebRTC's AEC3 costs per block, on the device that would have to run it"
+license = "GPL-3.0-or-later"
+
+# Its own workspace, for the reason `dfbench` gives: this is built for
+# `aarch64-linux-android` and pushed to a phone, and `mumbleway-core` cannot
+# easily be, because `audiopus_sys` builds Opus through CMake and needs an
+# Android toolchain, an NDK generator and a C++ compiler. `core/tests/aec3_cost.rs`
+# measures both cancellers side by side and is the better harness — it just
+# takes an hour to cross-compile, and the question here is a number.
+#
+# The comparison is still sound: `core/tests/aec_cost.rs` measured the current
+# filter on this same phone at **970 µs a block at 1024 taps**, and that is what
+# the figure below is read against.
+[workspace]
+
+[dependencies]
+# BSD-3-Clause, pure Rust, no C++ toolchain — which is the whole reason this is
+# the candidate rather than upstream WebRTC's own module.
+sonora = "0.2"
+# The room impulse responses reach 21 000 taps and a direct convolution against
+# 8 s of audio is 8 billion multiply-adds, which is minutes of an OPPO's life
+# spent on scaffolding rather than on the thing being measured.
+rustfft = "6"
+
+# Plain release, deliberately. Fat LTO across a crate this size takes longer to
+# build than the measurement takes to run, and it would flatter the result
+# against a shipping build that does not use it.
+[profile.release]
+opt-level = 3

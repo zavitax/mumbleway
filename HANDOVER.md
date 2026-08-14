@@ -301,11 +301,53 @@ a time-domain NLMS normalised by one total power converges worse the further it
 spans, which is why both production cancellers are frequency-domain. So the
 architecture cannot reach this case, and no amount of tuning changes that.
 
-**The next step is therefore a different canceller, not a longer one** — see the
-note on AEC3 that follows this file's discussion. Whichever is chosen, the
-render stream has to become continuous first: AEC3 and its ports expect exactly
-one 10 ms render frame per 10 ms capture frame, and today 44% of blocks push
-nothing at all because the far end happened to be quiet.
+**The next step is therefore a different canceller, not a longer one.**
+
+### 7. AEC3 measured on the OPPO, 14 August
+
+[Sonora](https://github.com/dignifiedquire/sonora) is a pure-Rust port of
+WebRTC's AudioProcessing (M145), BSD-3-Clause — which GPL-3 can absorb — and
+needs no C++ toolchain, which is what makes it worth trying across five
+cross-compiled targets. `sonora-aec3` is **0.2.0, published 29 July 2026**, so
+it is two weeks old and that is a real risk to weigh.
+
+`tools/aec3bench`, on the phone, 20 s a room:
+
+```
+room                         erle dB   mean us    p95 us
+helmet, 20 ms tail              42.6       411       486
+measured p10, 40 ms             44.6       409       483
+measured median, 140 ms         38.4       408       481
+measured p90, 440 ms            42.8       400       472
+```
+
+Against the same phone's own numbers: the current filter is **970 µs at 1024
+taps** and manages **0.0 dB** on the p90 room. AEC3 is **less than half the
+cost and 40 dB better**, and it does not degrade as the tail lengthens. It
+would take the whole block from 8.8 ms to 8.2.
+
+`core/tests/aec3_cost.rs` runs both side by side on a desktop and agrees:
+37–39 dB for AEC3 against 27.8, 0.3, 4.8, 0.0 for ours.
+
+**Two mistakes on the way there, both worth knowing.** The first room used
+`testsig::speech` alone — a 120 Hz harmonic stack, exactly periodic, energy at
+33 discrete frequencies and none between. On it, ours scored 50 dB and AEC3
+scored 1.7, and *both* were artefacts: no adaptive filter can identify a room
+from a rank-deficient input, and any filter matching those 33 points scores
+perfectly. The generator did not flatter the hypothesis, it flattered the
+**incumbent**, because the incumbent had been tuned alongside it. The second
+was nearly believing the 1.7: cross-checking AEC3's own `get_statistics()`
+against the measured figure is what caught it, and its reported ERL of −30.0 dB
+and delay of 288 ms were the tell.
+
+### 8. Still required either way: a continuous render stream
+
+AEC3 and every port of it expect exactly **one 10 ms render frame per 10 ms
+capture frame**. Today 44% of blocks push nothing into `echo_reference` because
+the far end happened to be quiet, and the queue is cleared wholesale past
+500 ms. That has to be a real-time stream before any of the above can be
+adopted. It is not the cause of the current fault — §5 measured that — but it
+is a precondition for the fix.
 
 ### Why the tests could not have caught either
 

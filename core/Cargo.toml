@@ -120,6 +120,24 @@ mach2 = "0.6"
 [target.'cfg(target_os = "windows")'.dependencies]
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
+# A candidate replacement for `audio::aec`, here to be measured rather than to
+# be shipped — which is why it is a dev-dependency and nothing outside
+# `tests/aec3_cost.rs` may import it.
+#
+# The case for looking: build 123 measured a real room at 140 ms of echo spread
+# (440 at p90) against a filter that covers 21.3, and removed a median of
+# 0.2 dB. `audio::aec::_WHY_NO_GROWTH` records why that filter cannot simply be
+# made longer. AEC3 is a partitioned block frequency-domain filter with per-bin
+# normalisation, which is the property the time-domain one lacks.
+#
+# Sonora is a pure-Rust port of it (WebRTC M145), BSD-3-Clause — compatible with
+# this repository's GPL-3.0-or-later — and needs no C++ toolchain, which is the
+# whole reason to prefer it over the upstream module across five cross-compiled
+# targets. **It is version 0.2.0 and two weeks old**, so it is a measurement
+# candidate and not yet a dependency anybody should rely on.
+[dev-dependencies]
+sonora = "0.2"
+
 [patch.crates-io]
 tract-core = { path = "../third_party/tract-core" }
 

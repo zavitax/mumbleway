@@ -185,9 +185,9 @@ build on this platform.
 ```bash
 cd core && cargo fmt --check   # CI runs this first, and it gates every job
 cd core && cargo clippy --all-targets -- -D warnings   # same job, right after
-cd core && cargo test          # 399 tests
+cd core && cargo test          # 404 tests
 cd app  && flutter analyze     # must be clean
-cd app  && flutter test        # 206 tests
+cd app  && flutter test        # 207 tests
 ```
 
 **Clippy is on this list because leaving it off cost a red build.** It sits in

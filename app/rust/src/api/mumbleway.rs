@@ -1938,6 +1938,30 @@ pub fn clear_background_noisy() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Tells the chain whether the classifier can hear a voice right now.
+///
+/// **This one does reach the gate**, indirectly and in one direction only: it
+/// decides whether the noise floor may keep climbing, and the gate opens
+/// relative to that floor. It can hold the floor down but never push it up, so
+/// the worst it can do is leave the gate open on something that is not speech.
+/// The failure it exists to prevent is the opposite one, and worse: a floor
+/// that climbed onto a held phrase and cut the middle out of it.
+#[frb(sync)]
+pub fn set_classifier_voice(voice: bool) -> anyhow::Result<()> {
+    app()?.shared.set_classifier_voice(voice);
+    Ok(())
+}
+
+/// Forgets it, when the classifier stops running.
+///
+/// The chain then falls back to its own per-block opinion, which is the right
+/// behaviour and not the same as being told there is no voice.
+#[frb(sync)]
+pub fn clear_classifier_voice() -> anyhow::Result<()> {
+    app()?.shared.clear_classifier_voice();
+    Ok(())
+}
+
 /// The profile index the chain publishes, back into the FFI enum.
 ///
 /// By index rather than by importing the core enum's `TryFrom`, because there

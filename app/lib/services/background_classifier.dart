@@ -75,6 +75,31 @@ class BackgroundClassifier {
   /// exactly the kind of number that gets copied without checking.
   static const int musicIndex = 132;
 
+  /// `Speech` and `Singing` in the same label list, read out of the model file
+  /// by `test/yamnet_labels_test.dart` exactly as `musicIndex` is.
+  ///
+  /// **These drive the noise floor, not the profile.** The suppressor's floor
+  /// estimator assumes the quietest thing it has heard recently is background;
+  /// a phrase held longer than its memory breaks that assumption and the floor
+  /// climbs onto the voice, which is what "it cuts into my speech" was. While
+  /// either of these fires, the floor is not allowed to climb.
+  ///
+  /// Singing is separate from Speech because YAMNet treats it as a separate
+  /// class, and a held note is the *worst* case for the floor rather than a
+  /// marginal one: it has no gaps at all for the estimator to find.
+  static const int speechIndex = 0;
+  static const int singingIndex = 24;
+
+  /// The bar for a voice, lower than [`bar`] on purpose.
+  ///
+  /// The two verdicts are not symmetrical in what being wrong costs. Deciding
+  /// the background is noisy picks a heavier profile; deciding a voice is
+  /// present only stops the floor rising, and the floor rising is the fault
+  /// being fixed. A false positive costs a floor that stays low for a couple
+  /// of seconds — which the suppressor ahead of it is there to handle — and a
+  /// false negative costs the middle of somebody's sentence.
+  static const double voiceBar = 0.15;
+
   /// Classes the model scores. Asserted against the model's output tensor at
   /// load, so a swapped model cannot silently shift every index.
   static const int classes = 521;
@@ -147,6 +172,10 @@ class BackgroundClassifier {
   /// The last verdict, for the panel. Null before the first inference.
   bool? get lastVerdict => _lastVerdict;
   bool? _lastVerdict;
+
+  /// Whether the last inference heard a voice, for the diagnostics panel.
+  bool? get lastVoice => _lastVoice;
+  bool? _lastVoice;
 
   /// The last score, for the panel.
   double get lastScore => _lastScore;
@@ -275,6 +304,7 @@ class BackgroundClassifier {
     _model = null;
     _accelerator = null;
     _lastVerdict = null;
+    _lastVoice = null;
     _lastScore = 0;
     // Withdrawn with the verdict, for the same reason: a list left on screen
     // is a claim about what the microphone is hearing right now, and nothing
@@ -282,6 +312,10 @@ class BackgroundClassifier {
     _top = const [];
     try {
       clearBackgroundNoisy();
+      // Back to "nobody is classifying", which the chain answers with its own
+      // per-block opinion. Leaving a stale `true` here would freeze the noise
+      // floor for the rest of the session.
+      clearClassifierVoice();
     } catch (_) {
       // No engine to tell. It has forgotten by itself.
     }
@@ -322,6 +356,15 @@ class BackgroundClassifier {
       final noisy = score >= bar;
       _lastVerdict = noisy;
       setBackgroundNoisy(noisy: noisy);
+
+      // Either class counts. They are the same question to the floor — is
+      // something making voice-shaped sound right now — and a sung phrase is
+      // the harder case, not a lesser one.
+      final voice =
+          scores[speechIndex].toDouble() >= voiceBar ||
+          scores[singingIndex].toDouble() >= voiceBar;
+      _lastVoice = voice;
+      setClassifierVoice(voice: voice);
       onChanged?.call();
     } catch (e) {
       debugPrint('background classifier: inference failed ($e)');

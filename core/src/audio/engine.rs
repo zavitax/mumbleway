@@ -698,6 +698,15 @@ pub struct AudioShared {
     /// to opposite behaviour, and a bool would have made the desktop build,
     /// where nothing ever classifies, permanently assert an all-clear.
     background_noisy: AtomicU8,
+    /// Whether the background classifier can currently hear a voice, as the
+    /// same tri-state and for the same reason: 0 nothing has said anything,
+    /// 1 no voice, 2 speech or singing.
+    ///
+    /// Separate from [`Self::background_noisy`] because they answer different
+    /// questions of the same model. One asks whether the *background* wants a
+    /// heavier profile; this asks whether a voice is present at all, which is
+    /// what decides whether the noise floor may keep climbing.
+    classifier_voice: AtomicU8,
     /// Where every stage of the capture chain stands, as of the last block.
     chain: Mutex<ChainStatus>,
 
@@ -1018,6 +1027,7 @@ impl AudioShared {
             waveform_until: AtomicU64::new(0),
             waveform: Mutex::new(None),
             background_noisy: AtomicU8::new(0),
+            classifier_voice: AtomicU8::new(0),
             input_peak_bits: AtomicU32::new(0),
             input_clipped: AtomicU64::new(0),
             chain: Mutex::new(ChainStatus::default()),
@@ -1394,6 +1404,36 @@ impl AudioShared {
     /// rest of the session.
     pub fn clear_background_noisy(&self) {
         self.background_noisy.store(0, Ordering::Relaxed);
+    }
+
+    /// Whether the classifier currently hears a voice, or `None` if nothing is
+    /// classifying.
+    ///
+    /// **`None` is not `Some(false)`.** The classifier runs only under `Auto`
+    /// and only where the model exists, so absence is the common case, and a
+    /// chain that read it as "no voice" would let the noise floor climb onto
+    /// every phrase on every other profile — which is the fault this exists to
+    /// fix.
+    pub fn classifier_voice(&self) -> Option<bool> {
+        match self.classifier_voice.load(Ordering::Relaxed) {
+            0 => None,
+            1 => Some(false),
+            _ => Some(true),
+        }
+    }
+
+    /// Sets it, from outside the audio thread.
+    pub fn set_classifier_voice(&self, voice: bool) {
+        self.classifier_voice
+            .store(if voice { 2 } else { 1 }, Ordering::Relaxed);
+    }
+
+    /// Forgets it, when the classifier stops running.
+    ///
+    /// A stale `Some(true)` would freeze the floor for the rest of the session;
+    /// a stale `Some(false)` would let it climb with nothing watching.
+    pub fn clear_classifier_voice(&self) {
+        self.classifier_voice.store(0, Ordering::Relaxed);
     }
 
     /// Publishes a frame. Silently drops it if the reader holds the lock,
@@ -2990,6 +3030,12 @@ where
             // right default: it leaves `Auto` deciding exactly as it did
             // before any of this existed.
             processor.set_background_noisy(shared.background_noisy().unwrap_or(false));
+            // The other half of the same verdict, and **not** flattened with
+            // `unwrap_or`. Here `None` has to stay `None`: it means nothing is
+            // classifying, and the chain has its own fallback for that. Reading
+            // it as "no voice" would let the floor climb onto every phrase on
+            // every profile but `Auto`, which is the fault this is fixing.
+            processor.set_classifier_voice(shared.classifier_voice());
 
             let want_aec = shared.echo_cancellation_enabled();
             if want_aec != processor.echo_cancellation_enabled() {

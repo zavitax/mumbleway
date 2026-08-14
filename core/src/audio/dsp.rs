@@ -238,6 +238,15 @@ pub struct NoiseFloorTracker {
     /// `INFINITY` until the first update, so a fresh tracker still reports the
     /// permissive default rather than a rate-limited climb from nowhere.
     published_db: f32,
+    /// Whether voice was present on the previous block, so the rising edge can
+    /// be told from a continued utterance. Only the edge rolls the floor back.
+    was_voice: bool,
+    /// A short history of the reported floor, one sample per
+    /// [`Self::HISTORY_STRIDE`] blocks, so a late verdict can be answered with
+    /// the floor as it stood *before* the speech that provoked it.
+    history: [f32; Self::HISTORY_SLOTS],
+    history_idx: usize,
+    history_count: u32,
 }
 
 impl NoiseFloorTracker {
@@ -281,6 +290,15 @@ impl NoiseFloorTracker {
     /// and harmonicity gates still have to agree before anything transmits.
     const MAX_RISE_DB_PER_BLOCK: f32 = 0.06;
 
+    /// Blocks between samples of the reported floor, and how many are kept.
+    ///
+    /// 10 blocks is 100 ms; 30 slots is three seconds. Three because that is
+    /// how stale a verdict from the background classifier can be: it infers
+    /// every two seconds on a window of just under one, so speech may have
+    /// begun almost three seconds before anything says so.
+    const HISTORY_STRIDE: u32 = 10;
+    const HISTORY_SLOTS: usize = 30;
+
     /// `sub_len_blocks` sub-windows of this length span the tracking window;
     /// six 0.25 s sub-windows give a ~1.5 s memory, longer than a normal breath
     /// pause but short enough to follow changing road speed.
@@ -293,11 +311,44 @@ impl NoiseFloorTracker {
             sub_len: sub_len_blocks.max(1),
             bias_db: 3.0,
             published_db: f32::INFINITY,
+            was_voice: false,
+            history: [f32::INFINITY; Self::HISTORY_SLOTS],
+            history_idx: 0,
+            history_count: 0,
         }
     }
 
     /// Feeds one block level and returns the current floor estimate in dBFS.
+    ///
+    /// Equivalent to [`Self::update_gated`] with nothing saying there is a
+    /// voice, which is the right default for a caller that has no such signal.
     pub fn update(&mut self, level_db: f32) -> f32 {
+        self.update_gated(level_db, false)
+    }
+
+    /// Feeds one block, with `voice` saying whether something is speaking or
+    /// singing right now.
+    ///
+    /// **While `voice` holds, the floor may fall but never rise.** A minimum
+    /// statistic assumes the quietest thing in its memory is background; a held
+    /// phrase makes that assumption false, and the rate limit above only slows
+    /// the resulting climb rather than stopping it. Nothing but "there is a
+    /// voice in this" can stop it, because the estimator cannot tell the
+    /// difference on level alone — that is the whole reason it was fooled.
+    ///
+    /// **Falling is still allowed**, deliberately. A floor that dropped during
+    /// a gap and is now held down is the safe direction: it opens the gate too
+    /// readily rather than closing it on the voice, and the suppressor ahead of
+    /// it is what deals with whatever comes through. Between phrases the freeze
+    /// lifts and the floor climbs to wherever the room actually is.
+    ///
+    /// On the **rising edge** the floor is rolled back to the lowest value it
+    /// held in the last three seconds. A verdict from the classifier can be
+    /// most of three seconds old, so by the time it says "speech" the floor may
+    /// already have climbed onto the very speech being reported. Freezing where
+    /// it *is* would preserve that damage; freezing where it was before the
+    /// speech began is what was actually asked for.
+    pub fn update_gated(&mut self, level_db: f32, voice: bool) -> f32 {
         self.sub_min = self.sub_min.min(level_db);
         self.count += 1;
         if self.count >= self.sub_len {
@@ -306,6 +357,16 @@ impl NoiseFloorTracker {
             self.sub_min = f32::INFINITY;
             self.count = 0;
         }
+
+        // The floor as it stood before whatever provoked this verdict. Taken
+        // before the history is advanced, so it cannot include this block.
+        if voice && !self.was_voice {
+            let before = self.oldest_floor_db();
+            if before.is_finite() && before < self.published_db {
+                self.published_db = before;
+            }
+        }
+        self.was_voice = voice;
 
         let raw = self.raw_floor_db();
         self.published_db = if !self.published_db.is_finite() {
@@ -317,10 +378,38 @@ impl NoiseFloorTracker {
             // floor that lags downward would hold the gate shut on a voice
             // that is now well clear of it.
             raw
+        } else if voice {
+            // Held. Not slowed — held. See the note on this method.
+            self.published_db
         } else {
             (self.published_db + Self::MAX_RISE_DB_PER_BLOCK).min(raw)
         };
+
+        self.remember_floor();
         self.published_db
+    }
+
+    /// Samples the reported floor into the rolling history, every
+    /// [`Self::HISTORY_STRIDE`] blocks.
+    fn remember_floor(&mut self) {
+        self.history_count += 1;
+        if self.history_count < Self::HISTORY_STRIDE {
+            return;
+        }
+        self.history_count = 0;
+        self.history[self.history_idx] = self.published_db;
+        self.history_idx = (self.history_idx + 1) % Self::HISTORY_SLOTS;
+    }
+
+    /// The lowest floor held in the last three seconds.
+    ///
+    /// The minimum rather than the oldest entry: what is wanted is a value from
+    /// before the speech, and speech only ever pushes the floor *up*, so the
+    /// lowest recent value is the one least contaminated by it. Taking the
+    /// oldest slot alone would be at the mercy of where in the ring the phrase
+    /// happened to start.
+    fn oldest_floor_db(&self) -> f32 {
+        self.history.iter().copied().fold(f32::INFINITY, f32::min)
     }
 
     /// The reported floor: the minimum statistic, held back on the way up by
@@ -362,6 +451,10 @@ impl NoiseFloorTracker {
         // after a reset lands on the estimate instead of climbing to it at
         // 6 dB/s from wherever the previous device left it.
         self.published_db = f32::INFINITY;
+        self.was_voice = false;
+        self.history = [f32::INFINITY; Self::HISTORY_SLOTS];
+        self.history_idx = 0;
+        self.history_count = 0;
     }
 }
 
@@ -1374,6 +1467,122 @@ mod tests {
             worst_snr > 6.0,
             "the floor climbed onto a held note: worst SNR {worst_snr:.1} dB"
         );
+    }
+
+    /// The rule the recordings asked for: while something is speaking, the
+    /// floor does not climb at all. Not slower — not at all.
+    #[test]
+    fn a_voice_stops_the_floor_climbing_outright() {
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..300 {
+            t.update_gated(-90.0, false);
+        }
+        let quiet = t.floor_db();
+
+        // Thirty seconds of unbroken voice, twenty times the tracker's memory.
+        for _ in 0..3000 {
+            t.update_gated(-20.0, true);
+        }
+        assert!(
+            (t.floor_db() - quiet).abs() < 1e-3,
+            "floor moved {:.2} dB while a voice was present",
+            t.floor_db() - quiet
+        );
+        // And the voice therefore still stands clear of it.
+        assert!(t.snr_db(-20.0) > 60.0);
+    }
+
+    /// The freeze is not a latch. Between phrases the floor finds the room
+    /// again, or a rider who moves from a quiet street to a motorway would keep
+    /// a floor measured on the street.
+    #[test]
+    fn the_floor_climbs_again_once_the_voice_stops() {
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..300 {
+            t.update_gated(-90.0, false);
+        }
+        for _ in 0..600 {
+            t.update_gated(-20.0, true);
+        }
+        let held = t.floor_db();
+
+        // The voice stops and the background is genuinely louder than it was.
+        for _ in 0..2000 {
+            t.update_gated(-40.0, false);
+        }
+        assert!(
+            t.floor_db() > held + 10.0,
+            "floor stayed frozen after the voice stopped: {} vs {held}",
+            t.floor_db()
+        );
+    }
+
+    /// Rule for a late verdict: the classifier can be most of three seconds
+    /// behind, so by the time it says "speech" the floor has already climbed
+    /// onto it. The rising edge rolls back to before that happened.
+    #[test]
+    fn a_late_verdict_rolls_the_floor_back_to_before_the_speech() {
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..600 {
+            t.update_gated(-90.0, false);
+        }
+        let before = t.floor_db();
+
+        // Two and a half seconds of speech that nothing has recognised yet:
+        // the floor climbs, exactly as it did in the recordings.
+        for _ in 0..250 {
+            t.update_gated(-20.0, false);
+        }
+        let climbed = t.floor_db();
+        assert!(
+            climbed > before + 5.0,
+            "the setup did not reproduce the climb: {before} -> {climbed}"
+        );
+
+        // Now the verdict lands.
+        t.update_gated(-20.0, true);
+        assert!(
+            t.floor_db() < climbed - 5.0,
+            "a late verdict left the climb in place: {} vs {climbed}",
+            t.floor_db()
+        );
+        assert!(
+            (t.floor_db() - before).abs() < 1.0,
+            "expected roughly the pre-speech floor {before}, got {}",
+            t.floor_db()
+        );
+    }
+
+    /// Only the edge rolls back. A continuing phrase must not keep dragging the
+    /// floor down towards silence, which would make the gate open on anything.
+    #[test]
+    fn only_the_start_of_a_phrase_rolls_back() {
+        let mut t = NoiseFloorTracker::new(25);
+        for _ in 0..600 {
+            t.update_gated(-50.0, false);
+        }
+        t.update_gated(-20.0, true);
+        let at_onset = t.floor_db();
+        for _ in 0..1000 {
+            t.update_gated(-20.0, true);
+        }
+        assert!(
+            (t.floor_db() - at_onset).abs() < 1e-3,
+            "the floor kept moving during a held phrase: {at_onset} -> {}",
+            t.floor_db()
+        );
+    }
+
+    /// `update` is `update_gated` with no voice signal, which is what a caller
+    /// that has none should get.
+    #[test]
+    fn the_plain_update_is_the_ungated_one() {
+        let mut a = NoiseFloorTracker::new(25);
+        let mut b = NoiseFloorTracker::new(25);
+        for i in 0..500 {
+            let lvl = -60.0 + (i % 7) as f32;
+            assert_eq!(a.update(lvl), b.update_gated(lvl, false));
+        }
     }
 
     /// Down is not rate-limited: a room that goes quiet is a fact, and lagging

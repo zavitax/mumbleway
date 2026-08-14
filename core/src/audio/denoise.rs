@@ -368,6 +368,9 @@ pub struct CaptureProcessor {
     /// Blocks of Helmet still owed to the classifier. See
     /// [`MUSIC_HOLD_BLOCKS`].
     music_hold: u32,
+    /// The classifier's last word on whether a voice is present, or `None`
+    /// when nothing is classifying. See [`CaptureProcessor::set_classifier_voice`].
+    classifier_voice: Option<bool>,
     /// The background level *before* the chain touches it.
     ///
     /// Separate from [`Self::floor`], which tracks the signal after
@@ -552,6 +555,7 @@ impl CaptureProcessor {
             auto_calm: 0,
             background_noisy: false,
             music_hold: 0,
+            classifier_voice: None,
             // Slower than the transmit-side tracker. This one is deciding what
             // kind of place the rider is in, which changes over minutes, not
             // whether the current block is speech.
@@ -609,6 +613,24 @@ impl CaptureProcessor {
     /// profile someone picked by hand is an instruction, not a suggestion.
     pub fn set_background_noisy(&mut self, noisy: bool) {
         self.background_noisy = noisy;
+    }
+
+    /// Tells the chain whether the classifier can currently hear a voice.
+    ///
+    /// `Some(true)` for speech or singing, `Some(false)` for neither, and
+    /// **`None` when nothing is classifying at all** — which is not the same as
+    /// "no voice" and must not be treated as one. The classifier runs only
+    /// under `Auto`, only where the model exists, and only every couple of
+    /// seconds; the chain falls back to its own opinion whenever it is absent,
+    /// rather than to silence.
+    ///
+    /// Unlike [`Self::set_background_noisy`] this *does* reach the gate,
+    /// indirectly: it decides whether the noise floor may climb, and the gate
+    /// opens relative to that floor. It can only ever hold the floor **down**,
+    /// so the failure it can cause is a gate that opens too easily — never one
+    /// that closes on a rider mid-sentence, which is the failure that matters.
+    pub fn set_classifier_voice(&mut self, voice: Option<bool>) {
+        self.classifier_voice = voice;
     }
 
     /// Whether the classifier's hold is currently keeping `Helmet` in force.
@@ -1026,11 +1048,36 @@ impl CaptureProcessor {
         if warming_up {
             self.warmup -= 1;
         }
+        // **Is something speaking or singing right now?** If so the floor must
+        // not climb, because a minimum statistic over a held phrase measures
+        // the phrase. See `NoiseFloorTracker::update_gated`.
+        //
+        // The classifier is the authority when it is running: it is asked what
+        // the sound *is*, and it answers `Speech` and `Singing` as well as
+        // `Music`. But it only runs under `Auto`, only on platforms with the
+        // model, and only every two seconds — so it cannot be the only source.
+        //
+        // Failing that, the chain's own two floor-independent opinions: RNNoise
+        // and the pitch search. **Deliberately not the SNR term** that the
+        // transmit decision also uses. SNR is measured against the floor, so
+        // feeding it back in to decide whether the floor may move is a loop
+        // that latches: a floor that has climbed suppresses the SNR, which
+        // says "not speech", which lets it climb further.
+        //
+        // Either source being wrong is survivable in the direction it errs.
+        // A false "voice" holds the floor low and lets some noise through,
+        // which the suppressor ahead of this is there to deal with; a false
+        // "no voice" is the behaviour that was already being reported.
+        let voice_now = match self.classifier_voice {
+            Some(said) => said,
+            None => vad >= self.effective.vad_threshold() && pitch_says_speech,
+        };
+
         // Hold the estimator back until RNNoise is producing real output.
         let noise_floor_db = if warming_up {
             self.floor.floor_db()
         } else {
-            self.floor.update(level_db)
+            self.floor.update_gated(level_db, voice_now)
         };
         let snr_db = level_db - noise_floor_db;
         // Fed the post-suppression level, which is the envelope a listener

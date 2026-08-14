@@ -237,6 +237,24 @@ void setBackgroundNoisy({required bool noisy}) =>
 void clearBackgroundNoisy() =>
     RustLib.instance.api.crateApiMumblewayClearBackgroundNoisy();
 
+/// Tells the chain whether the classifier can hear a voice right now.
+///
+/// **This one does reach the gate**, indirectly and in one direction only: it
+/// decides whether the noise floor may keep climbing, and the gate opens
+/// relative to that floor. It can hold the floor down but never push it up, so
+/// the worst it can do is leave the gate open on something that is not speech.
+/// The failure it exists to prevent is the opposite one, and worse: a floor
+/// that climbed onto a held phrase and cut the middle out of it.
+void setClassifierVoice({required bool voice}) =>
+    RustLib.instance.api.crateApiMumblewaySetClassifierVoice(voice: voice);
+
+/// Forgets it, when the classifier stops running.
+///
+/// The chain then falls back to its own per-block opinion, which is the right
+/// behaviour and not the same as being told there is no voice.
+void clearClassifierVoice() =>
+    RustLib.instance.api.crateApiMumblewayClearClassifierVoice();
+
 /// Starts recording the microphone and what the chain decided about it.
 ///
 /// **This writes the rider's microphone to storage.** It exists because every

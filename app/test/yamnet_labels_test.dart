@@ -32,6 +32,43 @@ void main() {
     expect(labels[BackgroundClassifier.musicIndex], 'Music');
   });
 
+  /// The same trap, twice over, and with more to lose. These two decide
+  /// whether the noise floor may keep climbing; scoring the wrong class would
+  /// freeze the floor on something that is not a voice, or fail to freeze it on
+  /// one — and the second is the fault this was built to fix, so it would look
+  /// exactly like the bug never having been addressed.
+  ///
+  /// `Speech` at 0 is especially worth pinning: an off-by-one anywhere would
+  /// still land on a real class and score plausibly.
+  test('classes 0 and 24 really are Speech and Singing', () {
+    final file = File('assets/models/yamnet.tflite');
+    expect(file.existsSync(), isTrue, reason: 'the model asset is missing');
+
+    final zip = ZipDecoder().decodeBytes(file.readAsBytesSync());
+    final list = zip.files.firstWhere(
+      (f) => f.name.endsWith('.txt'),
+      orElse: () => throw StateError('no label list inside the model'),
+    );
+    final labels = String.fromCharCodes(list.content as List<int>)
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+
+    expect(labels[BackgroundClassifier.speechIndex], 'Speech');
+    expect(labels[BackgroundClassifier.singingIndex], 'Singing');
+    // Distinct from each other and from Music, or one of them is a typo that
+    // every other assertion here would still pass.
+    expect(
+      {
+        BackgroundClassifier.speechIndex,
+        BackgroundClassifier.singingIndex,
+        BackgroundClassifier.musicIndex,
+      }.length,
+      3,
+    );
+  });
+
   test('the panel gets the three highest, highest first', () {
     // The panel shows what else the model was weighing, so the order is the
     // whole point: read as "Music is far ahead" or "it is a close-run thing".

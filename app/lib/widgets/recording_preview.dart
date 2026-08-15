@@ -808,10 +808,20 @@ class _ScrubberState extends State<_Scrubber> {
                 progress: widget.progress,
                 left: _left,
                 span: _span,
-                played: scheme.primary,
+                // Layer one is the microphone, and it is deliberately the
+                // palest thing here: it is context for the two above it rather
+                // than the answer to anything. Grey rather than the accent it
+                // used to be, so that green means one thing on this drawing.
+                played: scheme.onSurfaceVariant,
                 unplayed: scheme.outlineVariant,
                 sent: StatusColors.connected,
                 head: scheme.error,
+                // Layer two, darker than layer one. Where the chain removed
+                // nothing the two coincide and read as one band; where it
+                // removed a lot, the pale raw trace stands out around a dark
+                // core, and that gap is the suppressor's work made visible.
+                processedColour: scheme.onSurface,
+                processedAhead: scheme.outline,
               ),
               size: Size.infinite,
             ),
@@ -832,11 +842,20 @@ class _WavePainter extends CustomPainter {
     required this.unplayed,
     required this.sent,
     required this.head,
+    required this.processedColour,
+    required this.processedAhead,
   });
 
   final Waveform wave;
   final double progress, left, span;
   final Color played, unplayed, sent, head;
+
+  /// The middle layer: what survived processing, before the gate.
+  ///
+  /// Darker than the raw trace under it rather than lighter, so that where the
+  /// chain removed nothing the two coincide and read as one solid band, and
+  /// where it removed a lot the pale raw trace stands out around a dark core.
+  final Color processedColour, processedAhead;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -860,19 +879,47 @@ class _WavePainter extends CustomPainter {
     final last = ((left + span) * wave.buckets).ceil().clamp(0, wave.buckets);
     final step = size.width / (wave.buckets * span);
     final paint = Paint()..strokeWidth = step > 1.6 ? step - 0.8 : step;
-    for (var i = first; i < last; i++) {
-      final x = xOf(i / wave.buckets) + step / 2;
-      // Green says it went out. That is the question a listener is actually
-      // asking of a diagnostic recording — not "how loud was I" but "was I
-      // heard" — so it takes precedence over the played/unplayed shading.
-      paint.color = wave.wasSent(i)
-          ? (x <= headX ? sent : sent.withValues(alpha: 0.55))
-          : (x <= headX ? played : unplayed);
-      // Always at least a hairline: a bucket of pure silence should still show
-      // that the recording continues through it.
-      final top = mid - (wave.maxima[i] * mid).clamp(0.5, mid);
-      final bottom = mid - (wave.minima[i] * mid).clamp(-mid, -0.5);
-      canvas.drawLine(Offset(x, top), Offset(x, bottom), paint);
+
+    // **Three layers, drawn back to front, because the interesting thing is
+    // the distance between them.** What the microphone heard, what the chain
+    // left of it, and which of that the chain would have sent. Any one alone
+    // answers "how loud was I"; the three together answer "what did the
+    // suppressor and the gate actually do to me", which is the question a
+    // diagnostic recording exists for.
+    //
+    // The two upper layers are envelopes rather than waveforms — see
+    // `Waveform.processed`. The recorder keeps one audio stream, so their
+    // height comes from the level the chain measured per 10 ms block. They are
+    // drawn symmetrically about the centre line for that reason: an envelope
+    // has a magnitude and no sign, and drawing one as if it had a waveform's
+    // asymmetry would be inventing detail that was never recorded.
+    for (var layer = 0; layer < 3; layer++) {
+      for (var i = first; i < last; i++) {
+        final x = xOf(i / wave.buckets) + step / 2;
+        final ahead = x > headX;
+        double top, bottom;
+
+        if (layer == 0) {
+          // 1. The microphone, as recorded. The only true waveform here, so it
+          // keeps its asymmetry.
+          paint.color = (ahead ? unplayed : played).withValues(alpha: 0.5);
+          top = mid - (wave.maxima[i] * mid).clamp(0.5, mid);
+          bottom = mid - (wave.minima[i] * mid).clamp(-mid, -0.5);
+        } else {
+          final amp = wave.processedAt(i);
+          // No log, no layer. A flat line here would claim the chain removed
+          // everything, which is a much stronger statement than "not recorded".
+          if (amp == null) continue;
+          if (layer == 2 && !wave.wouldSendAt(i)) continue;
+          paint.color = layer == 1
+              ? (ahead ? processedAhead : processedColour).withValues(alpha: 0.5)
+              : (ahead ? sent.withValues(alpha: 0.4) : sent.withValues(alpha: 0.75));
+          final h = (amp * mid).clamp(0.5, mid);
+          top = mid - h;
+          bottom = mid + h;
+        }
+        canvas.drawLine(Offset(x, top), Offset(x, bottom), paint);
+      }
     }
 
     canvas.drawLine(

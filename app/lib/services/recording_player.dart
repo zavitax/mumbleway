@@ -41,7 +41,14 @@ const int kPlaybackLeadBlocks = 16;
 
 /// Peaks for drawing a recording, and the length it was measured over.
 class Waveform {
-  const Waveform(this.minima, this.maxima, this.duration, this.transmitted);
+  const Waveform(
+    this.minima,
+    this.maxima,
+    this.duration,
+    this.transmitted,
+    this.processed,
+    this.wouldSend,
+  );
 
   /// One entry per bucket, in the range -1..1.
   final Float32List minima;
@@ -56,10 +63,41 @@ class Waveform {
   /// second in which they were heard.
   final Uint8List transmitted;
 
+  /// The level after processing and before the gate, per bucket, 0..1.
+  ///
+  /// **An envelope, not a waveform, and the difference is worth stating.** The
+  /// recorder keeps one audio stream — the microphone — so there is no
+  /// processed audio on disk to draw. What there is, in the log beside it, is
+  /// `level_db` for every 10 ms block: the level the chain measured *after*
+  /// suppression and *before* the gate, which is exactly the layer wanted. So
+  /// the height is measured rather than modelled; only its resolution is one
+  /// block instead of one sample.
+  ///
+  /// Empty when there is no log, in which case the layer is not drawn at all
+  /// rather than drawn flat — a flat line here would claim the chain removed
+  /// everything.
+  final Float32List processed;
+
+  /// Whether the chain would have sent the bucket, ignoring mode and mute.
+  ///
+  /// From `speaking` rather than `transmitting`: the question this layer
+  /// answers is what the *suppressor and gate* decided, and `transmitting` also
+  /// carries the rider's thumb and the mute switch. A push-to-talk recording
+  /// with nothing transmitted still has speech the chain recognised, and that
+  /// is the thing worth seeing.
+  final Uint8List wouldSend;
+
   int get buckets => maxima.length;
   bool get isEmpty => maxima.isEmpty;
   bool wasSent(int bucket) =>
       bucket < transmitted.length && transmitted[bucket] != 0;
+
+  /// The processed envelope for a bucket, or null where there is no log.
+  double? processedAt(int bucket) =>
+      bucket < processed.length ? processed[bucket] : null;
+
+  bool wouldSendAt(int bucket) =>
+      bucket < wouldSend.length && wouldSend[bucket] != 0;
 }
 
 /// Reads a `.s16` and reduces it to per-bucket extremes.
@@ -80,7 +118,13 @@ Future<Waveform> _scan(List<Object> args) async {
   final total = length ~/ _bytesPerSample;
   if (total == 0) {
     return Waveform(
-        Float32List(0), Float32List(0), Duration.zero, Uint8List(0));
+      Float32List(0),
+      Float32List(0),
+      Duration.zero,
+      Uint8List(0),
+      Float32List(0),
+      Uint8List(0),
+    );
   }
 
   final minima = Float32List(buckets);
@@ -113,11 +157,14 @@ Future<Waveform> _scan(List<Object> args) async {
     await handle.close();
   }
 
+  final decisions = await _decisions(path);
   return Waveform(
     minima,
     maxima,
     Duration(milliseconds: (total * 1000 / kRecordingRate).round()),
-    await _transmitted(path, buckets, total),
+    _spread(decisions.sent, buckets, total),
+    _envelope(decisions.levelDb, buckets, total),
+    _spread(decisions.speaking, buckets, total),
   );
 }
 
@@ -146,7 +193,26 @@ enum NothingSent {
 
 /// The transmit decision for every 10 ms block, and why there were none.
 class Decisions {
-  const Decisions(this.sent, this.reason);
+  Decisions(
+    this.sent,
+    this.reason, [
+    Float32List? levelDb,
+    Uint8List? speaking,
+  ])  : levelDb = levelDb ?? _noLevels,
+        speaking = speaking ?? _noFlags;
+
+  static final _noLevels = Float32List(0);
+  static final _noFlags = Uint8List(0);
+
+  /// The post-processing, pre-gate level for every block, in dBFS.
+  ///
+  /// Empty when the log has no such column, which every older recording does
+  /// not — the waveform then draws the raw trace alone rather than inventing a
+  /// flat line for a layer it cannot measure.
+  final Float32List levelDb;
+
+  /// The chain's own answer to "would this go out", ignoring mode and mute.
+  final Uint8List speaking;
 
   /// Empty when there is no log, and every caller must read that as "no
   /// information" rather than as "nothing was sent". Those are different: it
@@ -172,11 +238,16 @@ Future<Decisions> _decisions(String audioPath) async {
   if (!await log.exists()) return Decisions.none;
 
   final sent = <int>[];
+  // The two series the waveform's middle and top layers are drawn from. Read
+  // in the same pass as `sent`, so a recording cannot end up with a green layer
+  // that disagrees with the grey one under it.
+  final levels = <double>[];
+  final speaking = <int>[];
   var muted = 0, pushToTalk = 0;
   // Found by name, not by position. Two columns were added after recordings
   // were already on people's phones, and a reader that counts commas would
   // give every one of those older files a different meaning.
-  var sentAt = -1, modeAt = -1, mutedAt = -1;
+  var sentAt = -1, modeAt = -1, mutedAt = -1, levelAt = -1, speakingAt = -1;
 
   try {
     for (final line in await log.readAsLines()) {
@@ -190,6 +261,11 @@ Future<Decisions> _decisions(String audioPath) async {
         sentAt = parts.indexOf('transmitting');
         modeAt = parts.indexOf('mode');
         mutedAt = parts.indexOf('muted');
+        // By name like the rest, and absent in older recordings — which is why
+        // every reader of these two has to cope with an empty series rather
+        // than assume one row per block.
+        levelAt = parts.indexOf('level_db');
+        speakingAt = parts.indexOf('speaking');
         continue;
       }
       if (sentAt < 0 || sentAt >= parts.length) continue;
@@ -209,6 +285,12 @@ Future<Decisions> _decisions(String audioPath) async {
       // recordings already sitting on people's phones, and rows are one per
       // block in file order by construction, so it is also less to trust.
       sent.add(parts[sentAt] == '1' ? 1 : 0);
+      if (levelAt >= 0 && levelAt < parts.length) {
+        levels.add(double.tryParse(parts[levelAt]) ?? -120);
+      }
+      if (speakingAt >= 0 && speakingAt < parts.length) {
+        speaking.add(parts[speakingAt] == '1' ? 1 : 0);
+      }
       if (mutedAt >= 0 && mutedAt < parts.length && parts[mutedAt] == '1') {
         muted++;
       }
@@ -224,19 +306,30 @@ Future<Decisions> _decisions(String audioPath) async {
 
   if (sent.isEmpty) return Decisions.none;
   final flags = Uint8List.fromList(sent);
-  if (flags.any((f) => f != 0)) return Decisions(flags, NothingSent.some);
+  final levelDb = Float32List.fromList(levels);
+  final speaks = Uint8List.fromList(speaking);
+  if (flags.any((f) => f != 0)) {
+    return Decisions(flags, NothingSent.some, levelDb, speaks);
+  }
   // Most of it, not all: a rider who unmutes for the last two seconds and
   // still sends nothing was muted for the recording in every sense that
   // matters to somebody looking at it.
   final half = sent.length ~/ 2;
-  if (muted > half) return Decisions(flags, NothingSent.muted);
-  if (pushToTalk > half) return Decisions(flags, NothingSent.pushToTalk);
-  return Decisions(flags, NothingSent.unexplained);
+  if (muted > half) {
+    return Decisions(flags, NothingSent.muted, levelDb, speaks);
+  }
+  if (pushToTalk > half) {
+    return Decisions(flags, NothingSent.pushToTalk, levelDb, speaks);
+  }
+  return Decisions(flags, NothingSent.unexplained, levelDb, speaks);
 }
 
-/// Which buckets went on the wire, for drawing.
-Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
-  final flags = (await _decisions(audioPath)).sent;
+/// Spreads a per-block flag across the buckets each block covers.
+///
+/// *Any*, not *most*: the question a listener has is "was I heard here", and a
+/// bucket covering a second of audio with one flagged block in it is a second
+/// in which they were.
+Uint8List _spread(Uint8List flags, int buckets, int total) {
   if (flags.isEmpty) return Uint8List(0);
   final out = Uint8List(buckets);
   final perBucket = (total / buckets).ceil();
@@ -252,6 +345,34 @@ Future<Uint8List> _transmitted(String audioPath, int buckets, int total) async {
   }
   return out;
 }
+
+/// Turns per-block dBFS into a per-bucket amplitude, 0..1.
+///
+/// The maximum over the blocks a bucket covers, to match the raw trace beneath
+/// it: that one is drawn from extremes, and an average here would round off
+/// exactly the cliffs a gate leaves behind.
+Float32List _envelope(Float32List levelDb, int buckets, int total) {
+  if (levelDb.isEmpty) return Float32List(0);
+  final out = Float32List(buckets);
+  final perBucket = (total / buckets).ceil();
+  for (var block = 0; block < levelDb.length; block++) {
+    final db = levelDb[block];
+    // -120 is the chain's own "silence" and would draw as a hairline; anything
+    // below the floor of the display is clamped there rather than to zero, so
+    // a quiet stretch still reads as continuing.
+    final amp = db <= -120 ? 0.0 : _pow10(db / 20);
+    final start = block * kRecordingBlock;
+    final a = (start ~/ perBucket).clamp(0, buckets - 1);
+    final b = ((start + kRecordingBlock - 1) ~/ perBucket)
+        .clamp(0, buckets - 1);
+    for (var i = a; i <= b; i++) {
+      if (amp > out[i]) out[i] = amp;
+    }
+  }
+  return out;
+}
+
+double _pow10(double x) => math.pow(10, x).toDouble();
 
 /// The scan, reachable from a test.
 ///
@@ -426,7 +547,14 @@ class RecordingPlayer extends ChangeNotifier {
     final path = _path;
     if (path == null) {
       return Future.value(
-        Waveform(Float32List(0), Float32List(0), Duration.zero, Uint8List(0)),
+        Waveform(
+          Float32List(0),
+          Float32List(0),
+          Duration.zero,
+          Uint8List(0),
+          Float32List(0),
+          Uint8List(0),
+        ),
       );
     }
     return compute(_scan, <Object>[path, buckets]);

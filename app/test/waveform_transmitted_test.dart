@@ -11,6 +11,7 @@ import 'package:mumbleway/services/recording_player.dart';
 /// for the header is a mistake this project has already made once — offline,
 /// where it reported 0% transmitting on a file that was 36%.
 void main() {
+  _layers();
   late Directory dir;
 
   setUp(() async {
@@ -281,5 +282,81 @@ void main() {
       expect(p.nextAudibleForTest(kRecordingBlock), 2 * kRecordingBlock);
       expect(p.audibleEndForTest(2 * kRecordingBlock), 4 * kRecordingBlock);
     });
+  });
+}
+
+/// The two layers above the raw trace, and the log they come from.
+///
+/// The recorder keeps one audio stream, so what the suppressor left and what
+/// the gate would have sent are drawn from `level_db` and `speaking` in the log
+/// beside it. Both are read in the same pass as `transmitting`, and a reader
+/// that got one of them out of step with the others would draw a green layer
+/// sitting somewhere the chain never put it.
+void _layers() {
+  late Directory dir;
+
+  setUp(() async {
+    dir = await Directory.systemTemp.createTemp('wave3');
+  });
+  tearDown(() async => dir.delete(recursive: true));
+
+  /// A log whose `level_db` and `speaking` differ from `transmitting`, so a
+  /// reader that confused any two of them fails rather than passing by luck.
+  Future<String> write(int blocks) async {
+    final audio = File('${dir.path}/r.s16');
+    final pcm = Int16List(blocks * kRecordingBlock);
+    for (var i = 0; i < pcm.length; i++) {
+      pcm[i] = 8000;
+    }
+    await audio.writeAsBytes(pcm.buffer.asUint8List());
+    final rows = StringBuffer('# mumbleway diagnostic capture\n'
+        'block,transmitting,speaking,gate_open,vad,snr_db,level_db,'
+        'floor_db,harmonicity,modulation,mode,muted\n');
+    for (var b = 0; b < blocks; b++) {
+      // Speaking for the first half; transmitting for none of it, as a
+      // push-to-talk recording with the thumb off the button looks. Level is
+      // -6 dBFS while speaking and -60 otherwise.
+      final speaking = b < blocks ~/ 2;
+      rows.writeln('$b,0,${speaking ? 1 : 0},0,0.5,10,'
+          '${speaking ? -6 : -60},-70,0.5,0.4,1,0');
+    }
+    await File('${dir.path}/r.csv').writeAsString(rows.toString());
+    return audio.path;
+  }
+
+  test('the processed envelope follows level_db, not the raw audio', () async {
+    final path = await write(100);
+    final w = await scanForTest(path, 10);
+
+    // -6 dBFS is about half of full scale; -60 is near nothing. The raw trace
+    // underneath is a constant 8000/32768 either way, so a reader that drew
+    // this layer from the audio would give both halves the same height.
+    final loud = w.processedAt(0)!;
+    final quiet = w.processedAt(9)!;
+    expect(loud, greaterThan(0.4));
+    expect(loud, lessThan(0.6));
+    expect(quiet, lessThan(0.01));
+    expect(loud, greaterThan(quiet * 10));
+  });
+
+  test('would-send follows speaking, not transmitting', () async {
+    final path = await write(100);
+    final w = await scanForTest(path, 10);
+
+    // Nothing transmitted — the thumb was off the button — but the chain
+    // recognised speech in the first half, and that is what this layer is for.
+    expect(w.wasSent(0), isFalse);
+    expect(w.wouldSendAt(0), isTrue);
+    expect(w.wouldSendAt(9), isFalse);
+  });
+
+  test('a log without the columns leaves the upper layers undrawn', () async {
+    // The layer is absent rather than flat. A flat line would claim the chain
+    // removed everything, which is a far stronger statement than "not recorded".
+    final audio = File('${dir.path}/old.s16');
+    await audio.writeAsBytes(Int16List(10 * kRecordingBlock).buffer.asUint8List());
+    final w = await scanForTest(audio.path, 5);
+    expect(w.processedAt(0), isNull);
+    expect(w.wouldSendAt(0), isFalse);
   });
 }

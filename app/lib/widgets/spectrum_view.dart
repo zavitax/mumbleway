@@ -220,6 +220,9 @@ class _SpectrumViewState extends State<SpectrumView> {
             noiseFloorDb: chain.noiseFloorDb,
             opensAtDb: chain.activationThresholdDb,
             harmonicity: chain.harmonicity,
+            autoSnrDb: chain.autoSnrDb,
+            autoHelmetBelowDb: chain.autoSnrHelmetBelowDb,
+            autoStandardBelowDb: chain.autoSnrStandardBelowDb,
             voicedThreshold: chain.voicedThreshold,
             floorHeld: chain.floorHeld,
             // Nothing to measure against with suppression off — there is no

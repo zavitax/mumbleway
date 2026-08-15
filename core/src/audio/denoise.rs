@@ -596,8 +596,8 @@ const ONSET_WINDOW_BLOCKS: u32 = 100;
 /// lands between 17 and 44 dB, so `Standard` is where the two ends meet rather
 /// than a bucket anything has been observed in. A clip from a quiet street
 /// would be worth having.
-const SNR_HELMET_BELOW_DB: f32 = 20.0;
-const SNR_STANDARD_BELOW_DB: f32 = 35.0;
+pub const SNR_HELMET_BELOW_DB: f32 = 20.0;
+pub const SNR_STANDARD_BELOW_DB: f32 = 35.0;
 
 /// How far the background has to fall before the profile is reconsidered
 /// without waiting for the rider to speak again.

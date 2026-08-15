@@ -149,6 +149,14 @@ pub struct ChainStatus {
     /// the room wrongly or read a correct measurement wrongly, which are
     /// different bugs.
     pub auto_snr_db: Option<f32>,
+    /// The two SNRs the profile bands are divided at, in dB.
+    ///
+    /// **Carried rather than known by the panel.** They are two numbers with
+    /// one owner, and a painter that drew its own copies would keep drawing the
+    /// old ones after the owner moved — silently, since a line in the right
+    /// place and a line in the wrong place are the same line.
+    pub auto_snr_helmet_below_db: f32,
+    pub auto_snr_standard_below_db: f32,
     /// What the clip guard is holding back off the rider's input gain, in dB.
     ///
     /// Never positive, and zero whenever the guard is idle. **The gain slider
@@ -246,6 +254,8 @@ impl Default for ChainStatus {
             floor_held_ms: 0,
             floor_watchdog_trips: 0,
             auto_snr_db: None,
+            auto_snr_helmet_below_db: super::denoise::SNR_HELMET_BELOW_DB,
+            auto_snr_standard_below_db: super::denoise::SNR_STANDARD_BELOW_DB,
             input_trim_db: 0.0,
             level_db: -120.0,
             noise_floor_db: -100.0,
@@ -3480,6 +3490,8 @@ where
                 floor_held_ms: analysis.floor_held_ms,
                 floor_watchdog_trips: analysis.floor_watchdog_trips,
                 auto_snr_db: processor.latched_snr_db(),
+                auto_snr_helmet_below_db: super::denoise::SNR_HELMET_BELOW_DB,
+                auto_snr_standard_below_db: super::denoise::SNR_STANDARD_BELOW_DB,
                 input_trim_db: clip_guard.trim_db(),
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,

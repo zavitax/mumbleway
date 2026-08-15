@@ -877,6 +877,9 @@ class LRu extends L {
   String get diagGaugeSnr => 'SNR';
 
   @override
+  String get diagGaugeAuto => 'Авто';
+
+  @override
   String get diagGaugePitch => 'Тон';
 
   @override

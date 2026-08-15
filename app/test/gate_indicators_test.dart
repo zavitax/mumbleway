@@ -19,6 +19,7 @@ void main() {
     double opensAt = -52,
     double harmonicity = 0.8,
     double voiced = 0.75,
+    double? autoSnr,
     bool held = false,
     bool applicable = true,
   }) =>
@@ -27,6 +28,9 @@ void main() {
         noiseFloorDb: floor,
         opensAtDb: opensAt,
         harmonicity: harmonicity,
+        autoSnrDb: autoSnr,
+        autoHelmetBelowDb: 20,
+        autoStandardBelowDb: 35,
         voicedThreshold: voiced,
         floorHeld: held,
         applicable: applicable,
@@ -43,12 +47,24 @@ void main() {
         ),
       );
 
-  testWidgets('both gauges read out when the chain is running', (t) async {
-    await t.pumpWidget(host(snap()));
+  testWidgets('the gauges read out when the chain is running', (t) async {
+    await t.pumpWidget(host(snap(autoSnr: 41)));
     await t.pumpAndSettle();
     // -30 level against a -60 floor is 30 dB of headroom.
     expect(find.text('30 dB'), findsOneWidget);
     expect(find.text('0.80'), findsOneWidget);
+    expect(find.text('41 dB'), findsOneWidget);
+  });
+
+  testWidgets('the auto bar is empty until a profile is chosen', (t) async {
+    // **The common state, not an edge case.** Nothing is latched before the
+    // first phrase and nothing is ever latched under a hand-set profile, so
+    // the gate can be running perfectly with this bar blank. Drawing a zero
+    // would be reporting a measurement nobody made.
+    await t.pumpWidget(host(snap()));
+    await t.pumpAndSettle();
+    expect(find.text('30 dB'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
   });
 
   testWidgets('an em dash rather than a zero when not applicable', (t) async {
@@ -56,7 +72,7 @@ void main() {
     // measure against. A zero here would be a measurement nobody made.
     await t.pumpWidget(host(snap(applicable: false)));
     await t.pumpAndSettle();
-    expect(find.text('—'), findsNWidgets(2));
+    expect(find.text('—'), findsNWidgets(3));
     expect(find.text('30 dB'), findsNothing);
   });
 
@@ -65,7 +81,7 @@ void main() {
     await t.pumpWidget(host(null));
     await t.pumpAndSettle();
     expect(find.byType(GateIndicators), findsOneWidget);
-    expect(find.text('—'), findsNWidgets(2));
+    expect(find.text('—'), findsNWidgets(3));
   });
 
   test('the snapshot is silent when nothing a bar can show has moved', () {
@@ -77,6 +93,12 @@ void main() {
     // And moves when something visible does.
     expect(snap(level: -30.0), isNot(snap(level: -28.0)));
     expect(snap(held: false), isNot(snap(held: true)));
+    // The latch has to reach the painter, and it only moves at a speech
+    // onset — so an `==` that ignored it would leave the boundaries dim
+    // through the whole of the phrase that lit them.
+    expect(snap(autoSnr: null), isNot(snap(autoSnr: 41)));
+    expect(snap(autoSnr: 41), isNot(snap(autoSnr: 13)));
+    expect(snap(autoSnr: 41.0), snap(autoSnr: 41.2));
     expect(snap(applicable: true), isNot(snap(applicable: false)));
   });
 

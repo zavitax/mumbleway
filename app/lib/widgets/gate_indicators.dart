@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
@@ -12,7 +13,7 @@ import '../theme.dart';
 /// could not show was how close either was to the bar it has to clear, which
 /// is the only thing worth knowing while watching a gate open and shut.
 ///
-/// Two bars, because the two quantities are not the same kind of thing and
+/// Three bars, because the three quantities are not the same kind of thing and
 /// pretending otherwise would be the easy mistake here.
 ///
 /// * **SNR shares the analyser's dBFS axis exactly**, and is drawn as the span
@@ -24,6 +25,14 @@ import '../theme.dart';
 /// * **Periodicity has no decibels in it.** It is a correlation, 0 to 1, so it
 ///   gets its own scale over the same height and says so. Sharing the axis
 ///   would put a number that is not a level on a level's ruler.
+/// * **The Auto chooser's SNR gets its own bar and cannot borrow the first
+///   one's.** It is measured against a different floor — the room before the
+///   enhancer, where the first bar's floor is what the chain left behind — and
+///   on three recordings the two read −19/−60/−53 against −72/−80/−92 dBFS.
+///   Marking the profile boundaries on the first bar would put them tens of
+///   decibels from where they are, in a picture whose whole claim is that a
+///   position can be read off it. So this one is a ratio on a ratio's scale,
+///   0 to 60 dB, and its boundaries are drawn where they actually fall.
 class GateIndicators extends StatelessWidget {
   const GateIndicators({
     super.key,
@@ -41,7 +50,17 @@ class GateIndicators extends StatelessWidget {
   /// changed the other one.
   final double floorDb;
 
-  static const double width = 74;
+  /// Wide enough for three bars. The analyser beside it is `Expanded`, so
+  /// this is taken from it rather than from the panel.
+  static const double width = 110;
+
+  /// The top of the Auto gauge's scale, in dB of signal over background.
+  ///
+  /// Sixty covers everything measured — a quiet room reads in the forties and
+  /// a motorway in the low teens — with the upper boundary at 35 sitting just
+  /// above the middle, so both bands have room to be seen rather than one
+  /// being a sliver at the top.
+  static const double _autoScaleDb = 60;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +75,10 @@ class GateIndicators extends StatelessWidget {
     // measured against.
     final live = s != null && s.applicable;
     final dim = scheme.onSurfaceVariant.withValues(alpha: 0.30);
+
+    // Independent of `live`: the latch is the chooser's, not the gate's, and
+    // it survives the warm-up that makes the other two unreadable.
+    final auto = s?.autoSnrDb;
 
     return SizedBox(
       width: width,
@@ -89,9 +112,58 @@ class GateIndicators extends StatelessWidget {
               grid: scheme.onSurfaceVariant.withValues(alpha: 0.16),
             ),
           ),
+          const SizedBox(width: 6),
+          // **The chooser, not the gate.** Nothing is latched until somebody
+          // speaks and nothing is ever latched under a hand-set profile, so
+          // this bar is empty far more often than the other two — which is the
+          // honest state and not a fault to paper over.
+          Expanded(
+            child: _Gauge(
+              label: l.diagGaugeAuto,
+              caption: auto != null ? '${auto.toStringAsFixed(0)} dB' : '—',
+              fill: auto == null ? null : (auto / _autoScaleDb).clamp(0.0, 1.0),
+              // Two of them, and they are the point of this bar. Drawn lit when
+              // there is a measurement between them and dim when there is not:
+              // an unlatched boundary is where a choice *would* be made, and a
+              // latched one is where a choice *was*, which are different enough
+              // to be worth telling apart at a glance.
+              // **No fallback pair here on purpose.** A `?? 20, ?? 35` would
+              // put this painter's own copy of the boundaries back in, which
+              // is the thing carrying them across the bridge was for. With
+              // nothing to draw them from, nothing is drawn.
+              bands: s == null
+                  ? const []
+                  : [
+                      s.autoHelmetBelowDb / _autoScaleDb,
+                      s.autoStandardBelowDb / _autoScaleDb,
+                    ],
+              bandsLit: auto != null,
+              thresholdAt: null,
+              passing: auto != null,
+              latched: auto != null,
+              colour: _autoColour(auto, s, scheme),
+              dimColour: dim,
+              grid: scheme.onSurfaceVariant.withValues(alpha: 0.16),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  /// The colour of the Auto bar, which is the band the latched SNR fell in.
+  ///
+  /// **The same three colours the rest of the panel uses for how hard a stage
+  /// is working**, so a rider who has learned them anywhere else has learned
+  /// them here: green is the lightest profile, amber the middle one, red the
+  /// heaviest. Red is not an error — a motorway genuinely wants `Helmet` — but
+  /// it is the reading that explains a voice sounding processed, which is the
+  /// question this bar is looked at to answer.
+  Color _autoColour(double? auto, GateSnapshot? s, ColorScheme scheme) {
+    if (auto == null || s == null) return scheme.primary;
+    if (auto < s.autoHelmetBelowDb) return StatusColors.failed;
+    if (auto < s.autoStandardBelowDb) return StatusColors.connecting;
+    return StatusColors.connected;
   }
 
   /// Where the level sits on the analyser's axis, 0 at the bottom.
@@ -118,10 +190,26 @@ class _Gauge extends StatelessWidget {
     required this.colour,
     required this.dimColour,
     required this.grid,
+    this.bands = const [],
+    this.bandsLit = false,
   });
 
   final String label;
   final String caption;
+
+  /// Fixed divisions up the bar, 0..1, drawn across it.
+  ///
+  /// Distinct from [thresholdAt], which is one moving line the reading has to
+  /// clear. These do not move and nothing clears them: they say which of
+  /// several answers a reading falls under.
+  final List<double> bands;
+
+  /// Whether the divisions are lit or dim.
+  ///
+  /// **This is the whole of what "latched" looks like here.** Dim means the
+  /// boundaries are merely where a choice would be made; lit means one was
+  /// made, and the bar under them is the measurement it was made from.
+  final bool bandsLit;
 
   /// 0..1 up the bar, or null when there is nothing to draw.
   final double? fill;
@@ -147,6 +235,8 @@ class _Gauge extends StatelessWidget {
             size: Size.infinite,
             painter: _GaugePainter(
               fill: fill,
+              bands: bands,
+              bandsLit: bandsLit,
               thresholdAt: thresholdAt,
               passing: passing,
               latched: latched,
@@ -186,6 +276,8 @@ class _Gauge extends StatelessWidget {
 class _GaugePainter extends CustomPainter {
   const _GaugePainter({
     required this.fill,
+    required this.bands,
+    required this.bandsLit,
     required this.thresholdAt,
     required this.passing,
     required this.latched,
@@ -195,6 +287,8 @@ class _GaugePainter extends CustomPainter {
   });
 
   final double? fill;
+  final List<double> bands;
+  final bool bandsLit;
   final double? thresholdAt;
   final bool passing, latched;
   final Color colour, dimColour, grid;
@@ -209,6 +303,11 @@ class _GaugePainter extends CustomPainter {
       ),
       track,
     );
+
+    // Dim boundaries go under the fill; lit ones go over it, below. A
+    // boundary the reading has climbed past is the one most worth seeing, and
+    // drawing it first would put it behind exactly then.
+    if (!bandsLit) _drawBands(canvas, size, dimColour.withValues(alpha: 0.55));
 
     final f = fill;
     if (f == null) {
@@ -232,6 +331,13 @@ class _GaugePainter extends CustomPainter {
       ),
       Paint()..color = colour.withValues(alpha: passing ? 0.85 : 0.35),
     );
+
+    if (bandsLit) {
+      // The one place a threshold changes colour rather than position: these
+      // are the same two lines either way, and only the state behind them has
+      // moved.
+      _drawBands(canvas, size, colour.withValues(alpha: 0.95));
+    }
 
     final t = thresholdAt;
     if (t == null) return;
@@ -257,12 +363,29 @@ class _GaugePainter extends CustomPainter {
     }
   }
 
+  void _drawBands(Canvas canvas, Size size, Color c) {
+    final p = Paint()
+      ..color = c
+      ..strokeWidth = 1;
+    for (final b in bands) {
+      final y = size.height - b.clamp(0.0, 1.0) * size.height;
+      // Dashed, so a fixed division cannot be mistaken for the solid line the
+      // other two bars use for a threshold that moves.
+      for (double x = 0; x < size.width; x += 4) {
+        canvas.drawLine(Offset(x, y), Offset(x + 2, y), p);
+      }
+    }
+  }
+
   @override
   bool shouldRepaint(_GaugePainter old) =>
       old.fill != fill ||
       old.thresholdAt != thresholdAt ||
       old.passing != passing ||
-      old.latched != latched;
+      old.latched != latched ||
+      old.bandsLit != bandsLit ||
+      old.colour != colour ||
+      !listEquals(old.bands, bands);
 }
 
 /// Exactly what the two gauges draw, and nothing else.
@@ -280,13 +403,20 @@ class GateSnapshot {
     required double noiseFloorDb,
     required double opensAtDb,
     required double harmonicity,
+    required double? autoSnrDb,
+    required this.autoHelmetBelowDb,
+    required this.autoStandardBelowDb,
     required this.voicedThreshold,
     required this.floorHeld,
     required this.applicable,
   })  : levelDb = _q(levelDb, 1),
         noiseFloorDb = _q(noiseFloorDb, 1),
         opensAtDb = _q(opensAtDb, 1),
-        harmonicity = _q(harmonicity, 0.02);
+        harmonicity = _q(harmonicity, 0.02),
+        // Whole decibels. It only moves at a speech onset, so this is not
+        // about repaint cost — it is that the bar is sixty pixels for sixty
+        // decibels, and a tenth of one is a tenth of a pixel.
+        autoSnrDb = autoSnrDb == null ? null : _q(autoSnrDb, 1);
 
   /// The signal-to-noise ratio, which is the distance between two of the above
   /// rather than a number of its own. Derived here so the bar's height and its
@@ -301,6 +431,16 @@ class GateSnapshot {
   final double levelDb, noiseFloorDb, opensAtDb, harmonicity;
   final double voicedThreshold;
 
+  /// The SNR the `Auto` profile was last chosen from, and the two boundaries
+  /// it was judged against. All in dB over the background.
+  ///
+  /// Null until a phrase has been heard under `Auto`. **Measured against a
+  /// different floor from [noiseFloorDb]** — the room before the enhancer,
+  /// where that one is what the chain left behind — which is why it is drawn
+  /// on a bar of its own rather than marked on the first one.
+  final double? autoSnrDb;
+  final double autoHelmetBelowDb, autoStandardBelowDb;
+
   /// Whether the noise floor is currently pinned. See `NoiseFloorTracker`.
   final bool floorHeld;
 
@@ -314,6 +454,9 @@ class GateSnapshot {
       other.noiseFloorDb == noiseFloorDb &&
       other.opensAtDb == opensAtDb &&
       other.harmonicity == harmonicity &&
+      other.autoSnrDb == autoSnrDb &&
+      other.autoHelmetBelowDb == autoHelmetBelowDb &&
+      other.autoStandardBelowDb == autoStandardBelowDb &&
       other.voicedThreshold == voicedThreshold &&
       other.floorHeld == floorHeld &&
       other.applicable == applicable;
@@ -324,6 +467,9 @@ class GateSnapshot {
         noiseFloorDb,
         opensAtDb,
         harmonicity,
+        autoSnrDb,
+        autoHelmetBelowDb,
+        autoStandardBelowDb,
         voicedThreshold,
         floorHeld,
         applicable,

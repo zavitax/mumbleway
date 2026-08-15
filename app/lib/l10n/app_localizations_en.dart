@@ -869,6 +869,9 @@ class LEn extends L {
   String get diagGaugeSnr => 'SNR';
 
   @override
+  String get diagGaugeAuto => 'Auto';
+
+  @override
   String get diagGaugePitch => 'Pitch';
 
   @override

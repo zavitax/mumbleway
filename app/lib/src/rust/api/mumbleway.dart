@@ -900,6 +900,13 @@ class UiChainStatus {
   /// a motorway reads about 13; in a quiet room, forty-odd.
   final double? autoSnrDb;
 
+  /// The SNRs the profile bands are divided at, in dB: below the first is
+  /// `Helmet`, below the second `Standard`, above it `Light`.
+  ///
+  /// Sent every poll so the gauge cannot draw a boundary the chain has moved.
+  final double autoSnrHelmetBelowDb;
+  final double autoSnrStandardBelowDb;
+
   /// How periodic the last block was, 0..1, and the bar in force.
   ///
   /// Drawn beside the spectrum rather than listed under it: a threshold is a
@@ -1032,6 +1039,8 @@ class UiChainStatus {
     required this.floorHeldMs,
     required this.floorWatchdogTrips,
     this.autoSnrDb,
+    required this.autoSnrHelmetBelowDb,
+    required this.autoSnrStandardBelowDb,
     required this.harmonicity,
     required this.voicedThreshold,
     required this.effectiveProfile,
@@ -1071,6 +1080,8 @@ class UiChainStatus {
       floorHeldMs.hashCode ^
       floorWatchdogTrips.hashCode ^
       autoSnrDb.hashCode ^
+      autoSnrHelmetBelowDb.hashCode ^
+      autoSnrStandardBelowDb.hashCode ^
       harmonicity.hashCode ^
       voicedThreshold.hashCode ^
       effectiveProfile.hashCode ^
@@ -1112,6 +1123,8 @@ class UiChainStatus {
           floorHeldMs == other.floorHeldMs &&
           floorWatchdogTrips == other.floorWatchdogTrips &&
           autoSnrDb == other.autoSnrDb &&
+          autoSnrHelmetBelowDb == other.autoSnrHelmetBelowDb &&
+          autoSnrStandardBelowDb == other.autoSnrStandardBelowDb &&
           harmonicity == other.harmonicity &&
           voicedThreshold == other.voicedThreshold &&
           effectiveProfile == other.effectiveProfile &&

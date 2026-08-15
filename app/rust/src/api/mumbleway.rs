@@ -1423,6 +1423,12 @@ pub struct UiChainStatus {
     /// Shown next to the profile because it is the evidence for it. A rider on
     /// a motorway reads about 13; in a quiet room, forty-odd.
     pub auto_snr_db: Option<f32>,
+    /// The SNRs the profile bands are divided at, in dB: below the first is
+    /// `Helmet`, below the second `Standard`, above it `Light`.
+    ///
+    /// Sent every poll so the gauge cannot draw a boundary the chain has moved.
+    pub auto_snr_helmet_below_db: f32,
+    pub auto_snr_standard_below_db: f32,
     /// How periodic the last block was, 0..1, and the bar in force.
     ///
     /// Drawn beside the spectrum rather than listed under it: a threshold is a
@@ -1912,6 +1918,8 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         floor_held_ms: c.floor_held_ms,
         floor_watchdog_trips: c.floor_watchdog_trips,
         auto_snr_db: c.auto_snr_db,
+        auto_snr_helmet_below_db: c.auto_snr_helmet_below_db,
+        auto_snr_standard_below_db: c.auto_snr_standard_below_db,
         harmonicity: c.harmonicity,
         voiced_threshold: c.voiced_threshold,
     })

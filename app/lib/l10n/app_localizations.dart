@@ -1669,6 +1669,12 @@ abstract class L {
   /// **'SNR'**
   String get diagGaugeSnr;
 
+  /// No description provided for @diagGaugeAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get diagGaugeAuto;
+
   /// Label under the right-hand gauge beside the spectrum: how periodic the sound is, from the pitch search, 0 to 1. Not decibels, so it has its own scale. 'Pitch' rather than 'periodicity' because the label is eight pixels tall and sits under a narrow bar.
   ///
   /// In en, this message translates to:

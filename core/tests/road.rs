@@ -144,6 +144,35 @@
 //! the only way the gate could have been cutting that speech is the floor
 //! climbing onto it — which is what was found.
 //!
+//! # How long the gaps are, 2026-08-15
+//!
+//! Whether a 1000 ms hold can stand in for a speech detector depends entirely
+//! on this, and it had not been measured:
+//!
+//! ```text
+//!     clip                   n     p50     p90     max  under 1s time in <1s
+//!     singing              127      10      30     110      100%       100%
+//!     speech-phrases       126      20     150     960      100%       100%
+//!     voice-over-motor      32      20     150    2690       94%        25%
+//! ```
+//!
+//! **Read the median as a consonant, not a pause.** The labeller marks a block
+//! voiced at 0.75 harmonicity, and an unvoiced consonant inside a word drops
+//! below that, so most of these "gaps" are 10 to 30 ms of `s` or `f`. What
+//! matters is the tail.
+//!
+//! By that reading the hold is generously sized for pauses *within* speech:
+//! the longest gap in the sung clip is 110 ms and in the spoken one 960 ms, so
+//! every gap in both fits inside 1000 ms. The motor clip has two that do not,
+//! up to 2.69 s, and although they are only 6% of the gaps they hold 75% of the
+//! quiet time — those are silences *between* phrases rather than pauses inside
+//! one.
+//!
+//! The consequence for anything latched at speech and held: a hold alone
+//! covers every intra-phrase pause measured here, and does not cover
+//! inter-phrase silence. Something that must survive silence has to be latched
+//! rather than held.
+//!
 //! # A caution about `Off`
 //!
 //! With the enhancer in front, `Off` — no profile suppression at all — puts far
@@ -769,6 +798,61 @@ fn how_far_the_enhancer_separates_the_voice_from_the_gaps() {
         }
     }
     println!("\n    For comparison, the one clip in MUSIC_GATE.md: 1.5 dB raw, 16.0 dB enhanced.");
+    // How long the quiet stretches actually are.
+    //
+    // **This decides whether a hold can stand in for a speech detector.** If
+    // every gap is shorter than the hold, a measurement latched at speech and
+    // held across the gap never goes stale; if gaps run to seconds, the hold
+    // expires inside them and whatever depended on it is guessing again.
+    // Pauses inside a phrase and silence between phrases are different animals,
+    // and a median hides that, so the distribution is what is printed.
+    println!("\nGAPS BETWEEN VOICED RUNS (ms), labelled on the enhanced signal");
+    println!(
+        "    {:<18} {:>5} {:>7} {:>7} {:>7} {:>9} {:>10}",
+        "clip", "n", "p50", "p90", "max", "under 1s", "time in <1s"
+    );
+    for (name, signal) in &clips {
+        let mut enhanced = signal.clone();
+        let mut enhancer = enhancer_for_measurement();
+        for chunk in enhanced.chunks_exact_mut(FRAME_SIZE) {
+            enhancer.process(chunk);
+        }
+        let voiced = periodicity(&enhanced);
+        let mut gaps: Vec<f32> = Vec::new();
+        let mut run = 0usize;
+        let mut seen_voice = false;
+        for v in &voiced {
+            if *v >= 0.75 {
+                if seen_voice && run > 0 {
+                    gaps.push(run as f32 * 10.0);
+                }
+                seen_voice = true;
+                run = 0;
+            } else {
+                run += 1;
+            }
+        }
+        // Leading and trailing runs are dropped on purpose: they are the ends
+        // of the recording, not gaps between two phrases.
+        if gaps.is_empty() {
+            println!("    {name:<18}     0   (no gap between two voiced runs)");
+            continue;
+        }
+        gaps.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let short = gaps.iter().filter(|g| **g < 1000.0).count();
+        let in_short: f32 = gaps.iter().filter(|g| **g < 1000.0).sum();
+        let all: f32 = gaps.iter().sum();
+        println!(
+            "    {:<18} {:>5} {:>7.0} {:>7.0} {:>7.0} {:>8.0}% {:>9.0}%",
+            name,
+            gaps.len(),
+            percentile(&gaps, 0.50),
+            percentile(&gaps, 0.90),
+            gaps[gaps.len() - 1],
+            100.0 * short as f32 / gaps.len() as f32,
+            100.0 * in_short / all.max(1.0)
+        );
+    }
 }
 
 /// Per-block level in dBFS, on whatever signal it is handed.

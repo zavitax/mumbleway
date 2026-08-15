@@ -80,6 +80,54 @@
 //! The spoken clip barely moved (64.3% -> 64.5%), which matches what was
 //! reported about it: chewing rather than dropouts, because the hold and fade
 //! envelope around a voiced block covers a gate that closes only briefly.
+//!
+//! **Every figure above was measured without the enhancer**, which this harness
+//! did not run until 2026-08-15. They compare two suppressors honestly against
+//! each other and describe a chain that does not ship. With DeepFilterNet in
+//! front, as `engine.rs` has it, the same clips read:
+//!
+//! ```text
+//!     singing         Off 86.0%   Light 54.9%   Standard 54.8%   Helmet 54.8%
+//!     speech          Off 96.1%   Light 65.6%   Standard 61.9%   Helmet 62.6%
+//! ```
+//!
+//! `Off` — the enhancer alone, with no profile suppression at all — puts the
+//! most on the wire by a wide margin on both. That is worth being careful
+//! about rather than pleased about: a transmitted *share* is not quality, and
+//! neither clip carries labels, so nothing here says whether the extra is
+//! speech or leakage.
+//!
+//! # What it found, 2026-08-15: these two clips are the easy case
+//!
+//! `how_far_the_enhancer_separates_the_voice_from_the_gaps` was written to
+//! extend the one-clip measurement in `docs/MUSIC_GATE.md` — 1.5 dB of level
+//! separation raw, 16.0 dB after the enhancer — because a level-derived
+//! decision is only viable if that separation is real. It does not extend it:
+//!
+//! ```text
+//!     clip                raw voi  raw gap     sep |  enh voi  enh gap     sep
+//!     singing               -17.8    -42.4    24.7 |    -18.2    -45.9    27.8
+//!     speech-phrases        -17.0    -37.9    20.9 |    -17.0    -41.5    24.5
+//! ```
+//!
+//! **The gaps sit at -38 to -42 dBFS: these are quiet-room recordings.** The
+//! separation was already 21 to 25 dB before the enhancer touched anything, and
+//! the enhancer adds three, because there is almost nothing in the gaps to
+//! remove. The MUSIC_GATE clip started at 1.5 dB because it was voice over
+//! music and the music filled the gaps.
+//!
+//! So these are a different regime, and they cannot answer the question that
+//! matters for replacing the classifier with a level or SNR onset detector:
+//! whether the separation survives **music or wind in the gaps**. That still
+//! rests on one clip. A ride, or a voice-over-music recording, is what would
+//! settle it.
+//!
+//! Two things they do settle. With 21 dB of raw separation, the only way the
+//! gate could have been cutting this speech is the floor climbing onto it —
+//! which is what was found. And the enhancer takes essentially nothing off the
+//! voice here (0.4 dB and 0.0 dB), against the 7 to 11 dB quoted in
+//! `denoise.rs`; that figure came from ride audio where it has real work to do,
+//! so both are true of their own regime and neither generalises.
 
 use std::fs;
 use std::path::PathBuf;
@@ -87,7 +135,7 @@ use std::path::PathBuf;
 use mumbleway_core::audio::denoise::{CaptureProcessor, FRAME_SIZE};
 use mumbleway_core::audio::dsp::{rms, to_dbfs, RumbleFilter, SpeechBand};
 use mumbleway_core::audio::pitch::PitchTracker;
-use mumbleway_core::audio::NoiseProfile;
+use mumbleway_core::audio::{Enhancer, NoiseProfile};
 
 /// What one run of a clip through one profile looked like.
 struct Run {
@@ -109,8 +157,25 @@ struct Run {
     labelled: bool,
 }
 
+/// The enhancer, built the way the worker builds it.
+///
+/// **Everything this file measures was measured without it until 2026-08-15**,
+/// which made every absolute number here describe a chain that does not ship.
+/// `engine.rs` runs `Enhancer::process` immediately before
+/// `CaptureProcessor::suppress`, and DeepFilterNet takes 7 to 11 dB out of the
+/// speech before the suppressor sees it — so a floor, a level or a threshold
+/// measured without it is measured against a different signal.
+///
+/// Always the full model here, never the cheap one: this is a measurement rig
+/// on a desktop, not a phone deciding what it can afford, and the performance
+/// ladder's choice would make one run incomparable with the next.
+fn enhancer_for_measurement() -> Enhancer {
+    Enhancer::new()
+}
+
 fn run(profile: NoiseProfile, signal: &[f32], spans: &[(f32, f32)]) -> Run {
     let mut chain = CaptureProcessor::new(profile);
+    let mut enhancer = enhancer_for_measurement();
     let mut block = [0.0f32; FRAME_SIZE];
     let (mut sent, mut counted) = (0usize, 0usize);
     let (mut level, mut floor) = (0.0f64, 0.0f64);
@@ -119,6 +184,7 @@ fn run(profile: NoiseProfile, signal: &[f32], spans: &[(f32, f32)]) -> Run {
 
     for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
         block.copy_from_slice(chunk);
+        enhancer.process(&mut block);
         let a = chain.process(&mut block);
         if a.warming_up {
             continue;
@@ -289,10 +355,12 @@ fn stage_levels(profile: NoiseProfile, signal: &[f32]) -> (f32, f32, f32, f32) {
 
     // Everything, which is what the chain reports.
     let mut chain = CaptureProcessor::new(profile);
+    let mut enhancer = enhancer_for_measurement();
     let mut blk = [0.0f32; FRAME_SIZE];
     let (mut sum, mut n) = (0.0f64, 0usize);
     for chunk in signal.chunks_exact(FRAME_SIZE) {
         blk.copy_from_slice(chunk);
+        enhancer.process(&mut blk);
         let a = chain.process(&mut blk);
         if a.warming_up {
             continue;
@@ -333,10 +401,12 @@ fn separation(inside: &[f32], outside: &[f32]) -> f32 {
 /// compared on the same footing.
 fn features(profile: NoiseProfile, signal: &[f32]) -> Vec<(f32, [f32; 5])> {
     let mut chain = CaptureProcessor::new(profile);
+    let mut enhancer = enhancer_for_measurement();
     let mut block = [0.0f32; FRAME_SIZE];
     let mut out = Vec::new();
     for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
         block.copy_from_slice(chunk);
+        enhancer.process(&mut block);
         let a = chain.process(&mut block);
         if a.warming_up {
             continue;
@@ -394,10 +464,12 @@ fn dump_the_suppressed_audio() {
     for (name, signal) in clips() {
         for profile in [NoiseProfile::Light, NoiseProfile::Helmet] {
             let mut chain = CaptureProcessor::new(profile);
+            let mut enhancer = enhancer_for_measurement();
             let mut block = [0.0f32; FRAME_SIZE];
             let mut out: Vec<u8> = Vec::with_capacity(signal.len() * 4);
             for chunk in signal.chunks_exact(FRAME_SIZE) {
                 block.copy_from_slice(chunk);
+                enhancer.process(&mut block);
                 chain.process(&mut block);
                 for s in &block {
                     out.extend_from_slice(&s.to_le_bytes());
@@ -459,10 +531,12 @@ fn what_the_chain_does_with_real_helmet_audio() {
             // speech block can be named instead of inferred.
             {
                 let mut chain = CaptureProcessor::new(NoiseProfile::Helmet);
+                let mut enhancer = enhancer_for_measurement();
                 let mut blk = [0.0f32; FRAME_SIZE];
                 let (mut n, mut vad_ok, mut snr_ok, mut gate_ok, mut sent) = (0, 0, 0, 0, 0);
                 for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
                     blk.copy_from_slice(chunk);
+                    enhancer.process(&mut blk);
                     let a = chain.process(&mut blk);
                     if a.warming_up {
                         continue;
@@ -584,4 +658,93 @@ fn what_the_chain_does_with_real_helmet_audio() {
             );
         }
     }
+}
+
+/// How far the enhancer pulls the voice away from the gaps.
+///
+/// **This is the measurement the whole "can a level threshold work" question
+/// turns on.** `docs/MUSIC_GATE.md` records six hand-built features failing on
+/// music because, with music playing, the gaps between words sat within 1.5 dB
+/// of the speech — no threshold on level can separate populations that
+/// overlap. DeepFilterNet took that to 16.0 dB, which is what makes a
+/// level-derived decision viable at all. That figure came from **one clip**,
+/// and the file says so.
+///
+/// This extends it, and does so **without hand labels**, which the recordings
+/// that arrive through the app do not carry. Blocks are split by
+/// *periodicity* — the YIN pitch search, which knows nothing about level — and
+/// then the level of each population is measured. Using level to label blocks
+/// whose level separation is the thing being measured would be circular; using
+/// periodicity is not.
+///
+/// Read the last column. It is the headroom any SNR-onset detector would have
+/// to work with.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn how_far_the_enhancer_separates_the_voice_from_the_gaps() {
+    let clips = clips();
+    assert!(!clips.is_empty(), "no clips in MUMBLEWAY_ROAD_AUDIO");
+
+    println!("\nLEVEL SEPARATION, voiced vs the rest (dB)");
+    println!(
+        "    {:<18} {:>8} {:>8} {:>7} | {:>8} {:>8} {:>7}",
+        "clip", "raw voi", "raw gap", "sep", "enh voi", "enh gap", "sep"
+    );
+    for (name, signal) in &clips {
+        // The labeller: periodicity on the untouched signal, so both columns
+        // are scored on exactly the same blocks.
+        let voiced = periodicity(signal);
+
+        let raw_levels = block_levels(signal);
+        let mut enhanced = signal.clone();
+        let mut enhancer = enhancer_for_measurement();
+        for chunk in enhanced.chunks_exact_mut(FRAME_SIZE) {
+            enhancer.process(chunk);
+        }
+        let enhanced_levels = block_levels(&enhanced);
+
+        let (raw_voiced, raw_rest) = voiced_means_db(&voiced, &raw_levels);
+        let (enh_voiced, enh_rest) = voiced_means_db(&voiced, &enhanced_levels);
+        println!(
+            "    {:<18} {:>8.1} {:>8.1} {:>7.1} | {:>8.1} {:>8.1} {:>7.1}",
+            name,
+            raw_voiced,
+            raw_rest,
+            raw_voiced - raw_rest,
+            enh_voiced,
+            enh_rest,
+            enh_voiced - enh_rest
+        );
+    }
+    println!("\n    For comparison, the one clip in MUSIC_GATE.md: 1.5 dB raw, 16.0 dB enhanced.");
+}
+
+/// Per-block level in dBFS, on whatever signal it is handed.
+fn block_levels(signal: &[f32]) -> Vec<f32> {
+    signal
+        .chunks_exact(FRAME_SIZE)
+        .map(|c| to_dbfs(rms(c)))
+        .collect()
+}
+
+/// Mean level of the periodic blocks, and of everything else.
+///
+/// The bar is the same 0.75 the rest of this file reports against, so the two
+/// numbers can be read together. Means rather than percentiles because the
+/// question is how far apart the populations sit on average, which is what a
+/// fixed threshold between them has to survive.
+fn voiced_means_db(voiced: &[f32], levels: &[f32]) -> (f32, f32) {
+    let (mut inside, mut outside) = (Vec::new(), Vec::new());
+    for (i, level) in levels.iter().enumerate() {
+        match voiced.get(i) {
+            Some(v) if *v >= 0.75 => inside.push(*level),
+            Some(_) => outside.push(*level),
+            None => {}
+        }
+    }
+    if inside.is_empty() || outside.is_empty() {
+        return (0.0, 0.0);
+    }
+    let mean = |v: &[f32]| v.iter().sum::<f32>() / v.len() as f32;
+    (mean(&inside), mean(&outside))
 }

@@ -97,37 +97,69 @@
 //! neither clip carries labels, so nothing here says whether the extra is
 //! speech or leakage.
 //!
-//! # What it found, 2026-08-15: these two clips are the easy case
+//! # What it found, 2026-08-15: the enhancer makes level separation real
 //!
-//! `how_far_the_enhancer_separates_the_voice_from_the_gaps` was written to
-//! extend the one-clip measurement in `docs/MUSIC_GATE.md` — 1.5 dB of level
-//! separation raw, 16.0 dB after the enhancer — because a level-derived
-//! decision is only viable if that separation is real. It does not extend it:
+//! `how_far_the_enhancer_separates_the_voice_from_the_gaps` exists to test the
+//! one thing a level- or SNR-derived speech decision depends on: whether the
+//! voice and the gaps are far enough apart in level for any threshold to sit
+//! between them. `docs/MUSIC_GATE.md` recorded six hand-built features failing
+//! because, over music, they were 1.5 dB apart — and DeepFilterNet taking that
+//! to 16.0 dB. **On one clip**, which the file said plainly.
 //!
 //! ```text
-//!     clip                raw voi  raw gap     sep |  enh voi  enh gap     sep
-//!     singing               -17.8    -42.4    24.7 |    -18.2    -45.9    27.8
-//!     speech-phrases        -17.0    -37.9    20.9 |    -17.0    -41.5    24.5
+//!     clip               labeller       n  raw voi  raw gap     sep |  enh voi  enh gap     sep
+//!     singing            raw-pitch    503    -17.8    -42.4    24.7 |    -18.2    -45.9    27.8
+//!     singing            enh-pitch    511    -17.8    -42.7    24.9 |    -18.2    -46.2    28.0
+//!     speech-phrases     raw-pitch    302    -17.0    -37.9    20.9 |    -17.0    -41.5    24.5
+//!     speech-phrases     enh-pitch    300    -17.2    -37.8    20.5 |    -17.0    -41.5    24.5
+//!     voice-over-motor   raw-pitch      7    -10.7    -13.6     2.9 |    -12.5    -35.1    22.6
+//!     voice-over-motor   enh-pitch    104    -11.1    -13.8     2.6 |    -15.1    -36.4    21.3
 //! ```
 //!
-//! **The gaps sit at -38 to -42 dBFS: these are quiet-room recordings.** The
-//! separation was already 21 to 25 dB before the enhancer touched anything, and
-//! the enhancer adds three, because there is almost nothing in the gaps to
-//! remove. The MUSIC_GATE clip started at 1.5 dB because it was voice over
-//! music and the music filled the gaps.
+//! **Two regimes, and the difference is what is in the gaps.** The first two
+//! clips are quiet-room recordings: their gaps sit at -38 to -42 dBFS and the
+//! separation is already 21 to 25 dB before the enhancer touches anything, so
+//! they say nothing about the hard case. `voice-over-motor` is the hard case —
+//! a motor filling the gaps to within **2.6 dB** of the voice — and it
+//! replicates the MUSIC_GATE result in a different noise: **2.6 dB to 21.3 dB**,
+//! with the enhancer taking 22 dB out of the gaps and 4 dB off the voice.
 //!
-//! So these are a different regime, and they cannot answer the question that
-//! matters for replacing the classifier with a level or SNR onset detector:
-//! whether the separation survives **music or wind in the gaps**. That still
-//! rests on one clip. A ride, or a voice-over-music recording, is what would
-//! settle it.
+//! So the figure that a level-derived decision rests on is no longer one clip.
+//! Two, in two noise types, both through the real channel.
 //!
-//! Two things they do settle. With 21 dB of raw separation, the only way the
-//! gate could have been cutting this speech is the floor climbing onto it —
-//! which is what was found. And the enhancer takes essentially nothing off the
-//! voice here (0.4 dB and 0.0 dB), against the 7 to 11 dB quoted in
-//! `denoise.rs`; that figure came from ride audio where it has real work to do,
-//! so both are true of their own regime and neither generalises.
+//! **The labeller is the part to be suspicious of, so there are two.** Blocks
+//! are split by periodicity rather than by level, because using level to label
+//! blocks whose level separation is the measurement would be circular. But a
+//! motor masks harmonics: on the raw signal the pitch search finds only 7
+//! voiced blocks in 15 seconds, which is too few to conclude anything from.
+//! Labelling from periodicity measured on the *enhanced* signal finds 104 and
+//! gives the same answer, which is what makes the result trustworthy rather
+//! than the 22.6 alone. That labeller has its own bias — it is the enhancer's
+//! own output, so a block it wrongly silenced would be counted as a gap — which
+//! is why both are printed with the count each rests on. On the two easy clips
+//! they agree within 0.4 dB, which is the check that they measure the same
+//! thing when nothing is blinding either.
+//!
+//! Also settled, incidentally: with 21 dB of raw separation on the quiet clips,
+//! the only way the gate could have been cutting that speech is the floor
+//! climbing onto it — which is what was found.
+//!
+//! # A caution about `Off`
+//!
+//! With the enhancer in front, `Off` — no profile suppression at all — puts far
+//! more on the wire than any profile:
+//!
+//! ```text
+//!     singing            Off 86.0%   Light 54.9%   Standard 54.8%   Helmet 54.8%
+//!     speech             Off 96.1%   Light 65.6%   Standard 61.9%   Helmet 62.6%
+//!     voice-over-motor   Off 99.8%   Light 31.4%   Standard 23.9%   Helmet 30.4%
+//! ```
+//!
+//! **99.8% on the motor clip is not a good result, it is the absence of a
+//! gate.** A transmitted share cannot tell a chain that sends the right blocks
+//! from one that sends everything, and none of these clips carries labels. The
+//! figure is here because it is the one number this harness can produce without
+//! them, and it is exactly the number that would flatter a broken chain.
 
 use std::fs;
 use std::path::PathBuf;
@@ -687,8 +719,8 @@ fn how_far_the_enhancer_separates_the_voice_from_the_gaps() {
 
     println!("\nLEVEL SEPARATION, voiced vs the rest (dB)");
     println!(
-        "    {:<18} {:>8} {:>8} {:>7} | {:>8} {:>8} {:>7}",
-        "clip", "raw voi", "raw gap", "sep", "enh voi", "enh gap", "sep"
+        "    {:<18} {:<10} {:>5} {:>8} {:>8} {:>7} | {:>8} {:>8} {:>7}",
+        "clip", "labeller", "n", "raw voi", "raw gap", "sep", "enh voi", "enh gap", "sep"
     );
     for (name, signal) in &clips {
         // The labeller: periodicity on the untouched signal, so both columns
@@ -703,18 +735,38 @@ fn how_far_the_enhancer_separates_the_voice_from_the_gaps() {
         }
         let enhanced_levels = block_levels(&enhanced);
 
-        let (raw_voiced, raw_rest) = voiced_means_db(&voiced, &raw_levels);
-        let (enh_voiced, enh_rest) = voiced_means_db(&voiced, &enhanced_levels);
-        println!(
-            "    {:<18} {:>8.1} {:>8.1} {:>7.1} | {:>8.1} {:>8.1} {:>7.1}",
-            name,
-            raw_voiced,
-            raw_rest,
-            raw_voiced - raw_rest,
-            enh_voiced,
-            enh_rest,
-            enh_voiced - enh_rest
-        );
+        // **Two labellers, because the first one can be blinded by the very
+        // noise being measured.** On a clip with an engine in it the pitch
+        // search finds almost nothing periodic in the raw audio -- the motor
+        // masks the harmonics -- so the voiced population collapses to a
+        // handful of blocks and a separation computed from it means little.
+        //
+        // The second labels from periodicity measured on the *enhanced*
+        // signal, where the pitch is visible again, and applies that one
+        // labelling to both columns so the comparison stays honest. It is the
+        // better judge of which blocks are voice; it is also the enhancer's
+        // own output, so a block it wrongly silenced would be counted as a gap
+        // and would flatter the result. Neither labeller is above suspicion,
+        // which is why both are printed with the count they rest on.
+        let voiced_enh = periodicity(&enhanced);
+
+        for (label, marks) in [("raw-pitch", &voiced), ("enh-pitch", &voiced_enh)] {
+            let n = marks.iter().filter(|v| **v >= 0.75).count();
+            let (raw_voiced, raw_rest) = voiced_means_db(marks, &raw_levels);
+            let (enh_voiced, enh_rest) = voiced_means_db(marks, &enhanced_levels);
+            println!(
+                "    {:<18} {:<10} {:>5} {:>8.1} {:>8.1} {:>7.1} | {:>8.1} {:>8.1} {:>7.1}",
+                name,
+                label,
+                n,
+                raw_voiced,
+                raw_rest,
+                raw_voiced - raw_rest,
+                enh_voiced,
+                enh_rest,
+                enh_voiced - enh_rest
+            );
+        }
     }
     println!("\n    For comparison, the one clip in MUSIC_GATE.md: 1.5 dB raw, 16.0 dB enhanced.");
 }

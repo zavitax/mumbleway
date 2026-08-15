@@ -891,6 +891,15 @@ class UiChainStatus {
   /// after a minute. Anything above zero means it had to.
   final int floorWatchdogTrips;
 
+  /// How periodic the last block was, 0..1, and the bar in force.
+  ///
+  /// Drawn beside the spectrum rather than listed under it: a threshold is a
+  /// comparison, and the panel could previously only show one side of it.
+  /// The bar moves with the profile — Helmet asks for less periodicity, since
+  /// it muffles the voice it is judging — so the score alone cannot be read.
+  final double harmonicity;
+  final double voicedThreshold;
+
   /// The suppression profile actually in force.
   ///
   /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -1013,6 +1022,8 @@ class UiChainStatus {
     required this.floorHeld,
     required this.floorHeldMs,
     required this.floorWatchdogTrips,
+    required this.harmonicity,
+    required this.voicedThreshold,
     required this.effectiveProfile,
     required this.disabledStages,
     required this.aecEnabled,
@@ -1049,6 +1060,8 @@ class UiChainStatus {
       floorHeld.hashCode ^
       floorHeldMs.hashCode ^
       floorWatchdogTrips.hashCode ^
+      harmonicity.hashCode ^
+      voicedThreshold.hashCode ^
       effectiveProfile.hashCode ^
       disabledStages.hashCode ^
       aecEnabled.hashCode ^
@@ -1087,6 +1100,8 @@ class UiChainStatus {
           floorHeld == other.floorHeld &&
           floorHeldMs == other.floorHeldMs &&
           floorWatchdogTrips == other.floorWatchdogTrips &&
+          harmonicity == other.harmonicity &&
+          voicedThreshold == other.voicedThreshold &&
           effectiveProfile == other.effectiveProfile &&
           disabledStages == other.disabledStages &&
           aecEnabled == other.aecEnabled &&

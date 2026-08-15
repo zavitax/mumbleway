@@ -1663,6 +1663,18 @@ abstract class L {
   /// **'Gain backed off'**
   String get diagInputTrim;
 
+  /// Label under the left-hand gauge beside the spectrum. The bar spans from the tracked noise floor up to the current level, on the analyser's own dBFS axis, so its height is the signal-to-noise ratio and its position can be read against the traces. Kept as the initialism because it is what the rest of the panel calls it.
+  ///
+  /// In en, this message translates to:
+  /// **'SNR'**
+  String get diagGaugeSnr;
+
+  /// Label under the right-hand gauge beside the spectrum: how periodic the sound is, from the pitch search, 0 to 1. Not decibels, so it has its own scale. 'Pitch' rather than 'periodicity' because the label is eight pixels tall and sits under a narrow bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Pitch'**
+  String get diagGaugePitch;
+
   /// Shown while the noise floor is being prevented from climbing, because something is speaking. Without this the panel cannot distinguish a floor that is low because the room is quiet from one that is low because it is being held there deliberately.
   ///
   /// In en, this message translates to:

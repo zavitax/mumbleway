@@ -1415,6 +1415,14 @@ pub struct UiChainStatus {
     /// the floor that is frozen, so the pair can latch; the watchdog breaks it
     /// after a minute. Anything above zero means it had to.
     pub floor_watchdog_trips: u32,
+    /// How periodic the last block was, 0..1, and the bar in force.
+    ///
+    /// Drawn beside the spectrum rather than listed under it: a threshold is a
+    /// comparison, and the panel could previously only show one side of it.
+    /// The bar moves with the profile — Helmet asks for less periodicity, since
+    /// it muffles the voice it is judging — so the score alone cannot be read.
+    pub harmonicity: f32,
+    pub voiced_threshold: f32,
     /// The suppression profile actually in force.
     ///
     /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -1895,6 +1903,8 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         floor_held: c.floor_held,
         floor_held_ms: c.floor_held_ms,
         floor_watchdog_trips: c.floor_watchdog_trips,
+        harmonicity: c.harmonicity,
+        voiced_threshold: c.voiced_threshold,
     })
 }
 

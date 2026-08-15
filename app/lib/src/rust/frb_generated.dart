@@ -2831,8 +2831,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 32)
-      throw Exception('unexpected arr length: expect 32 but see ${arr.length}');
+    if (arr.length != 34)
+      throw Exception('unexpected arr length: expect 34 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2847,25 +2847,27 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       floorHeld: dco_decode_bool(arr[10]),
       floorHeldMs: dco_decode_u_32(arr[11]),
       floorWatchdogTrips: dco_decode_u_32(arr[12]),
-      effectiveProfile: dco_decode_noise_setting(arr[13]),
-      disabledStages: dco_decode_list_String(arr[14]),
-      aecEnabled: dco_decode_bool(arr[15]),
-      aecShortened: dco_decode_bool(arr[16]),
-      aecErleDb: dco_decode_f_32(arr[17]),
-      aecLagMs: dco_decode_f_32(arr[18]),
-      aecConfidence: dco_decode_f_32(arr[19]),
-      aecSpreadMs: dco_decode_f_32(arr[20]),
-      aecWindowMs: dco_decode_f_32(arr[21]),
-      aec3: dco_decode_bool(arr[22]),
-      enhancerSimpleModel: dco_decode_bool(arr[23]),
-      relief: dco_decode_u_32(arr[24]),
-      analyserDecayDisabled: dco_decode_bool(arr[25]),
-      participantMetersDisabled: dco_decode_bool(arr[26]),
-      analyserDisabled: dco_decode_bool(arr[27]),
-      classifierTopDisabled: dco_decode_bool(arr[28]),
-      liveDotsDisabled: dco_decode_bool(arr[29]),
-      classifierDisabled: dco_decode_bool(arr[30]),
-      enhancerEffort: dco_decode_u_32(arr[31]),
+      harmonicity: dco_decode_f_32(arr[13]),
+      voicedThreshold: dco_decode_f_32(arr[14]),
+      effectiveProfile: dco_decode_noise_setting(arr[15]),
+      disabledStages: dco_decode_list_String(arr[16]),
+      aecEnabled: dco_decode_bool(arr[17]),
+      aecShortened: dco_decode_bool(arr[18]),
+      aecErleDb: dco_decode_f_32(arr[19]),
+      aecLagMs: dco_decode_f_32(arr[20]),
+      aecConfidence: dco_decode_f_32(arr[21]),
+      aecSpreadMs: dco_decode_f_32(arr[22]),
+      aecWindowMs: dco_decode_f_32(arr[23]),
+      aec3: dco_decode_bool(arr[24]),
+      enhancerSimpleModel: dco_decode_bool(arr[25]),
+      relief: dco_decode_u_32(arr[26]),
+      analyserDecayDisabled: dco_decode_bool(arr[27]),
+      participantMetersDisabled: dco_decode_bool(arr[28]),
+      analyserDisabled: dco_decode_bool(arr[29]),
+      classifierTopDisabled: dco_decode_bool(arr[30]),
+      liveDotsDisabled: dco_decode_bool(arr[31]),
+      classifierDisabled: dco_decode_bool(arr[32]),
+      enhancerEffort: dco_decode_u_32(arr[33]),
     );
   }
 
@@ -3629,6 +3631,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_floorHeld = sse_decode_bool(deserializer);
     var var_floorHeldMs = sse_decode_u_32(deserializer);
     var var_floorWatchdogTrips = sse_decode_u_32(deserializer);
+    var var_harmonicity = sse_decode_f_32(deserializer);
+    var var_voicedThreshold = sse_decode_f_32(deserializer);
     var var_effectiveProfile = sse_decode_noise_setting(deserializer);
     var var_disabledStages = sse_decode_list_String(deserializer);
     var var_aecEnabled = sse_decode_bool(deserializer);
@@ -3662,6 +3666,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       floorHeld: var_floorHeld,
       floorHeldMs: var_floorHeldMs,
       floorWatchdogTrips: var_floorWatchdogTrips,
+      harmonicity: var_harmonicity,
+      voicedThreshold: var_voicedThreshold,
       effectiveProfile: var_effectiveProfile,
       disabledStages: var_disabledStages,
       aecEnabled: var_aecEnabled,
@@ -4457,6 +4463,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.floorHeld, serializer);
     sse_encode_u_32(self.floorHeldMs, serializer);
     sse_encode_u_32(self.floorWatchdogTrips, serializer);
+    sse_encode_f_32(self.harmonicity, serializer);
+    sse_encode_f_32(self.voicedThreshold, serializer);
     sse_encode_noise_setting(self.effectiveProfile, serializer);
     sse_encode_list_String(self.disabledStages, serializer);
     sse_encode_bool(self.aecEnabled, serializer);

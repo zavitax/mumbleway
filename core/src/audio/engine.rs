@@ -109,6 +109,19 @@ pub struct ChainStatus {
     /// canceller that never measures it would be reading a fact that was never
     /// established.
     pub aec3: bool,
+    /// How periodic the block was, and the bar it had to clear.
+    ///
+    /// **The last of the three quantities the transmit decision is made on to
+    /// reach the panel.** The level and the floor were already here and the
+    /// margin arrives as [`Self::activation_threshold_db`]; periodicity went to
+    /// the recorder and nowhere else, so what the pitch search decided could
+    /// only be read after the ride, from a file.
+    ///
+    /// The threshold rides beside it because it moves with the profile — a
+    /// helmet asks for *less* periodicity, not more, since a helmet muffles the
+    /// voice it is judging — so a bare score cannot be read without it.
+    pub harmonicity: f32,
+    pub voiced_threshold: f32,
     /// Gain the AGC is applying, in dB.
     pub agc_gain_db: f32,
     /// Whether the noise floor is being held down, and for how long in ms.
@@ -216,6 +229,8 @@ impl Default for ChainStatus {
             aec_spread_ms: 0.0,
             aec_window_ms: 0.0,
             aec3: false,
+            harmonicity: 0.0,
+            voiced_threshold: 0.0,
             agc_gain_db: 0.0,
             floor_held: false,
             floor_held_ms: 0,
@@ -3429,6 +3444,8 @@ where
                 aec_spread_ms: aec_align.2,
                 aec_window_ms: aec_align.3,
                 aec3: processor.aec_is_aec3(),
+                harmonicity: analysis.harmonicity,
+                voiced_threshold: analysis.voiced_threshold,
                 agc_gain_db: analysis.agc_gain_db,
                 floor_held: analysis.floor_held,
                 floor_held_ms: analysis.floor_held_ms,

@@ -388,6 +388,8 @@
   "diagInputPeak": "Пик микрофона",
   "diagInputClipped": "Перегрузка микрофона",
   "diagInputTrim": "Усиление снижено",
+  "diagGaugeSnr": "SNR",
+  "diagGaugePitch": "Тон",
   "diagFloorHeld": "Порог удерживается",
   "diagFloorWatchdog": "Сбросов удержания",
   "diagMicrophoneLevel": "После шумоподавления",

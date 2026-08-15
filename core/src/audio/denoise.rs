@@ -326,6 +326,10 @@ pub struct BlockAnalysis {
     /// honest reading of a whisper as well as of wind — it is not evidence of
     /// no voice, and nothing downstream treats it as such.
     pub harmonicity: f32,
+    /// The periodicity a block has to reach to count as voiced, in force for
+    /// this profile. Beside the score because the two are only meaningful
+    /// together — Helmet asks for less, not more.
+    pub voiced_threshold: f32,
     /// The pitch that produced it, in Hz, or 0.
     pub f0_hz: f32,
     /// Whether the block was periodic enough to open a transmission by itself.
@@ -1318,6 +1322,7 @@ impl CaptureProcessor {
             floor_watchdog_trips: self.floor.watchdog_trips(),
             snr_says_speech,
             harmonicity: voice.harmonicity,
+            voiced_threshold: self.effective.voiced_threshold(),
             f0_hz: voice.f0_hz,
             pitch_says_speech,
             modulation,

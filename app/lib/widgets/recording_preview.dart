@@ -481,7 +481,12 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     SizedBox(
-                      height: 96,
+                      // 96 for the waveform, plus the envelope strip beneath
+                      // it. Added to the box rather than carved out of it: the
+                      // waveform is what this sheet is for, and taking a
+                      // quarter of it away to make room for a second graph
+                      // would be paying for the new one with the old.
+                      height: 96.0 + _WavePainter.graphHeight,
                       child: _loading || wave == null
                           ? Center(
                               child: SizedBox(
@@ -822,6 +827,20 @@ class _ScrubberState extends State<_Scrubber> {
                 // core, and that gap is the suppressor's work made visible.
                 processedColour: scheme.onSurface,
                 processedAhead: scheme.outline,
+                // Greys for the three profiles, with Helmet the only one
+                // carrying a hue. **Lightness alone could not do this job**:
+                // Light and Standard differ by a step of suppression and
+                // Helmet is a different kind of thing — it is the one that
+                // makes a voice sound processed — so it is the one the eye
+                // should find without reading a legend. A wash of yellow
+                // stays legible on both themes where a fourth shade of grey
+                // would not.
+                profileColours: const [
+                  Color(0xFF6E6E6E), // Off — palest; nothing is being done
+                  Color(0xFF3C3C3C), // Light
+                  Color(0xFF8A8A8A), // Standard
+                  Color(0xFFA79A6B), // Helmet
+                ],
               ),
               size: Size.infinite,
             ),
@@ -844,7 +863,19 @@ class _WavePainter extends CustomPainter {
     required this.head,
     required this.processedColour,
     required this.processedAhead,
+    required this.profileColours,
   });
+
+  /// Height of the envelope strip under the waveform.
+  ///
+  /// Enough for a line with a decibel of resolution and not enough to compete
+  /// with the waveform: this answers "how hard was the chain working here",
+  /// which is a question asked after the waveform has already been read.
+  static const double graphHeight = 30;
+
+  /// The bottom of the strip's scale, in dBFS. Below this the chain has
+  /// effectively removed everything and the line sits on the floor.
+  static const double graphFloorDb = -70;
 
   final Waveform wave;
   final double progress, left, span;
@@ -857,10 +888,17 @@ class _WavePainter extends CustomPainter {
   /// where it removed a lot the pale raw trace stands out around a dark core.
   final Color processedColour, processedAhead;
 
+  /// One colour per `NoiseProfile` index: Off, Light, Standard, Helmet.
+  final List<Color> profileColours;
+
   @override
   void paint(Canvas canvas, Size size) {
     if (wave.isEmpty) return;
-    final mid = size.height / 2;
+    // The waveform keeps everything above the strip, and every vertical
+    // measurement below is taken from `waveHeight` rather than `size.height`
+    // so that adding the strip could not silently squash it off-centre.
+    final waveHeight = (size.height - graphHeight).clamp(1.0, size.height);
+    final mid = waveHeight / 2;
     double xOf(double fraction) => (fraction - left) / span * size.width;
     final headX = xOf(progress);
 
@@ -922,6 +960,11 @@ class _WavePainter extends CustomPainter {
       }
     }
 
+    _paintEnvelope(canvas, size, waveHeight, first, last, xOf, headX);
+
+    // Full height, across both graphs. It is one recording and one moment in
+    // it, and a playhead that stopped at the waveform's edge would invite the
+    // strip below to be read as a separate timeline.
     canvas.drawLine(
       Offset(headX, 0),
       Offset(headX, size.height),
@@ -931,10 +974,80 @@ class _WavePainter extends CustomPainter {
     );
   }
 
+  /// The chain's output level over time, coloured by the profile in force.
+  ///
+  /// **A line rather than a fourth layer on the waveform above.** The waveform
+  /// answers how loud each moment was; this answers what the chain was doing
+  /// about it, and the two only look alike. Drawn in decibels, because that is
+  /// the unit suppression is specified in — an amplitude plot spends most of
+  /// its height on the loudest few percent and flattens exactly the quiet
+  /// passages where over-suppression shows up.
+  void _paintEnvelope(
+    Canvas canvas,
+    Size size,
+    double waveHeight,
+    int first,
+    int last,
+    double Function(double) xOf,
+    double headX,
+  ) {
+    final top = waveHeight;
+    final h = graphHeight - 6;
+    final base = top + graphHeight - 3;
+
+    // The strip's own baseline, so a stretch the chain took to nothing reads
+    // as a line on the floor rather than as a gap.
+    canvas.drawLine(
+      Offset(0, base),
+      Offset(size.width, base),
+      Paint()
+        ..color = unplayed.withValues(alpha: 0.5)
+        ..strokeWidth = 1,
+    );
+
+    double? yOf(int i) {
+      final amp = wave.processedAt(i);
+      if (amp == null) return null;
+      // Back to decibels. `Waveform.processed` is an amplitude because the
+      // layer above it is drawn as one; this graph is not.
+      final db = amp <= 0 ? graphFloorDb : 20 * (math.log(amp) / math.ln10);
+      final t = ((db - graphFloorDb) / (0 - graphFloorDb)).clamp(0.0, 1.0);
+      return base - t * h;
+    }
+
+    final line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+
+    // Segment by segment rather than one path, because the colour changes
+    // along it — and the colour is the point. A segment takes the profile of
+    // the bucket it arrives at, so a change is drawn where it happened.
+    var prevY = yOf(first);
+    var prevX = xOf(first / wave.buckets);
+    for (var i = first + 1; i < last; i++) {
+      final y = yOf(i);
+      final x = xOf(i / wave.buckets);
+      if (prevY != null && y != null) {
+        final p = wave.profileAt(i);
+        // No column, no attribution: one neutral colour, and the envelope is
+        // still true. Older recordings are read by this sheet all the time.
+        final c = p == null || p >= profileColours.length
+            ? processedAhead
+            : profileColours[p];
+        line.color = x > headX ? c.withValues(alpha: 0.45) : c;
+        canvas.drawLine(Offset(prevX, prevY), Offset(x, y), line);
+      }
+      prevY = y;
+      prevX = x;
+    }
+  }
+
   @override
   bool shouldRepaint(_WavePainter old) =>
       old.progress != progress ||
       old.left != left ||
       old.span != span ||
+      old.profileColours != profileColours ||
       !identical(old.wave, wave);
 }

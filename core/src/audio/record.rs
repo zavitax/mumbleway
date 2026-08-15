@@ -86,6 +86,19 @@ pub struct Recorded {
     pub floor_db: f32,
     pub harmonicity: f32,
     pub modulation: f32,
+
+    /// The suppression profile in force, as `NoiseProfile as u8`.
+    ///
+    /// **Never `Auto`**, because `Auto` is a rule for choosing and not a
+    /// profile: what is recorded is what the audio actually went through.
+    ///
+    /// Added after a singing recording where the chain removed 24 dB from four
+    /// seconds of quiet phrases. Every other column in this file was consistent
+    /// across that window — the VAD read 1.00, the gate stayed open, the floor
+    /// did not move — so the log could say the loss happened and nothing about
+    /// what was in force while it did. The profile changes what every stage
+    /// after it does, and it was the one setting the file could not report.
+    pub profile: u8,
     /// The two settings that can override every measurement above, recorded
     /// against the same block they acted on.
     ///
@@ -271,7 +284,7 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
          block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,\
          modulation,mode,muted,gain_db,echo_ref_samples,aec_on,erle_db,aec_lag_ms,\
-         aec_confidence,aec_spread_ms,aec_taps,aec3"
+         aec_confidence,aec_spread_ms,aec_taps,aec3,profile"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -310,7 +323,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
         let _ = writeln!(
             sink.log,
             "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1},\
-             {},{},{:.1},{:.1},{:.2},{:.1},{},{}",
+             {},{},{:.1},{:.1},{:.2},{:.1},{},{},{}",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -332,6 +345,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.aec_spread_ms,
             block.aec_taps,
             block.aec3 as u8,
+            block.profile,
         );
         block_index += 1;
 

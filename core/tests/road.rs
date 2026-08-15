@@ -1001,3 +1001,286 @@ fn voiced_means_db(voiced: &[f32], levels: &[f32]) -> (f32, f32) {
     let mean = |v: &[f32]| v.iter().sum::<f32>() / v.len() as f32;
     (mean(&inside), mean(&outside))
 }
+
+/// Where in a recording the chain takes the most out, and what it was doing.
+///
+/// **Written to answer a report that named the wrong four seconds.** A singing
+/// clip was described as dropping in volume from 5 s to 9 s; over that window
+/// the chain removed 2 to 6 dB, which is what it removes everywhere. The
+/// microphone input had fallen 7 to 10 dB on its own. Four seconds further on,
+/// where nothing had been reported, the chain was removing 27.
+///
+/// So the column that matters is not the output level but the *difference*
+/// between the input and the output, and nothing was printing it. A drop the
+/// rider hears is a drop wherever it came from, and the recording alone cannot
+/// say which — it is the chain's input by construction, so it contains the
+/// evidence for the chain's innocence and none of its output.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn where_the_chain_takes_the_most_out() {
+    for (name, signal) in clips() {
+        println!(
+            "
+{name}"
+        );
+        // Three taps, because "the chain took it" is not an answer. The
+        // enhancer and the suppressor are separate programs with separate
+        // failure modes, and the recording contains neither's output.
+        println!("    t      in     enh     out   enh-loss sup-loss  profile   latched");
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut block = [0.0f32; FRAME_SIZE];
+
+        // Half a second a row: long enough that one quiet syllable does not
+        // read as a fault, short enough to put a boundary on the second.
+        const PER_ROW: usize = 50;
+        let (mut in_sum, mut enh_sum, mut out_sum, mut rows) = (0.0f64, 0.0f64, 0.0f64, 0usize);
+
+        for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
+            block.copy_from_slice(chunk);
+            let in_db = to_dbfs(rms(&block));
+            chain.set_room_level_db(in_db);
+            enhancer.process(&mut block);
+            // The enhancer's own output, measured before the suppressor sees
+            // it. This is the tap that was missing.
+            let enh_db = to_dbfs(rms(&block));
+            let a = chain.process(&mut block);
+            if a.warming_up {
+                continue;
+            }
+            // Loud blocks only. The gaps between phrases are where suppression
+            // is *supposed* to take everything, and averaging them in would
+            // hide the thing being looked for behind the thing working.
+            if in_db > -35.0 {
+                in_sum += in_db as f64;
+                enh_sum += enh_db as f64;
+                out_sum += a.level_db as f64;
+                rows += 1;
+            }
+            if i % PER_ROW == PER_ROW - 1 {
+                if rows > 0 {
+                    let n = rows as f64;
+                    let (i_db, e_db, o_db) = (in_sum / n, enh_sum / n, out_sum / n);
+                    println!(
+                        "  {:5.1}  {:6.1} {:6.1} {:6.1}  {:7.1}  {:7.1}  {:<8?}  {}",
+                        i as f32 * FRAME_SIZE as f32 / 48_000.0,
+                        i_db,
+                        e_db,
+                        o_db,
+                        e_db - i_db,
+                        o_db - e_db,
+                        a.effective_profile,
+                        chain
+                            .latched_snr_db()
+                            .map(|v| format!("{v:.0} dB"))
+                            .unwrap_or_else(|| "-".into()),
+                    );
+                }
+                in_sum = 0.0;
+                enh_sum = 0.0;
+                out_sum = 0.0;
+                rows = 0;
+            }
+        }
+    }
+}
+
+/// What the enhancer takes out of quiet speech, and what each remedy costs.
+///
+/// **The measurement behind "the chain cuts into singing".** On a 34 s singing
+/// clip the suppressor removes 1 to 5 dB throughout, and for four seconds the
+/// *enhancer* removes 17 to 24 — against `ATTEN_LIM_DB`, which is 24. The model
+/// is pinned against its own ceiling, and only on the quiet phrases: where the
+/// same singer is 6 dB louder it removes 0.3.
+///
+/// So the question is what to do about it, and every answer costs something in
+/// the other direction. This runs them side by side rather than reasoning about
+/// them, because the last four features tried against a suppression complaint
+/// in this project were each disproved by their own acceptance test.
+///
+/// Two columns, and both matter:
+///
+/// * **quiet / loud** — mean enhancer loss on voiced blocks, split at −18 dBFS
+///   of input. The complaint lives in the first column. The second is the
+///   control: a remedy that moves both equally has not found the asymmetry, it
+///   has just turned the enhancer down.
+/// * **gaps** — what the enhancer leaves in blocks with no voice in them, which
+///   is the thing it is there to remove. Every remedy here gives some of it
+///   back, and this says how much.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn what_the_enhancer_costs_the_quiet_passages() {
+    for (name, signal) in clips() {
+        println!("\n{name}");
+        println!("    variant                 quiet    loud     gaps   worst 0.5s");
+        for variant in Variant::all() {
+            let r = variant.run(&signal);
+            println!(
+                "    {:<20} {:>7.1} {:>7.1} {:>8.1} {:>10.1}",
+                variant.name(),
+                r.quiet,
+                r.loud,
+                r.gaps,
+                r.worst,
+            );
+        }
+        // Left as it was found: this is a global, and a diagnostic that changes
+        // one and walks away makes some unrelated test fail on a machine with a
+        // different core count. The file that declares it says so.
+        mumbleway_core::audio::deepfilter::set_force_simple_model(false);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Variant {
+    /// What ships.
+    Full24,
+    /// A flat lower cap. The onset work already found that a flat cap pays for
+    /// what it fixes in separation everywhere; this is the same lever aimed at
+    /// a different symptom, and it is here to be refuted or not.
+    Full12,
+    Full6,
+    /// The cheap model. Not a remedy — it is what a low-end phone already runs,
+    /// so the question is whether those riders have this problem worse or not
+    /// at all.
+    Simple24,
+    /// **Put the level back afterwards, bounded.** The enhancer applies a
+    /// per-band gain mask; restoring the block's broadband level keeps every
+    /// ratio between bands it chose and undoes only the overall loss. Bounded,
+    /// because on a block with no voice in it the enhancer is *supposed* to
+    /// remove everything, and an unbounded restore would hand all of that back.
+    Restore12,
+    /// The same, unbounded, to show what the bound is buying.
+    RestoreAll,
+    /// **Restore only where there is a voice to restore.**
+    ///
+    /// The unconditional restore above pays for the quiet passages with the
+    /// gaps, and it pays there because it applies there — in a block with no
+    /// speech in it the enhancer is doing exactly what it should and this hands
+    /// it back. Deciding on the *input*, before the enhancer touches it, is
+    /// what makes the distinction available at all: the chain's own voicing
+    /// figure is computed downstream, on the signal whose loss is in question.
+    RestoreVoiced12,
+}
+
+struct Cost {
+    quiet: f64,
+    loud: f64,
+    gaps: f64,
+    worst: f64,
+}
+
+impl Variant {
+    fn all() -> Vec<Variant> {
+        vec![
+            Variant::Full24,
+            Variant::Full12,
+            Variant::Full6,
+            Variant::Simple24,
+            Variant::Restore12,
+            Variant::RestoreAll,
+            Variant::RestoreVoiced12,
+        ]
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Variant::Full24 => "24 dB (shipping)",
+            Variant::Full12 => "12 dB flat",
+            Variant::Full6 => "6 dB flat",
+            Variant::Simple24 => "cheap model, 24 dB",
+            Variant::Restore12 => "restore, max +12",
+            Variant::RestoreAll => "restore, unbounded",
+            Variant::RestoreVoiced12 => "restore voiced, +12",
+        }
+    }
+
+    fn run(self, signal: &[f32]) -> Cost {
+        mumbleway_core::audio::deepfilter::set_force_simple_model(matches!(
+            self,
+            Variant::Simple24
+        ));
+        let lim = match self {
+            Variant::Full12 => 12.0,
+            Variant::Full6 => 6.0,
+            _ => 24.0,
+        };
+        let restore = match self {
+            Variant::Restore12 | Variant::RestoreVoiced12 => Some(12.0f32),
+            Variant::RestoreAll => Some(f32::INFINITY),
+            _ => None,
+        };
+        let only_voiced = matches!(self, Variant::RestoreVoiced12);
+        let mut pitch = PitchTracker::new();
+
+        let mut enhancer = Enhancer::with_atten_lim(lim);
+        let mut block = [0.0f32; FRAME_SIZE];
+        let (mut q, mut qn) = (0.0f64, 0usize);
+        let (mut l, mut ln) = (0.0f64, 0usize);
+        let (mut g, mut gn) = (0.0f64, 0usize);
+        let (mut win, mut wn, mut worst) = (0.0f64, 0usize, 0.0f64);
+
+        for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
+            block.copy_from_slice(chunk);
+            let in_db = to_dbfs(rms(&block));
+            // On the input, and that is the whole point of this variant. 0.35
+            // is well under the 0.8 clean voiced speech reaches and well over
+            // the near-zero of wind or an engine — the question here is only
+            // "is there a voice in this block", not how good a one.
+            let voiced = pitch.analyse(&block).harmonicity >= 0.35;
+            enhancer.process(&mut block);
+            if let Some(cap) = restore.filter(|_| !only_voiced || voiced) {
+                // Back towards the level it arrived at, never past it, and
+                // never by more than `cap`. Applied to the whole block, so the
+                // mask's shape is untouched and only its overall depth moves.
+                let out_db = to_dbfs(rms(&block));
+                if out_db.is_finite() && in_db.is_finite() {
+                    let want = (in_db - out_db).clamp(0.0, cap);
+                    let gain = 10f32.powf(want / 20.0);
+                    for s in block.iter_mut() {
+                        *s *= gain;
+                    }
+                }
+            }
+            let loss = (to_dbfs(rms(&block)) - in_db) as f64;
+            if !loss.is_finite() {
+                continue;
+            }
+
+            // Voiced or not, decided on the *input* — the tap that still has
+            // the voice in it whatever the enhancer did with it.
+            if in_db > -35.0 {
+                if in_db > -18.0 {
+                    l += loss;
+                    ln += 1;
+                } else {
+                    q += loss;
+                    qn += 1;
+                }
+                win += loss;
+                wn += 1;
+            } else {
+                g += to_dbfs(rms(&block)) as f64;
+                gn += 1;
+            }
+
+            if i % 50 == 49 {
+                if wn > 10 {
+                    let mean = win / wn as f64;
+                    if mean < worst {
+                        worst = mean;
+                    }
+                }
+                win = 0.0;
+                wn = 0;
+            }
+        }
+
+        Cost {
+            quiet: if qn > 0 { q / qn as f64 } else { 0.0 },
+            loud: if ln > 0 { l / ln as f64 } else { 0.0 },
+            gaps: if gn > 0 { g / gn as f64 } else { 0.0 },
+            worst,
+        }
+    }
+}

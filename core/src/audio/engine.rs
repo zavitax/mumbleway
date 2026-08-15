@@ -3275,6 +3275,10 @@ where
                     floor_db: analysis.noise_floor_db,
                     harmonicity: analysis.harmonicity,
                     modulation: analysis.modulation,
+                    // What the block went through, not what the rider asked
+                    // for: under `Auto` those are different, and the one that
+                    // explains the audio is this one.
+                    profile: analysis.effective_profile as u8,
                     // What the canceller had and what it did with it. Read
                     // `echo_ref_samples` first: a filter with no reference
                     // cannot have cancelled anything, and until this column

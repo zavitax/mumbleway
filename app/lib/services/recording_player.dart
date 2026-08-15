@@ -48,6 +48,7 @@ class Waveform {
     this.transmitted,
     this.processed,
     this.wouldSend,
+    this.profiles,
   );
 
   /// One entry per bucket, in the range -1..1.
@@ -87,6 +88,18 @@ class Waveform {
   /// is the thing worth seeing.
   final Uint8List wouldSend;
 
+  /// The suppression profile in force per bucket, as `NoiseProfile as u8`.
+  ///
+  /// **The loudest profile the bucket covered, not the commonest.** A bucket is
+  /// tens of blocks wide, and the reason to look at this line is to find where
+  /// the chain started working hard — so a bucket in which it did, briefly, has
+  /// to show it. Averaging would hide exactly the transition being looked for.
+  ///
+  /// Empty for any recording made before the column existed, and the graph is
+  /// then drawn in one neutral colour rather than left out: the envelope is
+  /// still true, only the attribution is missing.
+  final Uint8List profiles;
+
   int get buckets => maxima.length;
   bool get isEmpty => maxima.isEmpty;
   bool wasSent(int bucket) =>
@@ -98,6 +111,10 @@ class Waveform {
 
   bool wouldSendAt(int bucket) =>
       bucket < wouldSend.length && wouldSend[bucket] != 0;
+
+  /// The profile for a bucket, or null where the recording predates the column.
+  int? profileAt(int bucket) =>
+      bucket < profiles.length ? profiles[bucket] : null;
 }
 
 /// Reads a `.s16` and reduces it to per-bucket extremes.
@@ -123,6 +140,7 @@ Future<Waveform> _scan(List<Object> args) async {
       Duration.zero,
       Uint8List(0),
       Float32List(0),
+      Uint8List(0),
       Uint8List(0),
     );
   }
@@ -165,6 +183,7 @@ Future<Waveform> _scan(List<Object> args) async {
     _spread(decisions.sent, buckets, total),
     _envelope(decisions.levelDb, buckets, total),
     _spread(decisions.speaking, buckets, total),
+    _hardest(decisions.profile, buckets, total),
   );
 }
 
@@ -198,8 +217,10 @@ class Decisions {
     this.reason, [
     Float32List? levelDb,
     Uint8List? speaking,
+    Uint8List? profile,
   ])  : levelDb = levelDb ?? _noLevels,
-        speaking = speaking ?? _noFlags;
+        speaking = speaking ?? _noFlags,
+        profile = profile ?? _noFlags;
 
   static final _noLevels = Float32List(0);
   static final _noFlags = Uint8List(0);
@@ -213,6 +234,10 @@ class Decisions {
 
   /// The chain's own answer to "would this go out", ignoring mode and mute.
   final Uint8List speaking;
+
+  /// The profile in force per block, as `NoiseProfile as u8`. Empty for
+  /// recordings made before the column existed.
+  final Uint8List profile;
 
   /// Empty when there is no log, and every caller must read that as "no
   /// information" rather than as "nothing was sent". Those are different: it
@@ -243,11 +268,13 @@ Future<Decisions> _decisions(String audioPath) async {
   // that disagrees with the grey one under it.
   final levels = <double>[];
   final speaking = <int>[];
+  final profile = <int>[];
   var muted = 0, pushToTalk = 0;
   // Found by name, not by position. Two columns were added after recordings
   // were already on people's phones, and a reader that counts commas would
   // give every one of those older files a different meaning.
   var sentAt = -1, modeAt = -1, mutedAt = -1, levelAt = -1, speakingAt = -1;
+  var profileAt = -1;
 
   try {
     for (final line in await log.readAsLines()) {
@@ -266,6 +293,7 @@ Future<Decisions> _decisions(String audioPath) async {
         // than assume one row per block.
         levelAt = parts.indexOf('level_db');
         speakingAt = parts.indexOf('speaking');
+        profileAt = parts.indexOf('profile');
         continue;
       }
       if (sentAt < 0 || sentAt >= parts.length) continue;
@@ -291,6 +319,9 @@ Future<Decisions> _decisions(String audioPath) async {
       if (speakingAt >= 0 && speakingAt < parts.length) {
         speaking.add(parts[speakingAt] == '1' ? 1 : 0);
       }
+      if (profileAt >= 0 && profileAt < parts.length) {
+        profile.add(int.tryParse(parts[profileAt]) ?? 0);
+      }
       if (mutedAt >= 0 && mutedAt < parts.length && parts[mutedAt] == '1') {
         muted++;
       }
@@ -308,20 +339,21 @@ Future<Decisions> _decisions(String audioPath) async {
   final flags = Uint8List.fromList(sent);
   final levelDb = Float32List.fromList(levels);
   final speaks = Uint8List.fromList(speaking);
+  final profiles = Uint8List.fromList(profile);
   if (flags.any((f) => f != 0)) {
-    return Decisions(flags, NothingSent.some, levelDb, speaks);
+    return Decisions(flags, NothingSent.some, levelDb, speaks, profiles);
   }
   // Most of it, not all: a rider who unmutes for the last two seconds and
   // still sends nothing was muted for the recording in every sense that
   // matters to somebody looking at it.
   final half = sent.length ~/ 2;
   if (muted > half) {
-    return Decisions(flags, NothingSent.muted, levelDb, speaks);
+    return Decisions(flags, NothingSent.muted, levelDb, speaks, profiles);
   }
   if (pushToTalk > half) {
-    return Decisions(flags, NothingSent.pushToTalk, levelDb, speaks);
+    return Decisions(flags, NothingSent.pushToTalk, levelDb, speaks, profiles);
   }
-  return Decisions(flags, NothingSent.unexplained, levelDb, speaks);
+  return Decisions(flags, NothingSent.unexplained, levelDb, speaks, profiles);
 }
 
 /// Spreads a per-block flag across the buckets each block covers.
@@ -341,6 +373,27 @@ Uint8List _spread(Uint8List flags, int buckets, int total) {
         .clamp(0, buckets - 1);
     for (var i = a; i <= b; i++) {
       out[i] = 1;
+    }
+  }
+  return out;
+}
+
+/// Reduces a per-block profile to one per bucket, keeping the hardest-working.
+///
+/// `NoiseProfile`'s declaration order is Off, Light, Standard, Helmet, Auto,
+/// so a plain maximum is "the most suppression" for the four that can appear
+/// here — and `Auto` cannot, because what is recorded is what was in force.
+Uint8List _hardest(Uint8List profile, int buckets, int total) {
+  if (profile.isEmpty) return Uint8List(0);
+  final out = Uint8List(buckets);
+  final perBucket = (total / buckets).ceil();
+  for (var block = 0; block < profile.length; block++) {
+    final start = block * kRecordingBlock;
+    final a = (start ~/ perBucket).clamp(0, buckets - 1);
+    final b = ((start + kRecordingBlock - 1) ~/ perBucket)
+        .clamp(0, buckets - 1);
+    for (var i = a; i <= b; i++) {
+      if (profile[block] > out[i]) out[i] = profile[block];
     }
   }
   return out;
@@ -553,6 +606,7 @@ class RecordingPlayer extends ChangeNotifier {
           Duration.zero,
           Uint8List(0),
           Float32List(0),
+          Uint8List(0),
           Uint8List(0),
         ),
       );

@@ -499,6 +499,8 @@ pub struct CaptureProcessor {
     modulation: ModulationTracker,
     /// Consecutive speech blocks, used to avoid clipping word onsets.
     hangover: u32,
+    /// Blocks left of the noise floor's freeze. See [`FLOOR_HOLD_BLOCKS`].
+    floor_hold: u32,
     /// Blocks remaining before the chain is trusted; see [`WARMUP_BLOCKS`].
     warmup: u32,
 }
@@ -638,6 +640,45 @@ pub const SNR_STANDARD_BELOW_DB: f32 = 35.0;
 /// enhancer's noise removal. Twelve covers the fault it was built for — the
 /// enhancer pinned against its own 24 dB ceiling on quiet phrases — without
 /// reaching far enough to undo a road.
+/// How long the gate goes on treating a block as speech after the detector has
+/// stopped saying so.
+///
+/// **Two hundred milliseconds, and it arrived at that in the first commit of
+/// the project with `// ~200 ms` for a rationale.** It has never been measured
+/// against anything, which is worth knowing before treating it as a considered
+/// figure.
+///
+/// It was raised to a second to match [`super::engine::VAD_TAIL_MS`], and the
+/// suppression suite refused it: the share of synthetic wind and unstructured
+/// noise reaching the wire went from 58.7% to 73.9%. On a clip with no speech
+/// in it every spurious detection holds the gate open five times longer, and
+/// there is nothing else in those clips to fill the time.
+///
+/// **The tail is not what this protects, which is why raising it bought so
+/// little.** The transmit envelope in `engine` runs its own 1000 ms hold from
+/// the moment `speaking` goes false, so a gate that shuts here at 200 ms
+/// truncates nothing — it moves the start of that hold, and the audio goes out
+/// either way. What genuinely had to reach the end of the tail was the floor
+/// freeze, and that is [`FLOOR_HOLD_BLOCKS`], on its own counter.
+const HANGOVER_BLOCKS: u32 = 20;
+
+/// How long the noise floor stays frozen after the last voiced block.
+///
+/// **A second, matching the transmit hold, and this is the span that had to
+/// change.** The floor may not climb while a phrase is in progress — that is
+/// what stops a held note dragging its own background estimate up onto itself
+/// — but "in progress" was ending 200 ms after the last voiced block while the
+/// envelope went on transmitting for another 800. Through that stretch the
+/// audio a listener was receiving passed a chain whose floor was free to climb
+/// onto it, at the end of the phrase, which is where the ends of words are and
+/// where a rider is least likely to blame a stage boundary.
+///
+/// Longer than [`HANGOVER_BLOCKS`] on purpose. Freezing a floor costs nothing
+/// on a clip with no speech in it — a floor that does not rise cannot close a
+/// gate — where holding the gate open costs 15 points of noise leak. The two
+/// spans do different work and only one of them is expensive to extend.
+const FLOOR_HOLD_BLOCKS: u32 = 100;
+
 pub const RESTORE_MAX_DB: f32 = 12.0;
 
 /// Transform length for the peak search. 512 at 48 kHz is 94 Hz a bin, which
@@ -764,6 +805,7 @@ impl CaptureProcessor {
             skip_rnnoise: false,
             modulation: ModulationTracker::new(),
             hangover: 0,
+            floor_hold: 0,
         }
     }
 
@@ -1347,7 +1389,15 @@ impl CaptureProcessor {
         // minute, and the panel counts how often that has to happen — a count
         // that climbs means something is holding the gate open that is not a
         // voice.
-        let voice_now = heard_voice || self.was_voice_active;
+        // The freeze runs on its own counter, held [`FLOOR_HOLD_BLOCKS`] past
+        // the last voiced block rather than the gate's shorter hangover, so it
+        // covers the whole of what the transmit envelope will send.
+        if heard_voice {
+            self.floor_hold = FLOOR_HOLD_BLOCKS;
+        } else {
+            self.floor_hold = self.floor_hold.saturating_sub(1);
+        }
+        let voice_now = heard_voice || self.floor_hold > 0;
 
         // Hold the estimator back until RNNoise is producing real output.
         let noise_floor_db = if warming_up {
@@ -1498,7 +1548,7 @@ impl CaptureProcessor {
         };
 
         if speech_now {
-            self.hangover = 20; // ~200 ms
+            self.hangover = HANGOVER_BLOCKS;
         } else {
             self.hangover = self.hangover.saturating_sub(1);
         }

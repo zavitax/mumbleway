@@ -1029,7 +1029,7 @@ fn where_the_chain_takes_the_most_out() {
         // Three taps, because "the chain took it" is not an answer. The
         // enhancer and the suppressor are separate programs with separate
         // failure modes, and the recording contains neither's output.
-        println!("    t      in     enh     out   enh-loss sup-loss  profile   latched");
+        println!("    t      in     enh     out   enh-loss sup-loss  profile   latched  restore");
         let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
         let mut enhancer = enhancer_for_measurement();
         let mut block = [0.0f32; FRAME_SIZE];
@@ -1038,6 +1038,7 @@ fn where_the_chain_takes_the_most_out() {
         // read as a fault, short enough to put a boundary on the second.
         const PER_ROW: usize = 50;
         let (mut in_sum, mut enh_sum, mut out_sum, mut rows) = (0.0f64, 0.0f64, 0.0f64, 0usize);
+        let (mut restore_sum, mut restore_hz, mut restore_n) = (0.0f32, 0.0f32, 0usize);
 
         for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
             block.copy_from_slice(chunk);
@@ -1054,6 +1055,11 @@ fn where_the_chain_takes_the_most_out() {
             // Loud blocks only. The gaps between phrases are where suppression
             // is *supposed* to take everything, and averaging them in would
             // hide the thing being looked for behind the thing working.
+            if a.restore_gain_db > 0.05 {
+                restore_sum += a.restore_gain_db;
+                restore_hz += a.restore_centre_hz;
+                restore_n += 1;
+            }
             if in_db > -35.0 {
                 in_sum += in_db as f64;
                 enh_sum += enh_db as f64;
@@ -1078,11 +1084,22 @@ fn where_the_chain_takes_the_most_out() {
                             .map(|v| format!("{v:.0} dB"))
                             .unwrap_or_else(|| "-".into()),
                     );
+                    if restore_n > 0 {
+                        println!(
+                            "            bell on {:>3}% of blocks, mean {:>4.1} dB @ {:>4.0} Hz",
+                            100.0 * restore_n as f32 / PER_ROW as f32,
+                            restore_sum / restore_n as f32,
+                            restore_hz / restore_n as f32,
+                        );
+                    }
                 }
                 in_sum = 0.0;
                 enh_sum = 0.0;
                 out_sum = 0.0;
                 rows = 0;
+                restore_sum = 0.0;
+                restore_hz = 0.0;
+                restore_n = 0;
             }
         }
     }

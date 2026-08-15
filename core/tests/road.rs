@@ -216,6 +216,8 @@ struct Run {
     precision: f32,
     /// Whether there were labels to score against at all.
     labelled: bool,
+    /// The SNR the profile chooser latched, if it ever got one.
+    latched_snr: Option<f32>,
 }
 
 /// The enhancer, built the way the worker builds it.
@@ -245,6 +247,7 @@ fn run(profile: NoiseProfile, signal: &[f32], spans: &[(f32, f32)]) -> Run {
 
     for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
         block.copy_from_slice(chunk);
+        chain.set_room_level_db(to_dbfs(rms(&block)));
         enhancer.process(&mut block);
         let a = chain.process(&mut block);
         if a.warming_up {
@@ -272,6 +275,7 @@ fn run(profile: NoiseProfile, signal: &[f32], spans: &[(f32, f32)]) -> Run {
         level_db: (level / n) as f32,
         floor_db: (floor / n) as f32,
         settled_on: chain.effective_profile(),
+        latched_snr: chain.latched_snr_db(),
         // How much of what was said went out, and how much of what went out
         // was said. A transmitted *share* cannot distinguish a chain that
         // sends the right quarter of a clip from one that sends the wrong
@@ -421,6 +425,7 @@ fn stage_levels(profile: NoiseProfile, signal: &[f32]) -> (f32, f32, f32, f32) {
     let (mut sum, mut n) = (0.0f64, 0usize);
     for chunk in signal.chunks_exact(FRAME_SIZE) {
         blk.copy_from_slice(chunk);
+        chain.set_room_level_db(to_dbfs(rms(&blk)));
         enhancer.process(&mut blk);
         let a = chain.process(&mut blk);
         if a.warming_up {
@@ -467,6 +472,7 @@ fn features(profile: NoiseProfile, signal: &[f32]) -> Vec<(f32, [f32; 5])> {
     let mut out = Vec::new();
     for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
         block.copy_from_slice(chunk);
+        chain.set_room_level_db(to_dbfs(rms(&block)));
         enhancer.process(&mut block);
         let a = chain.process(&mut block);
         if a.warming_up {
@@ -530,6 +536,7 @@ fn dump_the_suppressed_audio() {
             let mut out: Vec<u8> = Vec::with_capacity(signal.len() * 4);
             for chunk in signal.chunks_exact(FRAME_SIZE) {
                 block.copy_from_slice(chunk);
+                chain.set_room_level_db(to_dbfs(rms(&block)));
                 enhancer.process(&mut block);
                 chain.process(&mut block);
                 for s in &block {
@@ -597,6 +604,7 @@ fn what_the_chain_does_with_real_helmet_audio() {
                 let (mut n, mut vad_ok, mut snr_ok, mut gate_ok, mut sent) = (0, 0, 0, 0, 0);
                 for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
                     blk.copy_from_slice(chunk);
+                    chain.set_room_level_db(to_dbfs(rms(&blk)));
                     enhancer.process(&mut blk);
                     let a = chain.process(&mut blk);
                     if a.warming_up {
@@ -717,6 +725,11 @@ fn what_the_chain_does_with_real_helmet_audio() {
                 r.level_db,
                 r.floor_db,
             );
+            if let Some(snr) = r.latched_snr {
+                println!("            latched onset SNR {snr:>6.1} dB");
+            } else if profile == NoiseProfile::Auto {
+                println!("            no onset SNR was ever latched");
+            }
         }
     }
 }
@@ -851,6 +864,110 @@ fn how_far_the_enhancer_separates_the_voice_from_the_gaps() {
             gaps[gaps.len() - 1],
             100.0 * short as f32 / gaps.len() as f32,
             100.0 * in_short / all.max(1.0)
+        );
+    }
+}
+
+/// What a profile chooser would see at the start of each speech segment.
+///
+/// **The number the whole design rests on, measured before anything is built
+/// on it.** The chooser is to latch the SNR over the first second after the
+/// gate opens and pick a profile from it, so what matters is not the average
+/// SNR of a clip but the value at each onset, taken where the chooser would
+/// take it: after the enhancer and *before* the profile's own filters, which is
+/// exactly where `auto_floor` already samples.
+///
+/// Onsets are found by periodicity rather than by level, for the same reason
+/// the separation measurement labels that way: using level to find the moments
+/// whose level is being measured would be circular.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn what_snr_a_profile_chooser_would_see_at_onset() {
+    use mumbleway_core::audio::dsp::NoiseFloorTracker;
+
+    println!("\nSNR AT SPEECH ONSET, pre-profile (dB)");
+    println!(
+        "    {:<18} {:>7} {:>8} {:>8} {:>8} {:>8}",
+        "clip", "onsets", "min", "median", "max", "floor"
+    );
+    for (name, signal) in &clips() {
+        let mut enhanced = signal.clone();
+        let mut enhancer = enhancer_for_measurement();
+        for chunk in enhanced.chunks_exact_mut(FRAME_SIZE) {
+            enhancer.process(chunk);
+        }
+        let voiced = periodicity(&enhanced);
+        // **Levels from the enhanced signal, the floor from the raw one.**
+        //
+        // The chooser wants to know how noisy the *room* is, and after the
+        // enhancer there is no room left to measure: its residue is
+        // intermittent, so a minimum statistic latches onto the silence between
+        // bursts and reads -117 dBFS on the noisiest clip of the three. Fed the
+        // microphone instead, the same tracker reads the background that is
+        // actually there, and the ordering comes out the right way up.
+        let levels = block_levels(&enhanced);
+        let raw_levels = block_levels(signal);
+        let mut floor = NoiseFloorTracker::new(100);
+        let mut floors = Vec::with_capacity(raw_levels.len());
+        for l in &raw_levels {
+            floors.push(floor.update(*l));
+        }
+
+        // A segment starts on the first voiced block after a quiet stretch
+        // longer than the hold, so a pause inside a phrase is not a new onset.
+        const HOLD_BLOCKS: usize = 100;
+        let mut snrs: Vec<f32> = Vec::new();
+        let mut quiet = HOLD_BLOCKS + 1;
+        let mut i = 0;
+        while i < voiced.len() {
+            if voiced[i] >= 0.75 {
+                if quiet > HOLD_BLOCKS {
+                    // The first second of the segment, which is what the design
+                    // latches over.
+                    let end = (i + HOLD_BLOCKS).min(levels.len());
+                    let mut best = f32::NEG_INFINITY;
+                    let mut at_level = 0.0f32;
+                    let mut at_floor = 0.0f32;
+                    for b in i..end {
+                        if levels[b] - floors[b] > best {
+                            best = levels[b] - floors[b];
+                            at_level = levels[b];
+                            at_floor = floors[b];
+                        }
+                    }
+                    if best.is_finite() {
+                        println!(
+                            "        onset at {:>5.1}s  level {:>6.1}  floor {:>6.1}  snr {:>6.1}{}",
+                            i as f32 * 0.01,
+                            at_level,
+                            at_floor,
+                            best,
+                            if i < 600 { "   (floor not settled)" } else { "" }
+                        );
+                        snrs.push(best);
+                    }
+                }
+                quiet = 0;
+            } else {
+                quiet += 1;
+            }
+            i += 1;
+        }
+
+        if snrs.is_empty() {
+            println!("    {name:<18} {:>7}", 0);
+            continue;
+        }
+        snrs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let median = snrs[snrs.len() / 2];
+        println!(
+            "    {:<18} {:>7} {:>8.1} {:>8.1} {:>8.1} {:>8.1}",
+            name,
+            snrs.len(),
+            snrs[0],
+            median,
+            snrs[snrs.len() - 1],
+            floors[floors.len() - 1]
         );
     }
 }

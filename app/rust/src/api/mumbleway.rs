@@ -1415,6 +1415,14 @@ pub struct UiChainStatus {
     /// the floor that is frozen, so the pair can latch; the watchdog breaks it
     /// after a minute. Anything above zero means it had to.
     pub floor_watchdog_trips: u32,
+    /// The onset SNR the `Auto` profile was chosen from, in dB — how far the
+    /// rider's voice stood above their own background over the first second of
+    /// the last phrase. `None` until somebody speaks, and always `None` when
+    /// the profile was set by hand.
+    ///
+    /// Shown next to the profile because it is the evidence for it. A rider on
+    /// a motorway reads about 13; in a quiet room, forty-odd.
+    pub auto_snr_db: Option<f32>,
     /// How periodic the last block was, 0..1, and the bar in force.
     ///
     /// Drawn beside the spectrum rather than listed under it: a threshold is a
@@ -1903,6 +1911,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         floor_held: c.floor_held,
         floor_held_ms: c.floor_held_ms,
         floor_watchdog_trips: c.floor_watchdog_trips,
+        auto_snr_db: c.auto_snr_db,
         harmonicity: c.harmonicity,
         voiced_threshold: c.voiced_threshold,
     })

@@ -148,6 +148,11 @@ class _SpectrumViewState extends State<SpectrumView> {
     final b = StringBuffer()
       ..write(c.effectiveProfile.index)
       ..write('/')
+      // Moves only at a speech onset, so this costs nothing at rest — and
+      // without it the number beside the profile would stay at whatever it
+      // read when some *other* field last changed.
+      ..write(c.autoSnrDb?.round())
+      ..write('/')
       ..write(c.enhancerEffort)
       ..write('/')
       // Without this the row would not repaint when the model changed, which
@@ -330,6 +335,7 @@ class _SpectrumViewState extends State<SpectrumView> {
               if (chain != null)
                 _AutoProfile(
                   profile: chain.effectiveProfile,
+                  snrDb: chain.autoSnrDb,
                   automatic:
                       AppStateScope.of(context).noise == NoiseSetting.auto,
                   // Only meaningful under Auto: a profile chosen by hand was
@@ -896,10 +902,24 @@ class _AutoProfile extends StatelessWidget {
   const _AutoProfile({
     required this.profile,
     required this.automatic,
+    this.snrDb,
     this.pinned = false,
   });
 
   final NoiseSetting profile;
+
+  /// The onset SNR `Auto` chose this profile from, in dB.
+  ///
+  /// **The evidence, next to the verdict.** The profile alone says what
+  /// happened; a rider whose Auto sits on `Helmet` in a quiet room can see that
+  /// it did and nothing about why. With the number, a wrong profile splits into
+  /// two different faults that need different fixes — the chain measured the
+  /// room wrongly, or it read a correct measurement wrongly.
+  ///
+  /// Null until the first phrase, and always null when the profile was set by
+  /// hand: nothing was chosen from anything, and showing a stale measurement
+  /// beside a fixed setting would imply a connection that is not there.
+  final double? snrDb;
 
   /// Whether `Auto` picked this, rather than the rider.
   final bool automatic;
@@ -941,6 +961,21 @@ class _AutoProfile extends StatelessWidget {
               color: pinned ? StatusColors.connecting : null,
             ),
           ),
+          // Grey and in brackets, like the pinned note below: it qualifies
+          // the profile rather than competing with it. Whole decibels — the
+          // thresholds are 20 dB apart and a decimal would imply a precision
+          // the measurement does not have.
+          if (snrDb != null) ...[
+            const SizedBox(width: 5),
+            Text(
+              l.diagAutoSnr(snrDb!.round()),
+              style: TextStyle(
+                fontSize: 11,
+                color: scheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
           if (pinned) ...[
             const SizedBox(width: 5),
             // Grey and in brackets: it qualifies the name rather than

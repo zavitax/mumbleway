@@ -2542,6 +2542,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double dco_decode_box_autoadd_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
+  }
+
+  @protected
   ServerConfig dco_decode_box_autoadd_server_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_server_config(raw);
@@ -2710,6 +2716,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double? dco_decode_opt_box_autoadd_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_f_32(raw);
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
@@ -2831,8 +2843,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 34)
-      throw Exception('unexpected arr length: expect 34 but see ${arr.length}');
+    if (arr.length != 35)
+      throw Exception('unexpected arr length: expect 35 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2847,27 +2859,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       floorHeld: dco_decode_bool(arr[10]),
       floorHeldMs: dco_decode_u_32(arr[11]),
       floorWatchdogTrips: dco_decode_u_32(arr[12]),
-      harmonicity: dco_decode_f_32(arr[13]),
-      voicedThreshold: dco_decode_f_32(arr[14]),
-      effectiveProfile: dco_decode_noise_setting(arr[15]),
-      disabledStages: dco_decode_list_String(arr[16]),
-      aecEnabled: dco_decode_bool(arr[17]),
-      aecShortened: dco_decode_bool(arr[18]),
-      aecErleDb: dco_decode_f_32(arr[19]),
-      aecLagMs: dco_decode_f_32(arr[20]),
-      aecConfidence: dco_decode_f_32(arr[21]),
-      aecSpreadMs: dco_decode_f_32(arr[22]),
-      aecWindowMs: dco_decode_f_32(arr[23]),
-      aec3: dco_decode_bool(arr[24]),
-      enhancerSimpleModel: dco_decode_bool(arr[25]),
-      relief: dco_decode_u_32(arr[26]),
-      analyserDecayDisabled: dco_decode_bool(arr[27]),
-      participantMetersDisabled: dco_decode_bool(arr[28]),
-      analyserDisabled: dco_decode_bool(arr[29]),
-      classifierTopDisabled: dco_decode_bool(arr[30]),
-      liveDotsDisabled: dco_decode_bool(arr[31]),
-      classifierDisabled: dco_decode_bool(arr[32]),
-      enhancerEffort: dco_decode_u_32(arr[33]),
+      autoSnrDb: dco_decode_opt_box_autoadd_f_32(arr[13]),
+      harmonicity: dco_decode_f_32(arr[14]),
+      voicedThreshold: dco_decode_f_32(arr[15]),
+      effectiveProfile: dco_decode_noise_setting(arr[16]),
+      disabledStages: dco_decode_list_String(arr[17]),
+      aecEnabled: dco_decode_bool(arr[18]),
+      aecShortened: dco_decode_bool(arr[19]),
+      aecErleDb: dco_decode_f_32(arr[20]),
+      aecLagMs: dco_decode_f_32(arr[21]),
+      aecConfidence: dco_decode_f_32(arr[22]),
+      aecSpreadMs: dco_decode_f_32(arr[23]),
+      aecWindowMs: dco_decode_f_32(arr[24]),
+      aec3: dco_decode_bool(arr[25]),
+      enhancerSimpleModel: dco_decode_bool(arr[26]),
+      relief: dco_decode_u_32(arr[27]),
+      analyserDecayDisabled: dco_decode_bool(arr[28]),
+      participantMetersDisabled: dco_decode_bool(arr[29]),
+      analyserDisabled: dco_decode_bool(arr[30]),
+      classifierTopDisabled: dco_decode_bool(arr[31]),
+      liveDotsDisabled: dco_decode_bool(arr[32]),
+      classifierDisabled: dco_decode_bool(arr[33]),
+      enhancerEffort: dco_decode_u_32(arr[34]),
     );
   }
 
@@ -3226,6 +3239,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double sse_decode_box_autoadd_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_f_32(deserializer));
+  }
+
+  @protected
   ServerConfig sse_decode_box_autoadd_server_config(
     SseDeserializer deserializer,
   ) {
@@ -3474,6 +3493,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double? sse_decode_opt_box_autoadd_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_f_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -3631,6 +3661,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_floorHeld = sse_decode_bool(deserializer);
     var var_floorHeldMs = sse_decode_u_32(deserializer);
     var var_floorWatchdogTrips = sse_decode_u_32(deserializer);
+    var var_autoSnrDb = sse_decode_opt_box_autoadd_f_32(deserializer);
     var var_harmonicity = sse_decode_f_32(deserializer);
     var var_voicedThreshold = sse_decode_f_32(deserializer);
     var var_effectiveProfile = sse_decode_noise_setting(deserializer);
@@ -3666,6 +3697,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       floorHeld: var_floorHeld,
       floorHeldMs: var_floorHeldMs,
       floorWatchdogTrips: var_floorWatchdogTrips,
+      autoSnrDb: var_autoSnrDb,
       harmonicity: var_harmonicity,
       voicedThreshold: var_voicedThreshold,
       effectiveProfile: var_effectiveProfile,
@@ -4077,6 +4109,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_f_32(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_server_config(
     ServerConfig self,
     SseSerializer serializer,
@@ -4324,6 +4362,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_f_32(double? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_f_32(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -4463,6 +4511,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.floorHeld, serializer);
     sse_encode_u_32(self.floorHeldMs, serializer);
     sse_encode_u_32(self.floorWatchdogTrips, serializer);
+    sse_encode_opt_box_autoadd_f_32(self.autoSnrDb, serializer);
     sse_encode_f_32(self.harmonicity, serializer);
     sse_encode_f_32(self.voicedThreshold, serializer);
     sse_encode_noise_setting(self.effectiveProfile, serializer);

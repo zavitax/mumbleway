@@ -791,6 +791,14 @@
   "diagAutoProfile": "Auto is using",
   "diagChosenProfile": "Profile",
   "diagProfilePinned": "(pinned)",
+  "diagAutoSnr": "({db} dB over the room)",
+  "@diagAutoSnr": {
+    "placeholders": {
+      "db": {
+        "type": "int"
+      }
+    }
+  },
   "diagStageBackground": "Background",
   "diagClassifierOnCpu": "No accelerator here, so background detection runs on the processor — {ms} ms per check, once every two seconds.",
   "@diagClassifierOnCpu": {

@@ -3142,6 +3142,17 @@ impl SseDecode for Option<bool> {
     }
 }
 
+impl SseDecode for Option<f32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<f32>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3312,6 +3323,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_floorHeld = <bool>::sse_decode(deserializer);
         let mut var_floorHeldMs = <u32>::sse_decode(deserializer);
         let mut var_floorWatchdogTrips = <u32>::sse_decode(deserializer);
+        let mut var_autoSnrDb = <Option<f32>>::sse_decode(deserializer);
         let mut var_harmonicity = <f32>::sse_decode(deserializer);
         let mut var_voicedThreshold = <f32>::sse_decode(deserializer);
         let mut var_effectiveProfile =
@@ -3348,6 +3360,7 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             floor_held: var_floorHeld,
             floor_held_ms: var_floorHeldMs,
             floor_watchdog_trips: var_floorWatchdogTrips,
+            auto_snr_db: var_autoSnrDb,
             harmonicity: var_harmonicity,
             voiced_threshold: var_voicedThreshold,
             effective_profile: var_effectiveProfile,
@@ -4175,6 +4188,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.floor_held.into_into_dart().into_dart(),
             self.floor_held_ms.into_into_dart().into_dart(),
             self.floor_watchdog_trips.into_into_dart().into_dart(),
+            self.auto_snr_db.into_into_dart().into_dart(),
             self.harmonicity.into_into_dart().into_dart(),
             self.voiced_threshold.into_into_dart().into_dart(),
             self.effective_profile.into_into_dart().into_dart(),
@@ -4924,6 +4938,16 @@ impl SseEncode for Option<bool> {
     }
 }
 
+impl SseEncode for Option<f32> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <f32>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<u32> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5067,6 +5091,7 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <bool>::sse_encode(self.floor_held, serializer);
         <u32>::sse_encode(self.floor_held_ms, serializer);
         <u32>::sse_encode(self.floor_watchdog_trips, serializer);
+        <Option<f32>>::sse_encode(self.auto_snr_db, serializer);
         <f32>::sse_encode(self.harmonicity, serializer);
         <f32>::sse_encode(self.voiced_threshold, serializer);
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.effective_profile, serializer);

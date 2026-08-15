@@ -891,6 +891,15 @@ class UiChainStatus {
   /// after a minute. Anything above zero means it had to.
   final int floorWatchdogTrips;
 
+  /// The onset SNR the `Auto` profile was chosen from, in dB — how far the
+  /// rider's voice stood above their own background over the first second of
+  /// the last phrase. `None` until somebody speaks, and always `None` when
+  /// the profile was set by hand.
+  ///
+  /// Shown next to the profile because it is the evidence for it. A rider on
+  /// a motorway reads about 13; in a quiet room, forty-odd.
+  final double? autoSnrDb;
+
   /// How periodic the last block was, 0..1, and the bar in force.
   ///
   /// Drawn beside the spectrum rather than listed under it: a threshold is a
@@ -1022,6 +1031,7 @@ class UiChainStatus {
     required this.floorHeld,
     required this.floorHeldMs,
     required this.floorWatchdogTrips,
+    this.autoSnrDb,
     required this.harmonicity,
     required this.voicedThreshold,
     required this.effectiveProfile,
@@ -1060,6 +1070,7 @@ class UiChainStatus {
       floorHeld.hashCode ^
       floorHeldMs.hashCode ^
       floorWatchdogTrips.hashCode ^
+      autoSnrDb.hashCode ^
       harmonicity.hashCode ^
       voicedThreshold.hashCode ^
       effectiveProfile.hashCode ^
@@ -1100,6 +1111,7 @@ class UiChainStatus {
           floorHeld == other.floorHeld &&
           floorHeldMs == other.floorHeldMs &&
           floorWatchdogTrips == other.floorWatchdogTrips &&
+          autoSnrDb == other.autoSnrDb &&
           harmonicity == other.harmonicity &&
           voicedThreshold == other.voicedThreshold &&
           effectiveProfile == other.effectiveProfile &&

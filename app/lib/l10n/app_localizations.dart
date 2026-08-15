@@ -2653,6 +2653,12 @@ abstract class L {
   /// **'(pinned)'**
   String get diagProfilePinned;
 
+  /// No description provided for @diagAutoSnr.
+  ///
+  /// In en, this message translates to:
+  /// **'({db} dB over the room)'**
+  String diagAutoSnr(int db);
+
   /// No description provided for @diagStageBackground.
   ///
   /// In en, this message translates to:

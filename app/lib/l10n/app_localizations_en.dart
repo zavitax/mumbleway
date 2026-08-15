@@ -1436,6 +1436,11 @@ class LEn extends L {
   String get diagProfilePinned => '(pinned)';
 
   @override
+  String diagAutoSnr(int db) {
+    return '($db dB over the room)';
+  }
+
+  @override
   String get diagStageBackground => 'Background';
 
   @override

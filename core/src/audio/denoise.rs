@@ -407,6 +407,29 @@ pub struct CaptureProcessor {
     /// which lets the noise back in. It settles somewhere too gentle, or
     /// oscillates. Both showed up the first time this was run.
     auto_floor: NoiseFloorTracker,
+    /// The level of the room, before the enhancer touched it.
+    ///
+    /// Set by the worker each block; see [`CaptureProcessor::set_room_level_db`].
+    room_level_db: f32,
+    /// Blocks left in the window the onset SNR is measured over, and the best
+    /// seen so far in it.
+    onset_window: u32,
+    onset_best_db: f32,
+    /// The SNR the profile in force was chosen from, and the floor it was
+    /// measured against.
+    ///
+    /// The floor is kept so the chooser can notice the background falling away
+    /// beneath it — a rider who stops at a light should not keep a profile
+    /// chosen on a motorway until they next speak.
+    latched_snr_db: Option<f32>,
+    latched_floor_db: f32,
+    /// The voice level the latched SNR was measured from.
+    ///
+    /// Kept so that a background falling away can be answered without waiting
+    /// for the rider to speak again: the same voice against a quieter room is a
+    /// higher SNR, which is the whole of what "the background halved" means to
+    /// this chooser.
+    latched_level_db: f32,
     rumble: RumbleFilter,
     /// Closes the top of the band. `None` with suppression off.
     band: Option<SpeechBand>,
@@ -547,6 +570,50 @@ fn one_step_lighter(from: NoiseProfile) -> NoiseProfile {
 /// synthetic, under-suppressing at 120 km/h loses the rider.
 const MUSIC_HOLD_BLOCKS: u32 = 1_500;
 
+/// How long the SNR is watched for at the start of a speech segment.
+///
+/// One second, matching the transmit hold, so the window is the same stretch of
+/// audio a listener would call "the beginning of what they said". The *best*
+/// SNR in it is taken rather than the mean: the question is how far the voice
+/// can stand above the background, and a segment that opens on a soft consonant
+/// would otherwise be judged on its quietest moment.
+const ONSET_WINDOW_BLOCKS: u32 = 100;
+
+/// SNR at onset, below which the profile steps up, in dB.
+///
+/// **Measured, and the gap between the two regimes is wide.** Three recordings
+/// through the real channel, SNR taken where the chooser takes it — after the
+/// enhancer for the voice, before it for the background:
+///
+/// | clip | background | onset SNR |
+/// |---|---|---|
+/// | singing, quiet room | −53.0 | 46.6 |
+/// | speech, quiet room | −52.6 | 44.0 |
+/// | voice over a motor | −26.9 to −19.8 | 16.8 down to 8.9 |
+///
+/// So 20 and 35 sit in a 27 dB gap with nothing measured anywhere near them.
+/// **The middle band is interpolation, not measurement**: no recording yet
+/// lands between 17 and 44 dB, so `Standard` is where the two ends meet rather
+/// than a bucket anything has been observed in. A clip from a quiet street
+/// would be worth having.
+const SNR_HELMET_BELOW_DB: f32 = 20.0;
+const SNR_STANDARD_BELOW_DB: f32 = 35.0;
+
+/// How far the background has to fall before the profile is reconsidered
+/// without waiting for the rider to speak again.
+///
+/// Six decibels is half the amplitude, which is the "x2 decrease" this rule was
+/// asked for. It exists because the other trigger — the next speech segment —
+/// can be a long way off: a rider who comes off a motorway and stops at a light
+/// would otherwise keep a Helmet chosen at 120 km/h until they next say
+/// something, and Helmet indoors is the over-suppression riders describe as
+/// sounding watery.
+///
+/// One direction only. A background that gets *louder* does not reconsider,
+/// because the thing it would reconsider against is an SNR measured on speech
+/// that has not happened yet, and the profile in force was chosen on evidence.
+const RECONSIDER_ON_FALL_DB: f32 = 6.0;
+
 /// How hard a profile works, for comparing two of them.
 ///
 /// `Off` is not reachable from `Auto` and sorts lowest so the ordering is
@@ -586,6 +653,12 @@ impl CaptureProcessor {
             // kind of place the rider is in, which changes over minutes, not
             // whether the current block is speech.
             auto_floor: NoiseFloorTracker::new(100),
+            room_level_db: f32::NAN,
+            onset_window: 0,
+            onset_best_db: f32::NEG_INFINITY,
+            latched_snr_db: None,
+            latched_floor_db: 0.0,
+            latched_level_db: 0.0,
             rumble: RumbleFilter::new(SAMPLE_RATE as f32, effective.cutoff_hz()),
             band: effective
                 .low_cutoff_hz()
@@ -655,6 +728,45 @@ impl CaptureProcessor {
     /// opens relative to that floor. It can only ever hold the floor **down**,
     /// so the failure it can cause is a gate that opens too easily — never one
     /// that closes on a rider mid-sentence, which is the failure that matters.
+    /// Tells the chain how loud the room is, measured before the enhancer.
+    ///
+    /// **The profile chooser cannot use anything measured after it.** A speech
+    /// enhancer fed no speech emits near-silence between its residues, so a
+    /// minimum-statistics floor taken downstream latches onto the silence: on
+    /// three real recordings it read -72, -79 and -117 dBFS, and the -117 was
+    /// the *noisiest* of the three. A chooser keyed on that picks the lightest
+    /// profile for the loudest road.
+    ///
+    /// Fed the microphone, the same tracker reads -53, -53 and -20 on the same
+    /// three, which is the order a listener would put them in.
+    ///
+    /// Only the chooser uses it. The gate's own floor stays where it is,
+    /// downstream, because the gate judges the signal it actually has.
+    pub fn set_room_level_db(&mut self, db: f32) {
+        self.room_level_db = db;
+    }
+
+    /// The room level to measure against, falling back to the block itself.
+    ///
+    /// **`NaN` means nobody told us**, which is the case for every caller that
+    /// drives `process` directly: the test suites, the road harness, the noise
+    /// harness. Those have no enhancer in front of them either, so the block
+    /// they hand over *is* the room and measuring it here is exactly right.
+    /// Only the worker has a pre-enhancer tap to offer, and only the worker
+    /// needs one.
+    fn room_or(&self, block: &[f32]) -> f32 {
+        if self.room_level_db.is_finite() {
+            self.room_level_db
+        } else {
+            to_dbfs(rms(block))
+        }
+    }
+
+    /// The SNR the profile in force was chosen from, for the panel.
+    pub fn latched_snr_db(&self) -> Option<f32> {
+        self.latched_snr_db
+    }
+
     pub fn set_classifier_voice(&mut self, voice: Option<bool>) {
         self.classifier_voice = voice;
     }
@@ -742,6 +854,43 @@ impl CaptureProcessor {
     /// The thresholds are a starting point and are not yet measured against a
     /// real bike. They say so here rather than only in a commit message,
     /// because whoever finds them wrong will be reading this and not that.
+    /// Picks a profile from the SNR latched at the last speech onset.
+    ///
+    /// **A ratio rather than a level, which is the point.** The chooser this
+    /// replaces read absolute dBFS — below −55 meant a quiet room — and
+    /// absolute dBFS is a property of the microphone, the input gain and the
+    /// device as much as of the room. Two riders in the same café, one with the
+    /// gain up, got different profiles. How far a voice stands above its own
+    /// background does not care about any of that.
+    ///
+    /// **`low_share` is deliberately not consulted here**, though the chooser
+    /// this replaces used it to veto `Light`.
+    ///
+    /// That veto asks whether the energy is mostly below 300 Hz, on the theory
+    /// that such a room has something rumbling in it. It was measured between
+    /// phrases, where it means that. This measurement happens *during* a
+    /// phrase, where a human fundamental lives between 75 and 350 Hz — so a
+    /// voice scores high on it by construction and the veto fires on every
+    /// speaker, every time. It blocked `Light` on a synthetic 140 Hz voice 60 dB
+    /// above its background, which is the least ambiguous case there is.
+    ///
+    /// Carrying a check across a change in *when* it is sampled, without
+    /// re-asking what it now measures, is the mistake being avoided. The
+    /// level-based chooser keeps it, because there it still samples the room.
+    fn profile_for(&self, snr_db: f32) -> Option<NoiseProfile> {
+        if self.profile != NoiseProfile::Auto {
+            return None;
+        }
+        let want = if snr_db < SNR_HELMET_BELOW_DB {
+            NoiseProfile::Helmet
+        } else if snr_db < SNR_STANDARD_BELOW_DB {
+            NoiseProfile::Standard
+        } else {
+            NoiseProfile::Light
+        };
+        (want != self.effective).then_some(want)
+    }
+
     fn reconsider(&mut self, floor_db: f32, low_share: f32) {
         if self.profile != NoiseProfile::Auto {
             return;
@@ -969,7 +1118,10 @@ impl CaptureProcessor {
         // and keep confirming it.
         let low_share = self.low_share(block);
         let raw_floor_db = if self.profile == NoiseProfile::Auto {
-            self.auto_floor.update(to_dbfs(rms(block)))
+            // The room as the microphone heard it, not as the enhancer left it.
+            // See `set_room_level_db` for what happens when this is taken
+            // downstream instead.
+            self.auto_floor.update(self.room_or(block))
         } else {
             0.0
         };
@@ -1126,7 +1278,18 @@ impl CaptureProcessor {
         // level of what the chain left of it. After the warm-up only: RNNoise
         // takes a moment to produce real output and a floor measured through
         // that is tens of dB too low.
-        if !warming_up {
+        // **Only until the first SNR is latched, and then never again.**
+        //
+        // A chooser keyed on speech has nothing to go on before the first
+        // phrase, so a rider who opens the app on a motorway would send their
+        // opening words through whatever happened to be in force. The
+        // absolute-level rule still covers that gap — it is device-dependent,
+        // which is why it is being replaced, but it is better than nothing and
+        // it is what shipped for months.
+        //
+        // One chooser at a time. Running both would let them disagree, and two
+        // rules fighting over the same profile is worse than either alone.
+        if !warming_up && self.latched_snr_db.is_none() {
             self.reconsider(raw_floor_db, low_share);
         }
 
@@ -1254,6 +1417,79 @@ impl CaptureProcessor {
             self.hangover = self.hangover.saturating_sub(1);
         }
         let voice_active = speech_now || self.hangover > 0;
+
+        // **Only under `Auto`.** The floor this is measured against is fed the
+        // room level only when Auto is running (see `raw_floor_db` above);
+        // under a fixed profile the tracker follows the post-suppression signal
+        // instead, and the subtraction of one from the other is not an SNR at
+        // all. It read −6.8, −5.2 and −17.4 dB on three clips whose real onset
+        // SNRs are 13, 34 and 54.
+        //
+        // Nothing downstream wanted it either: `profile_for` returns `None`
+        // when the profile is fixed, so the only consumer was the panel, which
+        // would have printed the nonsense next to a profile it had no bearing
+        // on.
+        //
+        // **A segment starts on the rising edge of the gate**, and that is
+        // where a fresh measurement begins.
+        if self.profile == NoiseProfile::Auto {
+            if voice_active && !self.was_voice_active {
+                self.onset_window = ONSET_WINDOW_BLOCKS;
+                self.onset_best_db = f32::NEG_INFINITY;
+            }
+
+            if self.onset_window > 0 {
+                // The voice as the enhancer left it, against the room as the
+                // microphone heard it. Mixing the two taps is deliberate and is the
+                // whole measurement: what is wanted is how far this rider stands
+                // above their own background, and only one of those two survives
+                // the enhancer intact.
+                let snr = self.room_or(block) - raw_floor_db;
+                if snr > self.onset_best_db {
+                    self.onset_best_db = snr;
+                    self.latched_level_db = self.room_or(block);
+                }
+                self.onset_window -= 1;
+                if self.onset_window == 0 && self.onset_best_db.is_finite() {
+                    self.latched_snr_db = Some(self.onset_best_db);
+                    self.latched_floor_db = raw_floor_db;
+                    // **Applied to the segment it was measured on**, a second in,
+                    // rather than held for the next one.
+                    //
+                    // Deferring it was a mistake worth recording. The argument was
+                    // that `apply_effective` rebuilds the rumble filter, the band
+                    // filter and the gate, and swapping those mid-phrase is
+                    // audible — but `reconsider` has always been able to do exactly
+                    // that on any block, so nothing was being avoided. What it cost
+                    // was real: a recording containing one phrase never adapted at
+                    // all, which is most short recordings and every rider's first
+                    // sentence. Measured on three clips, all three latched a
+                    // sensible SNR — 54, 34 and 13 dB — and all three stayed on the
+                    // profile they started with.
+                    if let Some(want) = self.profile_for(self.onset_best_db) {
+                        self.apply_effective(want);
+                    }
+                }
+            } else if self.latched_snr_db.is_some()
+                && raw_floor_db < self.latched_floor_db - RECONSIDER_ON_FALL_DB
+            {
+                // The second trigger: the background falling by half its amplitude.
+                // A rider who comes off a motorway and stops at a light would
+                // otherwise keep a Helmet chosen at speed until they next speak,
+                // and Helmet indoors is the over-suppression that gets described as
+                // sounding watery.
+                //
+                // The same voice against a quieter room, which is what the fall
+                // means arithmetically. Nothing is invented: the level is the one
+                // actually measured at the last onset.
+                let snr = self.latched_level_db - raw_floor_db;
+                self.latched_snr_db = Some(snr);
+                self.latched_floor_db = raw_floor_db;
+                if let Some(want) = self.profile_for(snr) {
+                    self.apply_effective(want);
+                }
+            }
+        }
         self.was_voice_active = voice_active;
 
         // 5. Gate. Feed it an artificially low level when the VAD disagrees, so
@@ -1552,6 +1788,113 @@ mod tests {
             p.process(&mut block);
             assert_ne!(p.effective_profile(), NoiseProfile::Auto);
         }
+    }
+
+    /// A quiet room and a motorway differ by more than twenty decibels of
+    /// signal-to-noise, and that is what the profile is now chosen on.
+    ///
+    /// **A ratio rather than a level, which is the whole point.** The rule this
+    /// replaces read absolute dBFS, and absolute dBFS is as much a property of
+    /// the microphone and the input gain as of the room: two riders in the same
+    /// café, one with the gain up, got different profiles. How far a voice
+    /// stands above its own background does not care about either.
+    #[test]
+    fn the_profile_follows_the_snr_at_the_start_of_a_phrase() {
+        // Far above the background: nothing needs suppressing hard.
+        assert_eq!(
+            profile_after_a_phrase_at(60.0),
+            NoiseProfile::Light,
+            "a voice 60 dB above its background does not need a helmet"
+        );
+        // The measured middle. Not observed on any recording yet — the three
+        // in hand sit at 54, 34 and 13 — so this band is where the two ends
+        // meet rather than somewhere anything has been seen.
+        assert_eq!(profile_after_a_phrase_at(28.0), NoiseProfile::Standard);
+        // A motor: the real clip latched 13 dB and this is what it must do
+        // with it.
+        assert_eq!(
+            profile_after_a_phrase_at(13.0),
+            NoiseProfile::Helmet,
+            "a voice barely above a motor needs the heaviest profile"
+        );
+    }
+
+    /// A hand-set profile measures no SNR, because it could not measure a real
+    /// one if it tried.
+    ///
+    /// The floor the SNR is taken against is fed the room level only under
+    /// `Auto`; under a fixed profile the same tracker follows the
+    /// post-suppression signal, and one minus the other is not a ratio between
+    /// anything. It read −6.8, −5.2 and −17.4 dB on three clips whose real
+    /// onset SNRs are 13, 34 and 54 — and the panel would have shown those
+    /// numbers beside a profile they had no bearing on.
+    #[test]
+    fn a_hand_set_profile_measures_no_snr() {
+        for profile in [
+            NoiseProfile::Off,
+            NoiseProfile::Light,
+            NoiseProfile::Standard,
+            NoiseProfile::Helmet,
+        ] {
+            let mut p = CaptureProcessor::new(profile);
+            let speech = crate::audio::testsig::speech(SAMPLE_RATE as usize * 3, 140.0, 0.4);
+            for chunk in speech.chunks_exact(FRAME_SIZE) {
+                let mut b = chunk.to_vec();
+                p.set_room_level_db(-20.0);
+                p.process(&mut b);
+            }
+            assert_eq!(
+                p.latched_snr_db(),
+                None,
+                "{profile:?} has nothing to measure an SNR against"
+            );
+        }
+    }
+
+    /// The chooser waits for evidence, and there is none before the first word.
+    #[test]
+    fn nothing_is_latched_until_somebody_speaks() {
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        let quiet = vec![0.0f32; FRAME_SIZE * 200];
+        for chunk in quiet.chunks_exact(FRAME_SIZE) {
+            let mut b = chunk.to_vec();
+            p.set_room_level_db(-50.0);
+            p.process(&mut b);
+        }
+        assert_eq!(p.latched_snr_db(), None);
+    }
+
+    /// Drives a synthetic phrase at a given SNR and reports what was chosen.
+    ///
+    /// The room level is set explicitly, as the worker sets it, because that is
+    /// the measurement the chooser is defined on: the background *before* the
+    /// enhancer. Feeding it the block instead is what made the noisiest of
+    /// three recordings read the highest SNR.
+    fn profile_after_a_phrase_at(snr_db: f32) -> NoiseProfile {
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        let floor = -60.0f32;
+
+        // Long enough for the floor tracker to settle on the background.
+        let silence = vec![0.0f32; FRAME_SIZE];
+        for _ in 0..700 {
+            let mut b = silence.clone();
+            p.set_room_level_db(floor);
+            p.process(&mut b);
+        }
+
+        // Then a phrase. The audio is a real voice-shaped signal so the gate
+        // opens; the SNR under test is supplied through the room level, which
+        // is the only thing the chooser reads.
+        let speech = crate::audio::testsig::speech(SAMPLE_RATE as usize * 3, 140.0, 0.4);
+        for chunk in speech.chunks_exact(FRAME_SIZE) {
+            let mut b = chunk.to_vec();
+            // `room_level = floor + snr` by construction, and the tracker has
+            // long since settled on `floor`, so this is the SNR the chooser
+            // sees at the onset.
+            p.set_room_level_db(floor + snr_db);
+            p.process(&mut b);
+        }
+        p.effective_profile()
     }
 
     #[test]

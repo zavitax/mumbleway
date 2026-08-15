@@ -36,6 +36,7 @@
 //! wind, engines and music is not the same as passing.
 
 use mumbleway_core::audio::denoise::CaptureProcessor;
+use mumbleway_core::audio::dsp::{rms, to_dbfs};
 use mumbleway_core::audio::testsig;
 use mumbleway_core::audio::{Enhancer, NoiseProfile};
 
@@ -71,6 +72,7 @@ fn share_through(profile: NoiseProfile, signal: &[f32], enhance: bool) -> f32 {
     for chunk in signal.chunks_exact(BLOCK) {
         block.copy_from_slice(chunk);
         if enhance {
+            chain.set_room_level_db(to_dbfs(rms(&block)));
             enhancer.process(&mut block);
         }
         let analysis = chain.process(&mut block);

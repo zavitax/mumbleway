@@ -1429,6 +1429,11 @@ class LRu extends L {
   String get diagProfilePinned => '(закреплён)';
 
   @override
+  String diagAutoSnr(int db) {
+    return '(на $db дБ выше фона)';
+  }
+
+  @override
   String get diagStageBackground => 'Фон';
 
   @override

@@ -139,6 +139,16 @@ pub struct ChainStatus {
     /// can latch; the watchdog breaks that after a minute. A count above zero
     /// says it had to.
     pub floor_watchdog_trips: u32,
+    /// The onset SNR the Auto profile was last chosen from, in dB, and `None`
+    /// before the first phrase.
+    ///
+    /// **The input to the choice, published beside its output.** The panel
+    /// already shows which profile is in force; without the number behind it, a
+    /// rider whose Auto lands on `Helmet` in a quiet room can see that it did
+    /// and nothing about why. The two together say whether the chooser measured
+    /// the room wrongly or read a correct measurement wrongly, which are
+    /// different bugs.
+    pub auto_snr_db: Option<f32>,
     /// What the clip guard is holding back off the rider's input gain, in dB.
     ///
     /// Never positive, and zero whenever the guard is idle. **The gain slider
@@ -235,6 +245,7 @@ impl Default for ChainStatus {
             floor_held: false,
             floor_held_ms: 0,
             floor_watchdog_trips: 0,
+            auto_snr_db: None,
             input_trim_db: 0.0,
             level_db: -120.0,
             noise_floor_db: -100.0,
@@ -3202,6 +3213,24 @@ where
             // written further down, after the transmit decision.
             let (aec_lag, aec_conf, aec_spread, _) = processor.aec_alignment();
 
+            // **The room, measured before the enhancer removes it.**
+            //
+            // The profile chooser needs to know how noisy the rider's
+            // surroundings are, and after the enhancer there is nothing left to
+            // measure: its residue is intermittent, so the minimum-statistics
+            // floor downstream latches onto the silence between bursts. On
+            // three real recordings that floor read -72, -79 and -117 dBFS, and
+            // the -117 was the noisiest of the three — a chooser keyed on it
+            // picks the lightest profile for the loudest road. Taken here the
+            // same tracker reads -53, -53 and -20, in the order a listener
+            // would put them.
+            //
+            // One `rms` over 480 samples, unconditionally: it is a few hundred
+            // nanoseconds against a 10 ms budget, and a flag that can be wrong
+            // costs more than it saves.
+            // Fully qualified: a local `rms` binding shadows the function
+            // further up this loop, and `to_dbfs` is not imported here.
+            processor.set_room_level_db(super::dsp::to_dbfs(super::dsp::rms(&block)));
             enhancer.process(&mut block);
             timings.record(Stage::Enhancer, lap.split());
 
@@ -3450,6 +3479,7 @@ where
                 floor_held: analysis.floor_held,
                 floor_held_ms: analysis.floor_held_ms,
                 floor_watchdog_trips: analysis.floor_watchdog_trips,
+                auto_snr_db: processor.latched_snr_db(),
                 input_trim_db: clip_guard.trim_db(),
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,

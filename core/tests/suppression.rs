@@ -37,7 +37,7 @@
 
 use mumbleway_core::audio::denoise::CaptureProcessor;
 use mumbleway_core::audio::testsig;
-use mumbleway_core::audio::NoiseProfile;
+use mumbleway_core::audio::{Enhancer, NoiseProfile};
 
 /// RNNoise works on fixed 10 ms blocks at 48 kHz, and so does the chain.
 const BLOCK: usize = 480;
@@ -49,13 +49,30 @@ const RATE: usize = 48_000;
 /// yet trust its own answer, and counting them would put a fixed 150 ms of
 /// noise into every measurement regardless of what was being measured.
 fn transmitted_share(profile: NoiseProfile, signal: &[f32]) -> f32 {
+    share_through(profile, signal, false)
+}
+
+/// The same, with the enhancer in front — which is what the app runs.
+///
+/// **This suite measured the suppressor alone until 2026-08-15**, so its clean
+/// zero described a chain nobody ships. `engine.rs` runs `Enhancer::process`
+/// immediately before `CaptureProcessor::suppress`.
+fn shipping_share(profile: NoiseProfile, signal: &[f32]) -> f32 {
+    share_through(profile, signal, true)
+}
+
+fn share_through(profile: NoiseProfile, signal: &[f32], enhance: bool) -> f32 {
     let mut chain = CaptureProcessor::new(profile);
+    let mut enhancer = Enhancer::new();
     let mut block = [0.0f32; BLOCK];
     let mut sent = 0usize;
     let mut counted = 0usize;
 
     for chunk in signal.chunks_exact(BLOCK) {
         block.copy_from_slice(chunk);
+        if enhance {
+            enhancer.process(&mut block);
+        }
         let analysis = chain.process(&mut block);
         if analysis.warming_up {
             continue;
@@ -162,6 +179,54 @@ fn noise_alone_transmits_nothing() {
         }
     }
     assert_eq!(worst, 0.0, "noise was transmitted: {}", report.join(", "));
+}
+
+/// The same noise, through the chain the app actually runs.
+///
+/// **This is a defect being recorded, not a bar being met.** The test above
+/// puts zero blocks of wind, engine, traffic and unknown noise on the wire, and
+/// did so for months — but it measured the suppressor without the enhancer in
+/// front of it, which is not what anybody runs. With the enhancer where
+/// `engine.rs` has it, a quarter to a half of the same noise transmits.
+///
+/// The mechanism is in [`what_the_enhancer_does_to_the_shape_of_noise`] and is
+/// not what it looks like. Removing noise does not make noise leak; collapsing
+/// the *floor* does. A speech enhancer fed no speech emits near-silence between
+/// its residues, the minimum-statistics floor latches onto the silence, and
+/// everything above it reads as signal. Measured on wind at half scale: the
+/// level fell 15 dB when the enhancer went in and the floor fell 54, so the SNR
+/// the gate keys on went from 9 dB to 43.
+///
+/// The number here is therefore a ceiling to drive down, and this test exists
+/// to stop it getting worse in the meantime. **Do not read a pass as good
+/// news.** The target is the zero above.
+#[test]
+fn how_much_noise_the_shipping_chain_leaks() {
+    let mut worst = 0.0f32;
+    let mut report = Vec::new();
+    // A narrower sweep than the suppressor-alone test above, because the
+    // enhancer costs about seven times the runtime and the leak does not
+    // depend on level: 22, 26 and 27% for wind at a quarter, a half and 0.85
+    // of full scale. The two extremes are kept and the middle dropped.
+    for amp in [0.25f32, 0.85] {
+        for (name, signal) in cases(10, 7, amp) {
+            if !REJECTED_TODAY.iter().any(|k| name.starts_with(k)) {
+                continue;
+            }
+            let share = shipping_share(NoiseProfile::Helmet, &signal);
+            if share > 0.0 {
+                report.push(format!("{name} {:.1}%", share * 100.0));
+            }
+            worst = worst.max(share);
+        }
+    }
+    // Measured at 58.7% on 2026-08-15. The margin is for seed and platform
+    // wobble, not for headroom to regress into.
+    assert!(
+        worst <= 0.65,
+        "the shipping chain leaked more noise than the recorded defect: {}",
+        report.join(", ")
+    );
 }
 
 #[test]
@@ -300,4 +365,73 @@ fn the_answer_does_not_depend_on_the_draw() {
         spread < 0.5,
         "three draws of the same wind behaved quite differently: {shares:?}"
     );
+}
+
+/// Why enhanced noise leaks when raw noise does not.
+///
+/// **The finding this file exists to record, as of 2026-08-15.** Adding the
+/// enhancer — which the shipping chain has and this suite did not — turned a
+/// clean zero into 22 to 58% of blocks transmitted on wind and unknown noise.
+/// That is the opposite of what removing noise ought to do, so the mechanism is
+/// worth having written down rather than inferred.
+///
+/// The SNR test is a *ratio*: level against a floor tracked from the same
+/// signal. Take 20 dB out of steady wind and both fall together, so the ratio
+/// should not move. It moves because what the enhancer leaves behind is not
+/// steady. A speech enhancer fed no speech emits intermittent residue, and an
+/// intermittent signal clears its own tracked floor by construction — the floor
+/// follows the quiet parts and the bursts stand above it. Steady wind is
+/// rejected precisely *because* it is steady.
+///
+/// So the enhancer converts a signal the floor tracker handles into one it
+/// cannot, and the margin that rejected 100% of raw wind passes a quarter of
+/// enhanced wind.
+#[test]
+#[ignore = "diagnostic; prints the mechanism behind the enhanced-noise leak"]
+fn what_the_enhancer_does_to_the_shape_of_noise() {
+    use mumbleway_core::audio::dsp::{rms, to_dbfs, NoiseFloorTracker};
+
+    println!(
+        "\n{:<22} {:>8} {:>8} {:>8} {:>8}",
+        "case", "lvl p50", "flr p50", "snr p50", "snr p90"
+    );
+    for (name, signal) in cases(15, 7, 0.5) {
+        if !name.starts_with("wind") && !name.starts_with("unknown") {
+            continue;
+        }
+        for enhanced in [false, true] {
+            let mut sig = signal.clone();
+            if enhanced {
+                let mut e = Enhancer::new();
+                for c in sig.chunks_exact_mut(BLOCK) {
+                    e.process(c);
+                }
+            }
+            let mut floor = NoiseFloorTracker::new(25);
+            let (mut levels, mut floors, mut snrs) = (Vec::new(), Vec::new(), Vec::new());
+            for c in sig.chunks_exact(BLOCK) {
+                let l = to_dbfs(rms(c));
+                let f = floor.update(l);
+                levels.push(l);
+                floors.push(f);
+                snrs.push(l - f);
+            }
+            let p = |v: &mut Vec<f32>, q: f32| {
+                v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                v[((v.len() - 1) as f32 * q) as usize]
+            };
+            let mut l = levels.clone();
+            let mut f = floors.clone();
+            let mut s1 = snrs.clone();
+            let mut s2 = snrs.clone();
+            println!(
+                "{:<22} {:>8.1} {:>8.1} {:>8.1} {:>8.1}",
+                format!("{name} {}", if enhanced { "enhanced" } else { "raw" }),
+                p(&mut l, 0.5),
+                p(&mut f, 0.5),
+                p(&mut s1, 0.5),
+                p(&mut s2, 0.9)
+            );
+        }
+    }
 }

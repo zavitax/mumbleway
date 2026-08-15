@@ -562,6 +562,8 @@
       }
     }
   },
+  "diagRestore": "Возврат голоса",
+  "diagRestoreCost": "Стоимость возврата",
   "diagStageBackground": "Фон",
   "diagClassifierOnCpu": "Ускорителя здесь нет, поэтому распознавание фона считает процессор — {ms} мс на проверку, раз в две секунды.",
   "@diagClassifierOnCpu": {

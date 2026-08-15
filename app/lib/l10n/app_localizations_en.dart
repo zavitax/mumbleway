@@ -1444,6 +1444,12 @@ class LEn extends L {
   }
 
   @override
+  String get diagRestore => 'Voice restored';
+
+  @override
+  String get diagRestoreCost => 'Restore cost';
+
+  @override
   String get diagStageBackground => 'Background';
 
   @override

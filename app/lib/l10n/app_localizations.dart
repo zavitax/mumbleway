@@ -2665,6 +2665,18 @@ abstract class L {
   /// **'({db} dB over the room)'**
   String diagAutoSnr(int db);
 
+  /// No description provided for @diagRestore.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice restored'**
+  String get diagRestore;
+
+  /// No description provided for @diagRestoreCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore cost'**
+  String get diagRestoreCost;
+
   /// No description provided for @diagStageBackground.
   ///
   /// In en, this message translates to:

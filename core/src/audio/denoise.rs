@@ -14,7 +14,7 @@ use nnnoiseless::DenoiseState;
 
 use super::aec::{EchoCanceller, DEFAULT_TAPS};
 use super::dsp::{
-    rms, to_dbfs, Agc, Biquad, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
+    fft, rms, to_dbfs, Agc, Biquad, Limiter, NoiseFloorTracker, NoiseGate, RumbleFilter, SpeechBand,
 };
 use super::modulation::ModulationTracker;
 use super::pitch::{Pitch, PitchTracker};
@@ -348,6 +348,11 @@ pub struct BlockAnalysis {
     pub gate_open: bool,
     /// Gain the AGC is currently applying, in dB.
     pub agc_gain_db: f32,
+    /// The restoring bell in force: how much it is lifting and where.
+    ///
+    /// Zero and unchanging whenever the chain is not hearing speech.
+    pub restore_gain_db: f32,
+    pub restore_centre_hz: f32,
     /// Whether the chain is still in its start-up hold and not to be trusted.
     pub warming_up: bool,
     /// The profile actually in force, which for [`NoiseProfile::Auto`] is
@@ -407,6 +412,33 @@ pub struct CaptureProcessor {
     /// which lets the noise back in. It settles somewhere too gentle, or
     /// oscillates. Both showed up the first time this was run.
     auto_floor: NoiseFloorTracker,
+    /// The restoring bell, and where it currently sits.
+    ///
+    /// **Kept across blocks so its state is continuous.** Rebuilding a biquad
+    /// per block resets its delay line, which puts a transient at the start of
+    /// every 10 ms — inaudible in a level measurement and not in a voice.
+    restore: Biquad,
+    restore_centre_hz: f32,
+    restore_gain_db: f32,
+    /// Scratch for the peak search. Owned, because this runs on the audio
+    /// thread and must not allocate.
+    restore_re: Vec<f32>,
+    restore_im: Vec<f32>,
+    /// What the two new steps cost, in milliseconds, smoothed.
+    ///
+    /// **Separate figures rather than a ninth [`super::timing::Stage`].** That
+    /// enum's contract is that its variants are contiguous spans of the
+    /// worker's loop which tile a block exactly; these two are nested inside
+    /// `Suppression` and would double-count. They are reported on their own so
+    /// the cost of the newest thing in the chain is visible without changing
+    /// what the ladder measures.
+    ///
+    /// Smoothed because a per-block figure on a phone is mostly scheduler
+    /// noise, and the question is what a stage costs rather than what it cost
+    /// once.
+    restore_peak_ms: f32,
+    restore_filter_ms: f32,
+
     /// The level of the room, before the enhancer touched it.
     ///
     /// Set by the worker each block; see [`CaptureProcessor::set_room_level_db`].
@@ -599,6 +631,48 @@ const ONSET_WINDOW_BLOCKS: u32 = 100;
 pub const SNR_HELMET_BELOW_DB: f32 = 20.0;
 pub const SNR_STANDARD_BELOW_DB: f32 = 35.0;
 
+/// The most the restoration may put back, in dB.
+///
+/// **Twelve, because unbounded gives back what the enhancer is for.** On a clip
+/// of voice over a motor, restoring without a bound handed back 11 dB of the
+/// enhancer's noise removal. Twelve covers the fault it was built for — the
+/// enhancer pinned against its own 24 dB ceiling on quiet phrases — without
+/// reaching far enough to undo a road.
+pub const RESTORE_MAX_DB: f32 = 12.0;
+
+/// Transform length for the peak search. 512 at 48 kHz is 94 Hz a bin, which
+/// resolves a formant and costs a fraction of the enhancer sitting in front of
+/// it. The block is 480 samples, so this is the next power of two up and the
+/// tail is zeros.
+const RESTORE_FFT: usize = 512;
+
+/// Width of the restoring bell. At 1.0 it is a little under two octaves at
+/// half height: wide enough for a vowel's first two formants, narrow enough to
+/// leave the top of the band alone.
+pub const RESTORE_Q: f32 = 1.0;
+
+/// Where the peak is looked for, in Hz.
+///
+/// The bottom is above the rumble a high-pass has just removed, so a residue
+/// down there cannot become the target. The top is where a voice's formants
+/// stop carrying and hiss starts.
+const RESTORE_LOW_HZ: f32 = 150.0;
+const RESTORE_HIGH_HZ: f32 = 4_000.0;
+
+/// How fast the bell may move and how fast its gain may change, per block.
+///
+/// **Both smoothed, and for different reasons.** The centre is a peak-pick and
+/// peak-picks jump — one block's loudest bin is a neighbour of the last one's
+/// and the bell would swing an octave between them, which is audible as a
+/// warble. The gain is smoothed because a filter whose coefficients change
+/// every block is not a filter, it is a sequence of transients.
+const RESTORE_CENTRE_GLIDE: f32 = 0.12;
+const RESTORE_GAIN_GLIDE: f32 = 0.25;
+
+/// How fast the reported cost of the two new steps follows the measurement.
+/// Slow, because a single block's timing on a phone is mostly the scheduler.
+const RESTORE_COST_GLIDE: f32 = 0.02;
+
 /// How far the background has to fall before the profile is reconsidered
 /// without waiting for the rider to speak again.
 ///
@@ -653,6 +727,13 @@ impl CaptureProcessor {
             // kind of place the rider is in, which changes over minutes, not
             // whether the current block is speech.
             auto_floor: NoiseFloorTracker::new(100),
+            restore: Biquad::peaking(SAMPLE_RATE as f32, 500.0, RESTORE_Q, 0.0),
+            restore_centre_hz: 500.0,
+            restore_gain_db: 0.0,
+            restore_re: vec![0.0; RESTORE_FFT],
+            restore_im: vec![0.0; RESTORE_FFT],
+            restore_peak_ms: 0.0,
+            restore_filter_ms: 0.0,
             room_level_db: f32::NAN,
             onset_window: 0,
             onset_best_db: f32::NEG_INFINITY,
@@ -760,6 +841,11 @@ impl CaptureProcessor {
         } else {
             to_dbfs(rms(block))
         }
+    }
+
+    /// What the peak search and the bell cost, in milliseconds.
+    pub fn restore_cost_ms(&self) -> (f32, f32) {
+        (self.restore_peak_ms, self.restore_filter_ms)
     }
 
     /// The SNR the profile in force was chosen from, for the panel.
@@ -1541,6 +1627,23 @@ impl CaptureProcessor {
         self.agc.process(block, level_db, speaking);
         self.limiter.process(block);
 
+        // 7. Put back what the enhancer took, where it took it from.
+        //
+        // **Last, and that placement is the measurement rather than a
+        // preference.** The same correction applied straight after the
+        // enhancer costs 1.0 to 3.6 dB of the distance between speech and the
+        // gaps, because at that point the block still holds everything the
+        // suppressor is about to remove and the gain lifts all of it. Applied
+        // here the gaps have already been taken to -76 dB and are not touched
+        // at all, so the only thing that moves is the voice — and the distance
+        // *grows*: 58.6 dB to 60.0 on the recording this was built for.
+        //
+        // The target is the level before the enhancer, which is the last point
+        // at which the voice was certainly intact. Not the level before the
+        // suppressor: those losses are deliberate and profile-shaped, and
+        // undoing them would be undoing the feature.
+        let restore_gain = self.restore(block, speaking);
+
         BlockAnalysis {
             vad,
             level_db,
@@ -1564,8 +1667,114 @@ impl CaptureProcessor {
             modulation,
             gate_open,
             agc_gain_db: self.agc.gain_db(),
+            restore_gain_db: restore_gain,
+            restore_centre_hz: self.restore_centre_hz,
             warming_up,
             effective_profile: self.effective,
+        }
+    }
+
+    /// Lifts the band the voice is in back towards the level it arrived at.
+    ///
+    /// Returns the gain in force, in dB, for the panel.
+    ///
+    /// **Only while the chain believes it is hearing speech**, and that is the
+    /// chain's own decision rather than a second opinion. A restoration keyed
+    /// on anything else could lift a block the gate had just decided to shut,
+    /// which is not a correction but an argument between two stages.
+    ///
+    /// Both the centre and the gain glide rather than jump. A peak-pick moves
+    /// by a whole band between neighbouring blocks and a bell that followed it
+    /// exactly would warble.
+    fn restore(&mut self, block: &mut [f32], speaking: bool) -> f32 {
+        let want = if speaking && self.room_level_db.is_finite() {
+            let out_db = to_dbfs(rms(block));
+            if out_db.is_finite() {
+                (self.room_level_db - out_db).clamp(0.0, RESTORE_MAX_DB)
+            } else {
+                0.0
+            }
+        } else {
+            // Falls to nothing rather than switching off, so the last block of
+            // a phrase does not end on a step.
+            0.0
+        };
+
+        if want > 0.0 {
+            let t = std::time::Instant::now();
+            let found = self.peak_hz(block);
+            self.restore_peak_ms +=
+                (t.elapsed().as_secs_f32() * 1_000.0 - self.restore_peak_ms) * RESTORE_COST_GLIDE;
+            if let Some(hz) = found {
+                self.restore_centre_hz += (hz - self.restore_centre_hz) * RESTORE_CENTRE_GLIDE;
+            }
+        }
+        self.restore_gain_db += (want - self.restore_gain_db) * RESTORE_GAIN_GLIDE;
+
+        // Below this the filter is doing nothing a listener could hear, and
+        // running it would only spend cycles and accumulate rounding.
+        if self.restore_gain_db < 0.05 {
+            self.restore_gain_db = 0.0;
+            return 0.0;
+        }
+
+        let t = std::time::Instant::now();
+        self.restore = Biquad::peaking(
+            SAMPLE_RATE as f32,
+            self.restore_centre_hz,
+            RESTORE_Q,
+            self.restore_gain_db,
+        );
+        for s in block.iter_mut() {
+            *s = self.restore.process(*s);
+        }
+        self.restore_filter_ms +=
+            (t.elapsed().as_secs_f32() * 1_000.0 - self.restore_filter_ms) * RESTORE_COST_GLIDE;
+        self.restore_gain_db
+    }
+
+    /// The loudest frequency in the speech band, or `None` if there is no peak
+    /// worth aiming at.
+    ///
+    /// **Measured here rather than on the enhancer's output**, and the
+    /// difference is the whole reliability of the aim. On a clip of voice over
+    /// a motor the enhancer leaves its peak at 141 Hz — engine rumble — and it
+    /// is in the voice band on only 18.6% of speech blocks. After the
+    /// suppressor's high-pass has run, which it has by the time this is called,
+    /// the peak is in the voice band on 92.8% of them.
+    fn peak_hz(&mut self, block: &[f32]) -> Option<f32> {
+        let n = RESTORE_FFT;
+        self.restore_re[..].fill(0.0);
+        self.restore_im[..].fill(0.0);
+        let take = block.len().min(n);
+        // Hann, so a partial period does not smear across the spectrum and
+        // move the peak somewhere the energy is not.
+        for (i, (dst, &src)) in self.restore_re[..take]
+            .iter_mut()
+            .zip(block[..take].iter())
+            .enumerate()
+        {
+            let w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / take as f32).cos();
+            *dst = src * w;
+        }
+        fft(&mut self.restore_re, &mut self.restore_im, false);
+
+        let bin_hz = SAMPLE_RATE as f32 / n as f32;
+        let lo = (RESTORE_LOW_HZ / bin_hz).ceil() as usize;
+        let hi = ((RESTORE_HIGH_HZ / bin_hz).floor() as usize).min(n / 2);
+        let (mut top, mut top_p) = (0usize, 0.0f32);
+        for k in lo..hi {
+            let p =
+                self.restore_re[k] * self.restore_re[k] + self.restore_im[k] * self.restore_im[k];
+            if p > top_p {
+                top_p = p;
+                top = k;
+            }
+        }
+        if top > 0 {
+            Some(top as f32 * bin_hz)
+        } else {
+            None
         }
     }
 
@@ -1849,6 +2058,81 @@ mod tests {
                 "{profile:?} has nothing to measure an SNR against"
             );
         }
+    }
+
+    /// Silence is left alone, however far below the room it sits.
+    ///
+    /// **The failure this guards against is the expensive one.** The gain is
+    /// the distance from the block to the room level, and between phrases that
+    /// distance is at its largest — so a restoration that ran unconditionally
+    /// would apply its full 12 dB exactly where the chain has just finished
+    /// removing everything, and the gaps are what the gate, the floor tracker
+    /// and the profile chooser all measure against.
+    #[test]
+    fn nothing_is_restored_when_nobody_is_speaking() {
+        let mut p = CaptureProcessor::new(NoiseProfile::Standard);
+        let quiet = vec![0.0f32; FRAME_SIZE];
+        for _ in 0..300 {
+            let mut b = quiet.clone();
+            // A loud room, so the distance to it is the whole 12 dB.
+            p.set_room_level_db(-10.0);
+            let a = p.process(&mut b);
+            assert_eq!(a.restore_gain_db, 0.0);
+            assert!(
+                b.iter().all(|s| s.abs() < 1e-6),
+                "silence came back louder than it went in"
+            );
+        }
+    }
+
+    /// A voice the chain has quietened is lifted back towards where it started,
+    /// and no further than the cap.
+    #[test]
+    fn a_quietened_voice_is_lifted_back_towards_the_room() {
+        let mut p = CaptureProcessor::new(NoiseProfile::Standard);
+        let speech = crate::audio::testsig::speech(SAMPLE_RATE as usize * 3, 140.0, 0.3);
+        let mut lifted = 0.0f32;
+        for chunk in speech.chunks_exact(FRAME_SIZE) {
+            let mut b = chunk.to_vec();
+            // Twenty decibels above anything the chain will produce, so the
+            // request is always larger than the cap and the cap is what is
+            // being tested.
+            p.set_room_level_db(0.0);
+            let a = p.process(&mut b);
+            if a.restore_gain_db > lifted {
+                lifted = a.restore_gain_db;
+            }
+        }
+        assert!(
+            lifted > 1.0,
+            "a voice 20 dB under the room was never lifted at all"
+        );
+        assert!(
+            lifted <= RESTORE_MAX_DB + 0.01,
+            "lifted {lifted} dB, over the {RESTORE_MAX_DB} dB cap"
+        );
+    }
+
+    /// The bell is aimed inside the band a voice lives in.
+    #[test]
+    fn the_bell_lands_in_the_speech_band() {
+        let mut p = CaptureProcessor::new(NoiseProfile::Standard);
+        let speech = crate::audio::testsig::speech(SAMPLE_RATE as usize * 3, 140.0, 0.3);
+        let mut seen = false;
+        for chunk in speech.chunks_exact(FRAME_SIZE) {
+            let mut b = chunk.to_vec();
+            p.set_room_level_db(0.0);
+            let a = p.process(&mut b);
+            if a.restore_gain_db > 1.0 {
+                seen = true;
+                assert!(
+                    a.restore_centre_hz >= RESTORE_LOW_HZ && a.restore_centre_hz <= RESTORE_HIGH_HZ,
+                    "aimed at {} Hz, outside the search band",
+                    a.restore_centre_hz
+                );
+            }
+        }
+        assert!(seen, "the bell never came on, so nothing was checked");
     }
 
     /// The chooser waits for evidence, and there is none before the first word.

@@ -2843,8 +2843,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiChainStatus dco_decode_ui_chain_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 37)
-      throw Exception('unexpected arr length: expect 37 but see ${arr.length}');
+    if (arr.length != 43)
+      throw Exception('unexpected arr length: expect 43 but see ${arr.length}');
     return UiChainStatus(
       stages: dco_decode_list_ui_stage(arr[0]),
       wouldPassVoiceActivated: dco_decode_bool(arr[1]),
@@ -2860,29 +2860,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       floorHeldMs: dco_decode_u_32(arr[11]),
       floorWatchdogTrips: dco_decode_u_32(arr[12]),
       autoSnrDb: dco_decode_opt_box_autoadd_f_32(arr[13]),
-      autoSnrHelmetBelowDb: dco_decode_f_32(arr[14]),
-      autoSnrStandardBelowDb: dco_decode_f_32(arr[15]),
-      harmonicity: dco_decode_f_32(arr[16]),
-      voicedThreshold: dco_decode_f_32(arr[17]),
-      effectiveProfile: dco_decode_noise_setting(arr[18]),
-      disabledStages: dco_decode_list_String(arr[19]),
-      aecEnabled: dco_decode_bool(arr[20]),
-      aecShortened: dco_decode_bool(arr[21]),
-      aecErleDb: dco_decode_f_32(arr[22]),
-      aecLagMs: dco_decode_f_32(arr[23]),
-      aecConfidence: dco_decode_f_32(arr[24]),
-      aecSpreadMs: dco_decode_f_32(arr[25]),
-      aecWindowMs: dco_decode_f_32(arr[26]),
-      aec3: dco_decode_bool(arr[27]),
-      enhancerSimpleModel: dco_decode_bool(arr[28]),
-      relief: dco_decode_u_32(arr[29]),
-      analyserDecayDisabled: dco_decode_bool(arr[30]),
-      participantMetersDisabled: dco_decode_bool(arr[31]),
-      analyserDisabled: dco_decode_bool(arr[32]),
-      classifierTopDisabled: dco_decode_bool(arr[33]),
-      liveDotsDisabled: dco_decode_bool(arr[34]),
-      classifierDisabled: dco_decode_bool(arr[35]),
-      enhancerEffort: dco_decode_u_32(arr[36]),
+      restoreGainDb: dco_decode_f_32(arr[14]),
+      restoreCentreHz: dco_decode_f_32(arr[15]),
+      restorePeakMs: dco_decode_f_32(arr[16]),
+      restoreFilterMs: dco_decode_f_32(arr[17]),
+      restoreQ: dco_decode_f_32(arr[18]),
+      restoreMaxDb: dco_decode_f_32(arr[19]),
+      autoSnrHelmetBelowDb: dco_decode_f_32(arr[20]),
+      autoSnrStandardBelowDb: dco_decode_f_32(arr[21]),
+      harmonicity: dco_decode_f_32(arr[22]),
+      voicedThreshold: dco_decode_f_32(arr[23]),
+      effectiveProfile: dco_decode_noise_setting(arr[24]),
+      disabledStages: dco_decode_list_String(arr[25]),
+      aecEnabled: dco_decode_bool(arr[26]),
+      aecShortened: dco_decode_bool(arr[27]),
+      aecErleDb: dco_decode_f_32(arr[28]),
+      aecLagMs: dco_decode_f_32(arr[29]),
+      aecConfidence: dco_decode_f_32(arr[30]),
+      aecSpreadMs: dco_decode_f_32(arr[31]),
+      aecWindowMs: dco_decode_f_32(arr[32]),
+      aec3: dco_decode_bool(arr[33]),
+      enhancerSimpleModel: dco_decode_bool(arr[34]),
+      relief: dco_decode_u_32(arr[35]),
+      analyserDecayDisabled: dco_decode_bool(arr[36]),
+      participantMetersDisabled: dco_decode_bool(arr[37]),
+      analyserDisabled: dco_decode_bool(arr[38]),
+      classifierTopDisabled: dco_decode_bool(arr[39]),
+      liveDotsDisabled: dco_decode_bool(arr[40]),
+      classifierDisabled: dco_decode_bool(arr[41]),
+      enhancerEffort: dco_decode_u_32(arr[42]),
     );
   }
 
@@ -3664,6 +3670,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_floorHeldMs = sse_decode_u_32(deserializer);
     var var_floorWatchdogTrips = sse_decode_u_32(deserializer);
     var var_autoSnrDb = sse_decode_opt_box_autoadd_f_32(deserializer);
+    var var_restoreGainDb = sse_decode_f_32(deserializer);
+    var var_restoreCentreHz = sse_decode_f_32(deserializer);
+    var var_restorePeakMs = sse_decode_f_32(deserializer);
+    var var_restoreFilterMs = sse_decode_f_32(deserializer);
+    var var_restoreQ = sse_decode_f_32(deserializer);
+    var var_restoreMaxDb = sse_decode_f_32(deserializer);
     var var_autoSnrHelmetBelowDb = sse_decode_f_32(deserializer);
     var var_autoSnrStandardBelowDb = sse_decode_f_32(deserializer);
     var var_harmonicity = sse_decode_f_32(deserializer);
@@ -3702,6 +3714,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       floorHeldMs: var_floorHeldMs,
       floorWatchdogTrips: var_floorWatchdogTrips,
       autoSnrDb: var_autoSnrDb,
+      restoreGainDb: var_restoreGainDb,
+      restoreCentreHz: var_restoreCentreHz,
+      restorePeakMs: var_restorePeakMs,
+      restoreFilterMs: var_restoreFilterMs,
+      restoreQ: var_restoreQ,
+      restoreMaxDb: var_restoreMaxDb,
       autoSnrHelmetBelowDb: var_autoSnrHelmetBelowDb,
       autoSnrStandardBelowDb: var_autoSnrStandardBelowDb,
       harmonicity: var_harmonicity,
@@ -4518,6 +4536,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.floorHeldMs, serializer);
     sse_encode_u_32(self.floorWatchdogTrips, serializer);
     sse_encode_opt_box_autoadd_f_32(self.autoSnrDb, serializer);
+    sse_encode_f_32(self.restoreGainDb, serializer);
+    sse_encode_f_32(self.restoreCentreHz, serializer);
+    sse_encode_f_32(self.restorePeakMs, serializer);
+    sse_encode_f_32(self.restoreFilterMs, serializer);
+    sse_encode_f_32(self.restoreQ, serializer);
+    sse_encode_f_32(self.restoreMaxDb, serializer);
     sse_encode_f_32(self.autoSnrHelmetBelowDb, serializer);
     sse_encode_f_32(self.autoSnrStandardBelowDb, serializer);
     sse_encode_f_32(self.harmonicity, serializer);

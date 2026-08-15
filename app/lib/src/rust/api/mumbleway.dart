@@ -904,6 +904,27 @@ class UiChainStatus {
   /// `Helmet`, below the second `Standard`, above it `Light`.
   ///
   /// Sent every poll so the gauge cannot draw a boundary the chain has moved.
+  /// The restoring bell that puts back what the enhancer took.
+  ///
+  /// `restore_gain_db` is how much it is lifting right now and
+  /// `restore_centre_hz` where — both zero whenever the chain is not hearing
+  /// speech, which is most of the time. The two `_ms` figures are what the
+  /// peak search and the filter cost per block on this device.
+  ///
+  /// **Not in the stage timings**, because the stage list tiles a block
+  /// exactly and these run inside suppression.
+  final double restoreGainDb;
+  final double restoreCentreHz;
+  final double restorePeakMs;
+  final double restoreFilterMs;
+
+  /// The bell's width, and the most it is ever allowed to lift.
+  ///
+  /// Constants on the Rust side, sent every poll rather than written into the
+  /// painter: a curve drawn from a stale copy of `Q` is the wrong curve and
+  /// looks exactly like the right one.
+  final double restoreQ;
+  final double restoreMaxDb;
   final double autoSnrHelmetBelowDb;
   final double autoSnrStandardBelowDb;
 
@@ -1039,6 +1060,12 @@ class UiChainStatus {
     required this.floorHeldMs,
     required this.floorWatchdogTrips,
     this.autoSnrDb,
+    required this.restoreGainDb,
+    required this.restoreCentreHz,
+    required this.restorePeakMs,
+    required this.restoreFilterMs,
+    required this.restoreQ,
+    required this.restoreMaxDb,
     required this.autoSnrHelmetBelowDb,
     required this.autoSnrStandardBelowDb,
     required this.harmonicity,
@@ -1080,6 +1107,12 @@ class UiChainStatus {
       floorHeldMs.hashCode ^
       floorWatchdogTrips.hashCode ^
       autoSnrDb.hashCode ^
+      restoreGainDb.hashCode ^
+      restoreCentreHz.hashCode ^
+      restorePeakMs.hashCode ^
+      restoreFilterMs.hashCode ^
+      restoreQ.hashCode ^
+      restoreMaxDb.hashCode ^
       autoSnrHelmetBelowDb.hashCode ^
       autoSnrStandardBelowDb.hashCode ^
       harmonicity.hashCode ^
@@ -1123,6 +1156,12 @@ class UiChainStatus {
           floorHeldMs == other.floorHeldMs &&
           floorWatchdogTrips == other.floorWatchdogTrips &&
           autoSnrDb == other.autoSnrDb &&
+          restoreGainDb == other.restoreGainDb &&
+          restoreCentreHz == other.restoreCentreHz &&
+          restorePeakMs == other.restorePeakMs &&
+          restoreFilterMs == other.restoreFilterMs &&
+          restoreQ == other.restoreQ &&
+          restoreMaxDb == other.restoreMaxDb &&
           autoSnrHelmetBelowDb == other.autoSnrHelmetBelowDb &&
           autoSnrStandardBelowDb == other.autoSnrStandardBelowDb &&
           harmonicity == other.harmonicity &&

@@ -84,6 +84,44 @@ impl Biquad {
         }
     }
 
+    /// RBJ peaking EQ: a bell of `gain_db` centred on `centre_hz`.
+    ///
+    /// **The only filter here that can boost**, and the only one whose gain is
+    /// not 0 dB somewhere. `q` sets the width — at 1.0 the bell is a little
+    /// under two octaves at half its height, which is wide enough to cover a
+    /// vowel's first two formants and narrow enough to leave the top of the
+    /// band alone.
+    ///
+    /// Note `A` is `10^(g/40)` and not `10^(g/20)`: the peak gain of this
+    /// design is `A²`. Getting that wrong gives a filter that is quietly twice
+    /// as strong in decibels as asked for, which looks like a working feature
+    /// with badly chosen constants.
+    pub fn peaking(sample_rate: f32, centre_hz: f32, q: f32, gain_db: f32) -> Self {
+        let a = 10f32.powf(gain_db / 40.0);
+        let w0 = 2.0 * std::f32::consts::PI * centre_hz / sample_rate;
+        let (sin_w0, cos_w0) = w0.sin_cos();
+        let alpha = sin_w0 / (2.0 * q);
+
+        let b0 = 1.0 + alpha * a;
+        let b1 = -2.0 * cos_w0;
+        let b2 = 1.0 - alpha * a;
+        let a0 = 1.0 + alpha / a;
+        let a1 = -2.0 * cos_w0;
+        let a2 = 1.0 - alpha / a;
+
+        Self {
+            b0: b0 / a0,
+            b1: b1 / a0,
+            b2: b2 / a0,
+            a1: a1 / a0,
+            a2: a2 / a0,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+        }
+    }
+
     #[inline]
     pub fn process(&mut self, x: f32) -> f32 {
         let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
@@ -1090,6 +1128,43 @@ mod tests {
         // Shorter than one lane, and empty.
         assert!((dot(&a[..3], &b[..3]) - (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])).abs() < 1e-6);
         assert_eq!(energy(&[]), 0.0);
+    }
+
+    #[test]
+    fn a_bell_lifts_its_own_centre_and_leaves_the_ends_alone() {
+        // Measured by running a sine through it, which is the definition
+        // rather than a restatement of the algebra above — the failure this
+        // catches is `10^(g/20)` for `A`, and that produces coefficients that
+        // are self-consistent and twice as strong as asked for.
+        let sr = 48_000.0;
+        let gain_at = |hz: f32| {
+            let mut f = Biquad::peaking(sr, 1_000.0, 1.0, 9.0);
+            let n = 4_800;
+            let mut peak_in = 0.0f32;
+            let mut peak_out = 0.0f32;
+            for i in 0..n {
+                let t = i as f32 / sr;
+                let x = (2.0 * std::f32::consts::PI * hz * t).sin();
+                let y = f.process(x);
+                // The second half only, so the filter has settled.
+                if i > n / 2 {
+                    peak_in = peak_in.max(x.abs());
+                    peak_out = peak_out.max(y.abs());
+                }
+            }
+            20.0 * (peak_out / peak_in).log10()
+        };
+
+        assert!(
+            (gain_at(1_000.0) - 9.0).abs() < 0.5,
+            "asked for 9 dB at the centre, got {}",
+            gain_at(1_000.0)
+        );
+        assert!(gain_at(60.0).abs() < 1.0, "a bell must not move the bottom");
+        assert!(
+            gain_at(12_000.0).abs() < 1.0,
+            "a bell must not move the top"
+        );
     }
 
     #[test]

@@ -1437,6 +1437,12 @@ class LRu extends L {
   }
 
   @override
+  String get diagRestore => 'Возврат голоса';
+
+  @override
+  String get diagRestoreCost => 'Стоимость возврата';
+
+  @override
   String get diagStageBackground => 'Фон';
 
   @override

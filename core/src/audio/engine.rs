@@ -155,6 +155,20 @@ pub struct ChainStatus {
     /// one owner, and a painter that drew its own copies would keep drawing the
     /// old ones after the owner moved — silently, since a line in the right
     /// place and a line in the wrong place are the same line.
+    /// The restoring bell: how much it is lifting, where, and what the two
+    /// steps behind it cost per block.
+    ///
+    /// **Nested inside `Suppression` rather than a stage of its own**, so these
+    /// are reported here instead of through the ladder's timings, whose eight
+    /// stages tile a block exactly and would double-count them.
+    pub restore_gain_db: f32,
+    pub restore_centre_hz: f32,
+    pub restore_peak_ms: f32,
+    pub restore_filter_ms: f32,
+    /// The bell's width and its ceiling — constants, sent so the panel can draw
+    /// the curve without holding its own copies of them.
+    pub restore_q: f32,
+    pub restore_max_db: f32,
     pub auto_snr_helmet_below_db: f32,
     pub auto_snr_standard_below_db: f32,
     /// What the clip guard is holding back off the rider's input gain, in dB.
@@ -253,6 +267,12 @@ impl Default for ChainStatus {
             floor_held: false,
             floor_held_ms: 0,
             floor_watchdog_trips: 0,
+            restore_gain_db: 0.0,
+            restore_centre_hz: 0.0,
+            restore_peak_ms: 0.0,
+            restore_filter_ms: 0.0,
+            restore_q: super::denoise::RESTORE_Q,
+            restore_max_db: super::denoise::RESTORE_MAX_DB,
             auto_snr_db: None,
             auto_snr_helmet_below_db: super::denoise::SNR_HELMET_BELOW_DB,
             auto_snr_standard_below_db: super::denoise::SNR_STANDARD_BELOW_DB,
@@ -3471,6 +3491,7 @@ where
             // lock, and paying it always is cheaper than the class of bug where
             // the dots are stale because the analyser happened to be disarmed.
             let aec_align = processor.aec_alignment();
+            let restore_cost = processor.restore_cost_ms();
             shared.publish_chain_status(ChainStatus {
                 warming_up: analysis.warming_up,
                 vad_says_speech: analysis.vad_says_speech,
@@ -3494,6 +3515,12 @@ where
                 floor_held_ms: analysis.floor_held_ms,
                 floor_watchdog_trips: analysis.floor_watchdog_trips,
                 auto_snr_db: processor.latched_snr_db(),
+                restore_gain_db: analysis.restore_gain_db,
+                restore_centre_hz: analysis.restore_centre_hz,
+                restore_peak_ms: restore_cost.0,
+                restore_filter_ms: restore_cost.1,
+                restore_q: super::denoise::RESTORE_Q,
+                restore_max_db: super::denoise::RESTORE_MAX_DB,
                 auto_snr_helmet_below_db: super::denoise::SNR_HELMET_BELOW_DB,
                 auto_snr_standard_below_db: super::denoise::SNR_STANDARD_BELOW_DB,
                 input_trim_db: clip_guard.trim_db(),

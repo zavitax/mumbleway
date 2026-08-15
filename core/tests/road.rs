@@ -194,8 +194,11 @@ use std::fs;
 use std::path::PathBuf;
 
 use mumbleway_core::audio::denoise::{CaptureProcessor, FRAME_SIZE};
-use mumbleway_core::audio::dsp::{rms, to_dbfs, RumbleFilter, SpeechBand};
+use mumbleway_core::audio::dsp::{rms, to_dbfs, Biquad, RumbleFilter, SpeechBand};
 use mumbleway_core::audio::pitch::PitchTracker;
+use mumbleway_core::audio::spectrum::{
+    SpectrumAnalyser, SpectrumFrame, BANDS, TAP_PRE_GATE, TAP_RAW,
+};
 use mumbleway_core::audio::{Enhancer, NoiseProfile};
 
 /// What one run of a clip through one profile looked like.
@@ -1112,16 +1115,17 @@ fn where_the_chain_takes_the_most_out() {
 fn what_the_enhancer_costs_the_quiet_passages() {
     for (name, signal) in clips() {
         println!("\n{name}");
-        println!("    variant                 quiet    loud     gaps   worst 0.5s");
+        println!("    variant                 quiet    loud     gaps   worst 0.5s    sep");
         for variant in Variant::all() {
             let r = variant.run(&signal);
             println!(
-                "    {:<20} {:>7.1} {:>7.1} {:>8.1} {:>10.1}",
+                "    {:<20} {:>7.1} {:>7.1} {:>8.1} {:>10.1} {:>6.1}",
                 variant.name(),
                 r.quiet,
                 r.loud,
                 r.gaps,
                 r.worst,
+                r.separation,
             );
         }
         // Left as it was found: this is a global, and a diagnostic that changes
@@ -1161,6 +1165,17 @@ enum Variant {
     /// what makes the distinction available at all: the chain's own voicing
     /// figure is computed downstream, on the signal whose loss is in question.
     RestoreVoiced12,
+    /// **Restore through a bell on the peak, not a scalar.**
+    ///
+    /// The premise is measured in
+    /// [`does_the_enhancer_leave_the_voice_as_the_peak`]: with a quiet
+    /// background the enhancer leaves the voice standing 29 dB above the rest
+    /// of the band, so a peaking filter centred there lifts the voice and
+    /// leaves the residue where the model put it. Where the background is a
+    /// motor it leaves the *motor* as the peak, so this is expected to help in
+    /// one regime and do harm in the other, and the point of running it is to
+    /// find out how much of each.
+    RestoreBell12,
 }
 
 struct Cost {
@@ -1168,6 +1183,14 @@ struct Cost {
     loud: f64,
     gaps: f64,
     worst: f64,
+    /// Voiced output level minus gap output level, in dB.
+    ///
+    /// **The number the rest of the chain actually consumes.** Every remedy
+    /// here trades some of it away, and one that gives the voice back 4 dB by
+    /// giving the background 4 dB has moved the complaint rather than fixed
+    /// it. The gate, the floor tracker and the profile chooser all read this
+    /// distance and none of them reads a level.
+    separation: f64,
 }
 
 impl Variant {
@@ -1180,6 +1203,7 @@ impl Variant {
             Variant::Restore12,
             Variant::RestoreAll,
             Variant::RestoreVoiced12,
+            Variant::RestoreBell12,
         ]
     }
 
@@ -1192,6 +1216,7 @@ impl Variant {
             Variant::Restore12 => "restore, max +12",
             Variant::RestoreAll => "restore, unbounded",
             Variant::RestoreVoiced12 => "restore voiced, +12",
+            Variant::RestoreBell12 => "bell on peak, +12",
         }
     }
 
@@ -1206,12 +1231,19 @@ impl Variant {
             _ => 24.0,
         };
         let restore = match self {
-            Variant::Restore12 | Variant::RestoreVoiced12 => Some(12.0f32),
+            Variant::Restore12 | Variant::RestoreVoiced12 | Variant::RestoreBell12 => Some(12.0f32),
             Variant::RestoreAll => Some(f32::INFINITY),
             _ => None,
         };
-        let only_voiced = matches!(self, Variant::RestoreVoiced12);
+        let only_voiced = matches!(self, Variant::RestoreVoiced12 | Variant::RestoreBell12);
+        let bell = matches!(self, Variant::RestoreBell12);
         let mut pitch = PitchTracker::new();
+        let centres = SpectrumAnalyser::band_centres();
+        let mut analyser = SpectrumAnalyser::new();
+        analyser.set_skip_decay(true);
+        let mut frame = SpectrumFrame::default();
+        let mut hp = RumbleFilter::new(48_000.0, 180.0);
+        let mut hp_copy = [0.0f32; FRAME_SIZE];
 
         let mut enhancer = Enhancer::with_atten_lim(lim);
         let mut block = [0.0f32; FRAME_SIZE];
@@ -1219,6 +1251,7 @@ impl Variant {
         let (mut l, mut ln) = (0.0f64, 0usize);
         let (mut g, mut gn) = (0.0f64, 0usize);
         let (mut win, mut wn, mut worst) = (0.0f64, 0usize, 0.0f64);
+        let (mut voiced_out, mut von) = (0.0f64, 0usize);
 
         for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
             block.copy_from_slice(chunk);
@@ -1229,16 +1262,51 @@ impl Variant {
             // "is there a voice in this block", not how good a one.
             let voiced = pitch.analyse(&block).harmonicity >= 0.35;
             enhancer.process(&mut block);
+            if bell {
+                // **Downstream of the high-pass, deliberately.** On the raw
+                // enhancer output the motor clip's peak sits at 141 Hz and is
+                // engine rumble, so a bell aimed there would boost the engine.
+                // The suppressor's own filter removes that a moment later, and
+                // measured after it the peak is in the voice band 92.8% of the
+                // time on that clip against 18.6% before it. The bell is still
+                // applied to the unfiltered block, because that is what the
+                // chain carries at this point — only the aim is taken
+                // downstream.
+                hp_copy.copy_from_slice(&block);
+                hp.process(&mut hp_copy);
+                analyser.push(TAP_PRE_GATE, &hp_copy);
+                analyser.analyse(&mut frame, false);
+            }
             if let Some(cap) = restore.filter(|_| !only_voiced || voiced) {
                 // Back towards the level it arrived at, never past it, and
-                // never by more than `cap`. Applied to the whole block, so the
-                // mask's shape is untouched and only its overall depth moves.
+                // never by more than `cap`.
                 let out_db = to_dbfs(rms(&block));
                 if out_db.is_finite() && in_db.is_finite() {
                     let want = (in_db - out_db).clamp(0.0, cap);
-                    let gain = 10f32.powf(want / 20.0);
-                    for s in block.iter_mut() {
-                        *s *= gain;
+                    if bell {
+                        // Only where the energy already is. The filter is
+                        // rebuilt each block, so its state resets and the first
+                        // millisecond of every block is a transient - tolerable
+                        // for a level measurement and not for shipping, where
+                        // the centre would have to be smoothed.
+                        let bands = &frame.bands[TAP_PRE_GATE];
+                        let mut top = 0usize;
+                        for (b, &d) in bands.iter().enumerate() {
+                            if d > bands[top] {
+                                top = b;
+                            }
+                        }
+                        let mut f = Biquad::peaking(48_000.0, centres[top].max(60.0), 1.0, want);
+                        for s in block.iter_mut() {
+                            *s = f.process(*s);
+                        }
+                    } else {
+                        // Applied to the whole block, so the mask's shape is
+                        // untouched and only its overall depth moves.
+                        let gain = 10f32.powf(want / 20.0);
+                        for s in block.iter_mut() {
+                            *s *= gain;
+                        }
                     }
                 }
             }
@@ -1259,6 +1327,8 @@ impl Variant {
                 }
                 win += loss;
                 wn += 1;
+                voiced_out += to_dbfs(rms(&block)) as f64;
+                von += 1;
             } else {
                 g += to_dbfs(rms(&block)) as f64;
                 gn += 1;
@@ -1281,6 +1351,330 @@ impl Variant {
             loud: if ln > 0 { l / ln as f64 } else { 0.0 },
             gaps: if gn > 0 { g / gn as f64 } else { 0.0 },
             worst,
+            separation: if gn > 0 && von > 0 {
+                voiced_out / von as f64 - g / gn as f64
+            } else {
+                0.0
+            },
+        }
+    }
+}
+
+/// Whether the enhancer leaves the voice as the loudest thing in the spectrum.
+///
+/// **The premise behind restoring level through a bell rather than a scalar.**
+/// If the peak of the enhanced spectrum is the voice, a peaking filter centred
+/// there gives the voice back its level and leaves the rest of the band where
+/// the model put it — which is the whole objection to the broadband restore,
+/// answered.
+///
+/// The premise has two halves and only one of them is obvious. That the peak
+/// sits on the voice *while somebody is speaking* is very likely true and not
+/// worth much on its own. The half that decides whether the idea works is where
+/// the peak sits **when nobody is speaking**: if the residue's peak also lands
+/// in the voice range, a bell aimed at the peak boosts noise exactly as a
+/// scalar would, and the targeting has bought nothing.
+///
+/// So the table below is split by whether the *input* was voiced, decided
+/// before the enhancer touched it.
+///
+/// # And again after the rumble filter
+///
+/// The enhancer is not the last thing to touch the block. The suppressor's
+/// high-pass runs immediately after it, at 180 Hz under `Helmet` — which is
+/// what `Auto` chooses on a motorway, and which is aimed almost exactly at the
+/// 141 Hz where the motor's peak sits. So the peak the model leaves and the
+/// peak anything downstream would see are different peaks, and the second is
+/// the one a bell would be aimed at. Both are reported.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn does_the_enhancer_leave_the_voice_as_the_peak() {
+    let centres = SpectrumAnalyser::band_centres();
+    for (name, signal) in clips() {
+        let mut analyser = SpectrumAnalyser::new();
+        analyser.set_skip_decay(true);
+        let mut frame = SpectrumFrame::default();
+        let mut enhancer = enhancer_for_measurement();
+        let mut pitch = PitchTracker::new();
+        let mut block = [0.0f32; FRAME_SIZE];
+        let mut raw = [0.0f32; FRAME_SIZE];
+        let mut filtered = [0.0f32; FRAME_SIZE];
+        // Helmet's corner, because Helmet is what `Auto` chooses wherever this
+        // question is hard. A quiet room gets Light's 90 Hz, which is below
+        // everything measured here and would change none of these numbers.
+        let mut rumble = RumbleFilter::new(48_000.0, 180.0);
+
+        // Two populations, and the second is the one that matters.
+        let (mut v_hit, mut v_n) = (0usize, 0usize);
+        let (mut g_hit, mut g_n) = (0usize, 0usize);
+        let (mut v_peak, mut g_peak) = (0.0f64, 0.0f64);
+        // How far the peak stands above the rest of the band. A peak that is
+        // only a decibel above its neighbours is not something to aim at.
+        let (mut v_prom, mut g_prom) = (0.0f64, 0.0f64);
+        // The same four, downstream of the high-pass.
+        let (mut fv_hit, mut fv_n) = (0usize, 0usize);
+        let (mut fg_hit, mut fg_n) = (0usize, 0usize);
+        let (mut fv_peak, mut fg_peak) = (0.0f64, 0.0f64);
+        let (mut fv_prom, mut fg_prom) = (0.0f64, 0.0f64);
+
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            raw.copy_from_slice(chunk);
+            block.copy_from_slice(chunk);
+            let in_db = to_dbfs(rms(&raw));
+            let voiced = pitch.analyse(&raw).harmonicity >= 0.35 && in_db > -35.0;
+            enhancer.process(&mut block);
+
+            filtered.copy_from_slice(&block);
+            rumble.process(&mut filtered);
+
+            analyser.push(TAP_RAW, &block);
+            analyser.push(TAP_PRE_GATE, &filtered);
+            analyser.analyse(&mut frame, false);
+
+            for (tap, sink) in [(TAP_RAW, false), (TAP_PRE_GATE, true)] {
+                let bands = &frame.bands[tap];
+                let (mut top, mut top_db) = (0usize, f32::NEG_INFINITY);
+                for (i, &d) in bands.iter().enumerate() {
+                    if d > top_db {
+                        top_db = d;
+                        top = i;
+                    }
+                }
+                if !top_db.is_finite() || top_db <= -99.0 {
+                    continue;
+                }
+                // The mean of everything else, so "prominence" is the peak
+                // against the band it would be boosted out of.
+                let others: f32 = bands
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != top)
+                    .map(|(_, d)| *d)
+                    .sum::<f32>()
+                    / (BANDS - 1) as f32;
+
+                // 200 Hz to 4 kHz: where a voice's formants live. Wider than
+                // the fundamental on purpose - this asks whether the peak is
+                // in the voice's territory, not whether it is exactly f0.
+                let in_voice = centres[top] >= 200.0 && centres[top] <= 4000.0;
+                match (sink, voiced) {
+                    (false, true) => {
+                        v_n += 1;
+                        v_hit += in_voice as usize;
+                        v_peak += centres[top] as f64;
+                        v_prom += (top_db - others) as f64;
+                    }
+                    (false, false) => {
+                        g_n += 1;
+                        g_hit += in_voice as usize;
+                        g_peak += centres[top] as f64;
+                        g_prom += (top_db - others) as f64;
+                    }
+                    (true, true) => {
+                        fv_n += 1;
+                        fv_hit += in_voice as usize;
+                        fv_peak += centres[top] as f64;
+                        fv_prom += (top_db - others) as f64;
+                    }
+                    (true, false) => {
+                        fg_n += 1;
+                        fg_hit += in_voice as usize;
+                        fg_peak += centres[top] as f64;
+                        fg_prom += (top_db - others) as f64;
+                    }
+                }
+            }
+        }
+
+        println!("\n{name}");
+        println!("                 blocks   peak in 200-4k   mean peak   prominence");
+        for (label, n, hit, peak, prom) in [
+            ("voiced", v_n, v_hit, v_peak, v_prom),
+            ("no voice", g_n, g_hit, g_peak, g_prom),
+            ("+hp voiced", fv_n, fv_hit, fv_peak, fv_prom),
+            ("+hp no voice", fg_n, fg_hit, fg_peak, fg_prom),
+        ] {
+            if n == 0 {
+                continue;
+            }
+            println!(
+                "    {label:<12} {n:>6}   {:>12.1}%   {:>7.0} Hz   {:>9.1} dB",
+                100.0 * hit as f64 / n as f64,
+                peak / n as f64,
+                prom / n as f64,
+            );
+        }
+    }
+}
+
+/// Restoring the level after the whole suppressor, not straight after the model.
+///
+/// **Where the correction is applied changes what it lifts.** Immediately after
+/// the enhancer the block still holds everything the suppressor is about to
+/// remove — rumble below 180 Hz, whatever RNNoise takes out, the band above
+/// 6.5 kHz — so a gain applied there lifts all of it and then watches the
+/// suppressor take most of it away again. Applied at the end, the only thing
+/// left to lift is what the chain decided to keep.
+///
+/// The target is the level the block had **before the enhancer**, which is the
+/// last point at which the voice was certainly intact. Not the level before the
+/// suppressor: the suppressor's losses are deliberate and profile-shaped, and
+/// undoing those would be undoing the feature.
+///
+/// Three things are held fixed from the earlier sweeps because they were
+/// measured there and not guessed:
+///
+/// * **+12 dB cap.** Unbounded restoration hands back 11 dB of motor-noise
+///   removal on the road clip.
+/// * **Voiced-gated, decided on the input.** The chain's own voicing figure is
+///   computed downstream of the loss in question, so it cannot be used to judge
+///   it.
+/// * **The bell is aimed downstream of the high-pass.** On the raw output the
+///   road clip's peak is engine rumble at 141 Hz; after the filter it is in the
+///   voice band 92.8% of the time. Here that is free — the chain has already
+///   run its own filter by this point.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn what_restoring_after_the_suppressor_costs() {
+    for (name, signal) in clips() {
+        println!("\n{name}");
+        println!("    where                  quiet    loud     gaps   worst 0.5s    sep");
+        for how in [After::Nothing, After::Broadband, After::Bell] {
+            let c = how.run(&signal);
+            println!(
+                "    {:<20} {:>7.1} {:>7.1} {:>8.1} {:>10.1} {:>6.1}",
+                how.name(),
+                c.quiet,
+                c.loud,
+                c.gaps,
+                c.worst,
+                c.separation,
+            );
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum After {
+    /// The chain as it ships.
+    Nothing,
+    /// One scalar, so every ratio the chain chose is preserved.
+    Broadband,
+    /// A bell on whatever the chain left loudest.
+    Bell,
+}
+
+impl After {
+    fn name(self) -> &'static str {
+        match self {
+            After::Nothing => "chain as it ships",
+            After::Broadband => "+ broadband, +12",
+            After::Bell => "+ bell on peak, +12",
+        }
+    }
+
+    fn run(self, signal: &[f32]) -> Cost {
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut pitch = PitchTracker::new();
+        let centres = SpectrumAnalyser::band_centres();
+        let mut analyser = SpectrumAnalyser::new();
+        analyser.set_skip_decay(true);
+        let mut frame = SpectrumFrame::default();
+        let mut block = [0.0f32; FRAME_SIZE];
+        let mut raw = [0.0f32; FRAME_SIZE];
+
+        let (mut q, mut qn) = (0.0f64, 0usize);
+        let (mut l, mut ln) = (0.0f64, 0usize);
+        let (mut g, mut gn) = (0.0f64, 0usize);
+        let (mut vo, mut von) = (0.0f64, 0usize);
+        let (mut win, mut wn, mut worst) = (0.0f64, 0usize, 0.0f64);
+
+        for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
+            raw.copy_from_slice(chunk);
+            block.copy_from_slice(chunk);
+            // The target, and the last point at which the voice was certainly
+            // intact.
+            let in_db = to_dbfs(rms(&raw));
+            let voiced = pitch.analyse(&raw).harmonicity >= 0.35;
+
+            chain.set_room_level_db(in_db);
+            enhancer.process(&mut block);
+            let a = chain.process(&mut block);
+            if a.warming_up {
+                continue;
+            }
+
+            if self != After::Nothing && voiced {
+                let out_db = to_dbfs(rms(&block));
+                if out_db.is_finite() && in_db.is_finite() {
+                    let want = (in_db - out_db).clamp(0.0, 12.0);
+                    if self == After::Bell {
+                        analyser.push(TAP_PRE_GATE, &block);
+                        analyser.analyse(&mut frame, false);
+                        let bands = &frame.bands[TAP_PRE_GATE];
+                        let mut top = 0usize;
+                        for (b, &d) in bands.iter().enumerate() {
+                            if d > bands[top] {
+                                top = b;
+                            }
+                        }
+                        let mut f = Biquad::peaking(48_000.0, centres[top].max(60.0), 1.0, want);
+                        for s in block.iter_mut() {
+                            *s = f.process(*s);
+                        }
+                    } else {
+                        let gain = 10f32.powf(want / 20.0);
+                        for s in block.iter_mut() {
+                            *s *= gain;
+                        }
+                    }
+                }
+            }
+
+            let out_db = to_dbfs(rms(&block));
+            let loss = (out_db - in_db) as f64;
+            if !loss.is_finite() {
+                continue;
+            }
+            if in_db > -35.0 {
+                if in_db > -18.0 {
+                    l += loss;
+                    ln += 1;
+                } else {
+                    q += loss;
+                    qn += 1;
+                }
+                win += loss;
+                wn += 1;
+                vo += out_db as f64;
+                von += 1;
+            } else {
+                g += out_db as f64;
+                gn += 1;
+            }
+            if i % 50 == 49 {
+                if wn > 10 {
+                    let mean = win / wn as f64;
+                    if mean < worst {
+                        worst = mean;
+                    }
+                }
+                win = 0.0;
+                wn = 0;
+            }
+        }
+
+        Cost {
+            quiet: if qn > 0 { q / qn as f64 } else { 0.0 },
+            loud: if ln > 0 { l / ln as f64 } else { 0.0 },
+            gaps: if gn > 0 { g / gn as f64 } else { 0.0 },
+            worst,
+            separation: if gn > 0 && von > 0 {
+                vo / von as f64 - g / gn as f64
+            } else {
+                0.0
+            },
         }
     }
 }

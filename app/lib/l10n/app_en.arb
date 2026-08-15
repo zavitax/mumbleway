@@ -800,6 +800,8 @@
       }
     }
   },
+  "diagRestore": "Voice restored",
+  "diagRestoreCost": "Restore cost",
   "diagStageBackground": "Background",
   "diagClassifierOnCpu": "No accelerator here, so background detection runs on the processor — {ms} ms per check, once every two seconds.",
   "@diagClassifierOnCpu": {

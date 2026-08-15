@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, immutable;
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
@@ -504,6 +505,19 @@ class _SpectrumBody extends StatelessWidget {
                         : status.activationThresholdDb,
                     floorLabel: L.of(context).diagPlotFloor,
                     opensAtLabel: L.of(context).diagPlotOpensAt,
+                    // The restoring bell. Null when nothing is being put back,
+                    // which is whenever the chain is not hearing speech — so
+                    // the curve appears with a phrase and goes with it, and
+                    // its absence is information rather than a missing
+                    // feature.
+                    restore: (status == null || status.restoreGainDb < 0.05)
+                        ? null
+                        : _Bell(
+                            centreHz: status.restoreCentreHz,
+                            gainDb: status.restoreGainDb,
+                            q: status.restoreQ,
+                          ),
+                    restoreColour: StatusColors.connecting,
                   ),
                 ),
               ),
@@ -1070,7 +1084,13 @@ class _SpectrumPainter extends CustomPainter {
     this.opensAtDb,
     required this.floorLabel,
     required this.opensAtLabel,
+    this.restore,
+    required this.restoreColour,
   });
+
+  /// The bell the chain is lifting the voice with, or null when it is not.
+  final _Bell? restore;
+  final Color restoreColour;
 
   /// The two dashed marks' labels.
   ///
@@ -1210,6 +1230,98 @@ class _SpectrumPainter extends CustomPainter {
 
     trace(spectrum.rawDb, raw);
     trace(spectrum.preGateDb, preGate);
+    _paintBell(canvas, size, y, slot, bands);
+  }
+
+  /// The restoring bell, drawn from the floor of the plot upward.
+  ///
+  /// **Its height above the floor line is its gain, on the plot's own dB
+  /// ruler.** The axis is already decibels, so a 9 dB boost is drawn 9 dB up
+  /// and can be read against the 20 dB gridlines without a second scale or a
+  /// legend explaining one. Nothing else here needed inventing.
+  ///
+  /// The shape is the analogue peaking response, which at these centres is
+  /// indistinguishable from the biquad actually running and needs only the
+  /// three numbers the chain already sends.
+  void _paintBell(
+    Canvas canvas,
+    Size size,
+    double Function(double) y,
+    double slot,
+    int bands,
+  ) {
+    final bell = restore;
+    if (bell == null || bands < 2) return;
+    final floor = spectrum.floorDb;
+    final a = math.pow(10, bell.gainDb / 40).toDouble();
+
+    // Frequency to x, interpolated in log space between band centres because
+    // that is how the axis is spaced. Off either end it clamps, so a centre
+    // below the first band draws its shoulder rather than nothing at all.
+    double xOf(double hz) {
+      final c = spectrum.centresHz;
+      if (hz <= c.first) return slot / 2;
+      if (hz >= c.last) return (bands - 1) * slot + slot / 2;
+      var i = 0;
+      while (i < bands - 2 && c[i + 1] < hz) {
+        i++;
+      }
+      final t = (math.log(hz) - math.log(c[i])) /
+          (math.log(c[i + 1]) - math.log(c[i]));
+      return (i + t) * slot + slot / 2;
+    }
+
+    /// The peaking filter's magnitude at `hz`, in dB.
+    double gainAt(double hz) {
+      final d = hz / bell.centreHz - bell.centreHz / hz;
+      final w = bell.q * bell.q * d * d;
+      final num = w + a * a;
+      final den = w + 1 / (a * a);
+      return 10 * (math.log(num / den) / math.ln10);
+    }
+
+    final path = Path();
+    var first = true;
+    // Swept over the drawn width rather than over band centres: the bell is
+    // narrower than a band in places and sampling it at 24 points would draw a
+    // triangle.
+    for (var px = 0.0; px <= size.width; px += 2) {
+      // Back out the frequency this pixel stands for, by the inverse of the
+      // mapping above.
+      final slotPos = ((px - slot / 2) / slot).clamp(0.0, bands - 1.0);
+      final i = slotPos.floor().clamp(0, bands - 2);
+      final t = slotPos - i;
+      final c = spectrum.centresHz;
+      final hz = math.exp(
+        math.log(c[i]) + t * (math.log(c[i + 1]) - math.log(c[i])),
+      );
+      final yy = y(floor + gainAt(hz));
+      if (first) {
+        path.moveTo(px, yy);
+        first = false;
+      } else {
+        path.lineTo(px, yy);
+      }
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = restoreColour.withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    // A tick at the centre, because the peak of a wide bell is hard to place
+    // by eye and where it is aimed is half of what this curve says.
+    final cx = xOf(bell.centreHz);
+    canvas.drawLine(
+      Offset(cx, y(floor + bell.gainDb)),
+      Offset(cx, y(floor)),
+      Paint()
+        ..color = restoreColour.withValues(alpha: 0.35)
+        ..strokeWidth = 1,
+    );
   }
 
   @override
@@ -1222,6 +1334,9 @@ class _SpectrumPainter extends CustomPainter {
       // moments worth watching.
       old.noiseFloorDb != noiseFloorDb ||
       old.opensAtDb != opensAtDb ||
+      // Likewise, and faster than either: the bell's gain changes every block
+      // while a phrase is running, which is the whole reason to watch it.
+      old.restore != restore ||
       // Switching language changes nothing else here — same frame, same
       // levels — so without this the plot keeps its old labels until the next
       // block arrives, which on a settled analyser can be a visible while.
@@ -1375,4 +1490,31 @@ class _Dot extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The restoring bell, as the panel needs to draw it.
+///
+/// A value type with a real `==` so the painter can be asked whether anything
+/// moved. The gain changes every block while a phrase is running, which is what
+/// makes the curve worth watching and also what would repaint the analyser
+/// twice as often if this compared by identity.
+@immutable
+class _Bell {
+  const _Bell({
+    required this.centreHz,
+    required this.gainDb,
+    required this.q,
+  });
+
+  final double centreHz, gainDb, q;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Bell &&
+      other.centreHz == centreHz &&
+      other.gainDb == gainDb &&
+      other.q == q;
+
+  @override
+  int get hashCode => Object.hash(centreHz, gainDb, q);
 }

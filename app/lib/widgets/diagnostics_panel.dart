@@ -432,6 +432,29 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               // gate opens relative to the frozen floor, and
                               // that pair can latch; a count here is the
                               // watchdog reporting that it had to break one.
+                              // The restoring bell, and only while it is
+                              // lifting something. It runs on speech and
+                              // nothing else, so a row that was always present
+                              // would read as idle for most of a ride.
+                              if ((_chain?.restoreGainDb ?? 0) >= 0.05)
+                                _Row(
+                                  l.diagRestore,
+                                  '+${_chain!.restoreGainDb.toStringAsFixed(1)}'
+                                  ' dB @ ${_chain!.restoreCentreHz.round()} Hz',
+                                ),
+                              // What the two new steps cost per block, always,
+                              // because a cost that only appears while the
+                              // feature is working cannot be compared with the
+                              // 10 ms budget it has to fit inside. Shown
+                              // separately from the stage timings below:
+                              // those eight tile a block exactly and these run
+                              // inside one of them.
+                              if ((_chain?.restorePeakMs ?? 0) > 0)
+                                _Row(
+                                  l.diagRestoreCost,
+                                  '${_chain!.restorePeakMs.toStringAsFixed(2)}'
+                                  ' + ${_chain!.restoreFilterMs.toStringAsFixed(2)} ms',
+                                ),
                               if ((_chain?.floorWatchdogTrips ?? 0) > 0)
                                 _Row(
                                   l.diagFloorWatchdog,

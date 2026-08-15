@@ -1427,6 +1427,26 @@ pub struct UiChainStatus {
     /// `Helmet`, below the second `Standard`, above it `Light`.
     ///
     /// Sent every poll so the gauge cannot draw a boundary the chain has moved.
+    /// The restoring bell that puts back what the enhancer took.
+    ///
+    /// `restore_gain_db` is how much it is lifting right now and
+    /// `restore_centre_hz` where — both zero whenever the chain is not hearing
+    /// speech, which is most of the time. The two `_ms` figures are what the
+    /// peak search and the filter cost per block on this device.
+    ///
+    /// **Not in the stage timings**, because the stage list tiles a block
+    /// exactly and these run inside suppression.
+    pub restore_gain_db: f32,
+    pub restore_centre_hz: f32,
+    pub restore_peak_ms: f32,
+    pub restore_filter_ms: f32,
+    /// The bell's width, and the most it is ever allowed to lift.
+    ///
+    /// Constants on the Rust side, sent every poll rather than written into the
+    /// painter: a curve drawn from a stale copy of `Q` is the wrong curve and
+    /// looks exactly like the right one.
+    pub restore_q: f32,
+    pub restore_max_db: f32,
     pub auto_snr_helmet_below_db: f32,
     pub auto_snr_standard_below_db: f32,
     /// How periodic the last block was, 0..1, and the bar in force.
@@ -1918,6 +1938,12 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         floor_held_ms: c.floor_held_ms,
         floor_watchdog_trips: c.floor_watchdog_trips,
         auto_snr_db: c.auto_snr_db,
+        restore_gain_db: c.restore_gain_db,
+        restore_centre_hz: c.restore_centre_hz,
+        restore_peak_ms: c.restore_peak_ms,
+        restore_filter_ms: c.restore_filter_ms,
+        restore_q: c.restore_q,
+        restore_max_db: c.restore_max_db,
         auto_snr_helmet_below_db: c.auto_snr_helmet_below_db,
         auto_snr_standard_below_db: c.auto_snr_standard_below_db,
         harmonicity: c.harmonicity,

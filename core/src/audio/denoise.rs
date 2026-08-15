@@ -303,6 +303,21 @@ pub struct BlockAnalysis {
     // than only that the result was silence.
     /// Whether RNNoise thought this block was speech.
     pub vad_says_speech: bool,
+    /// Whether the noise floor is currently being held down, and for how long.
+    ///
+    /// The floor may not climb while something is speaking; see
+    /// [`super::dsp::NoiseFloorTracker::update_gated`]. Published because a
+    /// held floor and a low floor look identical from outside, and only one of
+    /// them means the chain is protecting a phrase.
+    pub floor_held: bool,
+    pub floor_held_ms: u32,
+    /// How many times the freeze has had to be overruled by its watchdog.
+    ///
+    /// **Zero is the expected value.** Anything else means the floor was held
+    /// down for a full minute without a break, which is either a phrase longer
+    /// than any measured or a trigger that has latched onto something that is
+    /// not a voice.
+    pub floor_watchdog_trips: u32,
     /// Whether the block cleared the SNR margin above the noise floor.
     pub snr_says_speech: bool,
     /// How periodic the block is at a human pitch, 0..1.
@@ -371,6 +386,12 @@ pub struct CaptureProcessor {
     /// The classifier's last word on whether a voice is present, or `None`
     /// when nothing is classifying. See [`CaptureProcessor::set_classifier_voice`].
     classifier_voice: Option<bool>,
+    /// Whether the gate was open, or inside its hold, on the previous block.
+    ///
+    /// Read one block late on purpose. The gate's state is decided from a level
+    /// compared against the floor, and the floor is updated before that
+    /// comparison, so within one block the two cannot both come first.
+    was_voice_active: bool,
     /// The background level *before* the chain touches it.
     ///
     /// Separate from [`Self::floor`], which tracks the signal after
@@ -556,6 +577,7 @@ impl CaptureProcessor {
             background_noisy: false,
             music_hold: 0,
             classifier_voice: None,
+            was_voice_active: false,
             // Slower than the transmit-side tracker. This one is deciding what
             // kind of place the rider is in, which changes over minutes, not
             // whether the current block is speech.
@@ -1068,10 +1090,22 @@ impl CaptureProcessor {
         // A false "voice" holds the floor low and lets some noise through,
         // which the suppressor ahead of this is there to deal with; a false
         // "no voice" is the behaviour that was already being reported.
-        let voice_now = match self.classifier_voice {
+        let heard_voice = match self.classifier_voice {
             Some(said) => said,
             None => vad >= self.effective.vad_threshold() && pitch_says_speech,
         };
+        // **Or the gate was open on the last block.** A phrase that has already
+        // opened the gate must not have the floor climbing underneath it while
+        // it continues, and that includes the thousand milliseconds of hold
+        // after the last voiced block — which is where the ends of words live.
+        //
+        // This half of the union is the one that can latch: the gate opens
+        // relative to the floor, so freezing the floor while it is open is a
+        // loop. `NoiseFloorTracker::FREEZE_WATCHDOG_BLOCKS` bounds it at a
+        // minute, and the panel counts how often that has to happen — a count
+        // that climbs means something is holding the gate open that is not a
+        // voice.
+        let voice_now = heard_voice || self.was_voice_active;
 
         // Hold the estimator back until RNNoise is producing real output.
         let noise_floor_db = if warming_up {
@@ -1216,6 +1250,7 @@ impl CaptureProcessor {
             self.hangover = self.hangover.saturating_sub(1);
         }
         let voice_active = speech_now || self.hangover > 0;
+        self.was_voice_active = voice_active;
 
         // 5. Gate. Feed it an artificially low level when the VAD disagrees, so
         // loud-but-not-speech blocks stay shut.
@@ -1278,6 +1313,9 @@ impl CaptureProcessor {
             speaking,
             erle_db,
             vad_says_speech,
+            floor_held: self.floor.held_blocks() > 0,
+            floor_held_ms: self.floor.held_blocks().saturating_mul(10),
+            floor_watchdog_trips: self.floor.watchdog_trips(),
             snr_says_speech,
             harmonicity: voice.harmonicity,
             f0_hz: voice.f0_hz,

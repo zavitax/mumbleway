@@ -875,6 +875,22 @@ class UiChainStatus {
   /// this starts at zero every launch.
   final double inputTrimDb;
 
+  /// Whether the noise floor is being held down right now, and for how long.
+  ///
+  /// The floor may not climb while something is speaking, which is what stops
+  /// a held phrase dragging its own background estimate onto itself. Shown
+  /// because a held floor and a low floor are the same number.
+  final bool floorHeld;
+  final int floorHeldMs;
+
+  /// Times the freeze has been overruled by its watchdog this session.
+  ///
+  /// **Expected to be zero, and worth looking at when it is not.** The freeze
+  /// is also triggered by the gate being open, and the gate opens relative to
+  /// the floor that is frozen, so the pair can latch; the watchdog breaks it
+  /// after a minute. Anything above zero means it had to.
+  final int floorWatchdogTrips;
+
   /// The suppression profile actually in force.
   ///
   /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -994,6 +1010,9 @@ class UiChainStatus {
     required this.inputPeakDb,
     required this.inputClipped,
     required this.inputTrimDb,
+    required this.floorHeld,
+    required this.floorHeldMs,
+    required this.floorWatchdogTrips,
     required this.effectiveProfile,
     required this.disabledStages,
     required this.aecEnabled,
@@ -1027,6 +1046,9 @@ class UiChainStatus {
       inputPeakDb.hashCode ^
       inputClipped.hashCode ^
       inputTrimDb.hashCode ^
+      floorHeld.hashCode ^
+      floorHeldMs.hashCode ^
+      floorWatchdogTrips.hashCode ^
       effectiveProfile.hashCode ^
       disabledStages.hashCode ^
       aecEnabled.hashCode ^
@@ -1062,6 +1084,9 @@ class UiChainStatus {
           inputPeakDb == other.inputPeakDb &&
           inputClipped == other.inputClipped &&
           inputTrimDb == other.inputTrimDb &&
+          floorHeld == other.floorHeld &&
+          floorHeldMs == other.floorHeldMs &&
+          floorWatchdogTrips == other.floorWatchdogTrips &&
           effectiveProfile == other.effectiveProfile &&
           disabledStages == other.disabledStages &&
           aecEnabled == other.aecEnabled &&

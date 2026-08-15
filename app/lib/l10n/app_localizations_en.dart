@@ -866,6 +866,12 @@ class LEn extends L {
   String get diagInputTrim => 'Gain backed off';
 
   @override
+  String get diagFloorHeld => 'Floor held';
+
+  @override
+  String get diagFloorWatchdog => 'Freeze overruled';
+
+  @override
   String get diagMicrophoneLevel => 'After suppression';
 
   @override

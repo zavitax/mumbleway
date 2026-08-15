@@ -874,6 +874,12 @@ class LRu extends L {
   String get diagInputTrim => 'Усиление снижено';
 
   @override
+  String get diagFloorHeld => 'Порог удерживается';
+
+  @override
+  String get diagFloorWatchdog => 'Сбросов удержания';
+
+  @override
   String get diagMicrophoneLevel => 'После шумоподавления';
 
   @override

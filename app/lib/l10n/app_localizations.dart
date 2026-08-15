@@ -1663,6 +1663,18 @@ abstract class L {
   /// **'Gain backed off'**
   String get diagInputTrim;
 
+  /// Shown while the noise floor is being prevented from climbing, because something is speaking. Without this the panel cannot distinguish a floor that is low because the room is quiet from one that is low because it is being held there deliberately.
+  ///
+  /// In en, this message translates to:
+  /// **'Floor held'**
+  String get diagFloorHeld;
+
+  /// How many times the floor freeze had to be broken by its watchdog. Expected to be zero; anything else means the freeze was held for a full minute without a break, which points at a trigger that has latched onto something that is not a voice.
+  ///
+  /// In en, this message translates to:
+  /// **'Freeze overruled'**
+  String get diagFloorWatchdog;
+
   /// No description provided for @diagMicrophoneLevel.
   ///
   /// In en, this message translates to:

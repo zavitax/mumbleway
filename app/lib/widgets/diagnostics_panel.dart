@@ -411,6 +411,33 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   l.diagInputTrim,
                                   '${_chain!.inputTrimDb.toStringAsFixed(1)} dB',
                                 ),
+                              // Only while it is actually holding. A row that
+                              // reads "no" whenever nothing is happening is a
+                              // row nobody reads, and this one has to be
+                              // noticed on the occasion it matters.
+                              //
+                              // **A held floor and a low floor are the same
+                              // number**, and only one of them means the chain
+                              // is protecting a phrase, so the state has to be
+                              // said rather than inferred from the row above.
+                              if (_chain?.floorHeld ?? false)
+                                _Row(
+                                  l.diagFloorHeld,
+                                  '${(_chain!.floorHeldMs / 1000).toStringAsFixed(1)} s',
+                                ),
+                              // Zero is the expected value, so this appears
+                              // only when it is not zero — and then it is bad
+                              // news worth the space. The freeze can be
+                              // triggered by the gate being open while the
+                              // gate opens relative to the frozen floor, and
+                              // that pair can latch; a count here is the
+                              // watchdog reporting that it had to break one.
+                              if ((_chain?.floorWatchdogTrips ?? 0) > 0)
+                                _Row(
+                                  l.diagFloorWatchdog,
+                                  '${_chain!.floorWatchdogTrips}',
+                                  bad: true,
+                                ),
                               // All three from the chain, and all three after
                               // suppression, because they are only meaningful
                               // against each other: the level the gate sees,

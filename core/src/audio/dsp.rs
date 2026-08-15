@@ -247,6 +247,16 @@ pub struct NoiseFloorTracker {
     history: [f32; Self::HISTORY_SLOTS],
     history_idx: usize,
     history_count: u32,
+    /// Consecutive blocks the floor has been held down for.
+    held_blocks: u32,
+    /// How many times the watchdog has overruled the freeze this session.
+    ///
+    /// Published to the diagnostics panel rather than kept private: a
+    /// non-zero count means something is holding the freeze on for a minute at
+    /// a time, which is either a very long phrase or a trigger keyed on the
+    /// wrong thing, and the panel is where that becomes visible instead of
+    /// being inferred from audio that sounds slightly wrong.
+    watchdog_trips: u32,
 }
 
 impl NoiseFloorTracker {
@@ -299,6 +309,33 @@ impl NoiseFloorTracker {
     const HISTORY_STRIDE: u32 = 10;
     const HISTORY_SLOTS: usize = 30;
 
+    /// How long the floor may be held down before the freeze is overruled.
+    ///
+    /// **The freeze can latch, and this is what stops it.** Held on a signal
+    /// derived from the floor -- the gate opens above it, so freezing while the
+    /// gate is open is exactly that -- a loud steady noise opens the gate, the
+    /// freeze pins the floor beneath it, and neither can ever recover: the gate
+    /// stays open because the floor cannot rise, and the floor cannot rise
+    /// because the gate is open. The chain already carries a scar from the same
+    /// shape, in `denoise.rs`: an arm that let the VAD refresh the hangover
+    /// kept a transmission open for ever on an engine drone.
+    ///
+    /// Sixty seconds is chosen against the two failures it sits between. Below
+    /// it, an engine drone holds the channel for that long, which is a long
+    /// time on a shared frequency. Above it, a rider singing one long phrase
+    /// crosses it and the floor starts climbing back onto them mid-performance
+    /// -- the fault this whole mechanism exists to prevent. Sixty is
+    /// comfortably past the longest phrase measured (13.8 s sung) and short
+    /// enough that a drone is not indefinite.
+    ///
+    /// It is a backstop, not the mechanism. Anything relying on it firing
+    /// regularly is keyed on the wrong signal.
+    /// Sixty seconds, at the 100 blocks a second the whole pipeline runs at
+    /// (10 ms of 48 kHz). Written as a literal rather than derived: the frame
+    /// size lives in `denoise`, which imports this module, and importing it
+    /// back to save one multiplication is not worth a cycle between them.
+    const FREEZE_WATCHDOG_BLOCKS: u32 = 6_000;
+
     /// `sub_len_blocks` sub-windows of this length span the tracking window;
     /// six 0.25 s sub-windows give a ~1.5 s memory, longer than a normal breath
     /// pause but short enough to follow changing road speed.
@@ -315,6 +352,8 @@ impl NoiseFloorTracker {
             history: [f32::INFINITY; Self::HISTORY_SLOTS],
             history_idx: 0,
             history_count: 0,
+            held_blocks: 0,
+            watchdog_trips: 0,
         }
     }
 
@@ -368,6 +407,18 @@ impl NoiseFloorTracker {
         }
         self.was_voice = voice;
 
+        // The watchdog. Counted here so that it covers every path below,
+        // including the one where the floor is falling anyway.
+        if voice {
+            self.held_blocks = self.held_blocks.saturating_add(1);
+        } else {
+            self.held_blocks = 0;
+        }
+        let overruled = self.held_blocks > Self::FREEZE_WATCHDOG_BLOCKS;
+        if overruled && self.held_blocks == Self::FREEZE_WATCHDOG_BLOCKS + 1 {
+            self.watchdog_trips = self.watchdog_trips.saturating_add(1);
+        }
+
         let raw = self.raw_floor_db();
         self.published_db = if !self.published_db.is_finite() {
             // First block: nothing to rate-limit against, and starting the
@@ -378,7 +429,7 @@ impl NoiseFloorTracker {
             // floor that lags downward would hold the gate shut on a voice
             // that is now well clear of it.
             raw
-        } else if voice {
+        } else if voice && !overruled {
             // Held. Not slowed — held. See the note on this method.
             self.published_db
         } else {
@@ -422,6 +473,21 @@ impl NoiseFloorTracker {
         }
     }
 
+    /// How long the floor has been held down, in blocks.
+    pub fn held_blocks(&self) -> u32 {
+        self.held_blocks
+    }
+
+    /// How many times the watchdog has overruled the freeze.
+    pub fn watchdog_trips(&self) -> u32 {
+        self.watchdog_trips
+    }
+
+    /// Whether the watchdog is currently overruling the freeze.
+    pub fn freeze_overruled(&self) -> bool {
+        self.held_blocks > Self::FREEZE_WATCHDOG_BLOCKS
+    }
+
     /// The minimum statistic itself, before the rise limit.
     ///
     /// Kept separate so the limit has something to be limited against, and so a
@@ -455,6 +521,10 @@ impl NoiseFloorTracker {
         self.history = [f32::INFINITY; Self::HISTORY_SLOTS];
         self.history_idx = 0;
         self.history_count = 0;
+        self.held_blocks = 0;
+        // `watchdog_trips` deliberately survives a reset: it counts what has
+        // happened this session, and a device change is not a reason to forget
+        // that the freeze had to be overruled.
     }
 }
 

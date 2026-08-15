@@ -1401,6 +1401,20 @@ pub struct UiChainStatus {
     /// the two. It is runtime only: the rider's number is what gets saved, and
     /// this starts at zero every launch.
     pub input_trim_db: f32,
+    /// Whether the noise floor is being held down right now, and for how long.
+    ///
+    /// The floor may not climb while something is speaking, which is what stops
+    /// a held phrase dragging its own background estimate onto itself. Shown
+    /// because a held floor and a low floor are the same number.
+    pub floor_held: bool,
+    pub floor_held_ms: u32,
+    /// Times the freeze has been overruled by its watchdog this session.
+    ///
+    /// **Expected to be zero, and worth looking at when it is not.** The freeze
+    /// is also triggered by the gate being open, and the gate opens relative to
+    /// the floor that is frozen, so the pair can latch; the watchdog breaks it
+    /// after a minute. Anything above zero means it had to.
+    pub floor_watchdog_trips: u32,
     /// The suppression profile actually in force.
     ///
     /// **Never `Auto`.** Auto is a rule for choosing, not a profile, so what is
@@ -1878,6 +1892,9 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         },
         input_clipped: shared.input_peak().1,
         input_trim_db: c.input_trim_db,
+        floor_held: c.floor_held,
+        floor_held_ms: c.floor_held_ms,
+        floor_watchdog_trips: c.floor_watchdog_trips,
     })
 }
 

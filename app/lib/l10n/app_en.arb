@@ -401,6 +401,14 @@
   "diagInputPeak": "Microphone peak",
   "diagInputClipped": "Microphone clipped",
   "diagInputTrim": "Gain backed off",
+  "diagFloorHeld": "Floor held",
+  "@diagFloorHeld": {
+    "description": "Shown while the noise floor is being prevented from climbing, because something is speaking. Without this the panel cannot distinguish a floor that is low because the room is quiet from one that is low because it is being held there deliberately."
+  },
+  "diagFloorWatchdog": "Freeze overruled",
+  "@diagFloorWatchdog": {
+    "description": "How many times the floor freeze had to be broken by its watchdog. Expected to be zero; anything else means the freeze was held for a full minute without a break, which points at a trigger that has latched onto something that is not a voice."
+  },
   "@diagInputTrim": {
     "description": "How much the clip guard is holding back off the rider's input gain, because that gain was driving the microphone into clipping. Negative dB. The gain slider deliberately does not move, so this row is the only place the difference is visible."
   },

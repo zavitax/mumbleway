@@ -111,6 +111,21 @@ pub struct ChainStatus {
     pub aec3: bool,
     /// Gain the AGC is applying, in dB.
     pub agc_gain_db: f32,
+    /// Whether the noise floor is being held down, and for how long in ms.
+    ///
+    /// The floor may not climb while something is speaking, so that a held
+    /// phrase cannot drag its own background estimate up onto itself. A held
+    /// floor and a genuinely low one are indistinguishable in the number
+    /// alone, which is why the state is published beside it.
+    pub floor_held: bool,
+    pub floor_held_ms: u32,
+    /// Times the freeze has been overruled by its watchdog this session.
+    ///
+    /// **Expected to be zero.** The freeze can be triggered by the gate being
+    /// open, and the gate opens relative to the floor being frozen, so the two
+    /// can latch; the watchdog breaks that after a minute. A count above zero
+    /// says it had to.
+    pub floor_watchdog_trips: u32,
     /// What the clip guard is holding back off the rider's input gain, in dB.
     ///
     /// Never positive, and zero whenever the guard is idle. **The gain slider
@@ -202,6 +217,9 @@ impl Default for ChainStatus {
             aec_window_ms: 0.0,
             aec3: false,
             agc_gain_db: 0.0,
+            floor_held: false,
+            floor_held_ms: 0,
+            floor_watchdog_trips: 0,
             input_trim_db: 0.0,
             level_db: -120.0,
             noise_floor_db: -100.0,
@@ -3412,6 +3430,9 @@ where
                 aec_window_ms: aec_align.3,
                 aec3: processor.aec_is_aec3(),
                 agc_gain_db: analysis.agc_gain_db,
+                floor_held: analysis.floor_held,
+                floor_held_ms: analysis.floor_held_ms,
+                floor_watchdog_trips: analysis.floor_watchdog_trips,
                 input_trim_db: clip_guard.trim_db(),
                 level_db: analysis.level_db,
                 noise_floor_db: analysis.noise_floor_db,

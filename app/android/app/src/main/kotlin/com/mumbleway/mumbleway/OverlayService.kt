@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.Gravity
 import android.view.MotionEvent
@@ -29,7 +30,9 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.graphics.Typeface
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 
 /** Somebody currently being heard, with their level on the shared 0..1 scale. */
 data class OverlaySpeaker(val name: String, val level: Float)
@@ -88,8 +91,8 @@ class OverlayService : Service() {
     private var muteButton: TextView? = null
     private var deafenButton: TextView? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
-    private val flashHandler = Handler(Looper.getMainLooper())
-    private var flashing = false
+    private val pulseHandler = Handler(Looper.getMainLooper())
+    private var pulsing = false
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     companion object {
@@ -110,6 +113,40 @@ class OverlayService : Service() {
 
         /** Where the card splits into its two halves, as a share of the width. */
         private const val DIVIDER = 0.52f
+
+        /**
+         * The two ends of the live pulse.
+         *
+         * **The light end is exactly the red this replaces, and the pulse
+         * darkens from it rather than brightening past it.** "ON AIR" is white
+         * lettering on this disc, and white on the old red is already only
+         * 3.8:1 — brightening the peak to a genuinely light red measured 2.7:1,
+         * which is worse than today at the moment a rider is most likely to
+         * glance at it. Going the other way costs nothing: the dark end is
+         * 11:1, so the words are *more* legible for half of every cycle and
+         * never less than they are now.
+         *
+         * It still reads as two reds. The disc travels a long way in
+         * brightness; it is which end is the new one that changed.
+         */
+        private val LIVE_DARK = Color.rgb(120, 20, 20)
+        private val LIVE_LIGHT = Color.rgb(240, 62, 62)
+
+        /**
+         * How fast the pulse is redrawn, and how long one breath takes.
+         *
+         * 20 fps is enough for a glow: the eye reads brightness far more
+         * coarsely than position, and this is one 60x60dp disc rather than a
+         * moving edge. The same step the diagnostics graphs already scroll at.
+         *
+         * It is more frames than the 350 ms blink it replaces — about seven
+         * times as many — and still less work, because the light stopped being
+         * drawn by the card. 3600 dp² twenty times a second against 45000 dp²
+         * just under three: 72 000 against 129 000, a little over half the
+         * damaged area per second, for something that now moves smoothly.
+         */
+        private const val PULSE_STEP_MS = 50L
+        private const val PULSE_PERIOD_MS = 900L
 
         private const val ON_AIR_CY = 56
         private const val ON_AIR_RADIUS = 20
@@ -177,6 +214,18 @@ class OverlayService : Service() {
             phrases = map
             instance?.callView?.postInvalidate()
             instance?.onAirView?.postInvalidate()
+        }
+
+        /** Mixes two opaque colours. Channel-wise and in sRGB, which is what
+         *  the eye reads off a small glowing disc. */
+        private fun lerp(from: Int, to: Int, t: Float): Int {
+            val f = t.coerceIn(0f, 1f)
+            fun mix(a: Int, b: Int) = (a + (b - a) * f).toInt()
+            return Color.rgb(
+                mix(Color.red(from), Color.red(to)),
+                mix(Color.green(from), Color.green(to)),
+                mix(Color.blue(from), Color.blue(to)),
+            )
         }
 
         fun phrase(key: String, fallback: String): String =
@@ -786,8 +835,9 @@ class OverlayService : Service() {
      * likely to put a thumb on.
      */
     private inner class OnAirView(context: Context) : Layer(context) {
-        /** Blink phase; driven by [setFlashing]. */
-        var lit = true
+        /** Where the pulse is in its cycle, 0 dark to 1 light. Driven by
+         *  [setPulsing]; ignored unless the microphone is actually open. */
+        var phase = 1f
 
         override fun onDraw(canvas: Canvas) {
             val cx = width / 2f
@@ -796,21 +846,31 @@ class OverlayService : Service() {
 
             val colour = when {
                 !state.connected -> Color.argb(255, 115, 115, 115)
-                state.live -> Color.argb(255, 240, 62, 62)
+                // **Sending: a pulse between two reds, not a blink.** It has to
+                // be impossible to stop noticing — a channel left keyed open is
+                // the failure worth catching — but the blink it replaces went
+                // to a tenth of its own opacity on the off beat, so half the
+                // time the one control that says "you are on air" was barely
+                // there. Both ends of this are unmistakably red; only the
+                // brightness moves, so the light is never absent and never
+                // still.
+                state.live -> lerp(LIVE_DARK, LIVE_LIGHT, phase)
                 state.speaking -> Color.argb(255, 64, 199, 115)
                 else -> Color.argb(255, 140, 140, 140)
             }
-            val on = !state.live || lit
 
+            // Everything below the live case is unchanged and deliberately so:
+            // not connected, hearing speech and idle are steady states and read
+            // as steady lights.
             if (state.live) {
                 paint.color = colour
-                paint.alpha = if (on) 77 else 26
+                paint.alpha = 77
                 canvas.drawCircle(cx, cy, radius + dp(ON_AIR_HALO), paint)
             }
+            // Sets alpha back to full along with the colour, which is why the
+            // halo above does not have to be undone.
             paint.color = colour
-            paint.alpha = if (on) 255 else 89
             canvas.drawCircle(cx, cy, radius, paint)
-            paint.alpha = 255
 
             if (state.live) {
                 label(
@@ -1319,7 +1379,7 @@ class OverlayService : Service() {
             muteButton?.background = pillBackground(active = state.muted)
             deafenButton?.background = pillBackground(active = state.deafened)
 
-            setFlashing(state.live)
+            setPulsing(state.live)
         }
     }
 
@@ -1428,33 +1488,54 @@ class OverlayService : Service() {
             a.deafened != b.deafened
 
     /**
-     * Drives the on-air blink from its own runnable rather than from state
-     * pushes, so the rate stays even no matter how often there is something
+     * Drives the on-air pulse from its own runnable rather than from state
+     * pushes, so the rhythm stays even no matter how often there is something
      * new to report.
+     *
+     * **The phase is read off the clock, not counted.** A timer that fires late
+     * — and on a phone under the load a rider's phone is under, it will — would
+     * otherwise leave the pulse behind where the elapsed time says it should
+     * be, and the error would accumulate for as long as the microphone stayed
+     * open. Reading `uptimeMillis` makes a dropped frame a skipped frame rather
+     * than a slowed pulse.
      */
-    private fun setFlashing(on: Boolean) {
-        if (on == flashing) return
-        flashing = on
-        flashHandler.removeCallbacksAndMessages(null)
+    private fun setPulsing(on: Boolean) {
+        if (on == pulsing) return
+        pulsing = on
+        pulseHandler.removeCallbacksAndMessages(null)
         if (!on) {
             onAirView?.let {
-                it.lit = true
+                // Parked at the light end, so nothing can leave a stale dark
+                // disc behind if the state and the timer ever disagree.
+                it.phase = 1f
                 it.invalidate()
             }
             return
         }
-        val blink = object : Runnable {
+        val started = SystemClock.uptimeMillis()
+        val pulse = object : Runnable {
             override fun run() {
                 val light = onAirView ?: return
-                light.lit = !light.lit
+                val t = (SystemClock.uptimeMillis() - started) % PULSE_PERIOD_MS
+                // A cosine rather than a triangle: it lingers at both ends and
+                // moves quickest through the middle, which is what reads as
+                // breathing instead of as a slider being dragged.
+                //
+                // **Starting at 1, the light end.** Keying up is the moment the
+                // rider is looking for confirmation, and at phase 0 the light
+                // would be at its dimmest exactly then. This way going on air
+                // looks precisely as it does today — the old red, at once — and
+                // the breathing starts from there.
+                light.phase =
+                    (1f + cos(2.0 * PI * t / PULSE_PERIOD_MS).toFloat()) / 2f
                 // 60x60dp, rather than the whole card. This is the only redraw
                 // in the window that happens on a timer instead of because
                 // something changed, so it is the one worth keeping small.
                 light.invalidate()
-                flashHandler.postDelayed(this, 350)
+                pulseHandler.postDelayed(this, PULSE_STEP_MS)
             }
         }
-        flashHandler.postDelayed(blink, 350)
+        pulseHandler.post(pulse)
     }
 
     private fun removeOverlay() {
@@ -1483,7 +1564,7 @@ class OverlayService : Service() {
         talkButton = null
         muteButton = null
         deafenButton = null
-        flashHandler.removeCallbacksAndMessages(null)
-        flashing = false
+        pulseHandler.removeCallbacksAndMessages(null)
+        pulsing = false
     }
 }

@@ -3387,9 +3387,45 @@ class AppStateScope extends InheritedNotifier<AppState> {
     required super.child,
   }) : super(notifier: state);
 
+  /// The state, **and a subscription to every change of it**.
+  ///
+  /// This is an `InheritedNotifier`, so a widget that calls this rebuilds on
+  /// every `notifyListeners()` — of which there are dozens of callers and one
+  /// two-second poll that runs for the whole of a ride. Read it as low in the
+  /// tree as the value is used: a call in a screen's own `build` subscribes
+  /// that screen's entire subtree.
+  /// The state, **and a subscription to every change of it**.
+  ///
+  /// This is an `InheritedNotifier`, so a widget that calls this rebuilds on
+  /// every `notifyListeners()` — of which there are dozens of callers and one
+  /// two-second poll that runs for the whole of a ride. Read it as low in the
+  /// tree as the value is used: a call in a screen's own `build` subscribes
+  /// that screen's entire subtree.
   static AppState of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<AppStateScope>();
     assert(scope != null, 'No AppStateScope found in context');
     return scope!.notifier!;
+  }
+
+  /// The state **without** subscribing to it.
+  ///
+  /// For values that cannot change while the app is running — which platform
+  /// this is, whether it can show an overlay, which cloud the device has.
+  /// Subscribing to those costs a rebuild every time something unrelated moves
+  /// and buys an update that can never arrive.
+  ///
+  /// Measured: the settings screen read the state in its own `build` for three
+  /// such values, and one notification therefore rebuilt all 875 widgets on it.
+  ///
+  /// Wrong for anything a user can change. There is no subscription, so a value
+  /// read here will not refresh on its own, and the failure looks like a stale
+  /// screen rather than an error — which is why the two names differ by more
+  /// than a word.
+  static AppState read(BuildContext context) {
+    final scope = context
+        .getElementForInheritedWidgetOfExactType<AppStateScope>()
+        ?.widget;
+    assert(scope != null, 'No AppStateScope found in context');
+    return (scope! as AppStateScope).notifier!;
   }
 }

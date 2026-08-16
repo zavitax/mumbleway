@@ -11,6 +11,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'recording_toggle.dart';
 import 'spectrum_view.dart';
+import 'watch.dart';
 
 /// Live diagnostics, shown over the bottom of whatever is on screen.
 ///
@@ -19,9 +20,7 @@ import 'spectrum_view.dart';
 /// cannot keep up" is the whole question — they sound identical. Kept out of
 /// settings because settings are for decisions, and none of this is one.
 class DiagnosticsPanel extends StatefulWidget {
-  const DiagnosticsPanel({super.key, required this.onClose});
-
-  final VoidCallback onClose;
+  const DiagnosticsPanel({super.key});
 
   @override
   State<DiagnosticsPanel> createState() => _DiagnosticsPanelState();
@@ -130,6 +129,22 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
 
   /// Where a block's time goes.
   UiStageCosts? _costs;
+
+  /// Slide the panel away.
+  ///
+  /// Reached through the state rather than taken as an `onClose` callback, and
+  /// the difference is worth the indirection: a callback has to be passed in,
+  /// `state.toggleDiagnostics` is a fresh tear-off on every build of the home
+  /// screen, and a widget built with a new callback is never equal to the one
+  /// before it. That defeated `Element.updateChild`, so this whole panel —
+  /// around 200 widgets and four graphs — rebuilt on every home-screen rebuild,
+  /// whether or not it was on screen. With nothing passed in, `const
+  /// DiagnosticsPanel()` is the same widget every time and the subtree is
+  /// skipped without being descended into.
+  ///
+  /// `read`, not `of`: this wants to call a method, not to hear about changes.
+  void _close(BuildContext context) =>
+      AppStateScope.read(context).toggleDiagnostics();
 
   void _refresh() {
     if (!mounted) return;
@@ -245,7 +260,13 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppStateScope.of(context);
+    // **This build does not read the state.** It used to, for the per-server
+    // rows at the bottom, and that one call subscribed the whole panel to every
+    // `notifyListeners()` — around 200 widgets and four graphs rebuilt twice a
+    // second, *including while the panel is closed*, because `home_screen` only
+    // slides it off-screen and never disposes it. The two regions that do
+    // follow the state are wrapped in [Watch] below and gated on the panel
+    // being open, so a closed panel now costs nothing at all.
     final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
     final audio = _audio;
@@ -255,7 +276,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       // is expected to answer, and it beats hunting for the button that opened
       // it. Velocity rather than distance, so a flick works as well as a drag.
       onVerticalDragEnd: (details) {
-        if ((details.primaryVelocity ?? 0) > 120) widget.onClose();
+        if ((details.primaryVelocity ?? 0) > 120) _close(context);
       },
       child: Material(
         elevation: 12,
@@ -301,7 +322,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                     IconButton(
                       tooltip: l.diagClose,
                       icon: const Icon(Icons.close, size: 20),
-                      onPressed: widget.onClose,
+                      onPressed: () => _close(context),
                     ),
                   ],
                 ),
@@ -321,19 +342,27 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                     // nothing in the audio worker either. This panel is never
                     // disposed — only slid out of sight — so nothing else would
                     // ever stop it.
-                    if (AppStateScope.of(context).diagnosticsOpen) ...[
-                      const SpectrumView(),
-                      // Wider than the gaps inside the analyser, so the card
-                      // reads as a separate thing rather than as one more row
-                      // of the readout above it.
-                      const SizedBox(height: 20),
-                      // Directly under the analyser, because it answers the
-                      // question the analyser raises: having watched the gate
-                      // shut on a word, the next thing anyone wants is that
-                      // moment on disk where it can be looked at properly.
-                      const RecordingToggle(),
-                      const SizedBox(height: 16),
-                    ],
+                    Watch<bool>(
+                      (state) => state.diagnosticsOpen,
+                      (context, state) => state.diagnosticsOpen
+                          ? const Column(
+                              children: [
+                                SpectrumView(),
+                                // Wider than the gaps inside the analyser, so
+                                // the card reads as a separate thing rather
+                                // than as one more row of the readout above it.
+                                SizedBox(height: 20),
+                                // Directly under the analyser, because it
+                                // answers the question the analyser raises:
+                                // having watched the gate shut on a word, the
+                                // next thing anyone wants is that moment on
+                                // disk where it can be looked at properly.
+                                RecordingToggle(),
+                                SizedBox(height: 16),
+                              ],
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                     // Counter groups follow the graphs' layout rule, so the
                     // panel reflows as one thing rather than half of it going
                     // wide while the other half stays in a column.
@@ -643,14 +672,31 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               ),
                             ],
                           ),
-                        for (final server in state.servers)
-                          if (state.runtimeFor(server.id).isLive)
-                            _Group(
-                              title: server.name.isEmpty
-                                  ? server.host
-                                  : server.name,
-                              rows: _serverRows(l, state.runtimeFor(server.id)),
-                            ),
+                        // Gated on the panel being open rather than on the
+                        // figures themselves, which change every second and
+                        // would defeat the cache. While it is open the panel's
+                        // own one-second refresh rebuilds this along with
+                        // everything else, so the rows are no more stale than
+                        // the counters above them; while it is closed they are
+                        // not drawn and nobody is reading them.
+                        Watch<bool>(
+                          (state) => state.diagnosticsOpen,
+                          (context, state) => Column(
+                            children: [
+                              for (final server in state.servers)
+                                if (state.runtimeFor(server.id).isLive)
+                                  _Group(
+                                    title: server.name.isEmpty
+                                        ? server.host
+                                        : server.name,
+                                    rows: _serverRows(
+                                      l,
+                                      state.runtimeFor(server.id),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),

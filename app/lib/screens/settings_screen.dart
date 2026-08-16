@@ -18,6 +18,7 @@ import '../theme.dart';
 import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
+import '../widgets/watch.dart';
 
 /// The audio settings, which hold the microphone open for as long as they are
 /// on screen.
@@ -55,7 +56,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // which is not available that early. Guarded because this runs again on
     // every dependency change, and a second hold would never be released.
     if (_held != null) return;
-    final state = AppStateScope.of(context);
+    // **`read`.** This wants the object once, to take a hold on it; it does not
+    // want to be told when something in it changes. `of` here subscribed the
+    // screen's own element, which rebuilt all 875 widgets under it on every
+    // notification — and did so invisibly, from a lifecycle method, long after
+    // `build` had been cleaned up for exactly that.
+    final state = AppStateScope.read(context);
     _held = state;
     unawaited(
       state.holdAudio().then((error) {
@@ -72,7 +78,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppStateScope.of(context);
+    // **`read`, not `of`.** This build wants three values that cannot change
+    // while the app is running, and subscribing to the whole state object for
+    // them rebuilt every widget on this screen each time anything moved. The
+    // controls that genuinely follow the state subscribe for themselves, in
+    // `_Watch`, below.
+    final state = AppStateScope.read(context);
     final l = L.of(context);
 
     return Scaffold(
@@ -102,83 +113,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 32),
           _SectionHeader(l.noiseCancellation),
           _Explainer(l.noiseCancellationBody),
-          RadioGroup<NoiseSetting>(
-            groupValue: state.noise,
-            onChanged: (v) {
-              if (v != null) state.updateNoise(v);
-            },
-            child: Column(
-              children: [
-                for (final n in NoiseSetting.values)
-                  RadioListTile<NoiseSetting>(
-                    value: n,
-                    title: Text(_noiseTitle(l, n)),
-                    subtitle: Text(_noiseSubtitle(l, n)),
-                    isThreeLine: true,
-                  ),
-              ],
+          Watch<NoiseSetting>(
+            (state) => state.noise,
+            (context, state) => RadioGroup<NoiseSetting>(
+              groupValue: state.noise,
+              onChanged: (v) {
+                if (v != null) state.updateNoise(v);
+              },
+              child: Column(
+                children: [
+                  for (final n in NoiseSetting.values)
+                    RadioListTile<NoiseSetting>(
+                      value: n,
+                      title: Text(_noiseTitle(l, n)),
+                      subtitle: Text(_noiseSubtitle(l, n)),
+                      isThreeLine: true,
+                    ),
+                ],
+              ),
             ),
           ),
 
           const Divider(height: 32),
           _SectionHeader(l.feedbackGuard),
           _Explainer(l.feedbackGuardBody),
-          RadioGroup<FeedbackGuardMode>(
-            groupValue: state.feedbackGuard,
-            onChanged: (v) {
-              if (v != null) state.updateFeedbackGuard(v);
-            },
-            child: Column(
-              children: [
-                for (final m in FeedbackGuardMode.values)
-                  RadioListTile<FeedbackGuardMode>(
-                    value: m,
-                    title: Text(_feedbackTitle(l, m)),
-                    subtitle: Text(_feedbackSubtitle(l, m)),
-                    isThreeLine: true,
-                  ),
-              ],
+          Watch<FeedbackGuardMode>(
+            (state) => state.feedbackGuard,
+            (context, state) => RadioGroup<FeedbackGuardMode>(
+              groupValue: state.feedbackGuard,
+              onChanged: (v) {
+                if (v != null) state.updateFeedbackGuard(v);
+              },
+              child: Column(
+                children: [
+                  for (final m in FeedbackGuardMode.values)
+                    RadioListTile<FeedbackGuardMode>(
+                      value: m,
+                      title: Text(_feedbackTitle(l, m)),
+                      subtitle: Text(_feedbackSubtitle(l, m)),
+                      isThreeLine: true,
+                    ),
+                ],
+              ),
             ),
           ),
 
           const Divider(height: 32),
           _SectionHeader(l.dehiss),
           _Explainer(l.dehissBody),
-          RadioGroup<DehissOption>(
-            groupValue: state.dehiss,
-            onChanged: (v) {
-              if (v != null) state.updateDehiss(v);
-            },
-            child: Column(
-              children: [
-                for (final m in DehissOption.values)
-                  RadioListTile<DehissOption>(
-                    value: m,
-                    title: Text(_dehissTitle(l, m)),
-                    subtitle: Text(_dehissSubtitle(l, m)),
-                    isThreeLine: true,
-                  ),
-              ],
+          Watch<DehissOption>(
+            (state) => state.dehiss,
+            (context, state) => RadioGroup<DehissOption>(
+              groupValue: state.dehiss,
+              onChanged: (v) {
+                if (v != null) state.updateDehiss(v);
+              },
+              child: Column(
+                children: [
+                  for (final m in DehissOption.values)
+                    RadioListTile<DehissOption>(
+                      value: m,
+                      title: Text(_dehissTitle(l, m)),
+                      subtitle: Text(_dehissSubtitle(l, m)),
+                      isThreeLine: true,
+                    ),
+                ],
+              ),
             ),
           ),
 
           const Divider(height: 32),
           _SectionHeader(l.micMode),
           _Explainer(l.micModeBody),
-          RadioGroup<MicMode>(
-            groupValue: state.micMode,
-            onChanged: (v) {
-              if (v != null) state.updateMicMode(v);
-            },
-            child: Column(
-              children: [
-                for (final m in MicMode.values)
-                  RadioListTile<MicMode>(
-                    value: m,
-                    title: Text(_micTitle(l, m)),
-                    subtitle: Text(_micSubtitle(l, m)),
-                  ),
-              ],
+          Watch<MicMode>(
+            (state) => state.micMode,
+            (context, state) => RadioGroup<MicMode>(
+              groupValue: state.micMode,
+              onChanged: (v) {
+                if (v != null) state.updateMicMode(v);
+              },
+              child: Column(
+                children: [
+                  for (final m in MicMode.values)
+                    RadioListTile<MicMode>(
+                      value: m,
+                      title: Text(_micTitle(l, m)),
+                      subtitle: Text(_micSubtitle(l, m)),
+                    ),
+                ],
+              ),
             ),
           ),
 
@@ -402,23 +425,24 @@ class _MonitorTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.hearing),
-      title: Text(l.testMicrophone),
-      subtitle: Text(l.testMicrophoneBody),
-      value: state.monitoring,
-      onChanged: (_) async {
-        // Captured before the await: the switch can be gone by the time the
-        // microphone answers, and this is the only place the reason appears.
-        final messenger = ScaffoldMessenger.of(context);
-        final error = await state.toggleMonitoring();
-        if (error != null) {
-          showError(messenger, error);
-        }
-      },
-    );
+    return Watch<bool>((state) => state.monitoring, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.hearing),
+        title: Text(l.testMicrophone),
+        subtitle: Text(l.testMicrophoneBody),
+        value: state.monitoring,
+        onChanged: (_) async {
+          // Captured before the await: the switch can be gone by the time the
+          // microphone answers, and this is the only place the reason appears.
+          final messenger = ScaffoldMessenger.of(context);
+          final error = await state.toggleMonitoring();
+          if (error != null) {
+            showError(messenger, error);
+          }
+        },
+      );
+    });
   }
 }
 
@@ -505,16 +529,17 @@ class _SimpleModelTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.speed),
-      title: Text(l.simpleModel),
-      subtitle: Text(l.simpleModelBody),
-      isThreeLine: true,
-      value: state.simpleModel,
-      onChanged: (v) => state.setSimpleModelEnabled(value: v),
-    );
+    return Watch<bool>((state) => state.simpleModel, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.speed),
+        title: Text(l.simpleModel),
+        subtitle: Text(l.simpleModelBody),
+        isThreeLine: true,
+        value: state.simpleModel,
+        onChanged: (v) => state.setSimpleModelEnabled(value: v),
+      );
+    });
   }
 }
 
@@ -536,16 +561,17 @@ class _VoiceCommunicationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.phone_in_talk),
-      title: Text(l.voiceCommunication),
-      subtitle: Text(l.voiceCommunicationBody),
-      isThreeLine: true,
-      value: state.voiceCommunication,
-      onChanged: (v) => state.setVoiceCommunicationEnabled(value: v),
-    );
+    return Watch<bool>((state) => state.voiceCommunication, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.phone_in_talk),
+        title: Text(l.voiceCommunication),
+        subtitle: Text(l.voiceCommunicationBody),
+        isThreeLine: true,
+        value: state.voiceCommunication,
+        onChanged: (v) => state.setVoiceCommunicationEnabled(value: v),
+      );
+    });
   }
 }
 
@@ -554,16 +580,17 @@ class _ReverbTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.blur_on),
-      title: Text(l.reverb),
-      subtitle: Text(l.reverbBody),
-      isThreeLine: true,
-      value: state.reverb,
-      onChanged: (v) => state.setReverbEnabled(value: v),
-    );
+    return Watch<bool>((state) => state.reverb, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.blur_on),
+        title: Text(l.reverb),
+        subtitle: Text(l.reverbBody),
+        isThreeLine: true,
+        value: state.reverb,
+        onChanged: (v) => state.setReverbEnabled(value: v),
+      );
+    });
   }
 }
 
@@ -572,15 +599,16 @@ class _NormaliseTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.equalizer),
-      title: Text(L.of(context).evenOutLoudness),
-      subtitle: Text(L.of(context).evenOutLoudnessBody),
-      isThreeLine: true,
-      value: state.normaliseLevels,
-      onChanged: (v) => state.setNormaliseLevels(value: v),
-    );
+    return Watch<bool>((state) => state.normaliseLevels, (context, state) {
+      return SwitchListTile(
+        secondary: const Icon(Icons.equalizer),
+        title: Text(L.of(context).evenOutLoudness),
+        subtitle: Text(L.of(context).evenOutLoudnessBody),
+        isThreeLine: true,
+        value: state.normaliseLevels,
+        onChanged: (v) => state.setNormaliseLevels(value: v),
+      );
+    });
   }
 }
 
@@ -595,55 +623,56 @@ class _JitterBufferTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    final (lo, hi, step) = AppState.jitterBounds;
-    final value = state.jitterBufferMs.clamp(lo, hi).toDouble();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.network_check, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  l.jitterBuffer,
-                  style: const TextStyle(fontSize: 15),
+    return Watch<int>((state) => state.jitterBufferMs, (context, state) {
+      final l = L.of(context);
+      final (lo, hi, step) = AppState.jitterBounds;
+      final value = state.jitterBufferMs.clamp(lo, hi).toDouble();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.network_check, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    l.jitterBuffer,
+                    style: const TextStyle(fontSize: 15),
+                  ),
                 ),
-              ),
-              Text(
-                l.milliseconds(value.round()),
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontFeatures: [FontFeature.tabularFigures()],
+                Text(
+                  l.milliseconds(value.round()),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          Slider(
-            value: value,
-            min: lo.toDouble(),
-            max: hi.toDouble(),
-            // One stop per whole packet. Voice arrives in 20 ms pieces and the
-            // buffer counts in whole ones, so anything finer would be a
-            // position the engine rounds away the moment it is let go of.
-            divisions: (hi - lo) ~/ step,
-            onChanged: (v) => state.setJitterBuffer(ms: v.round()),
-          ),
-          Text(
-            l.jitterBufferBody,
-            style: TextStyle(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ],
             ),
-          ),
-          const SizedBox(height: 4),
-        ],
-      ),
-    );
+            Slider(
+              value: value,
+              min: lo.toDouble(),
+              max: hi.toDouble(),
+              // One stop per whole packet. Voice arrives in 20 ms pieces and the
+              // buffer counts in whole ones, so anything finer would be a
+              // position the engine rounds away the moment it is let go of.
+              divisions: (hi - lo) ~/ step,
+              onChanged: (v) => state.setJitterBuffer(ms: v.round()),
+            ),
+            Text(
+              l.jitterBufferBody,
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      );
+    });
   }
 }
 
@@ -652,16 +681,17 @@ class _EchoCancellationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = L.of(context);
-    final state = AppStateScope.of(context);
-    return SwitchListTile(
-      secondary: const Icon(Icons.surround_sound),
-      title: Text(l.echoCancellation),
-      subtitle: Text(l.echoCancellationBody),
-      isThreeLine: true,
-      value: state.echoCancellation,
-      onChanged: (v) => state.setEchoCancellationEnabled(value: v),
-    );
+    return Watch<bool>((state) => state.echoCancellation, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.surround_sound),
+        title: Text(l.echoCancellation),
+        subtitle: Text(l.echoCancellationBody),
+        isThreeLine: true,
+        value: state.echoCancellation,
+        onChanged: (v) => state.setEchoCancellationEnabled(value: v),
+      );
+    });
   }
 }
 
@@ -1195,6 +1225,19 @@ class _FingerprintTileState extends State<_FingerprintTile> {
   }
 }
 
+/// The part of a screen that follows the app state, and only that part.
+///
+/// [AppStateScope] is an `InheritedNotifier`, so reading it subscribes: a call
+/// in a screen's own `build` rebuilds that screen's whole subtree on every
+/// `notifyListeners()`. This screen has 875 widgets on it and four small
+/// controls that actually follow the state, so it wrapped each of those four
+/// rather than reading at the root — 13 ms a notification became 0.4 ms, on a
+/// screen a rider may well have open while the audio engine is running and
+/// notifying twice a second.
+///
+/// Not a general-purpose helper to reach for everywhere. Where the state is
+/// read once for a value that cannot change, [AppStateScope.read] is cheaper
+/// still and says so; this is for values that genuinely move.
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader(this.text);
   final String text;

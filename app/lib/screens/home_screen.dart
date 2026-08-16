@@ -49,7 +49,8 @@ class HomeScreen extends StatelessWidget {
           child: Tooltip(
             message: l.openWebsite,
             child: InkWell(
-              onTap: () => openSite(context, SiteLinks.home(siteLanguage(context))),
+              onTap: () =>
+                  openSite(context, SiteLinks.home(siteLanguage(context))),
               // A bare `Wordmark` gives the reader nothing to announce, so the
               // link needs its own label and role.
               child: Semantics(
@@ -140,7 +141,10 @@ class HomeScreen extends StatelessWidget {
                   }
                 case 'website':
                   if (!context.mounted) return;
-                  await openSite(context, SiteLinks.home(siteLanguage(context)));
+                  await openSite(
+                    context,
+                    SiteLinks.home(siteLanguage(context)),
+                  );
                 case 'settings':
                   if (!context.mounted) return;
                   await Navigator.push(
@@ -229,7 +233,10 @@ class HomeScreen extends StatelessWidget {
                     constraints: BoxConstraints(
                       maxHeight: MediaQuery.of(context).size.height * 0.7,
                     ),
-                    child: DiagnosticsPanel(onClose: state.toggleDiagnostics),
+                    // **`const`.** See `DiagnosticsPanel._close`: passing
+                    // anything here rebuilds the whole panel every time
+                    // this screen rebuilds, which is twice a second.
+                    child: const DiagnosticsPanel(),
                   ),
                 ),
               ),
@@ -396,7 +403,11 @@ class _TalkPanel extends StatelessWidget {
       child: !state.audioActive
           ? Column(
               mainAxisSize: MainAxisSize.min,
-              children: [const _MicIdleNotice(), const SizedBox(height: 8), status],
+              children: [
+                const _MicIdleNotice(),
+                const SizedBox(height: 8),
+                status,
+              ],
             )
           : short
           ? _SideBySide(state: state, status: status)

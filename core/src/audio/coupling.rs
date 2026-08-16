@@ -18,6 +18,27 @@
 //! are inches apart: play something and a large fraction of it comes back. If
 //! it does not, something removed it.
 //!
+//! # What this is not calibrated against
+//!
+//! Between the reference and the microphone sit the output volume, the
+//! speaker, the air, the microphone and the input gain. Only the middle of
+//! that is the echo path. The input gain is a number the chain knows and takes
+//! back out; **the output volume is not**, so the absolute figure moves with
+//! the device's volume setting and is not comparable between phones.
+//!
+//! What it is good for is comparing one configuration against another on the
+//! same phone at the same volume — which is exactly the question it was built
+//! for: whether asking Android for the telephony capture preset switches on a
+//! canceller underneath ours. Read it, change the setting, read it again.
+//!
+//! # Near-end speech is excluded rather than tolerated
+//!
+//! The minimum is chosen to latch onto whichever block holds the most
+//! microphone signal, and during a call that is the rider talking rather than
+//! the echo — so blocks the chain called speech are dropped. It costs nothing:
+//! there is always more far-end audio than near-end speech to measure against,
+//! and a block spent talking was never going to be a measurement of the room.
+//!
 //! # Why a minimum, and which way it is wrong
 //!
 //! The ratio is only the echo path when the near end is silent. Somebody
@@ -56,15 +77,15 @@ pub struct Coupling {
     /// Echo return loss in dB: how much quieter the microphone is than the
     /// signal that was played. Positive is loss, so larger means less echo.
     ///
-    /// **Around 0 to 20 dB is a phone.** The speaker and the microphone are
-    /// inches apart and the case couples them mechanically as well as through
-    /// the air. A helmet with the phone in a pocket is more.
+    /// **A change of 20 dB or more between two settings is the signal.** The
+    /// absolute value is not calibrated — see the module comment — so a low
+    /// reading may only mean the output volume is low, and a phone at half
+    /// volume reads 6 dB more loss than the same phone at full.
     ///
-    /// **Beyond about 40 dB nothing acoustic explains it.** Either the platform
-    /// is cancelling underneath us or the reference is not the signal that
-    /// actually reached the speaker — and the second is worth ruling out
-    /// before believing the first, because a muted output produces exactly the
-    /// same reading.
+    /// A reading that *moves sharply* when nothing physical moved is the thing
+    /// worth acting on: same phone, same volume, same distance, and 20 or
+    /// 30 dB more loss after a setting changed means something in the platform
+    /// started cancelling.
     pub erl_db: f32,
 
     /// How many blocks the answer rests on.
@@ -104,7 +125,32 @@ impl EchoCoupling {
     ///
     /// Both taken **before** the canceller, which is the whole point: after it,
     /// the number measures our own work rather than the room's.
-    pub fn push(&mut self, mic: &[f32], reference: &[f32]) {
+    ///
+    /// `input_gain_db` is whatever was applied to `mic` on the way in — the
+    /// rider's slider plus the clip guard's trim — and is taken back out here.
+    /// **Leaving it in was the first version and it read −13 dB on a phone**,
+    /// because a rider running +30 dB of input gain measures their own slider
+    /// and calls it a room. It is a known number, so there is no reason to
+    /// carry it.
+    ///
+    /// `near_end_speaking` is the chain's own verdict on the *previous* block —
+    /// this one has not been judged yet — and blocks where it is true are
+    /// dropped outright. **Without that this reads mostly the near end during a
+    /// call**: the minimum is chosen to latch onto whichever block has the most
+    /// microphone in it, and on a call that is the rider talking, not the echo.
+    /// Measured on a phone it read −25 dB mid-conversation and −13 dB with only
+    /// a test tone playing, which is a 12 dB difference made entirely of
+    /// somebody's voice.
+    pub fn push(
+        &mut self,
+        mic: &[f32],
+        reference: &[f32],
+        input_gain_db: f32,
+        near_end_speaking: bool,
+    ) {
+        if near_end_speaking {
+            return;
+        }
         let ref_db = to_dbfs(rms(reference));
         if !ref_db.is_finite() || ref_db < REFERENCE_FLOOR_DB {
             return;
@@ -113,8 +159,9 @@ impl EchoCoupling {
         if !mic_db.is_finite() {
             return;
         }
-        // Loss, so the sign reads the way the name does.
-        self.ratios[self.next] = ref_db - mic_db;
+        // Loss, so the sign reads the way the name does, with the gain the
+        // chain itself added taken back off the microphone.
+        self.ratios[self.next] = ref_db - (mic_db - input_gain_db);
         self.next = (self.next + 1) % WINDOW_BLOCKS;
         self.filled = (self.filled + 1).min(WINDOW_BLOCKS);
     }
@@ -165,7 +212,7 @@ mod tests {
         let reference = tone(480, 0.5);
         let mic = tone(480, 0.25);
         for _ in 0..10 {
-            c.push(&mic, &reference);
+            c.push(&mic, &reference, 0.0, false);
         }
         let got = c.get().expect("ten loud blocks is a measurement");
         assert!(
@@ -186,7 +233,7 @@ mod tests {
         let mut c = EchoCoupling::new();
         let quiet = vec![0.0f32; 480];
         for _ in 0..100 {
-            c.push(&quiet, &quiet);
+            c.push(&quiet, &quiet, 0.0, false);
         }
         assert_eq!(c.get(), None);
     }
@@ -208,11 +255,11 @@ mod tests {
         let mut clean = EchoCoupling::new();
         let mut noisy = EchoCoupling::new();
         for i in 0..40 {
-            clean.push(&echo_only, &reference);
+            clean.push(&echo_only, &reference, 0.0, false);
             if i % 4 == 0 {
-                noisy.push(&echo_only, &reference);
+                noisy.push(&echo_only, &reference, 0.0, false);
             } else {
-                noisy.push(&with_voice, &reference);
+                noisy.push(&with_voice, &reference, 0.0, false);
             }
         }
         let clean = clean.get().unwrap().erl_db;
@@ -231,9 +278,60 @@ mod tests {
         // A thousandth of the amplitude: 60 dB, which no phone's case gives.
         let mic = tone(480, 0.0005);
         for _ in 0..10 {
-            c.push(&mic, &reference);
+            c.push(&mic, &reference, 0.0, false);
         }
         assert!(c.get().unwrap().erl_db > 40.0);
+    }
+
+    /// Blocks the chain called speech are not measurements of a room.
+    ///
+    /// **The failure this closes was found on a phone, not in a test.** The
+    /// figure read −13 dB with a test tone playing and −25 mid-conversation:
+    /// the extra 12 dB was the rider's own voice, because the minimum is chosen
+    /// to latch onto whichever block holds the most microphone signal and
+    /// during a call that is them talking.
+    #[test]
+    fn the_near_end_talking_is_not_a_measurement() {
+        let reference = tone(480, 0.5);
+        let echo_only = tone(480, 0.25);
+        let with_voice: Vec<f32> = echo_only.iter().map(|s| s * 8.0).collect();
+
+        let mut c = EchoCoupling::new();
+        for i in 0..40 {
+            if i % 4 == 0 {
+                c.push(&echo_only, &reference, 0.0, false);
+            } else {
+                // Loud near-end speech, correctly labelled. Dropped.
+                c.push(&with_voice, &reference, 0.0, true);
+            }
+        }
+        let got = c.get().unwrap();
+        assert!(
+            (got.erl_db - 6.0).abs() < 0.5,
+            "only the quiet blocks should count, got {}",
+            got.erl_db
+        );
+        assert_eq!(got.blocks, 10, "the talking blocks must not be counted");
+    }
+
+    /// The gain the chain added is not the room's doing.
+    ///
+    /// A rider on +30 dB of input gain measured their own slider and called it
+    /// an echo path: the figure read −13 dB on a phone whose acoustic path is
+    /// around +17.
+    #[test]
+    fn the_input_gain_is_taken_back_out() {
+        let reference = tone(480, 0.5);
+        // The microphone as the chain sees it: the echo, times 30 dB of gain.
+        let amplified = tone(480, 0.25 * 31.62);
+        let mut c = EchoCoupling::new();
+        for _ in 0..10 {
+            c.push(&amplified, &reference, 30.0, false);
+        }
+        assert!(
+            (c.get().unwrap().erl_db - 6.0).abs() < 0.5,
+            "30 dB of slider must not read as 30 dB less room"
+        );
     }
 
     /// A route change throws the old path away.
@@ -242,7 +340,7 @@ mod tests {
         let mut c = EchoCoupling::new();
         let reference = tone(480, 0.5);
         for _ in 0..10 {
-            c.push(&tone(480, 0.25), &reference);
+            c.push(&tone(480, 0.25), &reference, 0.0, false);
         }
         c.reset();
         assert_eq!(c.get(), None);

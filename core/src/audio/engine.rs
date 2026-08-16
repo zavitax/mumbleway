@@ -2942,6 +2942,9 @@ where
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
     let mut coupling = super::coupling::EchoCoupling::new();
+    // Last block's verdict, for the echo measurement above: this block has not
+    // been judged when that measurement is taken.
+    let mut was_speaking = false;
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
     let mut sequence: u64 = 0;
     let mut was_transmitting = false;
@@ -3174,7 +3177,18 @@ where
             // framework. A phone's speaker and microphone are inches apart, so
             // an implausibly quiet return is the evidence. See
             // `super::coupling`.
-            coupling.push(&block, &echo_ref);
+            // The gain this chain put on the microphone is handed over so it
+            // can be taken back off: a rider on +30 dB of input gain would
+            // otherwise be measuring their own slider and calling it a room.
+            // The previous block's verdict, because this one has not been
+            // judged yet — the analysis happens further down. One block of lag
+            // on a decision that lasts a syllable.
+            coupling.push(
+                &block,
+                &echo_ref,
+                user_gain_db + clip_guard.trim_db(),
+                was_speaking,
+            );
 
             // Picked up here rather than at construction so the switch takes
             // effect on the next block instead of the next restart.
@@ -3582,6 +3596,7 @@ where
             // the dots are stale because the analyser happened to be disarmed.
             let aec_align = processor.aec_alignment();
             let restore_cost = processor.restore_cost_ms();
+            was_speaking = analysis.speaking;
             shared.publish_chain_status(ChainStatus {
                 warming_up: analysis.warming_up,
                 vad_says_speech: analysis.vad_says_speech,

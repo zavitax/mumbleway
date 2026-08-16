@@ -18,6 +18,86 @@ import 'public_servers_screen.dart';
 /// One screen for both because the fields are identical and the difference is
 /// entirely in what happens on save. Two screens would be two places to keep a
 /// validation rule in step.
+/// A button that moves its icon above the label when the two will not fit
+/// beside each other.
+///
+/// **The icon keeps its job and the label gets the width.** Beside the text a
+/// glyph and its gap cost about a third of what one of these buttons has on a
+/// narrow phone, which was enough to break «Публичные» in half — a word split
+/// down the middle reads as a rendering fault rather than as a long label.
+/// Above the text it costs a line of height, which the row has to give: it is
+/// already sized to its tallest member, and height is the one dimension not in
+/// short supply here.
+///
+/// So the glyph sits beside the label if and only if what remains beside it is
+/// at least as wide as the label's longest single word, which is exactly the
+/// condition for never having to break inside one. Otherwise it goes above and
+/// the label gets the whole width.
+///
+/// Measured against the real style rather than assumed: the same two words are
+/// 84.6 px in one language and 126.9 in the other, and a rule written for
+/// either would be wrong for the rest. It measures the longest *word*, not the
+/// whole label — wrapping between words is fine and expected on a narrow
+/// phone, so a rule keyed on the label fitting whole would move the glyph on
+/// screens where it was doing no harm.
+class _LabelFirstButton extends StatelessWidget {
+  const _LabelFirstButton({
+    required this.label,
+    required this.icon,
+    required this.width,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+
+  /// What this button will be laid out at. Passed in rather than measured,
+  /// because the decision has to be made while building the child and a widget
+  /// cannot see its own size until after that.
+  final double width;
+
+  final VoidCallback onPressed;
+
+  /// Width of the glyph and the gap `OutlinedButton.icon` puts after it.
+  static const double _glyph = 18 + 8;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelLarge;
+    final scale = MediaQuery.textScalerOf(context);
+    var longestWord = 0.0;
+    for (final word in label.split(RegExp(r'\s+'))) {
+      final painter = TextPainter(
+        text: TextSpan(text: word, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: scale,
+      )..layout();
+      longestWord = longestWord > painter.width ? longestWord : painter.width;
+    }
+
+    // The inset below, both sides, plus the glyph if it is drawn.
+    const inset = 6.0 * 2;
+    final room = width - inset;
+    final text = Text(label, textAlign: TextAlign.center);
+    if (room - _glyph >= longestWord) {
+      return OutlinedButton.icon(
+        style: _roomForWords,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: text,
+      );
+    }
+    return OutlinedButton(
+      style: _roomForWords,
+      onPressed: onPressed,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [Icon(icon, size: 18), const SizedBox(height: 4), text],
+      ),
+    );
+  }
+}
+
 /// What a button looks like when the label needs the room more than the frame
 /// does.
 ///
@@ -363,27 +443,49 @@ class _Shortcuts extends StatelessWidget {
             // than either language can use, in any font.
             LayoutBuilder(
               builder: (context, constraints) {
-                final browse = OutlinedButton(
-                  style: _roomForWords,
+                final qr = QrIntakeButton(onInvitation: onInvitation);
+                // **Scaled with the text, because that is what it is about.**
+                // The threshold asks whether two labels and a glyph fit
+                // across, and a rider on a large accessibility setting has
+                // labels half again as wide on the same screen. Left in fixed
+                // device pixels it put a 420 dp phone into one row at 1.3x and
+                // broke «Публичные» there — passing at 320 and 360, which
+                // stack anyway, and at 900, which has room to spare.
+                final stacked =
+                    constraints.maxWidth <
+                    _oneRowNeeds * MediaQuery.textScalerOf(context).scale(1);
+
+                // What each will actually be laid out at, so the buttons can
+                // decide about their own icons. Stacked, the long one has the
+                // width to itself and the short one shares with the glyph;
+                // side by side they split three to two after the gaps.
+                const gap = 10.0;
+                const glyphButton = 48.0;
+                final shared = constraints.maxWidth - gap * 2 - glyphButton;
+                final browse = _LabelFirstButton(
+                  label: l.browsePublic,
+                  icon: Icons.public,
+                  width: stacked ? constraints.maxWidth : shared * 3 / 5,
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => const PublicServersScreen(),
                     ),
                   ),
-                  child: Text(l.browsePublic, textAlign: TextAlign.center),
                 );
-                final import = OutlinedButton(
-                  style: _roomForWords,
+                final import = _LabelFirstButton(
+                  label: l.importLabel,
+                  icon: Icons.download,
+                  width: stacked
+                      ? constraints.maxWidth - gap - glyphButton
+                      : shared * 2 / 5,
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const ImportScreen()),
                   ),
-                  child: Text(l.importLabel, textAlign: TextAlign.center),
                 );
-                final qr = QrIntakeButton(onInvitation: onInvitation);
 
-                if (constraints.maxWidth < _oneRowNeeds) {
+                if (stacked) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [

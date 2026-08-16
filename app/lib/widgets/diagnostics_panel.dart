@@ -167,9 +167,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
           _perCore.add(_History('%'));
         }
         for (var i = 0; i < _perCore.length; i++) {
-          _perCore[i].add(
-            i < now.cpuPerCore.length ? now.cpuPerCore[i] : 0.0,
-          );
+          _perCore[i].add(i < now.cpuPerCore.length ? now.cpuPerCore[i] : 0.0);
         }
         _cpuTotal.add(
           now.cpuPerCore.reduce((a, b) => a + b) / now.cpuPerCore.length,
@@ -188,7 +186,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       // `getInheritedWidgetOfExactType` rather than `AppStateScope.of`: this
       // runs from a timer, and the second one would register a dependency
       // outside `build`.
-      final open = context
+      final open =
+          context
               .getInheritedWidgetOfExactType<AppStateScope>()
               ?.notifier
               ?.diagnosticsOpen ??
@@ -388,13 +387,13 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 '${_chain?.inputPeakDb.toStringAsFixed(1) ?? "-"} dBFS',
                                 bad: (_chain?.inputPeakDb ?? -120) > -0.5,
                               ),
-                              if ((_chain?.inputClipped ?? BigInt.zero) >
-                                  BigInt.zero)
-                                _Row(
-                                  l.diagInputClipped,
-                                  '${_chain!.inputClipped} samples',
-                                  bad: true,
-                                ),
+                              _Row(
+                                l.diagInputClipped,
+                                '${_chain?.inputClipped ?? 0} samples',
+                                bad:
+                                    (_chain?.inputClipped ?? BigInt.zero) >
+                                    BigInt.zero,
+                              ),
                               // **The one place the slider and the gain in
                               // force can be reconciled.** The guard backs the
                               // rider's boost off when it clips and does not
@@ -402,29 +401,21 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               // rider sees +18 on screen, hears something
                               // quieter, and has nothing connecting the two.
                               //
-                              // Shown only while it is holding something back.
-                              // A row that reads `0.0 dB` whenever the input
-                              // behaves is a row nobody reads, and this one has
-                              // to be noticed on the one occasion it matters.
-                              if ((_chain?.inputTrimDb ?? 0) < -0.05)
-                                _Row(
-                                  l.diagInputTrim,
-                                  '${_chain!.inputTrimDb.toStringAsFixed(1)} dB',
-                                ),
-                              // Only while it is actually holding. A row that
-                              // reads "no" whenever nothing is happening is a
-                              // row nobody reads, and this one has to be
-                              // noticed on the occasion it matters.
-                              //
+                              _Row(
+                                l.diagInputTrim,
+                                '${(_chain?.inputTrimDb ?? 0).toStringAsFixed(1)} dB',
+                                bad: (_chain?.inputTrimDb ?? 0) < -0.05,
+                              ),
                               // **A held floor and a low floor are the same
                               // number**, and only one of them means the chain
                               // is protecting a phrase, so the state has to be
                               // said rather than inferred from the row above.
-                              if (_chain?.floorHeld ?? false)
-                                _Row(
-                                  l.diagFloorHeld,
-                                  '${(_chain!.floorHeldMs / 1000).toStringAsFixed(1)} s',
-                                ),
+                              _Row(
+                                l.diagFloorHeld,
+                                (_chain?.floorHeld ?? false)
+                                    ? '${(_chain!.floorHeldMs / 1000).toStringAsFixed(1)} s'
+                                    : _idle,
+                              ),
                               // Zero is the expected value, so this appears
                               // only when it is not zero — and then it is bad
                               // news worth the space. The freeze can be
@@ -432,16 +423,13 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               // gate opens relative to the frozen floor, and
                               // that pair can latch; a count here is the
                               // watchdog reporting that it had to break one.
-                              // The restoring bell, and only while it is
-                              // lifting something. It runs on speech and
-                              // nothing else, so a row that was always present
-                              // would read as idle for most of a ride.
-                              if ((_chain?.restoreGainDb ?? 0) >= 0.05)
-                                _Row(
-                                  l.diagRestore,
-                                  '+${_chain!.restoreGainDb.toStringAsFixed(1)}'
-                                  ' dB @ ${_chain!.restoreCentreHz.round()} Hz',
-                                ),
+                              _Row(
+                                l.diagRestore,
+                                (_chain?.restoreGainDb ?? 0) >= 0.05
+                                    ? '+${_chain!.restoreGainDb.toStringAsFixed(1)}'
+                                          ' dB @ ${_chain!.restoreCentreHz.round()} Hz'
+                                    : _idle,
+                              ),
                               // What the two new steps cost per block, always,
                               // because a cost that only appears while the
                               // feature is working cannot be compared with the
@@ -449,37 +437,39 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               // separately from the stage timings below:
                               // those eight tile a block exactly and these run
                               // inside one of them.
-                              if ((_chain?.restorePeakMs ?? 0) > 0)
-                                _Row(
-                                  l.diagRestoreCost,
-                                  '${_chain!.restorePeakMs.toStringAsFixed(2)}'
-                                  ' + ${_chain!.restoreFilterMs.toStringAsFixed(2)} ms',
-                                ),
-                              // **Only once it rests on something.** The
+                              _Row(
+                                l.diagRestoreCost,
+                                (_chain?.restorePeakMs ?? 0) > 0
+                                    ? '${_chain!.restorePeakMs.toStringAsFixed(2)}'
+                                          ' + ${_chain!.restoreFilterMs.toStringAsFixed(2)} ms'
+                                    : _idle,
+                              ),
+                              // **A dash until it rests on something.** The
                               // window fills only while the far end is
                               // playing, so on a quiet call this is a
                               // measurement in progress for minutes — and a
                               // confident number from four blocks is the
                               // failure mode this row would otherwise have.
                               // Half a second is the bar.
-                              if (_chain?.erlDb != null &&
-                                  (_chain?.erlBlocks ?? 0) >= 50)
-                                _Row(
-                                  l.diagEchoReturn,
-                                  '${_chain!.erlDb!.toStringAsFixed(0)} dB',
-                                  // Beyond about 40 dB nothing acoustic
-                                  // explains it on a phone, so something
-                                  // upstream is cancelling — which is worth
-                                  // noticing, since this chain then has two
-                                  // cancellers fighting over the same echo.
-                                  bad: _chain!.erlDb! > 40,
-                                ),
-                              if ((_chain?.floorWatchdogTrips ?? 0) > 0)
-                                _Row(
-                                  l.diagFloorWatchdog,
-                                  '${_chain!.floorWatchdogTrips}',
-                                  bad: true,
-                                ),
+                              _Row(
+                                l.diagEchoReturn,
+                                (_chain?.erlDb != null &&
+                                        (_chain?.erlBlocks ?? 0) >= 50)
+                                    ? '${_chain!.erlDb!.toStringAsFixed(0)} dB'
+                                    : _idle,
+                                // Beyond about 40 dB nothing acoustic explains
+                                // it on a phone, so something upstream is
+                                // cancelling — worth noticing, since the chain
+                                // then has two cancellers fighting one echo.
+                                bad:
+                                    (_chain?.erlBlocks ?? 0) >= 50 &&
+                                    (_chain?.erlDb ?? 0) > 40,
+                              ),
+                              _Row(
+                                l.diagFloorWatchdog,
+                                '${_chain?.floorWatchdogTrips ?? 0}',
+                                bad: (_chain?.floorWatchdogTrips ?? 0) > 0,
+                              ),
                               // All three from the chain, and all three after
                               // suppression, because they are only meaningful
                               // against each other: the level the gate sees,
@@ -522,7 +512,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   _chain!.aecEnabled
                                       ? '${_chain!.aecErleDb.toStringAsFixed(1)} dB'
                                       : l.diagEchoOff,
-                                  bad: _chain!.aecEnabled &&
+                                  bad:
+                                      _chain!.aecEnabled &&
                                       _chain!.aecErleDb < 0,
                                 ),
                                 // Where the echo is, and whether that is a
@@ -535,7 +526,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   _chain!.aecConfidence < 0.5
                                       ? l.diagEchoNotFound
                                       : '${_chain!.aecLagMs.toStringAsFixed(0)} ms'
-                                          ' ±${_chain!.aecWindowMs.toStringAsFixed(0)}',
+                                            ' ±${_chain!.aecWindowMs.toStringAsFixed(0)}',
                                 ),
                                 // Which canceller produced everything above it.
                                 //
@@ -555,22 +546,25 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 // printing `1.00` would dress a yes up as a
                                 // measurement. The old filter reports a real
                                 // correlation and the fraction is worth seeing.
-                                if (!_chain!.aec3)
-                                  _Row(
-                                    l.diagEchoConfidence,
-                                    _chain!.aecConfidence.toStringAsFixed(2),
-                                  ),
-                                // Only when the ladder has taken it. The row
-                                // is the answer to "why has the echo come
-                                // back on this phone and not that one", and
-                                // it appears exactly when that question is
-                                // worth asking.
-                                if (_chain!.aecShortened)
-                                  _Row(
-                                    l.diagEchoShortened,
-                                    '${_chain!.aecWindowMs.toStringAsFixed(0)} ms',
-                                    bad: true,
-                                  ),
+                                _Row(
+                                  l.diagEchoConfidence,
+                                  _chain!.aec3
+                                      ? _idle
+                                      : _chain!.aecConfidence.toStringAsFixed(
+                                          2,
+                                        ),
+                                ),
+                                // The answer to "why has the echo come back on
+                                // this phone and not that one", which is worth
+                                // asking exactly when the ladder has taken the
+                                // filter's length.
+                                _Row(
+                                  l.diagEchoShortened,
+                                  _chain!.aecShortened
+                                      ? '${_chain!.aecWindowMs.toStringAsFixed(0)} ms'
+                                      : _idle,
+                                  bad: _chain!.aecShortened,
+                                ),
                                 // Only when there is something to say. A
                                 // spread wider than the filter's window means
                                 // a second echo it is not reaching — the
@@ -588,14 +582,17 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 // measurement of absence, and the guard below
                                 // would otherwise be comparing one against a
                                 // window it does not describe.
-                                if (!_chain!.aec3 &&
-                                    _chain!.aecSpreadMs >
-                                        _chain!.aecWindowMs)
-                                  _Row(
-                                    l.diagEchoSecondPath,
-                                    '${_chain!.aecSpreadMs.toStringAsFixed(0)} ms',
-                                    bad: true,
-                                  ),
+                                _Row(
+                                  l.diagEchoSecondPath,
+                                  (!_chain!.aec3 &&
+                                          _chain!.aecSpreadMs >
+                                              _chain!.aecWindowMs)
+                                      ? '${_chain!.aecSpreadMs.toStringAsFixed(0)} ms'
+                                      : _idle,
+                                  bad:
+                                      !_chain!.aec3 &&
+                                      _chain!.aecSpreadMs > _chain!.aecWindowMs,
+                                ),
                               ],
                             ),
                         ],
@@ -1381,6 +1378,21 @@ class _Group extends StatelessWidget {
     );
   }
 }
+
+/// What a row shows when there is nothing to report.
+///
+/// **Every row on this panel is always present, and the value says whether it
+/// has anything to say.** Making rows themselves conditional seemed tidier —
+/// a row reading `0.0 dB` on a chain behaving perfectly is a row nobody reads
+/// — and it was wrong in a way only a rider watching the panel would find:
+/// several of these track things that change every phrase, so rows appeared
+/// and vanished under somebody trying to read their neighbours, and the list
+/// moved while they were looking at it.
+///
+/// A dash rather than a zero, because they are different claims. Zero clipped
+/// samples is a measurement; a dash means the question has not been answered
+/// yet, which is what "no speech since the panel opened" actually is.
+const String _idle = '—';
 
 class _Row extends StatelessWidget {
   const _Row(this.label, this.value, {this.bad = false});

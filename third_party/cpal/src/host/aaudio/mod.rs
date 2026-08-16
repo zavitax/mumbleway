@@ -296,6 +296,18 @@ fn device_supported_configs(device: &AudioDeviceInfo) -> VecIntoIter<SupportedSt
 pub static ANDROID_INPUT_PRESET: std::sync::atomic::AtomicI32 =
     std::sync::atomic::AtomicI32::new(0);
 
+/// What the last opened capture stream actually got, read back from AAudio.
+///
+/// **Asking for a preset and getting it are different things**, and without
+/// this they are indistinguishable: a request that silently did nothing looks
+/// exactly like a request that was honoured and changed nothing audible. This
+/// is `AAudioStream_getInputPreset` on the stream that is running, so it
+/// answers which of those happened.
+///
+/// Zero until an input stream has been opened.
+pub static ANDROID_INPUT_PRESET_IN_FORCE: std::sync::atomic::AtomicI32 =
+    std::sync::atomic::AtomicI32::new(0);
+
 fn configure_for_device(
     builder: ndk::audio::AudioStreamBuilder,
     device: &Device,
@@ -411,6 +423,13 @@ where
             emit_error(&error_callback_for_stream, Error::from(error));
         }))
         .open_stream()?;
+
+    // Part of the vendored patch. See `ANDROID_INPUT_PRESET_IN_FORCE`.
+    #[cfg(feature = "android-input-preset")]
+    ANDROID_INPUT_PRESET_IN_FORCE.store(
+        i32::from(stream.input_preset()),
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     // SAFETY: Stream implements Send + Sync (see unsafe impl below). Arc<Mutex<AudioStream>>
     // is safe because the Mutex provides exclusive access and AudioStream's thread safety

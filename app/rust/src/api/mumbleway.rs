@@ -1554,18 +1554,7 @@ pub struct UiChainStatus {
     /// is the last of them.
     pub participant_meters_disabled: bool,
     pub analyser_disabled: bool,
-    pub classifier_top_disabled: bool,
     pub live_dots_disabled: bool,
-    /// The ladder has stopped running the classifier, so `Auto` can no longer
-    /// change its mind and the profile is pinned wherever it stood.
-    ///
-    /// **Distinct from `classifier_top_disabled`**, which only stops drawing
-    /// the three rows while the model keeps running for `Auto` to read. This
-    /// one stops the inference, and the cost is not cosmetic: a rider who set
-    /// `Auto` and rode from a car park onto a motorway will stay on the car
-    /// park's profile. The panel has to say so, because every other number on
-    /// it looks exactly as it did before.
-    pub classifier_disabled: bool,
     /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
     /// 3 bypassed.
     ///
@@ -1868,20 +1857,6 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
             value: 0.0,
         },
         UiStage {
-            id: "background".into(),
-            // Grey when nothing is classifying, which is a real and common
-            // state — desktop, the setting off, or a profile chosen by hand —
-            // and must not read as "the background is clear". Amber while the
-            // hold runs, because that is when it is affecting something.
-            state: match (shared.background_noisy(), c.music_hold) {
-                (None, _) => StageState::Off,
-                (_, true) => StageState::Warn,
-                (Some(true), _) => StageState::Warn,
-                (Some(false), _) => StageState::Good,
-            },
-            value: 0.0,
-        },
-        UiStage {
             id: "transmit".into(),
             state: if c.muted {
                 StageState::Off
@@ -1938,8 +1913,6 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         analyser_decay_disabled: rung_at(c.relief).skip_analyser_decay(),
         participant_meters_disabled: rung_at(c.relief).skip_participant_meters(),
         analyser_disabled: rung_at(c.relief).skip_analyser(),
-        classifier_top_disabled: rung_at(c.relief).skip_classifier_top(),
-        classifier_disabled: rung_at(c.relief).skip_classifier(),
         live_dots_disabled: rung_at(c.relief).skip_live_dots(),
         enhancer_effort: c.enhancer_effort as u32,
         enhancer_simple_model: c.enhancer_simple_model,
@@ -2005,52 +1978,6 @@ pub fn audio_waveform() -> anyhow::Result<Option<UiWaveform>> {
         samples: frame.samples.to_vec(),
         seq: frame.seq,
     }))
-}
-
-/// Tells the chain what the background classifier concluded.
-///
-/// A supporting vote for `Helmet`, consulted only when the rider has chosen
-/// `Auto`, and never anywhere near the transmit decision. Being wrong about a
-/// profile costs some naturalness; being wrong at the gate cuts a rider off.
-#[frb(sync)]
-pub fn set_background_noisy(noisy: bool) -> anyhow::Result<()> {
-    app()?.shared.set_background_noisy(noisy);
-    Ok(())
-}
-
-/// Forgets the classifier's last word, when it stops running.
-///
-/// Not the same as reporting a clear background, and the difference is the
-/// whole reason this exists: a verdict that stopped being updated would pin
-/// `Helmet` for the rest of the session.
-#[frb(sync)]
-pub fn clear_background_noisy() -> anyhow::Result<()> {
-    app()?.shared.clear_background_noisy();
-    Ok(())
-}
-
-/// Tells the chain whether the classifier can hear a voice right now.
-///
-/// **This one does reach the gate**, indirectly and in one direction only: it
-/// decides whether the noise floor may keep climbing, and the gate opens
-/// relative to that floor. It can hold the floor down but never push it up, so
-/// the worst it can do is leave the gate open on something that is not speech.
-/// The failure it exists to prevent is the opposite one, and worse: a floor
-/// that climbed onto a held phrase and cut the middle out of it.
-#[frb(sync)]
-pub fn set_classifier_voice(voice: bool) -> anyhow::Result<()> {
-    app()?.shared.set_classifier_voice(voice);
-    Ok(())
-}
-
-/// Forgets it, when the classifier stops running.
-///
-/// The chain then falls back to its own per-block opinion, which is the right
-/// behaviour and not the same as being told there is no voice.
-#[frb(sync)]
-pub fn clear_classifier_voice() -> anyhow::Result<()> {
-    app()?.shared.clear_classifier_voice();
-    Ok(())
 }
 
 /// The profile index the chain publishes, back into the FFI enum.

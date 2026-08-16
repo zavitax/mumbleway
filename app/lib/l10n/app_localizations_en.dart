@@ -456,7 +456,7 @@ class LEn extends L {
 
   @override
   String get voiceCommunicationBody =>
-      'Asks Android for the telephony microphone, so other apps cannot record at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On most phones this also switches on the phone\'s own echo cancelling and noise suppression, which MumbleWay already does itself, so try it and listen.';
+      'Hands the microphone to the phone\'s own call processing. On Android this also stops other apps recording at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On both, the phone may then apply its own echo cancelling, noise suppression and volume levelling, which MumbleWay already does itself. Try it and listen: on one iPhone it made speech loud and harsh.';
 
   @override
   String get reverb => 'Room tone';
@@ -1055,9 +1055,6 @@ class LEn extends L {
   String get diagEnhancerRungOff => 'Off';
 
   @override
-  String get diagClassifierListening => 'Listening to the background…';
-
-  @override
   String get diagEnhancerReduced =>
       'This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.';
 
@@ -1447,9 +1444,6 @@ class LEn extends L {
   String get diagChosenProfile => 'Profile';
 
   @override
-  String get diagProfilePinned => '(pinned)';
-
-  @override
   String diagAutoSnr(int db) {
     return '($db dB over the room)';
   }
@@ -1465,15 +1459,6 @@ class LEn extends L {
 
   @override
   String get diagStageBackground => 'Background';
-
-  @override
-  String diagClassifierOnCpu(String ms) {
-    return 'No accelerator here, so background detection runs on the processor — $ms ms per check, once every two seconds.';
-  }
-
-  @override
-  String get diagClassifierUnavailable =>
-      'Background detection is not available on this platform, so the helmet profile is chosen from levels here.';
 
   @override
   String get diagSpectrum => 'Voice chain';

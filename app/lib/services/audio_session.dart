@@ -122,11 +122,16 @@ class AudioSessionBridge {
   /// is spoken. Activation is not instant and can be refused outright by a
   /// phone call holding a session that will not mix, and neither is worth
   /// discovering half-way through a sentence.
-  Future<AudioSessionState> activate() async {
+  Future<AudioSessionState> activate({bool voiceProcessing = false}) async {
     if (!isNeeded) return AudioSessionState.notNeeded;
     _ensureHandler();
     try {
-      final r = await _channel.invokeMapMethod<String, dynamic>('activate');
+      // Passed with the call because iOS can only choose a session mode while
+      // it is configuring one, and Android reads it when the capture stream is
+      // built. Neither can be told later and act on it now.
+      final r = await _channel.invokeMapMethod<String, dynamic>('activate', {
+        'voiceProcessing': voiceProcessing,
+      });
       return AudioSessionState(
         granted: true,
         inputChannels: r?['ok'] == true

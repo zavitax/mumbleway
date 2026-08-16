@@ -221,40 +221,6 @@ UiChainStatus audioChainStatus() =>
 UiWaveform? audioWaveform() =>
     RustLib.instance.api.crateApiMumblewayAudioWaveform();
 
-/// Tells the chain what the background classifier concluded.
-///
-/// A supporting vote for `Helmet`, consulted only when the rider has chosen
-/// `Auto`, and never anywhere near the transmit decision. Being wrong about a
-/// profile costs some naturalness; being wrong at the gate cuts a rider off.
-void setBackgroundNoisy({required bool noisy}) =>
-    RustLib.instance.api.crateApiMumblewaySetBackgroundNoisy(noisy: noisy);
-
-/// Forgets the classifier's last word, when it stops running.
-///
-/// Not the same as reporting a clear background, and the difference is the
-/// whole reason this exists: a verdict that stopped being updated would pin
-/// `Helmet` for the rest of the session.
-void clearBackgroundNoisy() =>
-    RustLib.instance.api.crateApiMumblewayClearBackgroundNoisy();
-
-/// Tells the chain whether the classifier can hear a voice right now.
-///
-/// **This one does reach the gate**, indirectly and in one direction only: it
-/// decides whether the noise floor may keep climbing, and the gate opens
-/// relative to that floor. It can hold the floor down but never push it up, so
-/// the worst it can do is leave the gate open on something that is not speech.
-/// The failure it exists to prevent is the opposite one, and worse: a floor
-/// that climbed onto a held phrase and cut the middle out of it.
-void setClassifierVoice({required bool voice}) =>
-    RustLib.instance.api.crateApiMumblewaySetClassifierVoice(voice: voice);
-
-/// Forgets it, when the classifier stops running.
-///
-/// The chain then falls back to its own per-block opinion, which is the right
-/// behaviour and not the same as being told there is no voice.
-void clearClassifierVoice() =>
-    RustLib.instance.api.crateApiMumblewayClearClassifierVoice();
-
 /// Starts recording the microphone and what the chain decided about it.
 ///
 /// **This writes the rider's microphone to storage.** It exists because every
@@ -1073,19 +1039,7 @@ class UiChainStatus {
   /// is the last of them.
   final bool participantMetersDisabled;
   final bool analyserDisabled;
-  final bool classifierTopDisabled;
   final bool liveDotsDisabled;
-
-  /// The ladder has stopped running the classifier, so `Auto` can no longer
-  /// change its mind and the profile is pinned wherever it stood.
-  ///
-  /// **Distinct from `classifier_top_disabled`**, which only stops drawing
-  /// the three rows while the model keeps running for `Auto` to read. This
-  /// one stops the inference, and the cost is not cosmetic: a rider who set
-  /// `Auto` and rode from a car park onto a motorway will stay on the car
-  /// park's profile. The panel has to say so, because every other number on
-  /// it looks exactly as it did before.
-  final bool classifierDisabled;
 
   /// How hard the speech enhancer is working: 0 full, 1 reduced, 2 ERB only,
   /// 3 bypassed.
@@ -1138,9 +1092,7 @@ class UiChainStatus {
     required this.analyserDecayDisabled,
     required this.participantMetersDisabled,
     required this.analyserDisabled,
-    required this.classifierTopDisabled,
     required this.liveDotsDisabled,
-    required this.classifierDisabled,
     required this.enhancerEffort,
   });
 
@@ -1187,9 +1139,7 @@ class UiChainStatus {
       analyserDecayDisabled.hashCode ^
       participantMetersDisabled.hashCode ^
       analyserDisabled.hashCode ^
-      classifierTopDisabled.hashCode ^
       liveDotsDisabled.hashCode ^
-      classifierDisabled.hashCode ^
       enhancerEffort.hashCode;
 
   @override
@@ -1238,9 +1188,7 @@ class UiChainStatus {
           analyserDecayDisabled == other.analyserDecayDisabled &&
           participantMetersDisabled == other.participantMetersDisabled &&
           analyserDisabled == other.analyserDisabled &&
-          classifierTopDisabled == other.classifierTopDisabled &&
           liveDotsDisabled == other.liveDotsDisabled &&
-          classifierDisabled == other.classifierDisabled &&
           enhancerEffort == other.enhancerEffort;
 }
 

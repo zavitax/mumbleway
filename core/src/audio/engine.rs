@@ -245,13 +245,6 @@ pub struct ChainStatus {
     /// ladder's `SimpleModel` rung, and a single-core device that takes it up
     /// front — see [`super::deepfilter::simple_model_wanted`].
     pub enhancer_simple_model: bool,
-    /// The background classifier is holding `Helmet` in force.
-    ///
-    /// Published so the panel can say *why* the profile is what it is. Helmet
-    /// arrived at by level and Helmet arrived at by the classifier look
-    /// identical from outside, and a rider trying to work out whether the
-    /// model is doing anything cannot tell them apart without this.
-    pub music_hold: bool,
 }
 
 impl Default for ChainStatus {
@@ -300,7 +293,6 @@ impl Default for ChainStatus {
             enhancer_effort: 0,
             enhancer_simple_model: false,
             relief: 0,
-            music_hold: false,
             transmit_mode: 0,
             dehiss_mode: 0,
             feedback_mode: 0,
@@ -777,23 +769,6 @@ pub struct AudioShared {
     /// thread without a lock.
     input_peak_bits: AtomicU32,
     input_clipped: AtomicU64,
-    /// The background classifier's last word, as a tri-state: 0 nothing has
-    /// said anything, 1 clear, 2 loud and structured.
-    ///
-    /// Three states rather than a bool because "nobody is classifying" and
-    /// "the classifier says it is quiet" must not be the same value. They lead
-    /// to opposite behaviour, and a bool would have made the desktop build,
-    /// where nothing ever classifies, permanently assert an all-clear.
-    background_noisy: AtomicU8,
-    /// Whether the background classifier can currently hear a voice, as the
-    /// same tri-state and for the same reason: 0 nothing has said anything,
-    /// 1 no voice, 2 speech or singing.
-    ///
-    /// Separate from [`Self::background_noisy`] because they answer different
-    /// questions of the same model. One asks whether the *background* wants a
-    /// heavier profile; this asks whether a voice is present at all, which is
-    /// what decides whether the noise floor may keep climbing.
-    classifier_voice: AtomicU8,
     /// Which microphone the platform says we are on. See [`record::Recorded`]
     /// for what the numbers mean; the core only carries it to the log.
     route: AtomicU8,
@@ -1116,8 +1091,6 @@ impl AudioShared {
             spectrum: Mutex::new(None),
             waveform_until: AtomicU64::new(0),
             waveform: Mutex::new(None),
-            background_noisy: AtomicU8::new(0),
-            classifier_voice: AtomicU8::new(0),
             route: AtomicU8::new(0),
             input_peak_bits: AtomicU32::new(0),
             input_clipped: AtomicU64::new(0),
@@ -1464,67 +1437,6 @@ impl AudioShared {
     pub fn reset_input_peak(&self) {
         self.input_peak_bits.store(0, Ordering::Relaxed);
         self.input_clipped.store(0, Ordering::Relaxed);
-    }
-
-    /// What the background classifier last concluded, and whether anything has
-    /// concluded anything at all.
-    ///
-    /// `None` until something sets it, which is not the same as "the background
-    /// is clear": on a desktop, or with the setting off, nothing ever will, and
-    /// a chain that read that absence as an all-clear would be acting on a
-    /// measurement nobody made.
-    pub fn background_noisy(&self) -> Option<bool> {
-        match self.background_noisy.load(Ordering::Relaxed) {
-            0 => None,
-            1 => Some(false),
-            _ => Some(true),
-        }
-    }
-
-    /// Sets it, from outside the audio thread.
-    pub fn set_background_noisy(&self, noisy: bool) {
-        self.background_noisy
-            .store(if noisy { 2 } else { 1 }, Ordering::Relaxed);
-    }
-
-    /// Forgets it, when the classifier stops running.
-    ///
-    /// Called when the setting is turned off or `Auto` is deselected, so the
-    /// chain goes back to deciding on its own rather than on a verdict that
-    /// has stopped being updated. A stale `true` would pin `Helmet` for the
-    /// rest of the session.
-    pub fn clear_background_noisy(&self) {
-        self.background_noisy.store(0, Ordering::Relaxed);
-    }
-
-    /// Whether the classifier currently hears a voice, or `None` if nothing is
-    /// classifying.
-    ///
-    /// **`None` is not `Some(false)`.** The classifier runs only under `Auto`
-    /// and only where the model exists, so absence is the common case, and a
-    /// chain that read it as "no voice" would let the noise floor climb onto
-    /// every phrase on every other profile — which is the fault this exists to
-    /// fix.
-    pub fn classifier_voice(&self) -> Option<bool> {
-        match self.classifier_voice.load(Ordering::Relaxed) {
-            0 => None,
-            1 => Some(false),
-            _ => Some(true),
-        }
-    }
-
-    /// Sets it, from outside the audio thread.
-    pub fn set_classifier_voice(&self, voice: bool) {
-        self.classifier_voice
-            .store(if voice { 2 } else { 1 }, Ordering::Relaxed);
-    }
-
-    /// Forgets it, when the classifier stops running.
-    ///
-    /// A stale `Some(true)` would freeze the floor for the rest of the session;
-    /// a stale `Some(false)` would let it climb with nothing watching.
-    pub fn clear_classifier_voice(&self) {
-        self.classifier_voice.store(0, Ordering::Relaxed);
     }
 
     /// Publishes a frame. Silently drops it if the reader holds the lock,
@@ -3197,19 +3109,6 @@ where
                 processor.set_profile(want_profile);
             }
 
-            // The classifier's verdict, likewise polled rather than pushed, so
-            // the audio thread never waits on the thread running a model.
-            // `None` — nobody is classifying — reads as "clear", which is the
-            // right default: it leaves `Auto` deciding exactly as it did
-            // before any of this existed.
-            processor.set_background_noisy(shared.background_noisy().unwrap_or(false));
-            // The other half of the same verdict, and **not** flattened with
-            // `unwrap_or`. Here `None` has to stay `None`: it means nothing is
-            // classifying, and the chain has its own fallback for that. Reading
-            // it as "no voice" would let the floor climb onto every phrase on
-            // every profile but `Auto`, which is the fault this is fixing.
-            processor.set_classifier_voice(shared.classifier_voice());
-
             let want_aec = shared.echo_cancellation_enabled();
             if want_aec != processor.echo_cancellation_enabled() {
                 processor.set_echo_cancellation(want_aec);
@@ -3642,7 +3541,6 @@ where
                 transmit_mode: mode as u8,
                 dehiss_mode: shared.dehiss_mode(),
                 feedback_mode: shared.feedback_mode() as u8,
-                music_hold: processor.music_hold_active(),
                 enhancer_on: enhancer.active(),
                 enhancer_gave_up: enhancer.gave_up(),
                 enhancer_worst_us: enhancer.timing().0,
@@ -4305,26 +4203,6 @@ mod tests {
             !shared.waveform_wanted(AudioShared::WAVEFORM_ARM_BLOCKS),
             "it did not lapse"
         );
-    }
-
-    #[test]
-    fn nothing_classifying_is_not_the_same_as_a_clear_background() {
-        // The distinction the tri-state exists for. On desktop, or with the
-        // setting off, nothing ever sets this — and a chain that read the
-        // absence as an all-clear would be acting on a measurement nobody
-        // made. It would also make the value unclearable, so turning the
-        // classifier off would leave its last verdict in force for ever.
-        let shared = AudioShared::new();
-        assert_eq!(shared.background_noisy(), None);
-
-        shared.set_background_noisy(false);
-        assert_eq!(shared.background_noisy(), Some(false));
-
-        shared.set_background_noisy(true);
-        assert_eq!(shared.background_noisy(), Some(true));
-
-        shared.clear_background_noisy();
-        assert_eq!(shared.background_noisy(), None, "a stale verdict survived");
     }
 
     #[test]

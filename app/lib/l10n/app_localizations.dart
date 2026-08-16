@@ -940,7 +940,7 @@ abstract class L {
   /// No description provided for @voiceCommunicationBody.
   ///
   /// In en, this message translates to:
-  /// **'Asks Android for the telephony microphone, so other apps cannot record at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On most phones this also switches on the phone\'s own echo cancelling and noise suppression, which MumbleWay already does itself, so try it and listen.'**
+  /// **'Hands the microphone to the phone\'s own call processing. On Android this also stops other apps recording at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On both, the phone may then apply its own echo cancelling, noise suppression and volume levelling, which MumbleWay already does itself. Try it and listen: on one iPhone it made speech loud and harsh.'**
   String get voiceCommunicationBody;
 
   /// No description provided for @reverb.
@@ -2011,12 +2011,6 @@ abstract class L {
   /// **'Off'**
   String get diagEnhancerRungOff;
 
-  /// Shown where the top background classes go, while the model is running but has not produced a result yet
-  ///
-  /// In en, this message translates to:
-  /// **'Listening to the background…'**
-  String get diagClassifierListening;
-
   /// Shown in diagnostics when the speech enhancer has dropped to its reduced setting because the device missed the block deadline
   ///
   /// In en, this message translates to:
@@ -2671,12 +2665,6 @@ abstract class L {
   /// **'Profile'**
   String get diagChosenProfile;
 
-  /// No description provided for @diagProfilePinned.
-  ///
-  /// In en, this message translates to:
-  /// **'(pinned)'**
-  String get diagProfilePinned;
-
   /// No description provided for @diagAutoSnr.
   ///
   /// In en, this message translates to:
@@ -2706,18 +2694,6 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Background'**
   String get diagStageBackground;
-
-  /// No description provided for @diagClassifierOnCpu.
-  ///
-  /// In en, this message translates to:
-  /// **'No accelerator here, so background detection runs on the processor — {ms} ms per check, once every two seconds.'**
-  String diagClassifierOnCpu(String ms);
-
-  /// No description provided for @diagClassifierUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Background detection is not available on this platform, so the helmet profile is chosen from levels here.'**
-  String get diagClassifierUnavailable;
 
   /// No description provided for @diagSpectrum.
   ///

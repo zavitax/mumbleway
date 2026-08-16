@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart' show ValueListenable, immutable;
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
-import '../services/background_classifier.dart';
 import '../services/noise_profiles.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -369,35 +368,9 @@ class _SpectrumViewState extends State<SpectrumView> {
                   snrDb: chain.autoSnrDb,
                   automatic:
                       AppStateScope.of(context).noise == NoiseSetting.auto,
-                  // Only meaningful under Auto: a profile chosen by hand was
-                  // never going to change, so calling it pinned would be
-                  // reporting a loss that did not happen.
-                  pinned:
-                      AppStateScope.of(context).noise == NoiseSetting.auto &&
-                      chain.classifierDisabled,
                 ),
-              // Directly under it, because it is the evidence behind it. The
-              // classifier only runs under Auto, so this appears and
-              // disappears with the line above without needing the condition
-              // repeated.
-              //
-              // Inside this builder and still updating on its own: it depends
-              // on `AppStateScope` itself, so the classifier's two-second tick
-              // rebuilds it directly rather than waiting for the chain to
-              // move.
-              //
-              // Given up one rung after the analyser. The model keeps running
-              // — `Auto` reads its verdict and the profile depends on it — so
-              // this is the three rows of display and nothing else.
-              if (!(chain?.classifierTopDisabled ?? false))
-                // ignore: prefer_const_constructors
-                _ClassifierTop(),
               if (chain != null) _ChainDots(status: chain),
               if (chain != null) _EnhancerEffort(status: chain),
-              // Not `const`: it reads the classifier's state, and a const
-              // child would be built once and never notice the model starting.
-              // ignore: prefer_const_constructors
-              _ClassifierNote(),
             ],
           ),
         ),
@@ -550,66 +523,6 @@ class _SpectrumBody extends StatelessWidget {
                   ),
                 ),
               ),
-      ),
-    );
-  }
-}
-
-/// Says when the classifier is running without an accelerator behind it.
-///
-/// **A note, not a failure**, and it reports rather than warns. The same model
-/// and runtime were timed at 2.4 ms an inference on a Mac, which at one every
-/// two seconds is a tenth of a percent of a core — so an earlier draft of this
-/// widget, which told riders it "costs battery on a long ride", was overstating
-/// a cost nobody had measured. It now shows the number from *this* device.
-///
-/// What it claims is deliberately narrow: *the accelerated path was not
-/// built*. Core ML decides per operation whether to use the Neural Engine, the
-/// GPU or the CPU and reports none of it, so "an NPU is doing this" is not
-/// something the app can honestly say — only that it asked and was refused.
-class _ClassifierNote extends StatelessWidget {
-  const _ClassifierNote();
-
-  @override
-  Widget build(BuildContext context) {
-    final l = L.of(context);
-    final classifier = AppStateScope.of(context).classifier;
-    // Two things to explain, and a grey dot explains neither on its own.
-    final String message;
-    if (!BackgroundClassifier.supportedHere) {
-      message = l.diagClassifierUnavailable;
-    } else if (classifier.onCpuOnly) {
-      // The cost, measured here, rather than an adjective. An earlier draft
-      // said it "costs battery on a long ride"; then the same model and
-      // runtime were timed at 2.4 ms an inference, which at one every two
-      // seconds is a tenth of a percent of a core. Saying a number lets a
-      // rider on a slow phone see a big one and a rider on a fast one see the
-      // truth, instead of both reading the same warning.
-      message = l.diagClassifierOnCpu(
-        classifier.lastInferenceMs.toStringAsFixed(0),
-      );
-    } else {
-      return const SizedBox.shrink();
-    }
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.warning_amber_rounded,
-            size: 15,
-            color: StatusColors.connecting,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -792,143 +705,6 @@ class _EnhancerEffort extends StatelessWidget {
   }
 }
 
-/// What the classifier is actually hearing, three classes at a time.
-///
-/// **The chain reads one of these 521 numbers and ignores the other 520.** A
-/// bare "Music 0.83" cannot say whether the model heard a stereo, a motorway or
-/// a hairdryer, so a profile switch that surprises a rider has no explanation
-/// available. The other two rows are that explanation — and they are how the
-/// `Music` class was understood in the first place, when an engine at speed
-/// turned out to score 0.969 on it and was read as a false positive until it
-/// was not.
-///
-/// `Music` is drawn in the transmitted green once it is over the bar, so the
-/// row that decides is the row that stands out — and a reader can see the
-/// moment the decision flips rather than inferring it from the profile
-/// changing a beat later.
-class _ClassifierTop extends StatelessWidget {
-  const _ClassifierTop();
-
-  @override
-  Widget build(BuildContext context) {
-    final l = L.of(context);
-    final classifier = AppStateScope.of(context).classifier;
-    final top = classifier.top;
-    final scheme = Theme.of(context).colorScheme;
-
-    if (top.isEmpty) {
-      // **An empty list has to say why it is empty.** The model runs only
-      // under Automatic, and only while the devices are open — so a rider who
-      // opens the panel between calls sees nothing here, which is
-      // indistinguishable from a version that never had this. One line beats
-      // a silence that reads as a missing feature.
-      if (!classifier.running) return const SizedBox.shrink();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 11,
-              height: 11,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.6,
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              l.diagClassifierListening,
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final c in top)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 3),
-              child: _ClassRow(
-                score: c,
-                deciding: c.label == 'Music',
-                over: c.score >= BackgroundClassifier.bar,
-                muted: scheme.onSurfaceVariant,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ClassRow extends StatelessWidget {
-  const _ClassRow({
-    required this.score,
-    required this.deciding,
-    required this.over,
-    required this.muted,
-  });
-
-  final ClassScore score;
-  final bool deciding, over;
-  final Color muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final colour = deciding && over ? StatusColors.connected : muted;
-    return Row(
-      children: [
-        SizedBox(
-          width: 108,
-          child: Text(
-            score.label,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              color: colour,
-              fontWeight: deciding ? FontWeight.w700 : FontWeight.w400,
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        // A bar as well as a number. Three scores are read against each other
-        // — whether the top one is far ahead or the field is level is the
-        // whole of what this says — and that comparison is a glance at bar
-        // lengths rather than three subtractions.
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(2),
-            child: LinearProgressIndicator(
-              value: score.score.clamp(0.0, 1.0),
-              minHeight: 4,
-              backgroundColor: muted.withValues(alpha: 0.16),
-              valueColor: AlwaysStoppedAnimation(colour),
-            ),
-          ),
-        ),
-        const SizedBox(width: 6),
-        SizedBox(
-          width: 30,
-          child: Text(
-            score.score.toStringAsFixed(2),
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 11,
-              color: colour,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// Where Auto has landed, as a name.
 /// Which noise profile the chain is running under, however it was arrived at.
 ///
@@ -949,7 +725,6 @@ class _AutoProfile extends StatelessWidget {
     required this.profile,
     required this.automatic,
     this.snrDb,
-    this.pinned = false,
   });
 
   final NoiseSetting profile;
@@ -969,14 +744,6 @@ class _AutoProfile extends StatelessWidget {
 
   /// Whether `Auto` picked this, rather than the rider.
   final bool automatic;
-
-  /// `Auto` is chosen, but the ladder has stopped the classifier — so this
-  /// profile can no longer change and is stuck where it stood.
-  ///
-  /// Worth saying out loud rather than leaving the line looking normal: the
-  /// rider asked for a setting that adapts, and it has quietly stopped
-  /// adapting. Everything else on the panel reads exactly as it did before.
-  final bool pinned;
 
   @override
   Widget build(BuildContext context) {
@@ -1004,7 +771,6 @@ class _AutoProfile extends StatelessWidget {
               fontWeight: FontWeight.w700,
               // Amber, in the same vocabulary the rest of the panel uses for
               // "this device gave something up".
-              color: pinned ? StatusColors.connecting : null,
             ),
           ),
           // Grey and in brackets, like the pinned note below: it qualifies
@@ -1020,15 +786,6 @@ class _AutoProfile extends StatelessWidget {
                 color: scheme.onSurfaceVariant,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
-            ),
-          ],
-          if (pinned) ...[
-            const SizedBox(width: 5),
-            // Grey and in brackets: it qualifies the name rather than
-            // competing with it, and the name is what is being read.
-            Text(
-              l.diagProfilePinned,
-              style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
             ),
           ],
         ],

@@ -13,7 +13,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../l10n/app_localizations.dart';
 import '../services/server_refusal.dart';
 import '../services/audio_session.dart';
-import '../services/background_classifier.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/device_identity.dart';
@@ -552,6 +551,7 @@ class AppState extends ChangeNotifier {
     _audioActive = true;
     _syncReliefWatch();
   }
+
   String? get startupError => _startupError;
   bool get muted => _muted;
   bool get deafened => _deafened;
@@ -572,6 +572,7 @@ class AppState extends ChangeNotifier {
   bool get showTalkButton => micMode == MicMode.pushToTalk;
 
   int get activeCount => runtimes.length;
+
   /// Servers that hold a live session in the engine.
   ///
   /// Deliberately not `runtimes.length`. [runtimeFor] creates an entry on
@@ -1660,12 +1661,25 @@ class AppState extends ChangeNotifier {
     // open until the category is live, and the failure it produces otherwise
     // is CoreAudio's, which describes a channel count rather than the phone
     // call that is holding the microphone.
-    final session = await AudioSessionBridge.instance.activate();
+    final session = await AudioSessionBridge.instance.activate(
+      voiceProcessing: voiceCommunication,
+    );
     if (!session.usable) {
       // The platform's own wording when there is one — it names the app that
       // has the microphone, which is the only version anybody can act on —
       // and ours, translated, when there is not.
       return session.error ?? _strings.micUnavailable;
+    }
+
+    // **Pushed on every acquisition, not only when the switch is touched.**
+    // It is read when the capture stream is built, and the stream is built
+    // here — so a setting restored from disk at launch would otherwise sit in
+    // the interface saying "on" while the engine ran without it, which is a
+    // switch that lies rather than one that does nothing.
+    try {
+      setVoiceCommunication(on_: voiceCommunication);
+    } catch (_) {
+      // No engine yet; the next acquisition carries it.
     }
 
     // Before the engine opens, so the first block the recorder sees is already
@@ -1688,7 +1702,6 @@ class AppState extends ChangeNotifier {
     }
 
     _audioActive = true;
-    _syncClassifier();
     _syncReliefWatch();
     notifyListeners();
     return null;
@@ -1711,8 +1724,7 @@ class AppState extends ChangeNotifier {
       }
       await AudioSessionBridge.instance.deactivate();
       _audioActive = false;
-      _syncClassifier();
-    _syncReliefWatch();
+      _syncReliefWatch();
       notifyListeners();
     });
   }
@@ -2304,11 +2316,6 @@ class AppState extends ChangeNotifier {
     await prefs.setBool(_prefsSimpleModel, value);
   }
 
-  /// Runs the model, or does not. Owned here because it has to keep working
-  /// with every screen closed and the phone in a pocket, which is most of a
-  /// ride.
-  final classifier = BackgroundClassifier();
-
   Timer? _reliefTimer;
   bool _chainDegraded = false;
   bool _probed = false;
@@ -2492,25 +2499,6 @@ class AppState extends ChangeNotifier {
     if (!degraded || _chainDegraded) return;
     _chainDegraded = true;
     notifyListeners();
-  }
-
-  /// Starts or stops the classifier to match the current conditions.
-  ///
-  /// Four things have to be true at once, and any of them can change at any
-  /// time: the devices are open (there is nothing to listen to otherwise),
-  /// `Auto` is chosen (nothing else reads the verdict), the rider has left the
-  /// switch on, and the platform can run the model at all.
-  void _syncClassifier() {
-    final want =
-        _audioActive &&
-        noise == NoiseSetting.auto &&
-        BackgroundClassifier.supportedHere;
-    if (want == classifier.running) return;
-    if (want) {
-      unawaited(classifier.start());
-    } else {
-      unawaited(classifier.stop());
-    }
   }
 
   /// Levels incoming speakers towards a common loudness.
@@ -2773,8 +2761,7 @@ class AppState extends ChangeNotifier {
   /// connected one — more, since it is doing the work — and it is precisely
   /// during a reconnect, with the phone in a pocket and the screen off, that
   /// letting the device suspend turns a recoverable drop into a lost call.
-  bool get _callInProgress =>
-      runtimes.values.any((r) => r.isLive || r.isBusy);
+  bool get _callInProgress => runtimes.values.any((r) => r.isLive || r.isBusy);
 
   /// Whether anything said right now would actually reach somebody.
   ///
@@ -3079,7 +3066,6 @@ class AppState extends ChangeNotifier {
     // four, so it stops running the moment one of them is chosen. Not merely
     // ignored -- stopped, because an inference every two seconds is a real
     // cost and nobody should pay it for an answer that will not be read.
-    _syncClassifier();
     _syncReliefWatch();
     await _persist();
     notifyListeners();
@@ -3358,11 +3344,9 @@ class AppState extends ChangeNotifier {
       case AppEvent_Refused(:final serverId, :final reason, :final kind):
         // Straight out again, without touching the roster or the chat log --
         // nothing here changed, which is the whole point of a refusal.
-        _refusals.add(ServerRefusal(
-          serverId: serverId,
-          reason: reason,
-          kind: kind,
-        ));
+        _refusals.add(
+          ServerRefusal(serverId: serverId, reason: reason, kind: kind),
+        );
         return;
       case AppEvent_Welcome(:final serverId, :final text):
         runtimeFor(serverId).welcome = text;

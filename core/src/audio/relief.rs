@@ -199,9 +199,6 @@ pub enum Relief {
     /// The spectrum analyser stops computing, in the core as well as on
     /// screen. The panel says why in its place.
     NoAnalyser,
-    /// The classifier's top three classes stop being shown. The model still
-    /// runs — `Auto` reads its verdict — so this is the display only.
-    NoClassifierTop,
     /// The chain dots stop following the audio. Warnings and the rung keep
     /// updating, or this rung could hide the one after it.
     NoLiveDots,
@@ -219,24 +216,6 @@ pub enum Relief {
     /// who never opens that panel at all. So it goes after every diagnostic
     /// display and still before anything that changes what the far end hears.
     NoParticipantMeters,
-
-    /// The background classifier stops running and the profile is pinned to
-    /// whatever is in force.
-    ///
-    /// **The largest single saving on this ladder other than the enhancer, and
-    /// it was not measurable until a device reported it.** The panel's own
-    /// figure from the OPPO A3s is **50 ms per check**, ranging 42–61 — against
-    /// a chain whose whole block budget is 10 ms. It does not run per block, so
-    /// it is not 5 ms of every block; it is a 50 ms stall on one thread
-    /// whenever it fires, on a phone that is already missing deadlines.
-    ///
-    /// [`Relief::NoClassifierTop`] above only stops *displaying* the top three;
-    /// the model still ran, because `Auto` reads its verdict. This stops the
-    /// inference. What is lost is real: `Auto` can no longer notice that the
-    /// background became music or a motorway, so the profile stops adapting and
-    /// holds wherever it was. That is a worse loss than any panel rung and a
-    /// smaller one than losing the enhancer, which is where it sits.
-    NoClassifier,
 
     /// The enhancer swaps to the plain DeepFilterNet 3 — a third of the cost
     /// per frame, and harder on a quiet voice.
@@ -284,11 +263,9 @@ impl Relief {
             Relief::NoFeedback => Relief::NoRnnoise,
             Relief::NoRnnoise => Relief::NoAnalyserDecay,
             Relief::NoAnalyserDecay => Relief::NoAnalyser,
-            Relief::NoAnalyser => Relief::NoClassifierTop,
-            Relief::NoClassifierTop => Relief::NoLiveDots,
+            Relief::NoAnalyser => Relief::NoLiveDots,
             Relief::NoLiveDots => Relief::NoParticipantMeters,
-            Relief::NoParticipantMeters => Relief::NoClassifier,
-            Relief::NoClassifier => Relief::SimpleModel,
+            Relief::NoParticipantMeters => Relief::SimpleModel,
             Relief::SimpleModel => Relief::EnhancerOff,
             Relief::EnhancerOff => return None,
         })
@@ -307,12 +284,10 @@ impl Relief {
             Relief::NoRnnoise => 7,
             Relief::NoAnalyserDecay => 8,
             Relief::NoAnalyser => 9,
-            Relief::NoClassifierTop => 10,
-            Relief::NoLiveDots => 11,
-            Relief::NoParticipantMeters => 12,
-            Relief::NoClassifier => 13,
-            Relief::SimpleModel => 14,
-            Relief::EnhancerOff => 15,
+            Relief::NoLiveDots => 10,
+            Relief::NoParticipantMeters => 11,
+            Relief::SimpleModel => 12,
+            Relief::EnhancerOff => 13,
         }
     }
 
@@ -334,13 +309,6 @@ impl Relief {
     /// [`super::paydown::FALLBACK_MS`].
     pub fn skip_paydown(self) -> bool {
         self >= Relief::NoPaydown
-    }
-
-    /// The background classifier no longer runs at all, and the profile is
-    /// pinned. Distinct from [`Self::skip_classifier_top`], which only stops
-    /// the display.
-    pub fn skip_classifier(self) -> bool {
-        self >= Relief::NoClassifier
     }
 
     /// The enhancer runs the cheap model. See [`Relief::SimpleModel`].
@@ -367,11 +335,6 @@ impl Relief {
     /// screen. Three transforms a block stop being computed at all.
     pub fn skip_analyser(self) -> bool {
         self >= Relief::NoAnalyser
-    }
-
-    /// The classifier's top three classes are no longer shown.
-    pub fn skip_classifier_top(self) -> bool {
-        self >= Relief::NoClassifierTop
     }
 
     /// The chain dots no longer follow the audio.
@@ -719,10 +682,8 @@ mod tests {
             Relief::NoRnnoise,
             Relief::NoAnalyserDecay,
             Relief::NoAnalyser,
-            Relief::NoClassifierTop,
             Relief::NoLiveDots,
             Relief::NoParticipantMeters,
-            Relief::NoClassifier,
             Relief::SimpleModel,
             Relief::EnhancerOff,
         ];
@@ -911,7 +872,6 @@ mod tests {
             assert!(next.skip_feedback() >= previous.skip_feedback());
             assert!(next.skip_rnnoise() >= previous.skip_rnnoise());
             assert!(next.skip_analyser() >= previous.skip_analyser());
-            assert!(next.skip_classifier_top() >= previous.skip_classifier_top());
             assert!(next.skip_live_dots() >= previous.skip_live_dots());
             assert!(next.enhancer_rungs() >= previous.enhancer_rungs());
             assert_eq!(next.index(), previous.index() + 1);

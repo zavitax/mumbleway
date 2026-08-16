@@ -207,7 +207,7 @@ mod host;
 /// Part of the vendored patch; see `PATCH.md`. Set it before opening the input
 /// device — it is read when the stream is built.
 #[cfg(all(target_os = "android", feature = "android-input-preset"))]
-pub use crate::host::aaudio::ANDROID_INPUT_PRESET;
+pub use crate::host::aaudio::{ANDROID_INPUT_PRESET, ANDROID_INPUT_PRESET_IN_FORCE};
 
 pub mod platform;
 mod sample_format;

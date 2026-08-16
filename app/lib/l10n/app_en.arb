@@ -202,7 +202,7 @@
   "floatingWindow": "Show floating call window",
   "identityFingerprint": "Your certificate fingerprint",
   "voiceCommunication": "Claim the microphone",
-  "voiceCommunicationBody": "Asks Android for the telephony microphone, so other apps cannot record at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On most phones this also switches on the phone's own echo cancelling and noise suppression, which MumbleWay already does itself, so try it and listen.",
+  "voiceCommunicationBody": "Hands the microphone to the phone's own call processing. On Android this also stops other apps recording at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On both, the phone may then apply its own echo cancelling, noise suppression and volume levelling, which MumbleWay already does itself. Try it and listen: on one iPhone it made speech loud and harsh.",
   "reverb": "Room tone",
   "reverbBody": "Adds a short tail under incoming voices, so a talker who is cut off by voice activation does not stop mid-breath.",
   "simpleModel": "Light noise model",
@@ -535,10 +535,6 @@
   "@diagEnhancerRungOff": {
     "description": "The speech enhancer has been bypassed entirely for this session"
   },
-  "diagClassifierListening": "Listening to the background…",
-  "@diagClassifierListening": {
-    "description": "Shown where the top background classes go, while the model is running but has not produced a result yet"
-  },
   "diagEnhancerReduced": "This device could not keep up, so the enhancer stepped down. It still runs, with the deepest filtering only on the frames that most need it.",
   "@diagEnhancerReduced": {
     "description": "Shown in diagnostics when the speech enhancer has dropped to its reduced setting because the device missed the block deadline"
@@ -794,7 +790,6 @@
   "diagLogNoProblems": "No warnings or errors.",
   "diagAutoProfile": "Auto is using",
   "diagChosenProfile": "Profile",
-  "diagProfilePinned": "(pinned)",
   "diagAutoSnr": "({db} dB over the room)",
   "@diagAutoSnr": {
     "placeholders": {
@@ -807,15 +802,6 @@
   "diagRestoreCost": "Restore cost",
   "diagEchoReturn": "Echo returned",
   "diagStageBackground": "Background",
-  "diagClassifierOnCpu": "No accelerator here, so background detection runs on the processor — {ms} ms per check, once every two seconds.",
-  "@diagClassifierOnCpu": {
-    "placeholders": {
-      "ms": {
-        "type": "String"
-      }
-    }
-  },
-  "diagClassifierUnavailable": "Background detection is not available on this platform, so the helmet profile is chosen from levels here.",
   "diagSpectrum": "Voice chain",
   "diagSpectrumWaiting": "Waiting for audio",
   "diagSpectrumStalled": "The audio engine has stopped",

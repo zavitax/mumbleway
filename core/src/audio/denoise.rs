@@ -381,20 +381,6 @@ pub struct CaptureProcessor {
     /// Only ever gates going *lighter*, and by how far. See
     /// [`AUTO_COOLDOWN_STANDARD_BLOCKS`].
     auto_calm: u32,
-    /// The classifier's last word: the background is loud and structured.
-    ///
-    /// Set from outside the chain, because the thing that decides it is a
-    /// neural model running well away from the audio thread. Stale by up to a
-    /// few seconds by construction and that is fine — what it describes
-    /// changes over tens of seconds, and [`Self::music_hold`] is what turns it
-    /// into a decision.
-    background_noisy: bool,
-    /// Blocks of Helmet still owed to the classifier. See
-    /// [`MUSIC_HOLD_BLOCKS`].
-    music_hold: u32,
-    /// The classifier's last word on whether a voice is present, or `None`
-    /// when nothing is classifying. See [`CaptureProcessor::set_classifier_voice`].
-    classifier_voice: Option<bool>,
     /// Whether the gate was open, or inside its hold, on the previous block.
     ///
     /// Read one block late on purpose. The gate's state is decided from a level
@@ -592,22 +578,6 @@ fn one_step_lighter(from: NoiseProfile) -> NoiseProfile {
     }
 }
 
-/// How long `Helmet` is held after the classifier last said the background was
-/// loud and structured. 15 seconds.
-///
-/// A minimum rather than an exact span. Once it expires the dial-down cooldown
-/// still applies, so leaving `Helmet` additionally needs fifteen seconds of the
-/// level itself asking — the two compose, and the effect is that a rider who
-/// pulls up at lights keeps the profile that was working until the road has
-/// actually gone quiet.
-///
-/// The hold is the whole reason a classifier is safe to use here. A single
-/// inference is wrong sometimes; to *release* Helmet the classifier has to be
-/// wrong continuously for fifteen seconds, and to *take* it, right once. That
-/// asymmetry matches the cost: over-suppressing indoors sounds slightly
-/// synthetic, under-suppressing at 120 km/h loses the rider.
-const MUSIC_HOLD_BLOCKS: u32 = 1_500;
-
 /// How long the SNR is watched for at the start of a speech segment.
 ///
 /// One second, matching the transmit hold, so the window is the same stretch of
@@ -764,9 +734,6 @@ impl CaptureProcessor {
             tilt: Biquad::low_pass(SAMPLE_RATE as f32, AUTO_TILT_HZ, 0.707),
             auto_dwell: 0,
             auto_calm: 0,
-            background_noisy: false,
-            music_hold: 0,
-            classifier_voice: None,
             was_voice_active: false,
             // Slower than the transmit-side tracker. This one is deciding what
             // kind of place the rider is in, which changes over minutes, not
@@ -829,49 +796,14 @@ impl CaptureProcessor {
         self.effective
     }
 
-    /// Tells the chain what the background classifier last concluded.
-    ///
-    /// A supporting vote for `Helmet` and nothing else: it never reaches the
-    /// transmit decision, and it cannot pick a *lighter* profile. Being wrong
-    /// about a profile costs some naturalness; being wrong at the gate cuts a
-    /// rider off mid-sentence, and no classifier is going near that.
-    ///
-    /// It also has no effect at all unless the rider has chosen `Auto`. A
-    /// profile someone picked by hand is an instruction, not a suggestion.
-    pub fn set_background_noisy(&mut self, noisy: bool) {
-        self.background_noisy = noisy;
-    }
-
-    /// Tells the chain whether the classifier can currently hear a voice.
-    ///
-    /// `Some(true)` for speech or singing, `Some(false)` for neither, and
-    /// **`None` when nothing is classifying at all** — which is not the same as
-    /// "no voice" and must not be treated as one. The classifier runs only
-    /// under `Auto`, only where the model exists, and only every couple of
-    /// seconds; the chain falls back to its own opinion whenever it is absent,
-    /// rather than to silence.
-    ///
-    /// Unlike [`Self::set_background_noisy`] this *does* reach the gate,
-    /// indirectly: it decides whether the noise floor may climb, and the gate
-    /// opens relative to that floor. It can only ever hold the floor **down**,
-    /// so the failure it can cause is a gate that opens too easily — never one
-    /// that closes on a rider mid-sentence, which is the failure that matters.
     /// Tells the chain that the enhancer has just stood down for a word start.
     ///
     /// **The same decision, not a second one.** `deepfilter` already watches
-    /// the high band for the jump that starts a word, and relaxes its own
+    /// the high band for the jump that starts a word and relaxes its own
     /// attenuation cap when it sees one. Everything here then undid that: the
-    /// blend below mixes in RNNoise's opinion at a fixed rate, RNNoise is
-    /// trained to remove exactly the noise-like sound a fricative is, and it
-    /// removed the consonant the model had just been persuaded to keep.
-    ///
-    /// Measured by ear on a recording with a motorcycle behind it: with the
-    /// guard opened up, the leading "s" is audible in the enhancer's output and
-    /// gone again by the time the suppressor has finished — and what is left
-    /// sounds chopped, which is `3c36863`'s warning arriving on schedule. A
-    /// stateful denoiser handed audio that steps between heavily enhanced and
-    /// nearly raw has its noise estimate wrong the whole time, not only inside
-    /// the window.
+    /// blend mixes in RNNoise's opinion at a fixed rate, RNNoise is trained to
+    /// remove exactly the noise-like sound a fricative is, and it removed the
+    /// consonant the model had just been persuaded to keep.
     ///
     /// Sharing the decision is what stops the two stages fighting. A detector
     /// of its own here would be a second opinion about what a word start is,
@@ -924,24 +856,6 @@ impl CaptureProcessor {
         self.latched_snr_db
     }
 
-    pub fn set_classifier_voice(&mut self, voice: Option<bool>) {
-        self.classifier_voice = voice;
-    }
-
-    /// Whether the classifier's hold is currently keeping `Helmet` in force.
-    ///
-    /// For the diagnostics panel, so the decision is visible rather than
-    /// inferred from a profile name that has several possible causes.
-    pub fn music_hold_active(&self) -> bool {
-        self.music_hold > 0
-    }
-
-    /// Swaps the profile, rebuilding only what depends on it.
-    /// Tells the chain which stages the performance ladder has given up.
-    ///
-    /// Only ever called with more skipped than before — the ladder never
-    /// climbs — but nothing here depends on that, so a caller that unset one
-    /// would simply get the stage back.
     pub fn set_relief(&mut self, skip_pitch: bool, skip_rnnoise: bool) {
         self.skip_pitch = skip_pitch;
         self.skip_rnnoise = skip_rnnoise;
@@ -1081,42 +995,12 @@ impl CaptureProcessor {
             self.auto_calm = 0;
         }
 
-        // Likewise every block. The classifier speaks every few seconds and
-        // the hold is what turns its last word into a span of time.
-        if self.background_noisy {
-            self.music_hold = MUSIC_HOLD_BLOCKS;
-        } else {
-            self.music_hold = self.music_hold.saturating_sub(1);
-        }
-
-        // Escalating on the classifier does not wait for the dwell.
-        //
-        // The dwell exists to stop `Auto` flapping when a *level* sits on a
-        // threshold, and this is not a level on a threshold — it is a model
-        // saying the background changed. Making a rider who has just pulled
-        // onto a motorway wait five more seconds for the profile that suits it
-        // would give away the promptness the classifier was added for. Coming
-        // back down is a different matter and stays slow, below.
-        if self.music_hold > 0 && self.effective != NoiseProfile::Helmet {
-            self.auto_dwell = 0;
-            self.auto_calm = 0;
-            self.apply_effective(NoiseProfile::Helmet);
-            return;
-        }
-
         self.auto_dwell = self.auto_dwell.saturating_add(1);
         if self.auto_dwell < AUTO_DWELL_BLOCKS {
             return;
         }
 
-        // Nothing takes Helmet away while the classifier's hold is running,
-        // whatever the level says. This is the second half of the 15 s rule:
-        // the first half took the profile, this one keeps it.
-        let want = if self.music_hold > 0 {
-            NoiseProfile::Helmet
-        } else {
-            by_level
-        };
+        let want = by_level;
 
         // Dialling down goes one step at a time, and each step has its own
         // patience: fifteen seconds to leave Helmet for Standard, then a full
@@ -1162,8 +1046,6 @@ impl CaptureProcessor {
         // The classifier's hold does not survive the devices closing. It is a
         // claim about a place, and reopening the microphone is the one moment
         // we have no idea whether the rider is still in it.
-        self.music_hold = 0;
-        self.background_noisy = false;
     }
 
     /// Processes exactly [`FRAME_SIZE`] samples in place.
@@ -1398,21 +1280,25 @@ impl CaptureProcessor {
         // `Music`. But it only runs under `Auto`, only on platforms with the
         // model, and only every two seconds — so it cannot be the only source.
         //
-        // Failing that, the chain's own two floor-independent opinions: RNNoise
-        // and the pitch search. **Deliberately not the SNR term** that the
-        // transmit decision also uses. SNR is measured against the floor, so
-        // feeding it back in to decide whether the floor may move is a loop
-        // that latches: a floor that has climbed suppresses the SNR, which
-        // says "not speech", which lets it climb further.
+        // The chain's own two floor-independent opinions: RNNoise and the pitch
+        // search. **Deliberately not the SNR term** that the transmit decision
+        // also uses. SNR is measured against the floor, so feeding it back in
+        // to decide whether the floor may move is a loop that latches: a floor
+        // that has climbed suppresses the SNR, which says "not speech", which
+        // lets it climb further.
+        //
+        // **A background classifier used to override this and no longer
+        // exists.** It ran a model every two seconds to answer the same
+        // question, and it is gone for one reason: the thing it was really
+        // for — escalating to `Helmet` over
+        // music — stopped being reachable when the profile chooser moved to
+        // SNR, and this was the only use it had left.
         //
         // Either source being wrong is survivable in the direction it errs.
         // A false "voice" holds the floor low and lets some noise through,
         // which the suppressor ahead of this is there to deal with; a false
         // "no voice" is the behaviour that was already being reported.
-        let heard_voice = match self.classifier_voice {
-            Some(said) => said,
-            None => vad >= self.effective.vad_threshold() && pitch_says_speech,
-        };
+        let heard_voice = vad >= self.effective.vad_threshold() && pitch_says_speech;
         // **Or the gate was open on the last block.** A phrase that has already
         // opened the gate must not have the floor climbing underneath it while
         // it continues, and that includes the thousand milliseconds of hold
@@ -2471,20 +2357,6 @@ mod tests {
         );
     }
 
-    /// Feeds `seconds` of a quiet room, with the classifier saying what it is
-    /// told to, and reports where Auto ended up and how long the hold ran.
-    fn with_classifier(seconds: usize, noisy: impl Fn(usize) -> bool) -> (NoiseProfile, bool) {
-        let len = SAMPLE_RATE as usize * seconds;
-        let quiet = crate::audio::testsig::white(len, 0.0015, 9);
-        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
-        for (i, chunk) in quiet.chunks_exact(FRAME_SIZE).enumerate() {
-            p.set_background_noisy(noisy(i));
-            let mut block = chunk.to_vec();
-            p.process(&mut block);
-        }
-        (p.effective_profile(), p.music_hold_active())
-    }
-
     /// Starts on `from`, then feeds `seconds` of a quiet room and reports where
     /// `Auto` ended up.
     ///
@@ -2558,82 +2430,6 @@ mod tests {
             NoiseProfile::Helmet,
             "stuck in Helmet in a room the level does not call a helmet"
         );
-    }
-
-    #[test]
-    fn the_classifier_takes_helmet_without_waiting_for_the_dwell() {
-        // Under a second of a quiet room, which on level alone is the last
-        // place Auto would choose Helmet. The dwell is 5 s and would have made
-        // a rider joining a motorway wait it out; escalating is the half of
-        // this that should be prompt.
-        let (profile, holding) = with_classifier(1, |_| true);
-        assert_eq!(profile, NoiseProfile::Helmet);
-        assert!(holding);
-    }
-
-    #[test]
-    fn helmet_is_held_for_fifteen_seconds_after_the_music_stops() {
-        // The rule as asked for. Ten seconds of noisy, then silence from the
-        // classifier: at +10 s the hold is still running, and it is still
-        // running at +14 s.
-        let blocks_per_second = SAMPLE_RATE as usize / FRAME_SIZE;
-        let stop = 10 * blocks_per_second;
-
-        let (profile, holding) = with_classifier(20, |i| i < stop);
-        assert_eq!(profile, NoiseProfile::Helmet, "let go far too early");
-        assert!(holding, "the hold should still have five seconds to run");
-
-        // And it does expire: at +16 s the hold is done. The profile may well
-        // still be Helmet, because the calm ratchet needs its own 15 s of
-        // quiet before anything is allowed to lighten -- the two compose, and
-        // that is the intended floor rather than an accident.
-        let (_, still_holding) = with_classifier(26, |i| i < stop);
-        assert!(!still_holding, "the hold outlived its fifteen seconds");
-    }
-
-    #[test]
-    fn the_classifier_cannot_choose_a_lighter_profile() {
-        // It is a supporting vote for Helmet and nothing else. A classifier
-        // that could talk Auto *down* would be able to strip suppression off a
-        // rider at speed on the strength of one wrong inference, which is the
-        // failure this is not allowed to have.
-        let len = SAMPLE_RATE as usize * 14;
-        let mut roar = crate::audio::testsig::wind(len, 0.7, 5);
-        for (r, e) in roar
-            .iter_mut()
-            .zip(crate::audio::testsig::engine(len, 45.0, 0.6, 6))
-        {
-            *r = (*r + e).clamp(-1.0, 1.0);
-        }
-
-        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
-        for chunk in roar.chunks_exact(FRAME_SIZE) {
-            p.set_background_noisy(false); // "all clear", continuously
-            let mut block = chunk.to_vec();
-            p.process(&mut block);
-        }
-        assert_eq!(
-            p.effective_profile(),
-            NoiseProfile::Helmet,
-            "a quiet verdict overrode a loud road"
-        );
-    }
-
-    #[test]
-    fn the_classifier_is_ignored_unless_auto_is_chosen() {
-        // A profile someone picked by hand is an instruction. `reconsider`
-        // returns early for every setting but Auto, and this holds it to that
-        // now that something else can call for Helmet.
-        let mut p = CaptureProcessor::new(NoiseProfile::Light);
-        let len = SAMPLE_RATE as usize * 3;
-        let quiet = crate::audio::testsig::white(len, 0.0015, 9);
-        for chunk in quiet.chunks_exact(FRAME_SIZE) {
-            p.set_background_noisy(true);
-            let mut block = chunk.to_vec();
-            p.process(&mut block);
-        }
-        assert_eq!(p.effective_profile(), NoiseProfile::Light);
-        assert!(!p.music_hold_active());
     }
 
     #[test]

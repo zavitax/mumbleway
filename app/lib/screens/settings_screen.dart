@@ -324,9 +324,11 @@ class _DeviceSection extends StatelessWidget {
         ],
         const _MonitorTile(),
         const _EchoCancellationTile(),
-        // Android only, because the setting is an Android capture preset and
-        // there is nothing behind it anywhere else.
-        if (Platform.isAndroid) const _VoiceCommunicationTile(),
+        // Both phones, and it does a different thing on each — see the tile.
+        // Desktop has no session to configure and no contest for the
+        // microphone, so there is nothing behind it there.
+        if (Platform.isAndroid || Platform.isIOS)
+          const _VoiceCommunicationTile(),
         const _SimpleModelTile(),
         const _NormaliseTile(),
         const _JitterBufferTile(),

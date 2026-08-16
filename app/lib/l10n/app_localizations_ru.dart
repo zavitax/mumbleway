@@ -456,7 +456,7 @@ class LRu extends L {
 
   @override
   String get voiceCommunicationBody =>
-      'Запрашивает у Android телефонный микрофон, чтобы другие приложения не могли записывать одновременно: иначе навигатор, ожидающий голосовых команд, оставит вас без связи. На большинстве телефонов при этом включается их собственное подавление эха и шума, которое MumbleWay уже делает сам, — поэтому включите и послушайте.';
+      'Передаёт микрофон телефонной обработке самого устройства. На Android это ещё и не даёт другим приложениям записывать одновременно: иначе навигатор, ожидающий голосовых команд, оставит вас без связи. На обеих системах телефон при этом может включить своё подавление эха и шума и своё выравнивание громкости — то, что MumbleWay уже делает сам. Включите и послушайте: на одном iPhone от этого речь стала громкой и резкой.';
 
   @override
   String get reverb => 'Эффект помещения';
@@ -1056,9 +1056,6 @@ class LRu extends L {
   String get diagEnhancerRungOff => 'Выключен';
 
   @override
-  String get diagClassifierListening => 'Слушаем фон…';
-
-  @override
   String get diagEnhancerReduced =>
       'Устройство не успевало, и очиститель речи сбавил обороты. Он по-прежнему работает, но самая глубокая фильтрация остаётся только там, где она нужнее всего.';
 
@@ -1440,9 +1437,6 @@ class LRu extends L {
   String get diagChosenProfile => 'Профиль';
 
   @override
-  String get diagProfilePinned => '(закреплён)';
-
-  @override
   String diagAutoSnr(int db) {
     return '(на $db дБ выше фона)';
   }
@@ -1458,15 +1452,6 @@ class LRu extends L {
 
   @override
   String get diagStageBackground => 'Фон';
-
-  @override
-  String diagClassifierOnCpu(String ms) {
-    return 'Ускорителя здесь нет, поэтому распознавание фона считает процессор — $ms мс на проверку, раз в две секунды.';
-  }
-
-  @override
-  String get diagClassifierUnavailable =>
-      'Распознавание фона на этой платформе недоступно, поэтому здесь шлемный профиль выбирается по уровням.';
 
   @override
   String get diagSpectrum => 'Тракт голоса';

@@ -28,6 +28,11 @@ final class AudioSession {
       case "prepare":
         self.prepare(result)
       case "activate":
+        // The rider's setting, passed with the call rather than stored: it
+        // decides the session *mode*, and a mode can only be chosen while the
+        // session is being configured.
+        let args = call.arguments as? [String: Any]
+        self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
         self.activateForCall(result)
       case "deactivate":
         self.deactivate(result)
@@ -174,6 +179,15 @@ final class AudioSession {
     #endif
   }()
 
+  /// Whether the rider has asked for the platform's own voice processing.
+  ///
+  /// **On iOS this switch means something different from Android's**, and the
+  /// shared name is the rider's, not a claim that the platforms behave alike.
+  /// There it stops another app capturing at the same time. Here iOS already
+  /// refuses to let two apps record at once, so what it buys instead is
+  /// Apple's echo cancellation — and what it costs is in `activate` below.
+  private var voiceProcessing = false
+
   private func activate() throws {
     wantedActive = true
     let session = AVAudioSession.sharedInstance()
@@ -205,7 +219,15 @@ final class AudioSession {
       //
       // The asymmetry with Android is real and stands. The answer to it is not
       // this.
-      mode: .default,
+      //
+      // **It is now a setting, off by default, and the paragraph above is the
+      // reason it is off rather than a reason nobody may try it.** A rider on
+      // a device whose own canceller is better than ours should be able to
+      // find that out, and the diagnostics panel's echo-returned figure is how
+      // to see which is happening. The clipping measured above is the thing to
+      // listen for when it is on: speech that is loud and harsh rather than
+      // quiet and muddy.
+      mode: voiceProcessing ? .voiceChat : .default,
       options: [
         // Helmet intercoms are HFP devices. Without this they are not offered
         // as an input at all, and the phone quietly records from its own

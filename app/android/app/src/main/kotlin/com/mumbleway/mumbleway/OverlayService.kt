@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.ServiceInfo
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,7 +21,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.KeyEvent
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -425,11 +425,35 @@ class OverlayService : Service() {
         }
     }
 
-    private fun dp(value: Int): Int = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_DIP,
-        value.toFloat(),
-        resources.displayMetrics,
-    ).toInt()
+    /**
+     * Screen density, read once instead of on every conversion.
+     *
+     * [dp] is called 33 times in one pass of [CallView.onDraw], and that pass
+     * runs up to thirteen times a second while the rider is transmitting — ten
+     * from the state updates Dart pushes, three more from the on-air blink.
+     * [worthDrawing] holds it below that whenever no meter has moved a whole
+     * pixel, which is most of a quiet minute and none of a spoken one.
+     * `TypedValue.applyDimension` is not expensive, but it reaches through
+     * `resources` for `displayMetrics` every time, which is several hundred
+     * lookups a second to answer a question whose answer does not change.
+     *
+     * Refreshed on a configuration change rather than held for the life of the
+     * service: display size is a setting, and a window drawn at the old density
+     * would be subtly the wrong size until the next time the rider toggled it
+     * off and on.
+     */
+    private var density = 0f
+
+    private fun dp(value: Int): Int {
+        if (density == 0f) density = resources.displayMetrics.density
+        return (value * density).toInt()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        density = resources.displayMetrics.density
+        callView?.invalidate()
+    }
 
     /**
      * The rider put the window away with its close button.
@@ -660,6 +684,9 @@ class OverlayService : Service() {
         /** Blink phase for the on-air light; driven by [setFlashing]. */
         var lit = true
 
+        private var titleSource: String? = null
+        private var titleLines: List<String> = emptyList()
+
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
         private val rect = RectF()
@@ -793,8 +820,16 @@ class OverlayService : Service() {
                 else -> phrase("pipListening", "Listening, but\nnot transmitting")
             }
 
+            // Split once per wording rather than once per frame. Only one of
+            // the five phrases has a line break in it, and none of them changes
+            // between draws unless the call state does.
+            if (value != titleSource) {
+                titleSource = value
+                titleLines = value.split("\n")
+            }
+
             var y = dp(93).toFloat()
-            for (line in value.split("\n")) {
+            for (line in titleLines) {
                 label(
                     canvas, line, divider / 2f, y, 12, Color.WHITE,
                     bold = true, align = Paint.Align.CENTER,
@@ -802,13 +837,20 @@ class OverlayService : Service() {
                 y += dp(14)
             }
 
-            val badges = buildList {
-                if (state.muted) add(phrase("pipBadgeMuted", "MUTED"))
-                if (state.deafened) add(phrase("pipBadgeDeafened", "DEAFENED"))
+            // Spelled out rather than collected into a list and joined: the
+            // list was allocated on every draw to be empty almost every time,
+            // and there are only three ways this can come out.
+            val badges = when {
+                state.muted && state.deafened ->
+                    phrase("pipBadgeMuted", "MUTED") + "  ·  " +
+                        phrase("pipBadgeDeafened", "DEAFENED")
+                state.muted -> phrase("pipBadgeMuted", "MUTED")
+                state.deafened -> phrase("pipBadgeDeafened", "DEAFENED")
+                else -> null
             }
-            if (badges.isNotEmpty()) {
+            if (badges != null) {
                 label(
-                    canvas, badges.joinToString("  ·  "), divider / 2f, y + dp(2),
+                    canvas, badges, divider / 2f, y + dp(2),
                     10, Color.argb(255, 250, 184, 89),
                     bold = true, align = Paint.Align.CENTER,
                 )
@@ -920,13 +962,16 @@ class OverlayService : Service() {
                 9, Color.argb(102, 255, 255, 255), bold = true,
             )
 
-            val visible = state.speakers.take(4)
+            // The first four, without copying them into a list to find out
+            // which four. `take` allocated one on every draw.
+            val shown = minOf(state.speakers.size, 4)
             val meterWidth = (right - left) * 0.25f
             val gap = dp(8).toFloat()
             val nameWidth = right - left - meterWidth - gap
 
             var y = dp(42).toFloat()
-            for (speaker in visible) {
+            for (i in 0 until shown) {
+                val speaker = state.speakers[i]
                 text.textSize = dp(12).toFloat()
                 text.typeface = typeface(true)
                 label(
@@ -966,7 +1011,7 @@ class OverlayService : Service() {
                 y += dp(24)
             }
 
-            if (state.speakers.size > visible.size && state.moreSpeakers.isNotEmpty()) {
+            if (state.speakers.size > shown && state.moreSpeakers.isNotEmpty()) {
                 label(
                     canvas, state.moreSpeakers, left, y, 10,
                     Color.argb(115, 255, 255, 255),
@@ -983,31 +1028,65 @@ class OverlayService : Service() {
          * broken mid-word, which is rarer and less misleading than a hyphen
          * nobody asked for.
          */
+        private var wrapSource: String? = null
+        private var wrapWidth = 0f
+        private var wrapSize = 0f
+        private var wrapped: List<String> = emptyList()
+
         private fun wrap(value: String, maxWidth: Float): List<String> {
+            // Memoised on its three inputs, because the answer changes when the
+            // roster does and the question is asked thirteen times a second.
+            // One entry is enough: there is exactly one wrapped sentence on
+            // this window, and it is only drawn while nobody is speaking.
+            if (value == wrapSource && maxWidth == wrapWidth && text.textSize == wrapSize) {
+                return wrapped
+            }
             val lines = mutableListOf<String>()
-            var current = StringBuilder()
+            val current = StringBuilder()
             for (word in value.split(' ')) {
-                val candidate = if (current.isEmpty()) word else "$current $word"
-                if (text.measureText(candidate) <= maxWidth || current.isEmpty()) {
-                    current = StringBuilder(candidate)
-                } else {
+                val length = current.length
+                if (length > 0) current.append(' ')
+                current.append(word)
+                if (length > 0 && text.measureText(current, 0, current.length) > maxWidth) {
+                    current.setLength(length)
                     lines.add(current.toString())
-                    current = StringBuilder(word)
+                    current.setLength(0)
+                    current.append(word)
                 }
             }
             if (current.isNotEmpty()) lines.add(current.toString())
+            wrapSource = value
+            wrapWidth = maxWidth
+            wrapSize = text.textSize
+            wrapped = lines
             return lines
         }
 
-        /** Trims a name to the room it has, rather than letting it run under
-         *  the meter. */
+        /**
+         * Trims a name to the room it has, rather than letting it run under
+         * the meter.
+         *
+         * **One measurement, not one per character.** This used to walk the
+         * name backwards a letter at a time, measuring `take(cut) + "…"` at
+         * each step — so a name that needed trimming cost a Skia text
+         * measurement and a fresh string per character it had to lose, for
+         * every speaker, on every draw. Four riders with long names came to
+         * something like eighty measurements and eighty strings per frame, at
+         * thirteen frames a second, to draw four labels that had not changed.
+         *
+         * `breakText` is the same question asked once: how much of this fits.
+         * The answer can differ by a character from the old loop's, because
+         * that measured the ellipsis joined to the text and this reserves its
+         * width separately — kerning across the join is the difference. A
+         * letter either way on a name that is already being cut short is not
+         * worth eighty measurements.
+         */
         private fun ellipsise(value: String, maxWidth: Float): String {
             if (text.measureText(value) <= maxWidth) return value
-            var cut = value.length
-            while (cut > 1 && text.measureText(value.take(cut) + "…") > maxWidth) {
-                cut--
-            }
-            return value.take(cut) + "…"
+            val room = maxWidth - text.measureText("…")
+            if (room <= 0f) return "…"
+            val fits = text.breakText(value, true, room, null).coerceAtLeast(1)
+            return value.take(fits) + "…"
         }
     }
 

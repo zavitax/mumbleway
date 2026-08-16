@@ -348,6 +348,7 @@ class AppState extends ChangeNotifier {
   static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
+  static const _prefsVoiceCommunication = 'mumbleway.voiceCommunication';
   static const _prefsSimpleModel = 'mumbleway.simpleModel';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
@@ -643,6 +644,11 @@ class AppState extends ChangeNotifier {
         }
         notifyListeners();
       };
+      AudioSessionBridge.instance.onMicSilenced = (silenced) {
+        if (_micSilenced == silenced) return;
+        _micSilenced = silenced;
+        notifyListeners();
+      };
 
       final dir = await getApplicationSupportDirectory();
       await startEngine(
@@ -760,6 +766,7 @@ class AppState extends ChangeNotifier {
       jitterBufferMs = _clampJitter(v);
     }
     reverb = prefs.getBool(_prefsReverb) ?? true;
+    voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? false;
     simpleModel = prefs.getBool(_prefsSimpleModel) ?? false;
     // Into the core immediately, and before the probe: it decides which model
     // every enhancer built afterwards loads, and the probe has to time the
@@ -1661,6 +1668,16 @@ class AppState extends ChangeNotifier {
       return session.error ?? _strings.micUnavailable;
     }
 
+    // Before the engine opens, so the first block the recorder sees is already
+    // labelled with the microphone it came from.
+    try {
+      setAudioRoute(code: session.route);
+    } catch (_) {
+      // An engine that is not up yet has nothing to tell. The route is set
+      // again on the next activation, and a missing label is a zero rather
+      // than a wrong answer.
+    }
+
     try {
       await setAudioActive(on_: true);
     } catch (e) {
@@ -1750,6 +1767,17 @@ class AppState extends ChangeNotifier {
   /// much as a conversation does, and leaving it out would have turned a
   /// switch that works into one that silently does nothing.
   bool get _audioNeeded => _callInProgress || monitoring || _audioHolds > 0;
+
+  /// Whether another app has taken the microphone and left us silence.
+  ///
+  /// **Android only, and it is the platform's own word rather than a guess.**
+  /// From Android 10 two apps may capture at once and the loser is handed
+  /// digital silence with no error — a navigation app listening for voice
+  /// commands is the usual culprit. Every stage of the chain then behaves
+  /// perfectly on the silence it was given, which looks exactly like a broken
+  /// chain and has cost this project an investigation before.
+  bool get micSilenced => _micSilenced;
+  bool _micSilenced = false;
 
   /// Whether a diagnostic recording is running.
   ///
@@ -2212,6 +2240,40 @@ class AppState extends ChangeNotifier {
   /// A short room tail under incoming voices. On by default: a gated voice
   /// cutting off mid-breath is the unnatural option, not this.
   bool reverb = true;
+
+  /// Asks Android for the telephony capture preset.
+  ///
+  /// **Off by default, and that is a measurement waiting to be made rather
+  /// than a preference.** It stops another app capturing alongside us — from
+  /// Android 10 two apps may record at once and the loser is handed digital
+  /// silence, and only this preset is treated as privacy sensitive — which is
+  /// the fault a rider reported as a navigation app making them inaudible.
+  ///
+  /// But the same preset switches on the device's own echo cancellation, noise
+  /// suppression and gain control on most phones, and this chain runs all three
+  /// itself. Two cancellers on one echo is a known hazard here, not a
+  /// hypothetical. The diagnostics panel's echo-returned figure is how to see
+  /// which is happening: play the test tone, stay quiet, and read it under each
+  /// setting.
+  bool voiceCommunication = false;
+
+  /// Applied on the next device open, so the devices are closed and reopened.
+  ///
+  /// The preset is read when the input stream is built. Setting it without the
+  /// restart would leave a toggle that appears to work, changes nothing, and
+  /// takes effect at some unrelated moment later.
+  Future<void> setVoiceCommunicationEnabled({required bool value}) async {
+    voiceCommunication = value;
+    setVoiceCommunication(on_: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsVoiceCommunication, value);
+    if (_audioActive) {
+      await setAudioActive(on_: false);
+      _audioActive = false;
+      await _acquireAudio();
+    }
+  }
 
   Future<void> setReverbEnabled({required bool value}) async {
     reverb = value;

@@ -70,7 +70,7 @@ aes-gcm = "0.10"
 rand = "0.8"
 
 # --- audio -----------------------------------------------------------------
-cpal = "0.18"
+cpal = { version = "0.18", features = ["android-input-preset"] }
 opus = "0.3"
 nnnoiseless = { version = "0.5", default-features = false }
 
@@ -143,6 +143,21 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 
 [patch.crates-io]
 tract-core = { path = "../third_party/tract-core" }
+
+# cpal, with one hunk changed. See third_party/cpal/PATCH.md.
+#
+# Also not a preference. cpal never calls `AAudioStreamBuilder_setInputPreset`,
+# so every capture stream on Android opens with AAudio's default of
+# `VOICE_RECOGNITION` — and from Android 10 only `VOICE_COMMUNICATION` and
+# `CAMCORDER` are privacy sensitive, the presets that stop a second app
+# capturing alongside. On the default one, a navigation app listening for voice
+# commands can take the microphone and leave this one digital silence, with no
+# error and nothing in the stream to distinguish it from a quiet room.
+#
+# The patch adds a global the app can set before opening the device. Unset it
+# is inert, so every other platform and the untouched Android path are exactly
+# upstream.
+cpal = { path = "../third_party/cpal" }
 
 
 # The same three pins `app/rust/Cargo.toml` carries, and for the same reason.

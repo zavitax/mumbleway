@@ -235,6 +235,12 @@ abstract class L {
   /// **'The microphone stays closed until then, so nothing is recorded and your headset keeps its sound quality for other apps.'**
   String get micIdleWhy;
 
+  /// No description provided for @micTakenByAnotherApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Another app is using the microphone, so nothing is being heard. Navigation apps that listen for voice commands are the usual cause — close it or turn its voice control off.'**
+  String get micTakenByAnotherApp;
+
   /// No description provided for @micUnavailable.
   ///
   /// In en, this message translates to:
@@ -924,6 +930,18 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Your certificate fingerprint'**
   String get identityFingerprint;
+
+  /// No description provided for @voiceCommunication.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim the microphone'**
+  String get voiceCommunication;
+
+  /// No description provided for @voiceCommunicationBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Asks Android for the telephony microphone, so other apps cannot record at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On most phones this also switches on the phone\'s own echo cancelling and noise suppression, which MumbleWay already does itself, so try it and listen.'**
+  String get voiceCommunicationBody;
 
   /// No description provided for @reverb.
   ///
@@ -2676,6 +2694,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Restore cost'**
   String get diagRestoreCost;
+
+  /// No description provided for @diagEchoReturn.
+  ///
+  /// In en, this message translates to:
+  /// **'Echo returned'**
+  String get diagEchoReturn;
 
   /// No description provided for @diagStageBackground.
   ///

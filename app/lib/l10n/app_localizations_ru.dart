@@ -86,6 +86,10 @@ class LRu extends L {
       'До этого микрофон остаётся выключенным: запись не ведётся, а гарнитура сохраняет качество звука для других приложений.';
 
   @override
+  String get micTakenByAnotherApp =>
+      'Микрофон занят другим приложением, поэтому вас не слышно. Обычно это навигатор, ожидающий голосовых команд, — закройте его или отключите в нём голосовое управление.';
+
+  @override
   String get micUnavailable =>
       'Не удалось включить микрофон. Возможно, его использует другое приложение.';
 
@@ -446,6 +450,13 @@ class LRu extends L {
 
   @override
   String get identityFingerprint => 'Отпечаток вашего сертификата';
+
+  @override
+  String get voiceCommunication => 'Забирать микрофон';
+
+  @override
+  String get voiceCommunicationBody =>
+      'Запрашивает у Android телефонный микрофон, чтобы другие приложения не могли записывать одновременно: иначе навигатор, ожидающий голосовых команд, оставит вас без связи. На большинстве телефонов при этом включается их собственное подавление эха и шума, которое MumbleWay уже делает сам, — поэтому включите и послушайте.';
 
   @override
   String get reverb => 'Эффект помещения';
@@ -1441,6 +1452,9 @@ class LRu extends L {
 
   @override
   String get diagRestoreCost => 'Стоимость возврата';
+
+  @override
+  String get diagEchoReturn => 'Возврат эха';
 
   @override
   String get diagStageBackground => 'Фон';

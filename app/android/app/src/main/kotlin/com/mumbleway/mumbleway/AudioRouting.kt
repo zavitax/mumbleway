@@ -8,6 +8,7 @@ import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.AudioRecordingConfiguration
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -43,6 +44,27 @@ class AudioRouting(private val context: Context) {
 
     /** Held for as long as the route is, and given back with it. */
     private var focusRequest: AudioFocusRequest? = null
+
+    /**
+     * Told when another app takes the microphone out from under us.
+     *
+     * **The failure this reports is otherwise invisible.** From Android 10 two
+     * apps may capture at once and only one of them gets real audio; the other
+     * is handed digital silence, with no error, no callback of its own and
+     * nothing in the stream to distinguish it from a quiet room. A navigation
+     * app listening for voice commands is the common case, and the report that
+     * reaches us is "nobody can hear me" — which is indistinguishable from a
+     * dozen other faults.
+     *
+     * `isClientSilenced` is the platform saying it in as many words, so it is
+     * asked rather than inferred. The capture worker already warns on two
+     * seconds of bit-exact zero, which catches the same thing from the other
+     * side and cannot say why.
+     */
+    var onSilenced: ((Boolean) -> Unit)? = null
+
+    private var silenced = false
+    private var recordingCallback: AudioManager.AudioRecordingCallback? = null
 
     /**
      * Asks the system to duck music rather than stop it, and keeps holding the
@@ -108,6 +130,73 @@ class AudioRouting(private val context: Context) {
      * would then keep that microphone for the whole call — the stream is bound
      * at open time and does not follow a route that changes underneath it.
      */
+    /**
+     * Which microphone we ended up on, as the code the decision log carries.
+     *
+     * **The numbers belong to `record.rs` and are mirrored here.** They are a
+     * wire format: recordings already on riders' phones are read with that
+     * table, so a number cannot change meaning. 0 unknown, 1 the phone's own,
+     * 2 wired, 3 Bluetooth hands-free, 4 USB, 5 something else.
+     *
+     * Reported because a recording made through the wrong microphone looks
+     * exactly like one made through the right one — the fault the diagnostic
+     * recorder exists to prevent, and which it could not answer for the route.
+     * A quiet recording arrived and the device had to be inferred from the
+     * audio's bandwidth, a hands-free link stopping dead at 3.4 kHz where a
+     * built-in microphone runs to 16.
+     */
+    var routeCode: Int = 0
+        private set
+
+    /**
+     * Watches for the platform silencing our capture.
+     *
+     * API 29, which is where concurrent capture and `isClientSilenced` both
+     * arrive. Below it a second app simply could not open the microphone, so
+     * there is nothing to watch for.
+     */
+    private fun watchForSilencing() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (recordingCallback != null) return
+        val cb =
+            object : AudioManager.AudioRecordingCallback() {
+                override fun onRecordingConfigChanged(
+                    configs: MutableList<AudioRecordingConfiguration>?
+                ) {
+                    // Ours are the ones this process owns. `configs` carries
+                    // every app's, and another app being silenced is not our
+                    // business — it may well be us doing the silencing.
+                    val mine =
+                        configs?.filter { it.clientAudioSource != AudioManager.ERROR }
+                            ?: return
+                    val nowSilenced = mine.any { it.isClientSilenced }
+                    if (nowSilenced != silenced) {
+                        silenced = nowSilenced
+                        Log.w(
+                            TAG,
+                            if (nowSilenced)
+                                "another app has taken the microphone; we are being fed silence"
+                            else "the microphone is ours again",
+                        )
+                        onSilenced?.invoke(nowSilenced)
+                    }
+                }
+            }
+        recordingCallback = cb
+        audio.registerAudioRecordingCallback(cb, Handler(Looper.getMainLooper()))
+    }
+
+    private fun stopWatchingForSilencing() {
+        val cb = recordingCallback ?: return
+        recordingCallback = null
+        silenced = false
+        try {
+            audio.unregisterAudioRecordingCallback(cb)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not unregister the recording callback", e)
+        }
+    }
+
     fun activate(done: (Boolean) -> Unit) {
         if (active) {
             done(true)
@@ -119,11 +208,13 @@ class AudioRouting(private val context: Context) {
         requestMusicFocus()
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
         active = true
+        watchForSilencing()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             done(chooseCommunicationDevice())
             return
         }
+        routeCode = 0
         @Suppress("DEPRECATION")
         run {
             if (!audio.isBluetoothScoAvailableOffCall) {
@@ -131,6 +222,7 @@ class AudioRouting(private val context: Context) {
                 // microphone is a perfectly good fallback and is what a rider
                 // without a headset is using anyway.
                 audio.isSpeakerphoneOn = true
+                routeCode = 1
                 done(true)
                 return
             }
@@ -149,6 +241,7 @@ class AudioRouting(private val context: Context) {
     fun deactivate() {
         if (!active) return
         active = false
+        stopWatchingForSilencing()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audio.clearCommunicationDevice()
@@ -199,8 +292,24 @@ class AudioRouting(private val context: Context) {
             // sounds broken indoors — the same reason iOS asks for
             // `.defaultToSpeaker`.
             ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-            ?: return true
+            ?: run {
+                // Nothing to choose from. Left as whatever the platform picks,
+                // and recorded as not known rather than guessed at.
+                routeCode = 0
+                return true
+            }
 
+        routeCode =
+            when (target.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 3
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                AudioDeviceInfo.TYPE_BUILTIN_MIC -> 1
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 2
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_USB_HEADSET -> 4
+                else -> 5
+            }
         return try {
             audio.setCommunicationDevice(target)
         } catch (e: Exception) {

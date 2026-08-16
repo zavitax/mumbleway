@@ -33,6 +33,33 @@ serde_json = "1.0.151"
 ndk-context = "0.1"
 jni = "0.21"
 
+# cpal, with one hunk changed. See third_party/cpal/PATCH.md.
+#
+# **Declared here as well as in `core/Cargo.toml`, because a `[patch]` only
+# applies to the package it is resolved from.** `core` is a path dependency of
+# this crate, not a workspace member, so its patch table does not reach here —
+# and without this the build fails outright, because the `android-input-preset`
+# feature `core` asks for does not exist on the published cpal.
+#
+# `tools/dfbench` repeats the tract patch for the same reason.
+[patch.crates-io]
+cpal = { path = "../../third_party/cpal" }
+
+# tract-core, with one hunk changed. See third_party/tract-core/PATCH.md.
+#
+# **This was missing, and only a `#[cfg(debug_assertions)]` hid it.** The patch
+# is what lets the vendored plain DFN3 load at all: tract's `add_const`
+# deduplicates constants by value and mints their name without checking it is
+# free, so the graph is rejected with `duplicate name /convt3/Conv.bias`. That
+# check is a debug assertion, so every release build of this crate has loaded
+# the model regardless and nothing has ever gone wrong in the field.
+#
+# It would have gone wrong the first time anybody built the app in debug and
+# reached for the light enhancer model — the rung that keeps a slow phone
+# enhancing rather than losing the enhancer — and it would have looked like a
+# corrupt download rather than a resolver detail two directories away.
+tract-core = { path = "../../third_party/tract-core" }
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 

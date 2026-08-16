@@ -4,6 +4,7 @@ pub mod aec;
 pub mod aec3;
 pub mod clipguard;
 pub mod codec;
+pub mod coupling;
 pub mod deepfilter;
 pub mod dehiss;
 pub mod denoise;

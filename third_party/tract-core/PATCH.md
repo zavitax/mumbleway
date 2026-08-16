@@ -12,6 +12,27 @@ cargo download tract-core==0.21.4    # or unpack it from ~/.cargo/registry
 diff -ru <pristine> third_party/tract-core
 ```
 
+## Upstream has taken the fix — but there is nothing to move to yet
+
+`sonos/tract#2611`, "core: give add_const a name no node is using", was merged
+on **2026-08-11**. One file, +18/-1, and it is this patch.
+
+**It is not in a release.** The newest published `tract-core` is 0.23.4 from
+2026-07-08, a month before the merge, so switching to crates.io today would
+switch to a copy without the fix. Checked rather than assumed:
+
+```bash
+gh api repos/sonos/tract/pulls/2611 --jq '.merged_at'
+gh api https://crates.io/api/v1/crates/tract-core --jq '.crate.max_version'
+```
+
+When a release does carry it, deleting this directory is still not one step. The
+version to move to would be 0.23.x, and the note above records that 0.21.6
+already dropped `Graph::symbol_table`, which `deep_filter` uses — so the move
+needs `deep_filter` to work against that major version first, and
+`deep_filter` is pinned here to a git revision. Check that before assuming the
+vendor can simply go.
+
 ## What it fixes
 
 **The vendored plain DFN3 could not be loaded by any released tract.** That

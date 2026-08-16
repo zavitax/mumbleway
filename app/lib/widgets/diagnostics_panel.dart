@@ -455,6 +455,25 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                   '${_chain!.restorePeakMs.toStringAsFixed(2)}'
                                   ' + ${_chain!.restoreFilterMs.toStringAsFixed(2)} ms',
                                 ),
+                              // **Only once it rests on something.** The
+                              // window fills only while the far end is
+                              // playing, so on a quiet call this is a
+                              // measurement in progress for minutes — and a
+                              // confident number from four blocks is the
+                              // failure mode this row would otherwise have.
+                              // Half a second is the bar.
+                              if (_chain?.erlDb != null &&
+                                  (_chain?.erlBlocks ?? 0) >= 50)
+                                _Row(
+                                  l.diagEchoReturn,
+                                  '${_chain!.erlDb!.toStringAsFixed(0)} dB',
+                                  // Beyond about 40 dB nothing acoustic
+                                  // explains it on a phone, so something
+                                  // upstream is cancelling — which is worth
+                                  // noticing, since this chain then has two
+                                  // cancellers fighting over the same echo.
+                                  bad: _chain!.erlDb! > 40,
+                                ),
                               if ((_chain?.floorWatchdogTrips ?? 0) > 0)
                                 _Row(
                                   l.diagFloorWatchdog,

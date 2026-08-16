@@ -139,6 +139,17 @@ pub struct ChainStatus {
     /// can latch; the watchdog breaks that after a minute. A count above zero
     /// says it had to.
     pub floor_watchdog_trips: u32,
+    /// How much quieter the microphone is than what the speaker played, in dB,
+    /// and how many blocks that rests on. `None` until the far end has made a
+    /// sound loud enough to measure against.
+    ///
+    /// **Nothing else in the chain measures the path the canceller is
+    /// cancelling.** `erle_db` says how well our canceller is doing and says
+    /// nothing about whether there was anything to do — and those look
+    /// identical from inside. See `super::coupling` for what the numbers mean
+    /// and which way the measurement errs.
+    pub erl_db: Option<f32>,
+    pub erl_blocks: u32,
     /// The onset SNR the Auto profile was last chosen from, in dB, and `None`
     /// before the first phrase.
     ///
@@ -267,6 +278,8 @@ impl Default for ChainStatus {
             floor_held: false,
             floor_held_ms: 0,
             floor_watchdog_trips: 0,
+            erl_db: None,
+            erl_blocks: 0,
             restore_gain_db: 0.0,
             restore_centre_hz: 0.0,
             restore_peak_ms: 0.0,
@@ -781,6 +794,9 @@ pub struct AudioShared {
     /// heavier profile; this asks whether a voice is present at all, which is
     /// what decides whether the noise floor may keep climbing.
     classifier_voice: AtomicU8,
+    /// Which microphone the platform says we are on. See [`record::Recorded`]
+    /// for what the numbers mean; the core only carries it to the log.
+    route: AtomicU8,
     /// Where every stage of the capture chain stands, as of the last block.
     chain: Mutex<ChainStatus>,
 
@@ -1102,6 +1118,7 @@ impl AudioShared {
             waveform: Mutex::new(None),
             background_noisy: AtomicU8::new(0),
             classifier_voice: AtomicU8::new(0),
+            route: AtomicU8::new(0),
             input_peak_bits: AtomicU32::new(0),
             input_clipped: AtomicU64::new(0),
             chain: Mutex::new(ChainStatus::default()),
@@ -1635,6 +1652,57 @@ impl AudioShared {
     }
 
     /// Which de-hissing method the capture loop should apply, if any.
+    /// Tells the recorder which microphone this is.
+    ///
+    /// Set by the platform when the audio session comes up and whenever the
+    /// route changes under it — a headset connected mid-ride is a different
+    /// microphone from the one the recording started on, and a single value in
+    /// a header could not say so.
+    /// Asks Android's capture path for the telephony preset.
+    ///
+    /// **What it buys is exclusivity, not quality.** From Android 10 two apps
+    /// may capture at once, the loser is handed digital silence rather than an
+    /// error, and only `VOICE_COMMUNICATION` and `CAMCORDER` are treated as
+    /// privacy sensitive — the presets that stop the second app. On the default
+    /// `VOICE_RECOGNITION`, a navigation app listening for voice commands can
+    /// take the microphone with nothing in the stream to say so.
+    ///
+    /// **What it costs is unmeasured and may be large.** The same preset
+    /// switches on the device's own echo cancellation, noise suppression and
+    /// gain control on most phones, and this chain runs all three itself —
+    /// `CLAUDE.md` records the hardware canceller fighting ours as a known
+    /// hazard. `super::coupling` exists to answer that on a real device: play
+    /// the test tone, stay quiet, and read the echo returned under each
+    /// setting. Beyond about 40 dB nothing acoustic explains it and the
+    /// platform is cancelling underneath us.
+    ///
+    /// So it is off by default and stays off until somebody has looked.
+    ///
+    /// Read when the input stream is built, so it takes effect on the next
+    /// device open rather than the next block; the caller restarts the audio.
+    /// Nothing anywhere else, and a no-op off Android.
+    pub fn set_voice_communication(&self, on: bool) {
+        #[cfg(target_os = "android")]
+        {
+            // `AAUDIO_INPUT_PRESET_VOICE_COMMUNICATION`, from the NDK's
+            // `AAudio.h`. Zero means "leave the default alone" and is not a
+            // preset — see the vendored `cpal`'s `PATCH.md`.
+            const VOICE_COMMUNICATION: i32 = 7;
+            cpal::ANDROID_INPUT_PRESET
+                .store(if on { VOICE_COMMUNICATION } else { 0 }, Ordering::Relaxed);
+        }
+        #[cfg(not(target_os = "android"))]
+        let _ = on;
+    }
+
+    pub fn set_route(&self, code: u8) {
+        self.route.store(code, Ordering::Relaxed);
+    }
+
+    pub fn route(&self) -> u8 {
+        self.route.load(Ordering::Relaxed)
+    }
+
     pub fn set_dehiss_mode(&self, mode: DehissMode) {
         self.dehiss_mode.store(
             match mode {
@@ -2873,6 +2941,7 @@ where
 
     let mut block = vec![0.0f32; FRAME_SIZE];
     let mut echo_ref: Vec<f32> = Vec::with_capacity(FRAME_SIZE);
+    let mut coupling = super::coupling::EchoCoupling::new();
     let mut frame: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES);
     let mut sequence: u64 = 0;
     let mut was_transmitting = false;
@@ -3091,6 +3160,22 @@ where
             let echo_ref_had = echo_ref.len();
             echo_ref.resize(FRAME_SIZE, 0.0);
 
+            // **Before anything cancels it, which is the whole point.**
+            //
+            // How much of what the speaker played comes back into the
+            // microphone. Measured here it is a property of the phone and the
+            // room; measured a line later it would be a property of our own
+            // canceller, which `erle_db` already reports.
+            //
+            // The question it answers is whether the *platform* is cancelling
+            // underneath us — which Android's `VOICE_COMMUNICATION` capture
+            // preset switches on, and which no API reliably reports because
+            // pre-processing inside the audio HAL is invisible to the effects
+            // framework. A phone's speaker and microphone are inches apart, so
+            // an implausibly quiet return is the evidence. See
+            // `super::coupling`.
+            coupling.push(&block, &echo_ref);
+
             // Picked up here rather than at construction so the switch takes
             // effect on the next block instead of the next restart.
             let want_profile = shared.noise_profile();
@@ -3303,6 +3388,7 @@ where
                     // for: under `Auto` those are different, and the one that
                     // explains the audio is this one.
                     profile: analysis.effective_profile as u8,
+                    route: shared.route(),
                     // What the canceller had and what it did with it. Read
                     // `echo_ref_samples` first: a filter with no reference
                     // cannot have cancelled anything, and until this column
@@ -3518,6 +3604,8 @@ where
                 floor_held: analysis.floor_held,
                 floor_held_ms: analysis.floor_held_ms,
                 floor_watchdog_trips: analysis.floor_watchdog_trips,
+                erl_db: coupling.get().map(|c| c.erl_db),
+                erl_blocks: coupling.get().map(|c| c.blocks as u32).unwrap_or(0),
                 auto_snr_db: processor.latched_snr_db(),
                 restore_gain_db: analysis.restore_gain_db,
                 restore_centre_hz: analysis.restore_centre_hz,

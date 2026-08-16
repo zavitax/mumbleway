@@ -86,6 +86,10 @@ class LEn extends L {
       'The microphone stays closed until then, so nothing is recorded and your headset keeps its sound quality for other apps.';
 
   @override
+  String get micTakenByAnotherApp =>
+      'Another app is using the microphone, so nothing is being heard. Navigation apps that listen for voice commands are the usual cause — close it or turn its voice control off.';
+
+  @override
   String get micUnavailable =>
       'The microphone could not be opened. Another app may be using it.';
 
@@ -446,6 +450,13 @@ class LEn extends L {
 
   @override
   String get identityFingerprint => 'Your certificate fingerprint';
+
+  @override
+  String get voiceCommunication => 'Claim the microphone';
+
+  @override
+  String get voiceCommunicationBody =>
+      'Asks Android for the telephony microphone, so other apps cannot record at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On most phones this also switches on the phone\'s own echo cancelling and noise suppression, which MumbleWay already does itself, so try it and listen.';
 
   @override
   String get reverb => 'Room tone';
@@ -1448,6 +1459,9 @@ class LEn extends L {
 
   @override
   String get diagRestoreCost => 'Restore cost';
+
+  @override
+  String get diagEchoReturn => 'Echo returned';
 
   @override
   String get diagStageBackground => 'Background';

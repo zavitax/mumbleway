@@ -87,6 +87,32 @@ pub struct Recorded {
     pub harmonicity: f32,
     pub modulation: f32,
 
+    /// Which microphone the audio came from, as a small code.
+    ///
+    /// **The column that would have answered "was this the right microphone?"
+    /// in a second.** This file exists because a directory of recordings from
+    /// the phone's own microphone looks exactly like one from the headset's,
+    /// and making the app the recorder fixed *which* device it captures
+    /// without recording *what* that device was. A quiet recording arrived and
+    /// the route had to be inferred from the audio's bandwidth — a Bluetooth
+    /// hands-free link stops dead at 3.4 kHz and a built-in microphone runs to
+    /// 16 — which worked, and is a spectrum analysis standing in for a digit.
+    ///
+    /// | | |
+    /// |---|---|
+    /// | 0 | not known — no platform session, or it did not say |
+    /// | 1 | the phone's own microphone |
+    /// | 2 | a wired headset |
+    /// | 3 | Bluetooth hands-free (SCO), which is narrowband |
+    /// | 4 | USB or dock |
+    /// | 5 | something else the platform named |
+    ///
+    /// **The numbers are the wire format and must not be renumbered.** Every
+    /// recording already on somebody's phone is read with the meaning above,
+    /// and a reader written months from now has nothing else to go on. New
+    /// routes take the next free number.
+    pub route: u8,
+
     /// The suppression profile in force, as `NoiseProfile as u8`.
     ///
     /// **Never `Auto`**, because `Auto` is a rule for choosing and not a
@@ -284,7 +310,7 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
         "# mumbleway diagnostic capture; {rate} Hz mono s16le alongside\n\
          block,transmitting,speaking,gate_open,vad,snr_db,level_db,floor_db,harmonicity,\
          modulation,mode,muted,gain_db,echo_ref_samples,aec_on,erle_db,aec_lag_ms,\
-         aec_confidence,aec_spread_ms,aec_taps,aec3,profile"
+         aec_confidence,aec_spread_ms,aec_taps,aec3,profile,route"
     )?;
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
@@ -323,7 +349,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
         let _ = writeln!(
             sink.log,
             "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1},\
-             {},{},{:.1},{:.1},{:.2},{:.1},{},{},{}",
+             {},{},{:.1},{:.1},{:.2},{:.1},{},{},{},{}",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -346,6 +372,7 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.aec_taps,
             block.aec3 as u8,
             block.profile,
+            block.route,
         );
         block_index += 1;
 

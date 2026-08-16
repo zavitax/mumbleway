@@ -1415,6 +1415,25 @@ pub struct UiChainStatus {
     /// the floor that is frozen, so the pair can latch; the watchdog breaks it
     /// after a minute. Anything above zero means it had to.
     pub floor_watchdog_trips: u32,
+    /// How much quieter the microphone is than what the speaker played, in dB,
+    /// measured before our own canceller touches it.
+    ///
+    /// **The number that says whether the platform is cancelling underneath
+    /// us.** A phone's speaker and microphone are inches apart, so 0 to 20 dB
+    /// is an ordinary phone and beyond about 40 nothing acoustic explains it.
+    /// Android's `VOICE_COMMUNICATION` capture preset switches the device's own
+    /// echo cancellation on, and no API reports that reliably — pre-processing
+    /// inside the audio HAL is invisible to the effects framework.
+    ///
+    /// It understates the loss rather than overstating it, so a high reading is
+    /// trustworthy and a low one may only mean somebody was talking. The clean
+    /// way to read it is to play the test tone and stay quiet.
+    ///
+    /// `None` until the far end has made a sound loud enough to measure
+    /// against; `erl_blocks` says how much it rests on, because a confident
+    /// number from four blocks is the failure mode here.
+    pub erl_db: Option<f32>,
+    pub erl_blocks: u32,
     /// The onset SNR the `Auto` profile was chosen from, in dB — how far the
     /// rider's voice stood above their own background over the first second of
     /// the last phrase. `None` until somebody speaks, and always `None` when
@@ -1937,6 +1956,8 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         floor_held: c.floor_held,
         floor_held_ms: c.floor_held_ms,
         floor_watchdog_trips: c.floor_watchdog_trips,
+        erl_db: c.erl_db,
+        erl_blocks: c.erl_blocks,
         auto_snr_db: c.auto_snr_db,
         restore_gain_db: c.restore_gain_db,
         restore_centre_hz: c.restore_centre_hz,
@@ -2298,6 +2319,43 @@ pub fn set_dehiss(mode: DehissOption) -> anyhow::Result<()> {
         DehissOption::Expander => DehissMode::Expander,
         DehissOption::Spectral => DehissMode::Spectral,
     });
+    Ok(())
+}
+
+/// Asks Android's capture path for the telephony preset, on the next open.
+///
+/// Stops another app capturing alongside us — from Android 10 the loser of a
+/// contest for the microphone is handed silence, and only this preset and
+/// `CAMCORDER` are privacy sensitive. It also switches on the device's own
+/// echo cancellation, noise suppression and gain control on most phones, which
+/// this chain already does for itself, so it is a trade rather than a win. The
+/// echo-returned figure in the diagnostics panel is how to see which.
+///
+/// Takes effect when the input device is next opened, not immediately.
+#[frb(sync)]
+pub fn set_voice_communication(on: bool) -> anyhow::Result<()> {
+    app()?.shared.set_voice_communication(on);
+    Ok(())
+}
+
+/// Tells the recorder which microphone the platform has us on.
+///
+/// **A number, not a name.** The decision log is a line per 10 ms block, so a
+/// string here would be the largest column in the file for something that
+/// changes a handful of times a session; one digit and a comma is two bytes a
+/// row against the 960 the audio costs beside it.
+///
+/// See `mumbleway_core::audio::record::Recorded::route` for what the numbers
+/// mean. That table is the wire format: the platform code mirrors it, and the
+/// numbers cannot be renumbered without changing the meaning of every
+/// recording already sitting on somebody's phone.
+///
+/// Called when the session comes up and again whenever the route changes under
+/// it, because a headset connected mid-ride is a different microphone from the
+/// one the recording started on.
+#[frb(sync)]
+pub fn set_audio_route(code: u8) -> anyhow::Result<()> {
+    app()?.shared.set_route(code);
     Ok(())
 }
 

@@ -47,7 +47,21 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // cpal's Android backend uses ndk::audio (AAudio), which requires API 26.
-        minSdk = maxOf(flutter.minSdkVersion, 26)
+        // 28, and the reason is one API call.
+        //
+        // `AAudioStreamBuilder_setInputPreset` is absent from the NDK stubs
+        // below 28 — checked against them rather than assumed — so a build at
+        // 26 does not link and one linked at 28 produces a library Android 8
+        // refuses to load. That call is how the capture stream asks for the
+        // `VOICE_COMMUNICATION` preset, which is the only way to stop another
+        // app capturing alongside us: from Android 10 two apps may record at
+        // once and the loser is handed digital silence, and only that preset
+        // and `CAMCORDER` are treated as privacy sensitive.
+        //
+        // The cost is Android 8.0 and 8.1. Existing installs there keep the
+        // last compatible build; they stop receiving updates rather than
+        // losing the app.
+        minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -126,10 +126,18 @@ class MainActivity : FlutterActivity() {
         // recording returned silence on every device: streams opened, the
         // meter sat at zero, and nothing anywhere said why. Answered on the
         // same channel iOS uses, so the Dart side keeps one code path.
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "mumbleway/audioSession",
-        ).setMethodCallHandler { call, result ->
+        val sessionChannel =
+            MethodChannel(
+                flutterEngine.dartExecutor.binaryMessenger,
+                "mumbleway/audioSession",
+            )
+        // Pushed rather than polled: the rider needs to know while it is
+        // happening, and a poll would either miss a short theft or cost a
+        // wake-up a second for the whole of every ride.
+        audioRouting.onSilenced = { silenced ->
+            runOnUiThread { sessionChannel.invokeMethod("micSilenced", silenced) }
+        }
+        sessionChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "prepare" -> requestMicrophone(result)
                 // There IS a session to take live here, and the belief that
@@ -154,6 +162,9 @@ class MainActivity : FlutterActivity() {
                             result.success(
                                 mapOf(
                                     "ok" to ok,
+                                    // Which microphone this turned out to be.
+                                    // See `AudioRouting.routeCode`.
+                                    "route" to audioRouting.routeCode,
                                     // Android does not offer a channel count
                                     // before the device is open, and the engine
                                     // opens it itself. Negative means "not

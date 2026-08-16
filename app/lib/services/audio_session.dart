@@ -9,6 +9,7 @@ class AudioSessionState {
     required this.granted,
     required this.inputChannels,
     required this.sampleRate,
+    this.route = 0,
     this.error,
   });
 
@@ -28,6 +29,11 @@ class AudioSessionState {
   final int inputChannels;
 
   final double sampleRate;
+
+  /// Which microphone the platform put us on, as the code the decision log
+  /// carries. See `Recorded::route` in `record.rs` for the table; 0 means it
+  /// did not say, which is every platform without a session.
+  final int route;
 
   /// What the platform said went wrong, if configuring the session failed
   /// outright rather than merely being refused.
@@ -80,11 +86,25 @@ class AudioSessionBridge {
     }
   }
 
+  /// Called when another app takes the microphone, and again when it gives it
+  /// back.
+  ///
+  /// **Android hands the loser of a contest for the microphone digital silence,
+  /// not an error.** Two apps may capture at once from Android 10 and only one
+  /// gets real audio; a navigation app listening for voice commands is the
+  /// common case. Nothing in the stream distinguishes that from a quiet room,
+  /// so without this the report that arrives is "nobody can hear me" and every
+  /// stage of the chain is working perfectly on the silence it was given.
+  void Function(bool silenced)? onMicSilenced;
+
   void _ensureHandler() {
     if (_handlerInstalled) return;
     _handlerInstalled = true;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'resumed') onResumed?.call();
+      if (call.method == 'micSilenced') {
+        onMicSilenced?.call(call.arguments == true);
+      }
       return null;
     });
   }
@@ -113,6 +133,7 @@ class AudioSessionBridge {
             ? (r?['inputChannels'] as num?)?.toInt() ?? 0
             : 0,
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
+        route: (r?['route'] as num?)?.toInt() ?? 0,
         error: r?['error'] as String?,
       );
     } on MissingPluginException {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -323,6 +324,9 @@ class _DeviceSection extends StatelessWidget {
         ],
         const _MonitorTile(),
         const _EchoCancellationTile(),
+        // Android only, because the setting is an Android capture preset and
+        // there is nothing behind it anywhere else.
+        if (Platform.isAndroid) const _VoiceCommunicationTile(),
         const _SimpleModelTile(),
         const _NormaliseTile(),
         const _JitterBufferTile(),
@@ -512,6 +516,37 @@ class _SimpleModelTile extends StatelessWidget {
   }
 }
 
+/// Asks Android for the telephony capture preset.
+///
+/// **Off by default, and that is a measurement not yet made rather than a
+/// preference.** It is the only way to stop another app capturing alongside
+/// this one — from Android 10 two may record at once and the loser is handed
+/// digital silence, which is what a navigation app listening for voice
+/// commands does to a rider mid-conversation. But the same preset switches on
+/// the device's own echo cancellation, noise suppression and gain control on
+/// most phones, and this chain runs all three itself.
+///
+/// The subtitle says both halves. A switch whose only description was the good
+/// half would be one riders turn on and then report the audio as worse for
+/// reasons nothing on screen explains.
+class _VoiceCommunicationTile extends StatelessWidget {
+  const _VoiceCommunicationTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    return SwitchListTile(
+      secondary: const Icon(Icons.phone_in_talk),
+      title: Text(l.voiceCommunication),
+      subtitle: Text(l.voiceCommunicationBody),
+      isThreeLine: true,
+      value: state.voiceCommunication,
+      onChanged: (v) => state.setVoiceCommunicationEnabled(value: v),
+    );
+  }
+}
+
 class _ReverbTile extends StatelessWidget {
   const _ReverbTile();
 
@@ -682,6 +717,35 @@ class _LevelsSection extends StatelessWidget {
           // while somebody drags the gain slider under it is worse than
           // saying so. The sliders stay usable either way: they are
           // remembered settings, not live adjustments.
+          // **A live meter reading zero is the thing this warns about.** The
+          // devices are open, every stage is working, and the audio is digital
+          // silence because another app took the microphone — which from
+          // Android 10 costs no error and produces a chain that looks
+          // perfectly healthy right up to nobody being able to hear you.
+          if (state.micSilenced)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.mic_off,
+                    size: 16,
+                    color: StatusColors.connecting,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l.micTakenByAnotherApp,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: state.audioActive

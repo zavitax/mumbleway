@@ -4,9 +4,9 @@ import '../state/app_state.dart';
 
 /// One value of the app state, and the only part of a screen that follows it.
 ///
-/// [AppStateScope] is an `InheritedNotifier`, so reading it subscribes to
-/// *every* change: a call in a screen's own `build` rebuilds that screen's
-/// whole subtree each time anything at all moves, and the audio engine moves
+/// [AppStateScope] is an `InheritedNotifier`, so *reading* it subscribes to
+/// every change: a call in a screen's own `build` rebuilds that screen's whole
+/// subtree each time anything at all moves, and the audio engine moves
 /// something twice a second for the whole of a ride.
 ///
 /// Two things are wrong with subscribing at the top, and only wrapping fixes
@@ -16,34 +16,39 @@ import '../state/app_state.dart';
 ///  2. **Relevance** — even wrapped, a control rebuilds on notifications that
 ///     changed nothing it displays.
 ///
-/// So this takes a [select] as well as a [builder]. While the selected value
-/// compares equal, the previously built subtree is returned *by identity*,
-/// which makes `Element.updateChild` skip it without descending — the cost is
-/// one comparison, not one rebuild.
+/// So this takes a [select] as well as a [builder], and does not subscribe
+/// through the inherited widget at all: it reads the state without depending on
+/// it and listens to it directly, so an unrelated notification does not reach
+/// this element in the first place. When [select] returns something equal,
+/// nothing is marked dirty and nothing rebuilds.
 ///
 /// Measured on the settings screen: one notification rebuilt 875 widgets;
 /// wrapping the four radio groups took it to 345, and selecting each group's
 /// own value took it to 109 — 13.2 ms to 4.2 ms.
 ///
+/// **An earlier version cached the built subtree instead, and shipped a bug.**
+/// It subscribed normally, then returned the previous widget by identity while
+/// the selected value was unchanged, so `Element.updateChild` would skip it.
+/// That works until a builder reads something *other* than the app state —
+/// `L.of(context)` most of all. Such a builder captures the strings of the
+/// moment it last ran, the cached subtree never runs again, and changing the
+/// language leaves six settings tiles in the old one. The rule "keep `L.of` in
+/// the enclosing build" was written down and was still too easy to break, so
+/// the cache is gone: the builder now runs on every rebuild, and a rebuild
+/// happens for a locale change and not for a level meter.
+///
 /// [select] must return something with a meaningful `==` — an enum, a number, a
 /// bool, a string, or a record of those. Returning an object that compares by
-/// identity means the cache never hits, which merely wastes the wrapper.
-/// Returning one that compares equal while its contents differ means the screen
-/// goes stale, which is worse and is why this takes a selector rather than
-/// diffing the built widget or guessing.
-///
-/// **Keep `L.of(context)` and `Theme.of(context)` in the enclosing build, not
-/// inside [builder].** Those subscribe the parent, so a language or theme
-/// change rebuilds it, which makes a new [Watch] and drops the cache. Read them
-/// inside and a translated string can survive a language change.
+/// identity means it rebuilds every time, which merely wastes the wrapper.
+/// Returning one that compares equal while its contents differ means the
+/// control goes stale, which is worse and is why this takes a selector rather
+/// than diffing the built widget or guessing.
 class Watch<T> extends StatefulWidget {
   const Watch(this.select, this.builder, {super.key});
 
-  /// The value this part of the screen actually shows.
+  /// Everything [builder] reads from the app state, and nothing else.
   final T Function(AppState state) select;
 
-  /// Called only when [select] returns something different, or the parent
-  /// rebuilds.
   final Widget Function(BuildContext context, AppState state) builder;
 
   @override
@@ -126,26 +131,45 @@ class _WhenChangedState<T> extends State<WhenChanged<T>> {
 }
 
 class _WatchState<T> extends State<Watch<T>> {
+  AppState? _state;
   T? _value;
-  Widget? _child;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // `read`, not `of`: depending on the scope is the thing being avoided.
+    // Resolved here rather than in `initState` because an inherited widget is
+    // not reachable that early, and re-resolved because this runs again if the
+    // scope above is ever replaced.
+    final next = AppStateScope.read(context);
+    if (identical(next, _state)) return;
+    _state?.removeListener(_changed);
+    _state = next..addListener(_changed);
+    _value = widget.select(next);
+  }
 
   @override
   void didUpdateWidget(Watch<T> old) {
     super.didUpdateWidget(old);
-    // The parent rebuilt, so [Watch.builder] is a new closure over whatever
-    // made it rebuild — the locale, most often. Nothing here can tell what it
-    // captured, so the safe move is to build again.
-    _child = null;
+    // A new [Watch.select] may be reading something else entirely.
+    if (_state case final state?) _value = widget.select(state);
   }
 
   @override
-  Widget build(BuildContext context) {
-    final state = AppStateScope.of(context);
-    final value = widget.select(state);
-    if (_child == null || value != _value) {
-      _value = value;
-      _child = widget.builder(context, state);
-    }
-    return _child!;
+  void dispose() {
+    _state?.removeListener(_changed);
+    super.dispose();
   }
+
+  void _changed() {
+    final state = _state;
+    if (state == null) return;
+    final next = widget.select(state);
+    if (next == _value) return;
+    // Not `mounted`-guarded by luck: the listener is removed in `dispose`.
+    setState(() => _value = next);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _state!);
 }

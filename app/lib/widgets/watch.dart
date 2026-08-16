@@ -50,6 +50,81 @@ class Watch<T> extends StatefulWidget {
   State<Watch<T>> createState() => _WatchState<T>();
 }
 
+/// One value of a [Listenable], and the only part of a tree that follows it.
+///
+/// The same idea as [Watch], for a notifier held in hand rather than reached
+/// through an inherited widget — and for the same reason. `ListenableBuilder`
+/// rebuilds its whole subtree on every notification, which is right when the
+/// subtree *is* the thing that changed and wasteful when it is not.
+///
+/// Measured on the listen sheet: `RecordingPlayer` fires every 80 ms while a
+/// recording plays, and one `ListenableBuilder` around the waveform *and* the
+/// transport controls rebuilt 204 widgets a tick — six `IconButton`s with their
+/// tooltips, ink and gesture machinery, none of which move with the playhead.
+///
+/// Unlike [Watch] this does not cache a subtree: when [select] returns the same
+/// value nothing is rebuilt at all, because nothing is marked dirty. Return a
+/// record to follow several values at once — records compare by their fields,
+/// so `(a.playing, a.speechOnly)` is a complete key and a cheap one.
+///
+/// The same warning as [Watch]: a [select] that misses a value the [builder]
+/// reads shows a stale control, which is worse than the rebuild it saved.
+class WhenChanged<T> extends StatefulWidget {
+  const WhenChanged({
+    required this.listenable,
+    required this.select,
+    required this.builder,
+    super.key,
+  });
+
+  final Listenable listenable;
+
+  /// Everything [builder] reads from [listenable], and nothing else.
+  final T Function() select;
+
+  final WidgetBuilder builder;
+
+  @override
+  State<WhenChanged<T>> createState() => _WhenChangedState<T>();
+}
+
+class _WhenChangedState<T> extends State<WhenChanged<T>> {
+  late T _value = widget.select();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.listenable.addListener(_changed);
+  }
+
+  @override
+  void didUpdateWidget(WhenChanged<T> old) {
+    super.didUpdateWidget(old);
+    if (old.listenable != widget.listenable) {
+      old.listenable.removeListener(_changed);
+      widget.listenable.addListener(_changed);
+    }
+    // The parent rebuilt, so [WhenChanged.select] is a new closure and may be
+    // reading something else entirely.
+    _value = widget.select();
+  }
+
+  @override
+  void dispose() {
+    widget.listenable.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    final next = widget.select();
+    if (next == _value) return;
+    setState(() => _value = next);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
+}
+
 class _WatchState<T> extends State<Watch<T>> {
   T? _value;
   Widget? _child;

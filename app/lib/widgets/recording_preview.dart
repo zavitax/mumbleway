@@ -12,6 +12,7 @@ import '../services/file_reveal.dart';
 import '../services/recording_archive.dart';
 import '../services/recording_player.dart';
 import '../state/app_state.dart';
+import 'watch.dart';
 import '../theme.dart';
 import 'error_snack.dart';
 
@@ -473,9 +474,25 @@ class _PreviewSheetState extends State<_PreviewSheet> {
               ),
             if (_files.length > 1) const SizedBox(height: 14),
 
-            ListenableBuilder(
+            // **Three listeners, not one.** The player notifies every 80 ms
+            // while a recording plays, and one `ListenableBuilder` around the
+            // whole of this rebuilt 204 widgets a tick — six `IconButton`s
+            // with their tooltips, ink and gesture machinery among them, none
+            // of which move with the playhead.
+            //
+            // This one follows what the transport controls actually show, all
+            // of which change when somebody presses something and not
+            // otherwise. The playhead and the clock have their own, below.
+            WhenChanged(
               listenable: _player,
-              builder: (context, _) {
+              select: () => (
+                _player.playing,
+                _player.speechOnly,
+                _player.throughChain,
+                _player.canSkipSilence,
+                _player.nothingSent,
+              ),
+              builder: (context) {
                 final wave = _wave;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -498,9 +515,9 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                                 ),
                               ),
                             )
-                          : _Scrubber(
+                          : _ScrubberFollowingPlayhead(
+                              player: _player,
                               wave: wave,
-                              progress: _player.progress,
                               onSeek: _player.seekToFraction,
                             ),
                     ),
@@ -574,8 +591,7 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                         // glance on a phone held at arm's length.
                         IconButton(
                           onPressed: _player.canSkipSilence
-                              ? () =>
-                                    _player.setSpeechOnly(!_player.speechOnly)
+                              ? () => _player.setSpeechOnly(!_player.speechOnly)
                               : null,
                           icon: Icon(
                             _player.speechOnly
@@ -645,14 +661,24 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                         // as the row allows, which is the rule above.
                         Expanded(
                           child: Center(
-                            child: Text(
-                              '${_clock(_player.position)} / '
-                              '${_length(_player.duration)}',
-                              style: TextStyle(
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures()
-                                ],
-                                color: scheme.onSurfaceVariant,
+                            // Selected on the *formatted* time rather than the
+                            // position behind it: this reads in whole seconds,
+                            // so eleven of every twelve ticks would rebuild it
+                            // to the same string.
+                            child: WhenChanged<String>(
+                              listenable: _player,
+                              select: () =>
+                                  '${_clock(_player.position)} / '
+                                  '${_length(_player.duration)}',
+                              builder: (context) => Text(
+                                '${_clock(_player.position)} / '
+                                '${_length(_player.duration)}',
+                                style: TextStyle(
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                  color: scheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),
@@ -688,6 +714,34 @@ class _PreviewSheetState extends State<_PreviewSheet> {
 /// One gesture rather than a slider under a picture: the picture *is* the
 /// control, so a tap goes there and a drag scrubs, which is what everybody
 /// already expects of a waveform.
+/// The waveform, following the playhead and nothing else.
+///
+/// A wrapper rather than a listener inside [_Scrubber] itself, because the
+/// scrubber's own state — zoom and pan — is the thing that must survive a
+/// playhead move, and a `StatefulWidget` that rebuilds keeps its state while a
+/// builder that rebuilds around it does too. This is the only part of the sheet
+/// that has to redraw twelve times a second; the transport controls above it
+/// select on what they show, so they no longer come along.
+class _ScrubberFollowingPlayhead extends StatelessWidget {
+  const _ScrubberFollowingPlayhead({
+    required this.player,
+    required this.wave,
+    required this.onSeek,
+  });
+
+  final RecordingPlayer player;
+  final Waveform wave;
+  final ValueChanged<double> onSeek;
+
+  @override
+  Widget build(BuildContext context) => WhenChanged<double>(
+    listenable: player,
+    select: () => player.progress,
+    builder: (context) =>
+        _Scrubber(wave: wave, progress: player.progress, onSeek: onSeek),
+  );
+}
+
 class _Scrubber extends StatefulWidget {
   const _Scrubber({
     required this.wave,
@@ -770,8 +824,10 @@ class _ScrubberState extends State<_Scrubber> {
             if (event is PointerScrollEvent) {
               final keys = HardwareKeyboard.instance;
               if (keys.isControlPressed || keys.isMetaPressed) {
-                _zoomBy(event.scrollDelta.dy > 0 ? 0.85 : 1.18,
-                    (event.localPosition.dx / w).clamp(0.0, 1.0));
+                _zoomBy(
+                  event.scrollDelta.dy > 0 ? 0.85 : 1.18,
+                  (event.localPosition.dx / w).clamp(0.0, 1.0),
+                );
               } else if (_zoom > 1) {
                 // Unmodified, it pans, which is the only thing left for it to
                 // mean once the view is narrower than the recording.
@@ -781,8 +837,10 @@ class _ScrubberState extends State<_Scrubber> {
                 });
               }
             } else if (event is PointerScaleEvent) {
-              _zoomBy(event.scale,
-                  (event.localPosition.dx / w).clamp(0.0, 1.0));
+              _zoomBy(
+                event.scale,
+                (event.localPosition.dx / w).clamp(0.0, 1.0),
+              );
             }
           },
           child: GestureDetector(
@@ -807,42 +865,49 @@ class _ScrubberState extends State<_Scrubber> {
                 seek(d.localFocalPoint);
               }
             },
-            child: CustomPaint(
-              painter: _WavePainter(
-                wave: widget.wave,
-                progress: widget.progress,
-                left: _left,
-                span: _span,
-                // Layer one is the microphone, and it is deliberately the
-                // palest thing here: it is context for the two above it rather
-                // than the answer to anything. Grey rather than the accent it
-                // used to be, so that green means one thing on this drawing.
-                played: scheme.onSurfaceVariant,
-                unplayed: scheme.outlineVariant,
-                sent: StatusColors.connected,
-                head: scheme.error,
-                // Layer two, darker than layer one. Where the chain removed
-                // nothing the two coincide and read as one band; where it
-                // removed a lot, the pale raw trace stands out around a dark
-                // core, and that gap is the suppressor's work made visible.
-                processedColour: scheme.onSurface,
-                processedAhead: scheme.outline,
-                // Greys for the three profiles, with Helmet the only one
-                // carrying a hue. **Lightness alone could not do this job**:
-                // Light and Standard differ by a step of suppression and
-                // Helmet is a different kind of thing — it is the one that
-                // makes a voice sound processed — so it is the one the eye
-                // should find without reading a legend. A wash of yellow
-                // stays legible on both themes where a fourth shade of grey
-                // would not.
-                profileColours: const [
-                  Color(0xFF6E6E6E), // Off — palest; nothing is being done
-                  Color(0xFF3C3C3C), // Light
-                  Color(0xFF8A8A8A), // Standard
-                  Color(0xFFA79A6B), // Helmet
-                ],
+            // **Its own layer.** The painter's `shouldRepaint` is precise, so
+            // it repaints only when the playhead or the view moved — but
+            // without a boundary that repaint dirties the layer it shares with
+            // the rest of the sheet, and the transport controls are repainted
+            // twelve times a second to draw a moving line.
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _WavePainter(
+                  wave: widget.wave,
+                  progress: widget.progress,
+                  left: _left,
+                  span: _span,
+                  // Layer one is the microphone, and it is deliberately the
+                  // palest thing here: it is context for the two above it rather
+                  // than the answer to anything. Grey rather than the accent it
+                  // used to be, so that green means one thing on this drawing.
+                  played: scheme.onSurfaceVariant,
+                  unplayed: scheme.outlineVariant,
+                  sent: StatusColors.connected,
+                  head: scheme.error,
+                  // Layer two, darker than layer one. Where the chain removed
+                  // nothing the two coincide and read as one band; where it
+                  // removed a lot, the pale raw trace stands out around a dark
+                  // core, and that gap is the suppressor's work made visible.
+                  processedColour: scheme.onSurface,
+                  processedAhead: scheme.outline,
+                  // Greys for the three profiles, with Helmet the only one
+                  // carrying a hue. **Lightness alone could not do this job**:
+                  // Light and Standard differ by a step of suppression and
+                  // Helmet is a different kind of thing — it is the one that
+                  // makes a voice sound processed — so it is the one the eye
+                  // should find without reading a legend. A wash of yellow
+                  // stays legible on both themes where a fourth shade of grey
+                  // would not.
+                  profileColours: const [
+                    Color(0xFF6E6E6E), // Off — palest; nothing is being done
+                    Color(0xFF3C3C3C), // Light
+                    Color(0xFF8A8A8A), // Standard
+                    Color(0xFFA79A6B), // Helmet
+                  ],
+                ),
+                size: Size.infinite,
               ),
-              size: Size.infinite,
             ),
           ),
         );
@@ -950,8 +1015,12 @@ class _WavePainter extends CustomPainter {
           if (amp == null) continue;
           if (layer == 2 && !wave.wouldSendAt(i)) continue;
           paint.color = layer == 1
-              ? (ahead ? processedAhead : processedColour).withValues(alpha: 0.5)
-              : (ahead ? sent.withValues(alpha: 0.4) : sent.withValues(alpha: 0.75));
+              ? (ahead ? processedAhead : processedColour).withValues(
+                  alpha: 0.5,
+                )
+              : (ahead
+                    ? sent.withValues(alpha: 0.4)
+                    : sent.withValues(alpha: 0.75));
           final h = (amp * mid).clamp(0.5, mid);
           top = mid - h;
           bottom = mid + h;

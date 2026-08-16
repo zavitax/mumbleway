@@ -18,6 +18,32 @@ import 'public_servers_screen.dart';
 /// One screen for both because the fields are identical and the difference is
 /// entirely in what happens on save. Two screens would be two places to keep a
 /// validation rule in step.
+/// What a button looks like when the label needs the room more than the frame
+/// does.
+///
+/// **Measured, because the default is more generous than it looks.**
+/// `OutlinedButton` reserves 24 device pixels either side, and on a 360 dp
+/// phone these two share a row with the QR glyph — so a 114 px button was
+/// handing its label 66. That is narrower than the single word «Публичные»,
+/// which is 127, so Russian had no choice but to break inside it.
+///
+/// Dropping the icons came first and was not enough on its own; this is the
+/// other half. Eight pixels is still a visible inset and it is the difference
+/// between a label that wraps between words and one that wraps through them.
+final ButtonStyle _roomForWords = OutlinedButton.styleFrom(
+  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+);
+
+/// Below this many device pixels of available width, the two word buttons
+/// stop sharing a row.
+///
+/// Derived rather than picked: the longest single word in either language is
+/// «Публичные» at 127 px, "Импорт" needs 85, the glyph button takes 48 and the
+/// two gaps 20 — which is 280 before either button's own inset. 340 leaves that
+/// enough slack to survive a font that renders a little wider, and puts a
+/// 360 dp phone on the two-row side, which is where it belongs.
+const double _oneRowNeeds = 340;
+
 class AddServerScreen extends StatefulWidget {
   const AddServerScreen({super.key, this.existing, this.prefill});
 
@@ -305,40 +331,100 @@ class _Shortcuts extends StatelessWidget {
             // narrow phone and one on a wide one — and a row where one button
             // is visibly shorter than its neighbours reads as a mistake, not
             // as a smaller control.
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const PublicServersScreen(),
+            //
+            // **Neither of the two word buttons carries an icon, and that is
+            // the rule rather than an oversight.** An icon and its gap cost
+            // about 34 of the ~130 device pixels one of these gets on a narrow
+            // phone, and Russian needs every one of them: «Публичные серверы»
+            // broke *inside* a word, which reads as a rendering fault rather
+            // than as a long label. Where a label and a glyph compete for a
+            // width this tight, the label wins — it is the thing being read,
+            // and `Icons.public` and `Icons.download` add nothing a reader of
+            // either language could not get from the words.
+            //
+            // The QR button beside them stays a glyph, because it has no label
+            // to lose.
+            // **One row where it fits, two where it does not.**
+            //
+            // Three controls, two of them carrying words, do not fit across a
+            // 360 dp phone. Measured there: the long button had 66 device
+            // pixels of text width against a first word of 127, so Russian
+            // broke «Публичные» in half — which reads as a rendering fault
+            // rather than as a long label.
+            //
+            // Dropping the icons and reclaiming the button padding took the
+            // text width from 66 to 98, and weighting the split three-to-two
+            // took it to 127.2 against a need of 126.9. That is a margin of
+            // three tenths of a pixel, which is not a fix — the next font
+            // metric change on somebody's phone takes it back.
+            //
+            // So below [`_oneRowNeeds`] the long label gets a row to itself and
+            // the short one shares with the glyph. Both then have more room
+            // than either language can use, in any font.
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final browse = OutlinedButton(
+                  style: _roomForWords,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PublicServersScreen(),
+                    ),
+                  ),
+                  child: Text(l.browsePublic, textAlign: TextAlign.center),
+                );
+                final import = OutlinedButton(
+                  style: _roomForWords,
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ImportScreen()),
+                  ),
+                  child: Text(l.importLabel, textAlign: TextAlign.center),
+                );
+                final qr = QrIntakeButton(onInvitation: onInvitation);
+
+                if (constraints.maxWidth < _oneRowNeeds) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      browse,
+                      const SizedBox(height: 10),
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(child: import),
+                            const SizedBox(width: 10),
+                            qr,
+                          ],
                         ),
                       ),
-                      icon: const Icon(Icons.public),
-                      label: Text(l.browsePublic),
-                    ),
+                    ],
+                  );
+                }
+
+                // Sized to the tallest of the three rather than each to its own
+                // content: a row where one button is visibly shorter than its
+                // neighbours reads as a mistake, not as a smaller control.
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Not an equal share. "Browse public" is two words and
+                      // "Import" is one, in both languages.
+                      Expanded(flex: 3, child: browse),
+                      const SizedBox(width: 10),
+                      Expanded(flex: 2, child: import),
+                      const SizedBox(width: 10),
+                      // Not Expanded: the other two carry words and need the
+                      // room, and a third equal share would squeeze all three.
+                      // This one is a glyph and asks for only what a glyph
+                      // needs.
+                      qr,
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ImportScreen()),
-                      ),
-                      icon: const Icon(Icons.download),
-                      label: Text(l.importLabel),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Not Expanded: the other two carry words and need the room,
-                  // and a third equal share would squeeze all three. This one
-                  // is a glyph and asks for only what a glyph needs.
-                  QrIntakeButton(onInvitation: onInvitation),
-                ],
-              ),
+                );
+              },
             ),
           ],
         ),

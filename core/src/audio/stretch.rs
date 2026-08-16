@@ -218,6 +218,69 @@ fn correlation(a: &[f32], b: &[f32]) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    /// What repaying a delay costs a fricative, as against a vowel.
+    ///
+    /// **Written from a rider's guess, and the guess was right.** After a gate
+    /// look-ahead was withdrawn for making speech sound robotic, the suggestion
+    /// was that this stage might be eating the leading consonant too — taking
+    /// it for a gap, since it has no pitch period to remove.
+    ///
+    /// It has no period, so [`DEFAULT_PERIOD`] is used: 5 ms cut out of every
+    /// removal, joined by a cross-fade between two uncorrelated pieces of
+    /// noise. The module's own header says that is "heard as nothing at all",
+    /// which is a claim about one removal. A repayment runs removals as fast as
+    /// the debt allows, and a fricative is only a few tens of milliseconds
+    /// long.
+    #[test]
+    fn what_repayment_costs_a_fricative() {
+        fn loss_db(mut make: impl FnMut(usize) -> f32, len: usize) -> f32 {
+            let mut comp = TimeCompressor::new();
+            let mut before = 0.0f64;
+            let mut after = 0.0f64;
+            let mut buf = vec![0.0f32; 480];
+            for b in 0..len / 480 {
+                for (i, s) in buf.iter_mut().enumerate() {
+                    *s = make(b * 480 + i);
+                }
+                before += buf.iter().map(|s| (s * s) as f64).sum::<f64>();
+                let kept = comp.process(&mut buf, 480, 1.10);
+                after += buf[..kept].iter().map(|s| (s * s) as f64).sum::<f64>();
+            }
+            10.0 * (after / before).log10() as f32
+        }
+
+        let mut seed = 7u32;
+        let fricative = loss_db(
+            |_| {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                (seed >> 8) as f32 / 8_388_608.0 - 1.0
+            },
+            48_000 / 8,
+        );
+        let vowel = loss_db(
+            |i| (2.0 * std::f32::consts::PI * 140.0 * i as f32 / 48_000.0).sin(),
+            48_000 / 8,
+        );
+
+        println!("repayment costs: fricative {fricative:.1} dB, vowel {vowel:.1} dB");
+        // **The answer is no, and that is what this locks.** Both lose about
+        // half a decibel and the fricative loses no more than the vowel, so
+        // repaying a delay does not eat word starts while leaving the rest of
+        // the phrase intact. The guess was a good one — an unvoiced sound has
+        // no period to remove and does fall back to a blind cut — but the cut
+        // is short and the fade is cheap.
+        //
+        // What repayment *does* cost is the sound of the joins, and that is a
+        // quality this measures nothing about. A delay refilled at every phrase
+        // runs removals through all of the speech rather than once, and the
+        // report on that was "the voice now sounds robotic". Energy is not the
+        // axis that failed.
+        assert!(
+            (fricative - vowel).abs() < 3.0,
+            "a fricative lost {fricative:.1} dB against a vowel's {vowel:.1},              which would make repayment a consonant-eater"
+        );
+    }
+
     use super::*;
 
     const RATE: f32 = 48_000.0;

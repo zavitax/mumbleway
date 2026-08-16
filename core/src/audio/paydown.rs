@@ -93,7 +93,7 @@ pub const LOOKAHEAD_MS: usize = 240;
 ///
 /// Not zero: some slack absorbs a late block without a dropout, and a delay
 /// line held at exactly nothing is a dropout generator on a phone that hiccups.
-pub const FLOOR_MS: usize = 60;
+pub const FLOOR_MS: usize = 200;
 
 /// What the delay becomes when the performance ladder switches the pay-down
 /// off — see [`Paydown::set_enabled`].

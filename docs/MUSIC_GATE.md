@@ -14,6 +14,75 @@
 > stood *before* that measurement, kept because most of it survives and because
 > the parts that did not are worth not re-deriving.
 
+## 2026-08-16 — halved, and four more candidates disproved
+
+**The leak is down from 67.1% to 31.1% of a speechless music clip**, and not by
+anything aimed at music. The change was made to stop the enhancer deleting
+leading consonants, and it took the music leak with it:
+
+| | before | after |
+|---|---|---|
+| music, no speech, transmitted | 67.1% | **31.1%** |
+| real engine noise, no speech | 45.5% | **28.8%** |
+| recall on labelled speech over music | 81% | 80% |
+
+The mechanism is worth holding on to because it is counter-intuitive and it
+runs against the instinct this file was written with. **Suppressing less leaks
+less.** The gate opens at a margin above the *tracked floor*, and the floor is
+measured on the chain's own output — so a stage that removes less raises the
+floor and raises the bar with it. Every attempt in this file to close something
+in order to keep music out was pushing the wrong way.
+
+That is not a solved problem: 31% is still described from the road as
+disrupting. But the direction of the next attempt should account for it.
+
+### Four more features tried, and none of them separates music from speech
+
+Each was measured on `20260809-0142-000` (music, no speech) against three room
+recordings of speech over low noise, a motorcycle and wind.
+
+**Retroactive voice confirmation.** Hold the onset, release it only if a voice
+follows within 200 ms — a word start is followed by a voice and a snare is
+followed by another snare. The logic is sound and the *flag* is not: the chain's
+voice test fires on about a third of music, so "a voice followed" is true almost
+always. Requiring five consecutive voiced blocks rather than one moved the leak
+from 31.56% to 30.97%, for 200 ms of added latency.
+
+**Absolute level.** Music looked half to three quarters the amplitude of speech
+on a waveform. It is: 27 dB below quiet-room speech. But speech over a
+motorcycle sits at −52.1 dBFS against music's −53.4, indistinguishable — and on
+the quantity the gate actually uses, level over the tracked floor, music stands
+*higher* (median 28.5 dB) than motorcycle speech (24.3 dB). Any threshold raised
+to exclude music removes speech on a motorcycle first.
+
+**Transient decay.** A hit is an attack and a decay; a word start is an attack
+into something held. Measured over the 250 ms after each transient, music's
+median sustain is −5.0 dB and quiet-room speech's is −4.4, with speech's p10
+*lower* than music's. The distributions are the same shape.
+
+**Spectral tilt fall.** Music's median tilt falls 7.0 dB against speech's 1.6 to
+3.0, which looks promising until the distributions are drawn: a quarter of
+quiet-room speech transients fall faster than the median music transient. The
+reason is structural rather than a tuning failure — **speech contains percussive
+events**. A plosive is an attack with a falling tilt, and so is a snare.
+
+That makes seven features measured and disproved against music: periodicity,
+level, syllabic modulation, spectral flatness, the classifier, retroactive
+confirmation, and transient shape. They fail in the same place — anything
+measured on the block, or on the transient, cannot tell a drum from a "p".
+
+### A throttle that moves the wrong way
+
+Worth recording separately because it is the natural next idea and it is
+backwards. The enhancer's word-start guard fires 3.1 times a second on music,
+and the stream swings 8.9 dB between relieved and suppressed at that rate — a
+rider called it pumping, and the measurement agrees. A refractory period cut the
+openings to 0.7 a second and took the leak **up**, 31.1% to 44.4%, by the floor
+mechanism above. The pumping and the leak are separate symptoms and closing the
+guard fixes neither.
+
+---
+
 Reported from the road, 2026-08-08: **music with mid-high plucks triggers voice
 activation.** Guitar, harp, pizzicato strings, synth plucks — the transient,
 tonal kind. The rider is not talking and the channel opens anyway.

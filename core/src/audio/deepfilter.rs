@@ -338,13 +338,13 @@ const ONSET_ATTEN_LIM_DB: f32 = 3.0;
 /// the low half of a "sh" and the burst of a "p", and came out 2 dB worse on
 /// the penalty at every relaxation tried. Both are far above a firing
 /// fundamental, so the margin 3 kHz buys was not being spent on anything.
-const ONSET_HP_HZ: f32 = 1_500.0;
+pub const ONSET_HP_HZ: f32 = 1_500.0;
 
 /// How far the high band must jump above its recent level to count as a start.
 ///
 /// 6 dB. At 4 the guard opens on 24% of blocks for no better penalty; at 9 it
 /// misses word starts that follow a breath rather than silence.
-const ONSET_RISE_DB: f32 = 6.0;
+pub const ONSET_RISE_DB: f32 = 6.0;
 
 /// How loud the high band may already be for the guard to open fully, and where
 /// it stops opening at all, in dB.
@@ -385,7 +385,7 @@ const ONSET_RISE_DB: f32 = 6.0;
 /// still be eaten by. Lower `ONSET_QUIET_NONE_DB` to protect the music ride
 /// further at the cost of the fix; raise it for the reverse.
 const ONSET_QUIET_FULL_DB: f32 = -60.0;
-const ONSET_QUIET_NONE_DB: f32 = -45.0;
+const ONSET_QUIET_NONE_DB: f32 = -10.0;
 
 /// Below this the high band is silence and a "rise" is arithmetic on noise.
 const ONSET_FLOOR_DB: f32 = -65.0;
@@ -399,6 +399,28 @@ const ONSET_FLOOR_DB: f32 = -65.0;
 const ONSET_ENV_ATTACK: f32 = 0.03;
 const ONSET_ENV_RELEASE: f32 = 0.25;
 
+/// How fast the relaxation comes *on*, per block.
+///
+/// **It used to arrive whole, in one block, and that is a step of twenty-one
+/// decibels in the attenuation cap.** On 139 s of music the guard opened 427
+/// times — three a second — and the enhancer's output swung 8.9 dB between open
+/// and shut at that rate. A rider heard the music pumping, which is what an
+/// 8.9 dB swing three times a second is.
+///
+/// Over three blocks rather than one. Long enough that the cap slides instead
+/// of jumping, short enough that a 30 ms consonant is still mostly inside the
+/// relief by the time it matters — the release below runs fifteen times longer,
+/// so the window is barely shortened.
+///
+/// **Throttling the guard instead was tried and was worse.** A refractory
+/// period cut the openings from 3.1 a second to 0.7, and took the share of
+/// music reaching the wire *up* from 31.1% to 44.4%: suppressing less raises
+/// the tracked floor, and the gate is anchored to that floor, so a guard that
+/// opens more often is a higher bar rather than a lower one. The pumping and
+/// the leak are different symptoms and only one of them is fixed by closing
+/// this.
+const ONSET_ATTACK_PER_BLOCK: f32 = 0.34;
+
 /// How fast the relaxation lets go, per block.
 ///
 /// Instant on, linear off over five blocks — 50 ms, about the length of a
@@ -406,7 +428,7 @@ const ONSET_ENV_RELEASE: f32 = 0.25;
 /// word, which is the artefact this whole change exists to remove; running much
 /// longer than a consonant puts the relief on the vowel, which does not need it
 /// and pays for it in separation.
-const ONSET_RELEASE_PER_BLOCK: f32 = 0.2;
+const ONSET_RELEASE_PER_BLOCK: f32 = 0.0667;
 
 /// The deadline one block has to be returned in, in microseconds.
 const BUDGET_US: u32 = 10_000;
@@ -562,6 +584,8 @@ struct OnsetGuard {
     /// sweep them.
     rise_db: f32,
     release: f32,
+    /// Where the relaxation is heading, before the attack ramp is applied.
+    target: f32,
     quiet_full_db: f32,
     quiet_none_db: f32,
     /// Recent high-band level in dB, or `None` until the first block has
@@ -593,6 +617,7 @@ impl OnsetGuard {
             hp: super::dsp::Biquad::high_pass(48_000.0, ONSET_HP_HZ, 0.707),
             rise_db: ONSET_RISE_DB,
             release: ONSET_RELEASE_PER_BLOCK,
+            target: 0.0,
             quiet_full_db: ONSET_QUIET_FULL_DB,
             quiet_none_db: ONSET_QUIET_NONE_DB,
             env_db: None,
@@ -629,17 +654,24 @@ impl OnsetGuard {
                     // [`ONSET_QUIET_FULL_DB`]. `env` and not `level_db`: the
                     // question is how loud the *background* is, and `level_db`
                     // on this block is the word start itself.
-                    self.relax = ((self.quiet_none_db - env)
+                    self.target = ((self.quiet_none_db - env)
                         / (self.quiet_none_db - self.quiet_full_db))
                         .clamp(0.0, 1.0);
                     self.armed = false;
                 } else {
-                    self.relax = (self.relax - self.release).max(0.0);
+                    self.target = (self.target - self.release).max(0.0);
                 }
+                // Slide towards it rather than jump. See
+                // [`ONSET_ATTACK_PER_BLOCK`].
+                self.relax = if self.target > self.relax {
+                    (self.relax + ONSET_ATTACK_PER_BLOCK).min(self.target)
+                } else {
+                    self.target
+                };
                 // Re-armed only once the rise has cleared *and* the window has
                 // closed. Without the second half a long fricative would fire
                 // again on its own tail.
-                if !rising && self.relax == 0.0 {
+                if !rising && self.target == 0.0 && self.relax == 0.0 {
                     self.armed = true;
                 }
                 // Updated *after* the test, so a block cannot raise the
@@ -1083,34 +1115,66 @@ mod tests {
         }
         assert_eq!(g.look(&quiet), 0.0, "silence must not open it");
 
-        // The rise fires it, and it then lets go over about five blocks.
+        // The rise fires it, and it slides on rather than arriving whole.
         let first = g.look(&loud);
+        assert!(first > 0.0, "a jump into the high band must open it");
         assert!(
-            first > 0.5,
-            "a jump into the high band must open it: {first}"
+            first < 1.0,
+            "it must ramp on rather than step: {first} in one block"
         );
         let mut open = 1;
+        let mut peak = first;
         while g.look(&loud) > 0.0 {
             open += 1;
-            assert!(open < 20, "it never closed while the loud signal continued");
+            peak = peak.max(g.relax);
+            assert!(open < 40, "it never closed while the loud signal continued");
         }
+        assert!(peak > 0.5, "the ramp never reached a useful depth: {peak}");
+        // A fricative runs 100 to 200 ms and the window is sized for the long
+        // end of that, plus the three blocks the attack now takes.
         assert!(
-            (4..=7).contains(&open),
+            (12..=25).contains(&open),
             "the window should be about a fricative long, was {open} blocks"
         );
 
-        // Over a loud background there is nothing to hand back, so it stays
-        // shut however sharp the rise. See `ONSET_QUIET_NONE_DB`.
+        // **It now opens over a loud background too, and that reverses what
+        // this test used to assert.**
+        //
+        // The old rule was that relief is only handed back where there is room
+        // for it — full in a quiet room, nothing above −45 dBFS — because an
+        // unconditional guard cost the music ride twenty points of recall when
+        // it was first tried. See `ONSET_QUIET_NONE_DB`.
+        //
+        // Measured again with the relief *shared* with the stages downstream,
+        // that trade does not reproduce and its sign is the other way round:
+        //
+        // | | shipping | opened up |
+        // |---|---|---|
+        // | music with no speech, transmitted | 67.1% | **31.1%** |
+        // | real engine noise, transmitted | 45.5% | **28.8%** |
+        // | recall over music | 81% | 80% |
+        //
+        // Suppressing less raises the tracked floor, and the gate opens at a
+        // margin *above* that floor — so a guard that opens more often is a
+        // higher bar rather than a lower one. What broke the first attempt was
+        // the enhancer standing down alone while RNNoise and the gate carried
+        // on removing what it kept; the three now move together.
+        //
+        // A rider listening down the taps confirmed the point this was blocking:
+        // a leading "s" over a motorcycle, previously deleted, survives.
         let mut g = OnsetGuard::new();
         let background: Vec<f32> = loud.iter().map(|s| s * 0.5).collect();
         for _ in 0..200 {
             g.look(&background);
         }
         let louder: Vec<f32> = loud.iter().map(|s| s * 4.0).collect();
-        assert_eq!(
-            g.look(&louder),
-            0.0,
-            "it must not relax the cap when the background is loud enough to come back with it"
+        let mut over_noise = 0.0f32;
+        for _ in 0..5 {
+            over_noise = over_noise.max(g.look(&louder));
+        }
+        assert!(
+            over_noise > 0.0,
+            "a word start over a loud background must still open it"
         );
     }
 

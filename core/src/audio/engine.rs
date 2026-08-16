@@ -3262,6 +3262,10 @@ where
             // further up this loop, and `to_dbfs` is not imported here.
             processor.set_room_level_db(super::dsp::to_dbfs(super::dsp::rms(&block)));
             enhancer.process(&mut block);
+            // What the model stood down by, passed on so the suppressor does
+            // not spend the next 150 ms undoing it. See
+            // `CaptureProcessor::set_onset_relief`.
+            processor.set_onset_relief(enhancer.onset_relax());
             timings.record(Stage::Enhancer, lap.split());
 
             let analysis = processor.suppress(&mut block);

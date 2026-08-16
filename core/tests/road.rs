@@ -191,10 +191,11 @@
 //! them, and it is exactly the number that would flatter a broken chain.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use mumbleway_core::audio::denoise::{CaptureProcessor, FRAME_SIZE};
 use mumbleway_core::audio::dsp::{rms, to_dbfs, Biquad, RumbleFilter, SpeechBand};
+use mumbleway_core::audio::paydown::Paydown;
 use mumbleway_core::audio::pitch::PitchTracker;
 use mumbleway_core::audio::spectrum::{
     SpectrumAnalyser, SpectrumFrame, BANDS, TAP_PRE_GATE, TAP_RAW,
@@ -516,13 +517,34 @@ fn clips() -> Vec<(String, Vec<f32>)> {
         })
         .collect()
 }
-
-/// Writes what the chain hands the encoder, so another tool can look at it.
+/// Writes what a listener would actually hear, as files that can be opened.
 ///
-/// A neural VAD run on the raw microphone is answering a different question
-/// from one run where this app would put it, which is after the suppression.
-/// Whether denoising helps such a model or destroys what it needs is exactly
-/// the sort of thing that gets assumed; this makes it answerable.
+/// **Three per clip, because a single output cannot say which stage did it.**
+///
+/// * `__input` — the microphone, as recorded. The reference.
+/// * `__enh` — DeepFilterNet's output alone, before the suppressor has run.
+/// * `__pregate` — and after the suppressor's filters, RNNoise and the blend,
+///   with the gate still not applied.
+///
+///   **Those two together name the stage.** A consonant present in `__enh` and
+///   gone by `__pregate` was removed by RNNoise or the blend; one already gone
+///   in `__enh` was removed by the model. A rider reported a leading "s"
+///   missing from `__pregate`, which is what ruled the gate out — every fix
+///   tried against the gate was aimed at the wrong stage — and sent this tap
+///   in.
+/// * `__auto` — the chain's output under `Auto`, continuously, gate included.
+/// * `__sent` — the same, with the transmit envelope applied, so the gaps are
+///   the silence a listener really gets. A word missing here but present in
+///   `__auto` was not suppressed, it was *gated* — and those are different
+///   faults with different fixes.
+///
+/// `Auto` rather than a fixed profile, because `Auto` is what ships and the
+/// profile it lands on is part of what is being judged.
+///
+/// Sixteen-bit WAV rather than the headerless f32 the corpus uses. This is the
+/// one artefact in the project meant for an ear rather than a script, and a
+/// file that needs a converter before it can be played will not be listened
+/// to.
 #[test]
 #[ignore = "needs MUMBLEWAY_ROAD_AUDIO and MUMBLEWAY_ROAD_DUMP"]
 fn dump_the_suppressed_audio() {
@@ -532,25 +554,132 @@ fn dump_the_suppressed_audio() {
     fs::create_dir_all(&out_dir).expect("creating the dump directory");
 
     for (name, signal) in clips() {
-        for profile in [NoiseProfile::Light, NoiseProfile::Helmet] {
-            let mut chain = CaptureProcessor::new(profile);
-            let mut enhancer = enhancer_for_measurement();
-            let mut block = [0.0f32; FRAME_SIZE];
-            let mut out: Vec<u8> = Vec::with_capacity(signal.len() * 4);
-            for chunk in signal.chunks_exact(FRAME_SIZE) {
-                block.copy_from_slice(chunk);
-                chain.set_room_level_db(to_dbfs(rms(&block)));
-                enhancer.process(&mut block);
-                chain.process(&mut block);
-                for s in &block {
-                    out.extend_from_slice(&s.to_le_bytes());
-                }
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut block = [0.0f32; FRAME_SIZE];
+        let mut processed: Vec<f32> = Vec::with_capacity(signal.len());
+        let mut pre_gate: Vec<f32> = Vec::with_capacity(signal.len());
+        let mut enhanced: Vec<f32> = Vec::with_capacity(signal.len());
+        let mut sent: Vec<f32> = Vec::with_capacity(signal.len());
+
+        // The engine's transmit path, reproduced rather than approximated.
+        //
+        // **The delay line is the part that was missing, and leaving it out
+        // made this file lie about the one thing it was being read for.** The
+        // worker replaces each block with audio from `Paydown` — 240 ms behind
+        // the decision at a phrase start, repaid towards 60 as the phrase runs
+        // — so the envelope opens on the *sound that led into* the block that
+        // opened it. Without it, `sent` cut every word start at the instant the
+        // detector fired, and a rider reading the waveform saw a leading "s"
+        // sliced off that the app would have transmitted.
+        //
+        // Then a thousand milliseconds of hold and a thirty millisecond ramp.
+        // Cutting to zero instead would click at the end of every phrase, and
+        // the click is what would get reported.
+        const HOLD: usize = 48_000;
+        const FADE: usize = 48_000 * 30 / 1_000;
+        let mut hold_left = 0usize;
+        let mut envelope = Paydown::new();
+        let mut was_speaking = false;
+
+        for (i, chunk) in signal.chunks_exact(FRAME_SIZE).enumerate() {
+            block.copy_from_slice(chunk);
+            chain.set_room_level_db(to_dbfs(rms(&block)));
+            enhancer.process(&mut block);
+            chain.set_onset_relief(enhancer.onset_relax());
+            // The model's output on its own, before the suppressor's filters,
+            // RNNoise and the blend have had a turn.
+            enhanced.extend_from_slice(&block);
+            let a = chain.process(&mut block);
+            // What the suppressor left, before the gate multiplied it. The one
+            // tap that separates "a filter thinned it" from "the gate deleted
+            // it", and those two need different fixes.
+            pre_gate.extend_from_slice(chain.pre_gate());
+            processed.extend_from_slice(&block);
+
+            // Older audio, and the decision that was just made about newer
+            // audio. That mismatch is the whole point of the delay.
+            let primed = envelope.shift(&mut block);
+            if a.speaking && !was_speaking {
+                // How much hindsight the envelope actually had at this word
+                // start. The pay-down drains the line towards its floor and
+                // never refills, so after the first phrase this is the floor —
+                // and if the floor is shorter than a fricative, the leading
+                // consonant sits in front of the oldest audio it can reach.
+                println!(
+                    "    onset at {:>5.1}s: {:>4.0} ms of look-ahead",
+                    i as f32 * FRAME_SIZE as f32 / 48_000.0,
+                    envelope.held_samples() as f32 / 48.0,
+                );
             }
-            let path = PathBuf::from(&out_dir).join(format!("{name}__{profile:?}.raw"));
-            fs::write(&path, &out).expect("writing the dump");
-            println!("wrote {}", path.display());
+            was_speaking = a.speaking;
+            if a.speaking {
+                // Sized from what the line is actually holding, as the worker
+                // does, so the listener still gets `HOLD` of audio after the
+                // detector drops however deep the delay currently is.
+                hold_left = HOLD + envelope.held_samples().saturating_sub(FADE);
+            }
+            if !primed {
+                // Nothing old enough yet; the worker sends nothing here.
+                block.fill(0.0);
+            }
+            for &s in block.iter() {
+                let gain = if hold_left > FADE {
+                    1.0
+                } else if hold_left > 0 {
+                    hold_left as f32 / FADE as f32
+                } else {
+                    0.0
+                };
+                sent.push(s * gain);
+                hold_left = hold_left.saturating_sub(1);
+            }
+        }
+
+        for (suffix, samples) in [
+            ("input", &signal),
+            ("enh", &enhanced),
+            ("pregate", &pre_gate),
+            ("auto", &processed),
+            ("sent", &sent),
+        ] {
+            let path = PathBuf::from(&out_dir).join(format!("{name}__{suffix}.wav"));
+            write_wav(&path, samples);
+            println!(
+                "wrote {}  ({:.1}s, peak {:.3})",
+                path.display(),
+                samples.len() as f32 / 48_000.0,
+                samples.iter().fold(0.0f32, |m, s| m.max(s.abs())),
+            );
         }
     }
+}
+
+/// Sixteen-bit mono PCM at 48 kHz, with the forty-four byte header that makes
+/// it a file rather than a pile of samples.
+fn write_wav(path: &Path, samples: &[f32]) {
+    const RATE: u32 = 48_000;
+    let data_len = (samples.len() * 2) as u32;
+    let mut out = Vec::with_capacity(44 + samples.len() * 2);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes()); // PCM header length
+    out.extend_from_slice(&1u16.to_le_bytes()); // uncompressed
+    out.extend_from_slice(&1u16.to_le_bytes()); // mono
+    out.extend_from_slice(&RATE.to_le_bytes());
+    out.extend_from_slice(&(RATE * 2).to_le_bytes()); // bytes a second
+    out.extend_from_slice(&2u16.to_le_bytes()); // bytes a frame
+    out.extend_from_slice(&16u16.to_le_bytes()); // bits a sample
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    for s in samples {
+        // Clamped, not wrapped. A sample over full scale is a limiter that let
+        // something through, and wrapping it would turn that into a bang that
+        // sounds like a different fault entirely.
+        out.extend_from_slice(&((s.clamp(-1.0, 1.0) * 32_767.0) as i16).to_le_bytes());
+    }
+    fs::write(path, out).expect("writing a wav");
 }
 
 #[test]
@@ -1693,5 +1822,436 @@ impl After {
                 0.0
             },
         }
+    }
+}
+
+/// Which stage removes a leading consonant, and whether it survives at all.
+///
+/// **Onsets are found in the microphone signal, not in the chain's output.**
+/// The first version of this took its windows from the rising edge of the
+/// chain's own `speaking`, and that made it useless the moment a look-ahead was
+/// added: the audio moves later while the decision does not, so the consonant
+/// leaves the window being measured and the metric reports no change from a
+/// fix that worked. Openings taken from the input are the same openings for
+/// every configuration, which is the only way two runs can be compared.
+///
+/// For the same reason the output is searched rather than sampled. The delay is
+/// repaid during a phrase, so it is not a constant and cannot be subtracted;
+/// what is asked instead is whether the consonant's energy appears *anywhere*
+/// within a quarter of a second of where it went in.
+///
+/// The consonants in question are "s", "sh", "p" and "ch", which are
+/// high-frequency by construction, so a high-passed measurement is the question
+/// itself rather than a proxy for it.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn what_eats_a_leading_consonant() {
+    const HF_HZ: f32 = 2_000.0;
+    // Six blocks is 60 ms, about half a leading fricative.
+    const WIN: usize = 6;
+    // How far the output may lag, in blocks.
+    //
+    // **Generous on purpose, and it has already been too small twice.** The
+    // gate's look-ahead is 300 ms and the transmit side adds its own, so a
+    // window sized to today's constants measures the constants rather than the
+    // consonant — a look-ahead that works pushes the sound out of a tight
+    // window and reads as a regression. 600 ms is longer than any delay in the
+    // chain and still far shorter than the gap between words.
+    const SEARCH: usize = 60;
+
+    for (name, signal) in clips() {
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut hp_raw = Biquad::high_pass(48_000.0, HF_HZ, 0.707);
+        let mut hp_out = Biquad::high_pass(48_000.0, HF_HZ, 0.707);
+        let mut block = [0.0f32; FRAME_SIZE];
+        let (mut raw, mut out) = (Vec::new(), Vec::new());
+
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            block.copy_from_slice(chunk);
+            raw.push(hf_db(&mut hp_raw, &block));
+            chain.set_room_level_db(to_dbfs(rms(&block)));
+            enhancer.process(&mut block);
+            chain.process(&mut block);
+            out.push(hf_db(&mut hp_out, &block));
+        }
+
+        // A word start in the microphone: the high band jumping clear of its
+        // own recent history, and loud enough to be a sound rather than the
+        // noise floor changing its mind.
+        let mut env = raw[0];
+        let mut starts = Vec::new();
+        for (i, &db) in raw.iter().enumerate() {
+            if db > -65.0
+                && db - env > 6.0
+                && i + WIN + SEARCH < raw.len()
+                && starts.last().map(|&l: &usize| i - l > 30).unwrap_or(true)
+            {
+                starts.push(i);
+            }
+            let rate = if db > env { 0.02 } else { 0.20 };
+            env += (db - env) * rate;
+        }
+
+        if starts.is_empty() {
+            println!("\n{name}: no word starts found");
+            continue;
+        }
+
+        let mean = |v: &Vec<f32>, a: usize| {
+            v[a..a + WIN].iter().map(|x| *x as f64).sum::<f64>() / WIN as f64
+        };
+        let (mut total, mut worst) = (0.0f64, 0.0f64);
+        for &i in &starts {
+            let went_in = mean(&raw, i);
+            // The best the output does anywhere in the search window. A
+            // consonant that arrives late still arrived.
+            let mut best = f64::NEG_INFINITY;
+            for k in i.saturating_sub(2)..i + SEARCH {
+                best = best.max(mean(&out, k));
+            }
+            let kept = best - went_in;
+            total += kept;
+            worst = worst.min(kept);
+        }
+        println!(
+            "\n{name}  ({} word starts)\n    the leading consonant survives at {:+.1} dB on average, \
+             {:+.1} dB at worst",
+            starts.len(),
+            total / starts.len() as f64,
+            worst,
+        );
+    }
+}
+
+/// Mean level of a block above `hp`'s corner, in dB.
+fn hf_db(hp: &mut Biquad, block: &[f32]) -> f32 {
+    let mut sum = 0.0f64;
+    for &s in block {
+        let v = hp.process(s);
+        sum += (v * v) as f64;
+    }
+    20.0 * ((sum / block.len() as f64).sqrt().max(1e-12)).log10() as f32
+}
+
+/// How much of a clip with no speech in it reaches the wire.
+///
+/// **The test the onset relief has to pass.** Three stages now stand down for
+/// 150 ms when the enhancer thinks a word is starting, and the last of them is
+/// the gate's own veto — the thing that keeps an engine out while
+/// DeepFilterNet passes it through. If that detector fires on engine
+/// transients, the relief is a hole in the one wall that was holding.
+///
+/// The clips are real: segments the app's own decision log marked as
+/// speechless, cut from rides. **Every block transmitted here is a false
+/// positive**, so the number to want is zero and any rise over the shipping
+/// chain is the relief leaking.
+///
+/// Run it against a build with the relief and one without; the figure means
+/// nothing on its own.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO pointed at speechless clips"]
+fn what_a_clip_with_no_speech_in_it_transmits() {
+    let (mut all_sent, mut all_blocks) = (0usize, 0usize);
+    let (mut all_relief, mut worst) = (0usize, 0.0f32);
+    for (name, signal) in clips() {
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut block = [0.0f32; FRAME_SIZE];
+        let (mut sent, mut blocks, mut relieved) = (0usize, 0usize, 0usize);
+
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            block.copy_from_slice(chunk);
+            chain.set_room_level_db(to_dbfs(rms(&block)));
+            enhancer.process(&mut block);
+            let relief = enhancer.onset_relax();
+            chain.set_onset_relief(relief);
+            let a = chain.process(&mut block);
+            if a.warming_up {
+                continue;
+            }
+            blocks += 1;
+            if relief > 0.0 {
+                relieved += 1;
+            }
+            if a.speaking {
+                sent += 1;
+            }
+        }
+
+        let share = sent as f32 / blocks.max(1) as f32 * 100.0;
+        worst = worst.max(share);
+        all_sent += sent;
+        all_blocks += blocks;
+        all_relief += relieved;
+        println!(
+            "    {name:<32} {share:>6.2}% transmitted   relief open on {:>5.1}% of blocks",
+            relieved as f32 / blocks.max(1) as f32 * 100.0
+        );
+    }
+    println!(
+        "\n    OVERALL {:.2}% of speechless audio transmitted, relief open {:.1}% of the time",
+        all_sent as f32 / all_blocks.max(1) as f32 * 100.0,
+        all_relief as f32 / all_blocks.max(1) as f32 * 100.0,
+    );
+    println!("    worst single clip: {worst:.2}%");
+}
+
+/// Whether the onset relief pumps: bursts of near-raw audio between suppressed
+/// ones.
+///
+/// **A rider's diagnosis of the music leak, put to a measurement.** The guard
+/// relaxes the enhancer's cap from 24 dB to 3 for 150 ms whenever it sees a
+/// jump in the high band. A word start is one such jump followed by a voice; a
+/// snare is one such jump followed by another snare. If percussion retriggers
+/// it, the stream alternates between nearly untouched and heavily suppressed at
+/// the rate of the drums — which is pumping, and would be heard as the music
+/// swelling and ducking rather than as a leak.
+///
+/// Three things distinguish that from a detector that simply fires often:
+///
+/// * **the step** — how much louder the enhancer's output is while the relief
+///   is open than while it is shut. A large step is the pump's depth.
+/// * **the rate** — separate openings a second. Speech starts words a few times
+///   a second at most; a drum kit is faster and never stops.
+/// * **what reaches the wire** — whether the blocks that get sent are the
+///   relieved ones. If they are, the leak is not the gate misjudging music, it
+///   is this stage handing the gate something raw to misjudge.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn does_the_onset_relief_pump() {
+    for (name, signal) in clips() {
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut block = [0.0f32; FRAME_SIZE];
+
+        let (mut open_db, mut open_n) = (0.0f64, 0usize);
+        let (mut shut_db, mut shut_n) = (0.0f64, 0usize);
+        let (mut sent_open, mut sent_shut) = (0usize, 0usize);
+        let (mut episodes, mut was_open) = (0usize, false);
+        let mut blocks = 0usize;
+
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            block.copy_from_slice(chunk);
+            let in_db = to_dbfs(rms(&block));
+            chain.set_room_level_db(in_db);
+            enhancer.process(&mut block);
+            let relief = enhancer.onset_relax();
+            chain.set_onset_relief(relief);
+            // The model's own output, which is what the relief moves.
+            let enh_db = to_dbfs(rms(&block));
+            let a = chain.process(&mut block);
+            if a.warming_up {
+                continue;
+            }
+            blocks += 1;
+
+            let is_open = relief > 0.0;
+            if is_open && !was_open {
+                episodes += 1;
+            }
+            was_open = is_open;
+
+            // Against the input, so a quiet passage does not read as
+            // suppression: the question is how much the model removed, not how
+            // loud the music was.
+            let removed = (enh_db - in_db) as f64;
+            if !removed.is_finite() {
+                continue;
+            }
+            if is_open {
+                open_db += removed;
+                open_n += 1;
+                if a.speaking {
+                    sent_open += 1;
+                }
+            } else {
+                shut_db += removed;
+                shut_n += 1;
+                if a.speaking {
+                    sent_shut += 1;
+                }
+            }
+        }
+
+        if open_n == 0 || shut_n == 0 {
+            println!("\n{name}: the relief never changed state");
+            continue;
+        }
+        let secs = blocks as f32 * FRAME_SIZE as f32 / 48_000.0;
+        let step = open_db / open_n as f64 - shut_db / shut_n as f64;
+        let sent = sent_open + sent_shut;
+        println!("\n{name}");
+        println!(
+            "    the model removes {:>5.1} dB while the relief is open, {:>5.1} while shut  \
+             -> step {:>4.1} dB",
+            open_db / open_n as f64,
+            shut_db / shut_n as f64,
+            step,
+        );
+        println!(
+            "    {:>4} separate openings in {secs:.0}s = {:>4.1} a second, open {:>4.1}% of the time",
+            episodes,
+            episodes as f32 / secs,
+            100.0 * open_n as f32 / blocks as f32,
+        );
+        if sent > 0 {
+            println!(
+                "    of what reached the wire, {:>4.1}% was sent during a relief",
+                100.0 * sent_open as f32 / sent as f32,
+            );
+        }
+    }
+}
+
+/// How far above its own background music stands, against how far speech does.
+///
+/// **A rider's observation from a waveform, put on a scale.** Music looked
+/// roughly half to three quarters the amplitude of speech, which is 2.5 to 6 dB
+/// — and the gate already opens on exactly this quantity, the level over the
+/// tracked floor. If the two populations separate, the margin is a knob that
+/// discriminates; if they overlap, no threshold on it can, however it is tuned.
+///
+/// Percentiles rather than means, because a threshold does not care what the
+/// average block does. What it cares about is where the *loud* music sits
+/// against the *quiet* speech, which is the p90 of one against the p10 of the
+/// other — and if those cross, every setting trades one for the other.
+///
+/// Blocks below −60 dBFS are dropped: they are the gaps, they are the same in
+/// both, and including them buries the comparison under silence.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn how_far_music_and_speech_stand_over_their_own_background() {
+    println!("    clip                          p10    p25    p50    p75    p90   (dB over floor)");
+    for (name, signal) in clips() {
+        let mut chain = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut enhancer = enhancer_for_measurement();
+        let mut block = [0.0f32; FRAME_SIZE];
+        let mut snrs: Vec<f32> = Vec::new();
+        let mut levels: Vec<f32> = Vec::new();
+
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            block.copy_from_slice(chunk);
+            chain.set_room_level_db(to_dbfs(rms(&block)));
+            enhancer.process(&mut block);
+            let a = chain.process(&mut block);
+            if a.warming_up || a.level_db < -60.0 {
+                continue;
+            }
+            snrs.push(a.snr_db);
+            levels.push(a.level_db);
+        }
+        if snrs.is_empty() {
+            println!("    {name:<28}  nothing above the floor of the measurement");
+            continue;
+        }
+        snrs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        levels.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let at = |v: &Vec<f32>, p: f32| v[((v.len() - 1) as f32 * p) as usize];
+        println!(
+            "    {name:<28} {:>6.1} {:>6.1} {:>6.1} {:>6.1} {:>6.1}   level p50 {:>6.1} dBFS",
+            at(&snrs, 0.10),
+            at(&snrs, 0.25),
+            at(&snrs, 0.50),
+            at(&snrs, 0.75),
+            at(&snrs, 0.90),
+            at(&levels, 0.50),
+        );
+    }
+}
+
+/// What happens in the 250 ms *after* a transient, in music and in speech.
+///
+/// **A rider's proposal, and half of it is a trap.** Percussion was described as
+/// a rapid change from high frequency to low and from high volume to low. The
+/// frequency half cannot discriminate on its own: a word start is a fricative
+/// followed by a vowel, which is high-frequency energy followed by low, exactly
+/// like a hit followed by its body. Anything keyed on tilt alone fires on both.
+///
+/// The volume half might. A hit is an attack and a decay; a word start is an
+/// attack into something held. So the question is what the level does over the
+/// couple of hundred milliseconds after the transient — and that is answerable
+/// because the chain already holds audio that long.
+///
+/// Two figures per transient:
+///
+/// * **sustain** — the level 100 to 250 ms later, against the level at the
+///   transient. Negative is a decay, near zero or positive is something held.
+/// * **tilt fall** — how much the high band drops relative to the low over the
+///   same window. Large for a cymbal, and expected to be large for "sa" too,
+///   which is what makes it the weaker of the two.
+///
+/// For this to be usable, the *loud* end of music's sustain has to sit below
+/// the *quiet* end of speech's. Percentiles, not means, for that reason.
+#[test]
+#[ignore = "needs MUMBLEWAY_ROAD_AUDIO"]
+fn what_a_transient_does_next() {
+    println!(
+        "    clip                       sustain dB after a transient      tilt fall\n\
+         \x20                                p10    p25    p50    p75      p50"
+    );
+    for (name, signal) in clips() {
+        let mut hp = Biquad::high_pass(48_000.0, 2_000.0, 0.707);
+        let mut lp = Biquad::low_pass(48_000.0, 800.0, 0.707);
+
+        // Per block, on the microphone: this asks whether the feature exists in
+        // the signal at all, so nothing downstream should have touched it.
+        let (mut lvl, mut tilt) = (Vec::new(), Vec::new());
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            let (mut h, mut l, mut w) = (0.0f64, 0.0f64, 0.0f64);
+            for &s in chunk {
+                let a = hp.process(s);
+                let b = lp.process(s);
+                h += (a * a) as f64;
+                l += (b * b) as f64;
+                w += (s * s) as f64;
+            }
+            let db = |x: f64| 10.0 * (x / FRAME_SIZE as f64 + 1e-12).log10() as f32;
+            lvl.push(db(w));
+            tilt.push(db(h) - db(l));
+        }
+
+        // A transient: the broadband level jumping clear of its recent self.
+        // The same shape the enhancer's guard uses, so this measures the
+        // population that guard actually fires on.
+        const AFTER_FROM: usize = 10; // 100 ms
+        const AFTER_TO: usize = 25; // 250 ms
+        let mut env = lvl[0];
+        let (mut sustain, mut tiltfall) = (Vec::new(), Vec::new());
+        for i in 0..lvl.len() {
+            let db = lvl[i];
+            if db > -60.0 && db - env > 6.0 && i + AFTER_TO < lvl.len() {
+                let after: f32 = lvl[i + AFTER_FROM..i + AFTER_TO].iter().sum::<f32>()
+                    / (AFTER_TO - AFTER_FROM) as f32;
+                sustain.push(after - db);
+                let t_after: f32 = tilt[i + AFTER_FROM..i + AFTER_TO].iter().sum::<f32>()
+                    / (AFTER_TO - AFTER_FROM) as f32;
+                tiltfall.push(tilt[i] - t_after);
+            }
+            let rate = if db > env { 0.02 } else { 0.20 };
+            env += (db - env) * rate;
+        }
+
+        if sustain.is_empty() {
+            println!("    {name:<26}  no transients found");
+            continue;
+        }
+        sustain.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        tiltfall.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let at = |v: &Vec<f32>, p: f32| v[((v.len() - 1) as f32 * p) as usize];
+        println!(
+            "    {name:<26} sustain {:>6.1} {:>6.1} {:>6.1} {:>6.1} | \
+             tilt {:>6.1} {:>6.1} {:>6.1} {:>6.1} {:>6.1}  ({})",
+            at(&sustain, 0.10),
+            at(&sustain, 0.25),
+            at(&sustain, 0.50),
+            at(&sustain, 0.75),
+            at(&tiltfall, 0.10),
+            at(&tiltfall, 0.25),
+            at(&tiltfall, 0.50),
+            at(&tiltfall, 0.75),
+            at(&tiltfall, 0.90),
+            sustain.len(),
+        );
     }
 }

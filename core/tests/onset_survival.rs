@@ -73,7 +73,7 @@
 //!
 //! Ignored because it is a measurement, not an assertion.
 
-use mumbleway_core::audio::deepfilter::Enhancer;
+use mumbleway_core::audio::deepfilter::{Enhancer, ONSET_HP_HZ, ONSET_RISE_DB};
 use mumbleway_core::audio::denoise::{CaptureProcessor, NoiseProfile, FRAME_SIZE};
 use mumbleway_core::audio::dsp::Biquad;
 
@@ -176,12 +176,37 @@ fn onset_survival() {
         ));
     }
 
-    for (label, atten, tuning) in cases {
+    // `MW_ONSET_MS` sweeps how long the relaxation lasts, which is the lever
+    // the shipped 50 ms turned out to be short on. A rider listening to three
+    // room recordings lost a leading "s" outright and half a leading "p" —
+    // both in the continuous output, so neither was the gate. An English
+    // word-initial /s/ runs 100 to 200 ms and a stressed one longer; a guard
+    // that lets go after 50 leaves most of it to the model.
+    let onset_ms: Vec<u32> = std::env::var("MW_ONSET_MS")
+        .ok()
+        .map(|v| {
+            v.split(',')
+                .filter_map(|x| x.trim().parse::<u32>().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    for ms in &onset_ms {
+        cases.push((format!("guard, {ms} ms"), 24.0, Some(None)));
+    }
+    let flat = cases.len() - onset_ms.len();
+
+    for (i, (label, atten, tuning)) in cases.into_iter().enumerate() {
         let profile = NoiseProfile::Standard;
         let mut enhancer = Enhancer::with_atten_lim(atten);
         enhancer.set_onset_guard(tuning.is_some());
         if let Some(Some(none_db)) = tuning {
             enhancer.set_onset_quiet(none_db - 15.0, none_db);
+        }
+        if i >= flat {
+            // Ten milliseconds a block, and the relaxation is linear, so the
+            // per-block step is the reciprocal of the length in blocks.
+            let blocks = (onset_ms[i - flat] as f32 / 10.0).max(1.0);
+            enhancer.set_onset_tuning(ONSET_HP_HZ, ONSET_RISE_DB, 1.0 / blocks, 3.0);
         }
         let mut processor = CaptureProcessor::new(profile);
 

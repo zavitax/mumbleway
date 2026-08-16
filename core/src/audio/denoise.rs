@@ -439,6 +439,10 @@ pub struct CaptureProcessor {
     restore_peak_ms: f32,
     restore_filter_ms: f32,
 
+    /// How far the enhancer is currently standing down for a word start,
+    /// 0 to 1. See [`Self::set_onset_relief`].
+    onset_relief: f32,
+
     /// The level of the room, before the enhancer touched it.
     ///
     /// Set by the worker each block; see [`CaptureProcessor::set_room_level_db`].
@@ -775,6 +779,7 @@ impl CaptureProcessor {
             restore_im: vec![0.0; RESTORE_FFT],
             restore_peak_ms: 0.0,
             restore_filter_ms: 0.0,
+            onset_relief: 0.0,
             room_level_db: f32::NAN,
             onset_window: 0,
             onset_best_db: f32::NEG_INFINITY,
@@ -851,6 +856,30 @@ impl CaptureProcessor {
     /// opens relative to that floor. It can only ever hold the floor **down**,
     /// so the failure it can cause is a gate that opens too easily — never one
     /// that closes on a rider mid-sentence, which is the failure that matters.
+    /// Tells the chain that the enhancer has just stood down for a word start.
+    ///
+    /// **The same decision, not a second one.** `deepfilter` already watches
+    /// the high band for the jump that starts a word, and relaxes its own
+    /// attenuation cap when it sees one. Everything here then undid that: the
+    /// blend below mixes in RNNoise's opinion at a fixed rate, RNNoise is
+    /// trained to remove exactly the noise-like sound a fricative is, and it
+    /// removed the consonant the model had just been persuaded to keep.
+    ///
+    /// Measured by ear on a recording with a motorcycle behind it: with the
+    /// guard opened up, the leading "s" is audible in the enhancer's output and
+    /// gone again by the time the suppressor has finished — and what is left
+    /// sounds chopped, which is `3c36863`'s warning arriving on schedule. A
+    /// stateful denoiser handed audio that steps between heavily enhanced and
+    /// nearly raw has its noise estimate wrong the whole time, not only inside
+    /// the window.
+    ///
+    /// Sharing the decision is what stops the two stages fighting. A detector
+    /// of its own here would be a second opinion about what a word start is,
+    /// and two detectors that can disagree are worse than one applied twice.
+    pub fn set_onset_relief(&mut self, relief: f32) {
+        self.onset_relief = relief.clamp(0.0, 1.0);
+    }
+
     /// Tells the chain how loud the room is, measured before the enhancer.
     ///
     /// **The profile chooser cannot use anything measured after it.** A speech
@@ -1336,7 +1365,13 @@ impl CaptureProcessor {
         // to remove — `helmet_profile_crushes_engine_rumble` caught it doing
         // precisely that. The relief is for blocks that are unambiguously
         // speech or it is for nothing.
-        let mix = self.effective.denoise_mix();
+        // **Stand down with the enhancer, by the same amount and at the same
+        // moment.** Half of the blend at most: RNNoise is what keeps wind and
+        // engine noise out, and handing back all of it for 150 ms at every word
+        // start would open the channel to a gust that happens to begin like a
+        // word. Half is enough for the consonant to survive the mix and little
+        // enough that the profile still does its job.
+        let mix = self.effective.denoise_mix() * (1.0 - 0.5 * self.onset_relief);
         for (dst, wet) in block.iter_mut().zip(self.denoised.iter()) {
             *dst = *dst * (1.0 - mix) + *wet * mix;
         }
@@ -1634,11 +1669,59 @@ impl CaptureProcessor {
         // Except with suppression off, where the audio must come through
         // untouched. Deciding not to transmit is not a licence to alter what
         // is transmitted when we do.
-        let gate_level = if voice_active || self.effective == NoiseProfile::Off {
-            level_db
-        } else {
-            -120.0
-        };
+        // **The last stage that was deleting word starts.**
+        //
+        // Forcing the level to −120 does not lower the gate, it slams it: the
+        // gain reaches zero within a millisecond and the block is multiplied
+        // out of existence. The voice test cannot prevent that — it wants
+        // periodicity at a human pitch and a fricative has none — so the gate
+        // is shut for exactly as long as the consonant lasts.
+        //
+        // Found last of three, and only because the two in front of it were
+        // fixed first. A rider listening down the taps heard the "s" survive
+        // the enhancer, then survive the suppressor's blend, and then vanish
+        // here. Each stage was removing it independently, so until the earlier
+        // one stopped, work on this one could not show.
+        //
+        // The same shared decision as the blend above, so the gate is told to
+        // stand its ground by the detector that has already decided a word is
+        // starting. It is not forced *open*: a consonant below the floor plus
+        // the margin still does not pass, and this only stops the chain
+        // destroying the evidence before the threshold gets to judge it.
+        // **The last stage that was deleting word starts.**
+        //
+        // Forcing the level to −120 does not lower the gate, it slams it: the
+        // gain reaches zero within a millisecond and the block is multiplied
+        // out of existence. The voice test cannot prevent that — it wants
+        // periodicity at a human pitch and a fricative has none — so the gate
+        // is shut for exactly as long as the consonant lasts.
+        //
+        // Found last of three, and only because the two in front of it were
+        // fixed first. Listening down the taps, a rider heard the "s" survive
+        // the enhancer, then survive the blend, then vanish here. Each stage
+        // removed it independently, so until the earlier one stopped, work on
+        // this one could not show.
+        //
+        // The same shared decision as the blend above, so the gate stands its
+        // ground on the word the detector has already called a start. It is not
+        // forced *open*: a consonant below the floor plus the margin still does
+        // not pass. This only stops the chain destroying the evidence before
+        // the threshold gets to judge it.
+        //
+        // **Holding the audio and confirming afterwards was tried and dropped.**
+        // The idea is sound — a word start is followed by a voice and a snare
+        // is followed by another snare — and it fails on the flag rather than
+        // the logic: `voice_active` fires on about a third of music, so "a
+        // voice followed" is true almost always. Requiring five consecutive
+        // voiced blocks instead of one moved music leakage from 31.56% to
+        // 30.97%. It cost 200 ms of latency for that.
+        let gate_level =
+            if voice_active || self.onset_relief > 0.0 || self.effective == NoiseProfile::Off {
+                level_db
+            } else {
+                -120.0
+            };
+
         // Kept for the diagnostics analyser: this is the signal the gate is
         // about to judge, and the distance between it and the raw microphone is
         // everything the suppressor did.
@@ -1672,10 +1755,10 @@ impl CaptureProcessor {
 
         let gate_open = self.gate.process(block, gate_level);
 
-        // 6. Level the result, then catch transients.
+        // 6. Level the result.
+        //
         let speaking = gate_open && voice_active;
         self.agc.process(block, level_db, speaking);
-        self.limiter.process(block);
 
         // 7. Put back what the enhancer took, where it took it from.
         //
@@ -1693,6 +1776,22 @@ impl CaptureProcessor {
         // suppressor: those losses are deliberate and profile-shaped, and
         // undoing them would be undoing the feature.
         let restore_gain = self.restore(block, speaking);
+
+        // 8. Catch transients — **after the restoration, because a limiter that
+        // is not last is not a limiter.**
+        //
+        // It used to sit in step 6, which was correct until step 7 existed and
+        // then quietly was not: the bell can add up to twelve decibels, and a
+        // block the limiter had just brought to the edge of full scale came out
+        // of the restoration well past it. Dumped to a file for listening, the
+        // three room recordings peaked at 1.16, 1.85 and 2.04 — the last of
+        // those is six decibels of hard clipping on every loud syllable, which
+        // is not a subtle artefact and reached a release.
+        //
+        // Nothing about the restoration needed changing. It was in the wrong
+        // place in a list, and the list is the whole specification of this
+        // function.
+        self.limiter.process(block);
 
         BlockAnalysis {
             vad,
@@ -2106,6 +2205,92 @@ mod tests {
                 p.latched_snr_db(),
                 None,
                 "{profile:?} has nothing to measure an SNR against"
+            );
+        }
+    }
+
+    /// How much of a leading fricative reaches the output.
+    ///
+    /// Silence, then 120 ms of high-passed noise, then a vowel. The vowel opens
+    /// the gate; the question is whether what came before it survives. **No
+    /// window anywhere in the measurement** — the synthetic "s" is the only
+    /// high-frequency energy in the signal, so either it is in the output or it
+    /// is not. Three earlier attempts to measure this on real audio were
+    /// anchored on the chain's own decisions, and anything that moves the audio
+    /// in time moves it out of such a window: a change that worked read as a
+    /// regression and a change that did nothing read as a fix.
+    #[test]
+    fn a_leading_fricative_reaches_the_output() {
+        let sr = SAMPLE_RATE as usize;
+        let mut signal = vec![0.0f32; sr];
+        let mut seed = 12345u32;
+        let mut hp = Biquad::high_pass(SAMPLE_RATE as f32, 2_000.0, 0.707);
+        for _ in 0..(sr * 120 / 1000) {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            let n = (seed >> 8) as f32 / 8_388_608.0 - 1.0;
+            signal.push(hp.process(n * 0.25));
+        }
+        signal.extend_from_slice(&crate::audio::testsig::speech(sr, 140.0, 0.4));
+
+        let mut p = CaptureProcessor::new(NoiseProfile::Auto);
+        let mut out = Vec::with_capacity(signal.len());
+        for chunk in signal.chunks_exact(FRAME_SIZE) {
+            let mut b = chunk.to_vec();
+            p.set_room_level_db(to_dbfs(rms(&b)));
+            p.process(&mut b);
+            out.extend_from_slice(&b);
+        }
+
+        let band = |v: &[f32]| {
+            let mut f = Biquad::high_pass(SAMPLE_RATE as f32, 2_000.0, 0.707);
+            v.iter()
+                .map(|&s| {
+                    let x = f.process(s);
+                    (x * x) as f64
+                })
+                .sum::<f64>()
+        };
+        let kept_db = 10.0 * (band(&out) / band(&signal)).log10();
+        println!("leading fricative kept: {kept_db:.1} dB");
+        // Loose on purpose: this asserts the chain has not started deleting
+        // fricatives outright, which it has done before. The figure printed
+        // above is the one to watch.
+        assert!(
+            kept_db > -20.0,
+            "the leading fricative came out {kept_db:.1} dB down, which is gone"
+        );
+    }
+
+    /// Nothing leaves this chain above full scale, restoration included.
+    ///
+    /// **The regression test for a stage ordering.** The limiter used to run
+    /// before the restoring bell, which was correct until the bell existed: a
+    /// block brought to the edge of full scale and then lifted twelve decibels
+    /// comes out six decibels into hard clipping. Three room recordings dumped
+    /// for listening peaked at 1.16, 1.85 and 2.04, and it had already
+    /// shipped — nothing in the suite looked at the amplitude of the output.
+    #[test]
+    fn nothing_leaves_the_chain_above_full_scale() {
+        for profile in [
+            NoiseProfile::Light,
+            NoiseProfile::Standard,
+            NoiseProfile::Helmet,
+            NoiseProfile::Auto,
+        ] {
+            let mut p = CaptureProcessor::new(profile);
+            let speech = crate::audio::testsig::speech(SAMPLE_RATE as usize * 3, 140.0, 0.9);
+            let mut peak = 0.0f32;
+            for chunk in speech.chunks_exact(FRAME_SIZE) {
+                let mut b = chunk.to_vec();
+                p.set_room_level_db(0.0);
+                p.process(&mut b);
+                for s in &b {
+                    peak = peak.max(s.abs());
+                }
+            }
+            assert!(
+                peak <= 1.0,
+                "{profile:?} left the chain at {peak:.3}, which clips"
             );
         }
     }

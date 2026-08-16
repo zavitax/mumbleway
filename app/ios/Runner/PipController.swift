@@ -157,7 +157,7 @@ final class PipController: NSObject {
     // been given, and asking it to judge that on a feed running at one frame a
     // second is the kind of difference that shows up on one device model and
     // no other.
-    startRenderTimer(every: Self.visibleFrameInterval)
+    startRenderTimer(every: onScreenInterval)
 
     // Belt and braces with the same clear on the way out: whatever the system
     // last recorded about playback, there is no window and so nothing paused.
@@ -352,7 +352,21 @@ final class PipController: NSObject {
   func update(_ next: CallSnapshot) {
     let wasTransmitting = snapshot.transmitting
     let previousMode = snapshot.micMode
+    let wasLive = snapshot.live
     snapshot = next
+    // Anchors the pulse to the moment the microphone opened, so it begins at
+    // its light end. Cleared rather than left behind, so the next transmission
+    // starts from the same place instead of wherever the last one stopped.
+    if next.live != wasLive {
+      liveSince = next.live ? frame : nil
+      // The pulse wants more frames than a level bar does; see
+      // [liveFrameInterval]. Only while there is a window on screen to want
+      // them — `startRenderTimer` ignores a request for the rate it is already
+      // running at, so this cannot restart the timer on every state push.
+      if pipController?.isPictureInPictureActive == true {
+        startRenderTimer(every: onScreenInterval)
+      }
+    }
     // The mode is a setting, so this changes a handful of times in a ride
     // rather than with the ten-a-second level updates this also carries.
     if next.micMode != previousMode {
@@ -383,6 +397,26 @@ final class PipController: NSObject {
   /// enough for a level bar to look continuous and for the on-air flash to
   /// have clean edges.
   private static let visibleFrameInterval: TimeInterval = 0.1
+
+  /// How often it is redrawn while the window is on screen **and the
+  /// microphone is open**.
+  ///
+  /// The on-air pulse is a colour ramp, and ten frames a second gives it nine
+  /// steps per breath — each one a jump of about 40 of 255 in red, where the
+  /// Android window's twenty frames make the same breath in half-sized steps.
+  /// The blink this replaces did not care, being two states; a gradient does.
+  ///
+  /// Scoped to transmission rather than raising the rate outright. Each frame
+  /// is a 480×270 buffer drawn with Core Graphics, so this is 50% more of them
+  /// — and a rider transmits for a fraction of the time the window is up, so
+  /// paying it the whole time a call is open would be paying for a light that
+  /// is not lit.
+  private static let liveFrameInterval: TimeInterval = 1.0 / 15
+
+  /// The rate the window should be running at right now.
+  private var onScreenInterval: TimeInterval {
+    snapshot.live ? Self.liveFrameInterval : Self.visibleFrameInterval
+  }
 
   /// How often it is redrawn while the window is *not* on screen.
   ///
@@ -429,13 +463,42 @@ final class PipController: NSObject {
     renderInterval = 0
   }
 
-  /// Frames since the timer started, used for the on-air flash. A counter
-  /// rather than a clock so the blink cannot drift with render timing.
+  /// Frames since the timer started, used for the on-air pulse. A counter
+  /// rather than a clock so the pulse cannot drift with render timing — and
+  /// unlike the Android window there is no separate clock to read, because the
+  /// whole frame is redrawn on this timer whether anything moved or not.
   private var frame: UInt64 = 0
 
-  /// Roughly 1.5 Hz at ten frames a second: fast enough to read as "live",
-  /// slow enough not to strobe in peripheral vision on a moving bike.
-  private var onAirVisible: Bool { (frame % 7) < 4 }
+  /// The frame the microphone last opened on, so the pulse starts at its light
+  /// end when a rider keys up.
+  ///
+  /// That moment is when confirmation is wanted, and a pulse that happened to
+  /// be at its dark end would answer it with the dimmest thing it draws. Going
+  /// on air therefore looks exactly as it always has — the same red, at once —
+  /// and the breathing starts from there.
+  private var liveSince: UInt64?
+
+  /// How long one breath takes.
+  ///
+  /// The same 900 ms as the Android window, so the two platforms breathe
+  /// together rather than merely both breathing. Expressed as a duration and
+  /// scaled by the frame interval rather than counted in frames: a frame count
+  /// would make the breath as long as the frame rate happened to make it, and
+  /// 900 ms is not a whole number of frames at either rate this runs at.
+  private static let pulsePeriod: TimeInterval = 0.9
+
+  /// Where the pulse is, 0 at the dark end and 1 at the light one.
+  ///
+  /// A cosine rather than a triangle, so it lingers at both ends and moves
+  /// quickest through the middle — which is what reads as breathing rather
+  /// than as a slider being dragged.
+  private var onAirPhase: CGFloat {
+    let frames = Double(frame &- (liveSince ?? frame))
+    let elapsed = (frames * renderInterval)
+      .truncatingRemainder(dividingBy: Self.pulsePeriod)
+    let turn = 2 * Double.pi * elapsed / Self.pulsePeriod
+    return CGFloat((1 + cos(turn)) / 2)
+  }
 
   private func render() {
     guard let displayLayer else { return }
@@ -626,10 +689,28 @@ final class PipController: NSObject {
       size: size, weight: .bold, colour: colour, alignment: .left)
   }
 
-  /// The transmit indicator: a filled ring that blinks while the microphone is
-  /// actually going out, the way a studio on-air light does. Blinking rather
-  /// than merely turning red because a steady colour is easy to lose track of,
-  /// and leaving a channel keyed open by accident is the failure that matters.
+  /// The transmit indicator: a filled ring that pulses while the microphone is
+  /// actually going out, the way a studio on-air light does. Moving rather than
+  /// merely turning red because a steady colour is easy to lose track of, and
+  /// leaving a channel keyed open by accident is the failure that matters.
+  ///
+  /// **It pulses between two reds rather than blinking to a third of its own
+  /// opacity.** The blink it replaces spent nearly half of every cycle at 0.35
+  /// alpha, so the one thing on this window that says "you are on air" was
+  /// faint exactly as often as it was bright. Both ends of this are fully
+  /// opaque and unmistakably red; only the brightness moves.
+  ///
+  /// The light end is the red this replaces, and the pulse darkens from it.
+  /// "ON AIR" is white lettering on the disc, and white on that red is already
+  /// only about 3.8:1 — a genuinely *lighter* red measured 2.7:1, worse than
+  /// today at the moment a rider is most likely to glance at it. Darkening
+  /// costs nothing: the dark end is around 11:1, so the words are more legible
+  /// for half of every cycle and never less than they were.
+  /// The two ends of the live pulse. The light one is the red this window has
+  /// always used; see [drawOnAir] for why it does not go lighter.
+  private static let liveDark = UIColor(red: 0.47, green: 0.08, blue: 0.08, alpha: 1)
+  private static let liveLight = UIColor(red: 0.94, green: 0.24, blue: 0.24, alpha: 1)
+
   private func drawOnAir(in bounds: CGRect) {
     let centre = CGPoint(x: bounds.midX, y: 84)
     let radius: CGFloat = 28
@@ -638,24 +719,25 @@ final class PipController: NSObject {
     if !snapshot.connected {
       colour = UIColor(white: 0.45, alpha: 1)
     } else if snapshot.live {
-      colour = UIColor(red: 0.94, green: 0.24, blue: 0.24, alpha: 1)
+      colour = Self.liveDark.mixed(towards: Self.liveLight, by: onAirPhase)
     } else if snapshot.speaking {
       colour = UIColor(red: 0.25, green: 0.78, blue: 0.45, alpha: 1)
     } else {
       colour = UIColor(white: 0.55, alpha: 1)
     }
 
-    let lit = !snapshot.live || onAirVisible
-
+    // Everything that is not sending is untouched and deliberately so: not
+    // connected, hearing speech and idle are steady states and read as steady
+    // lights.
     if snapshot.live {
-      colour.withAlphaComponent(lit ? 0.30 : 0.10).setFill()
+      colour.withAlphaComponent(0.30).setFill()
       UIBezierPath(
         arcCenter: centre, radius: radius + 16, startAngle: 0, endAngle: .pi * 2,
         clockwise: true
       ).fill()
     }
 
-    colour.withAlphaComponent(lit ? 1.0 : 0.35).setFill()
+    colour.setFill()
     UIBezierPath(
       arcCenter: centre, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true
     ).fill()
@@ -1017,7 +1099,7 @@ extension PipController: AVPictureInPictureControllerDelegate {
     report(nil)
 
     // There is now a window to draw into, so the frames become worth making.
-    startRenderTimer(every: Self.visibleFrameInterval)
+    startRenderTimer(every: onScreenInterval)
 
     // The window had to claim to be playing to get itself opened — iOS will
     // not open one for content it believes is paused. That answer is cached,
@@ -1066,5 +1148,26 @@ extension PipController: AVPictureInPictureControllerDelegate {
     pictureInPictureController.invalidatePlaybackState()
 
     channel.invokeMethod("dismissed", arguments: nil)
+  }
+}
+
+private extension UIColor {
+  /// Mixes towards another colour, channel-wise in sRGB.
+  ///
+  /// The same mix the Android window does, on the same two reds, so the on-air
+  /// light breathes identically on both platforms — it is one signal that
+  /// happens to be drawn by two pieces of code, and a rider who carries both
+  /// phones should not be able to tell them apart.
+  func mixed(towards other: UIColor, by t: CGFloat) -> UIColor {
+    let f = min(max(t, 0), 1)
+    var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+    var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+    getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+    other.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+    return UIColor(
+      red: r1 + (r2 - r1) * f,
+      green: g1 + (g2 - g1) * f,
+      blue: b1 + (b2 - b1) * f,
+      alpha: a1 + (a2 - a1) * f)
   }
 }

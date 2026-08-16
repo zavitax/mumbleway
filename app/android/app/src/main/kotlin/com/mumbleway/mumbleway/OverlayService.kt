@@ -83,6 +83,7 @@ class OverlayService : Service() {
     private var mediaSession: MediaSession? = null
     private var root: LinearLayout? = null
     private var callView: CallView? = null
+    private var onAirView: OnAirView? = null
     private var talkButton: TextView? = null
     private var muteButton: TextView? = null
     private var deafenButton: TextView? = null
@@ -94,6 +95,31 @@ class OverlayService : Service() {
     companion object {
         private const val CHANNEL_ID = "mumbleway_overlay"
         private const val NOTIFICATION_ID = 4711
+
+        /**
+         * The card's geometry, in dp, shared by the things that draw on it.
+         *
+         * Here rather than inline because the on-air light is its own view now
+         * and has to be *placed* where [CallView] would have drawn it. Two
+         * copies of `w * 0.52f / 2` would agree until one of them was edited,
+         * and the symptom would be a light sitting slightly off the middle of
+         * the left half — the sort of thing that reads as a rendering bug.
+         */
+        private const val CARD_W = 300
+        private const val CARD_H = 150
+
+        /** Where the card splits into its two halves, as a share of the width. */
+        private const val DIVIDER = 0.52f
+
+        private const val ON_AIR_CY = 56
+        private const val ON_AIR_RADIUS = 20
+        private const val ON_AIR_HALO = 9
+
+        /**
+         * The light's own view, square, with a dp of slack so the halo's
+         * antialiased edge is not clipped by its own bounds.
+         */
+        private const val ON_AIR_BOX = 2 * (ON_AIR_RADIUS + ON_AIR_HALO) + 2
 
         const val ACTION_START = "com.mumbleway.overlay.START"
         const val ACTION_STOP = "com.mumbleway.overlay.STOP"
@@ -150,6 +176,7 @@ class OverlayService : Service() {
         fun setPhrases(map: Map<String, String>) {
             phrases = map
             instance?.callView?.postInvalidate()
+            instance?.onAirView?.postInvalidate()
         }
 
         fun phrase(key: String, fallback: String): String =
@@ -453,6 +480,7 @@ class OverlayService : Service() {
         super.onConfigurationChanged(newConfig)
         density = resources.displayMetrics.density
         callView?.invalidate()
+        onAirView?.invalidate()
     }
 
     /**
@@ -574,8 +602,26 @@ class OverlayService : Service() {
         // The connection line the corner sits next to is centred in the card's
         // left half rather than anchored to its edge, so a small button in the
         // corner has that corner to itself.
+        // Placed where [CallView] would have drawn it, from the same
+        // constants: the light's centre is the middle of the card's left half,
+        // [ON_AIR_CY] down from the top.
+        val light = OnAirView(this)
+        val lightCentreX = CARD_W * DIVIDER / 2f
+        val lightHalf = ON_AIR_BOX / 2f
+
         val framedCard = FrameLayout(this).apply {
-            addView(card, FrameLayout.LayoutParams(dp(300), dp(150)))
+            addView(card, FrameLayout.LayoutParams(dp(CARD_W), dp(CARD_H)))
+            addView(
+                light,
+                FrameLayout.LayoutParams(
+                    dp(ON_AIR_BOX),
+                    dp(ON_AIR_BOX),
+                    Gravity.TOP or Gravity.START,
+                ).apply {
+                    leftMargin = dp((lightCentreX - lightHalf).toInt())
+                    topMargin = dp(ON_AIR_CY - lightHalf.toInt())
+                },
+            )
             addView(
                 close,
                 FrameLayout.LayoutParams(
@@ -589,7 +635,10 @@ class OverlayService : Service() {
             )
         }
 
-        container.addView(framedCard, LinearLayout.LayoutParams(dp(300), dp(150)))
+        container.addView(
+            framedCard,
+            LinearLayout.LayoutParams(dp(CARD_W), dp(CARD_H)),
+        )
         container.addView(controls)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -651,10 +700,16 @@ class OverlayService : Service() {
         // the navigation app is showing. The card carries no controls of its
         // own, so nothing is lost by making the whole of it the handle.
         card.setOnTouchListener(DragHandler())
+        // Over the card, so without these the window refuses to be dragged —
+        // and refuses to open the app — by exactly the patch of itself a rider
+        // is most likely to put a thumb on.
+        light.setOnTouchListener(DragHandler())
+        light.setOnClickListener { onOpenApp?.invoke() }
 
         wm.addView(container, layoutParams)
         root = container
         callView = card
+        onAirView = light
         talkButton = talk
         muteButton = mute
         deafenButton = deafen
@@ -678,24 +733,19 @@ class OverlayService : Service() {
      * three. The two sides are also meant to stay proportional to each other as
      * the card is resized, which weights and gravities do badly.
      */
-    private inner class CallView(context: Context) : View(context) {
+    /** What [CallView] and [OnAirView] both need: two paints and a way to
+     *  put one line of text somewhere. */
+    private abstract inner class Layer(context: Context) : View(context) {
         var state = OverlayState()
 
-        /** Blink phase for the on-air light; driven by [setFlashing]. */
-        var lit = true
+        protected val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        protected val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
 
-        private var titleSource: String? = null
-        private var titleLines: List<String> = emptyList()
-
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
-        private val rect = RectF()
-
-        private fun typeface(bold: Boolean) =
+        protected fun typeface(bold: Boolean) =
             if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
 
         /** Draws one line, returning nothing: every caller places by geometry. */
-        private fun label(
+        protected fun label(
             canvas: Canvas,
             value: String,
             x: Float,
@@ -711,6 +761,78 @@ class OverlayService : Service() {
             text.textAlign = align
             canvas.drawText(value, x, y, text)
         }
+    }
+
+    /**
+     * The on-air light, alone in its own view.
+     *
+     * **Because it blinks.** It is the only thing on the card that redraws on a
+     * timer rather than because something changed: a 350 ms flash while the
+     * microphone is open, which is deliberate — a light that is always on is
+     * easy to stop noticing, and a channel left keyed open is the failure worth
+     * catching. But it lived in [CallView], so every flash re-recorded the
+     * display list for the whole 300x150dp card — the connection line, the
+     * title, the input meter, four speaker rows and their meters — and damaged
+     * that whole area for the compositor, three times a second, over whatever
+     * navigation app the rider is actually looking at.
+     *
+     * Split out, a flash re-records two circles and a word inside 60x60dp. The
+     * card is left to redraw when something it shows has changed, which is what
+     * [worthDrawing] was always for.
+     *
+     * It carries [DragHandler] and the card's click listener because it sits on
+     * top of the card: without them the window would refuse to be dragged, and
+     * refuse to open the app, by exactly the patch of itself a rider is most
+     * likely to put a thumb on.
+     */
+    private inner class OnAirView(context: Context) : Layer(context) {
+        /** Blink phase; driven by [setFlashing]. */
+        var lit = true
+
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            val radius = dp(ON_AIR_RADIUS).toFloat()
+
+            val colour = when {
+                !state.connected -> Color.argb(255, 115, 115, 115)
+                state.live -> Color.argb(255, 240, 62, 62)
+                state.speaking -> Color.argb(255, 64, 199, 115)
+                else -> Color.argb(255, 140, 140, 140)
+            }
+            val on = !state.live || lit
+
+            if (state.live) {
+                paint.color = colour
+                paint.alpha = if (on) 77 else 26
+                canvas.drawCircle(cx, cy, radius + dp(ON_AIR_HALO), paint)
+            }
+            paint.color = colour
+            paint.alpha = if (on) 255 else 89
+            canvas.drawCircle(cx, cy, radius, paint)
+            paint.alpha = 255
+
+            if (state.live) {
+                label(
+                    canvas, phrase("pipOnAir", "ON AIR"), cx,
+                    cy - (text.ascent() + text.descent()) / 2f,
+                    10, Color.WHITE, bold = true, align = Paint.Align.CENTER,
+                )
+            } else {
+                label(
+                    canvas, "\uD83C\uDFA4", cx,
+                    cy - (text.ascent() + text.descent()) / 2f,
+                    15, Color.WHITE, align = Paint.Align.CENTER,
+                )
+            }
+        }
+    }
+
+    private inner class CallView(context: Context) : Layer(context) {
+        private var titleSource: String? = null
+        private var titleLines: List<String> = emptyList()
+
+        private val rect = RectF()
 
         override fun onDraw(canvas: Canvas) {
             val w = width.toFloat()
@@ -721,13 +843,12 @@ class OverlayService : Service() {
             // the eye has to work out which line belongs to which; side by side
             // each half is glanced at rather than read, which is all a rider
             // has time for.
-            val divider = (w * 0.52f)
+            val divider = (w * DIVIDER)
 
             paint.color = Color.argb(26, 255, 255, 255)
             canvas.drawRect(divider, dp(14).toFloat(), divider + dp(1), h - dp(14), paint)
 
             drawConnection(canvas, divider)
-            drawOnAir(canvas, divider)
             drawTitle(canvas, divider)
             drawMeter(canvas, divider, h)
             drawSpeakers(canvas, divider, w)
@@ -767,46 +888,6 @@ class OverlayService : Service() {
                 middle - (text.ascent() + text.descent()) / 2f,
                 11, Color.WHITE, bold = true,
             )
-        }
-
-        private fun drawOnAir(canvas: Canvas, divider: Float) {
-            val cx = divider / 2f
-            val cy = dp(56).toFloat()
-            val radius = dp(20).toFloat()
-
-            val colour = when {
-                !state.connected -> Color.argb(255, 115, 115, 115)
-                state.live -> Color.argb(255, 240, 62, 62)
-                state.speaking -> Color.argb(255, 64, 199, 115)
-                else -> Color.argb(255, 140, 140, 140)
-            }
-            // Steady unless transmitting: a light that is always on is easy to
-            // stop noticing, and a channel left keyed open is the failure worth
-            // catching.
-            val on = !state.live || lit
-
-            if (state.live) {
-                paint.color = colour
-                paint.alpha = if (on) 77 else 26
-                canvas.drawCircle(cx, cy, radius + dp(9), paint)
-            }
-            paint.color = colour
-            paint.alpha = if (on) 255 else 89
-            canvas.drawCircle(cx, cy, radius, paint)
-            paint.alpha = 255
-
-            if (state.live) {
-                label(
-                    canvas, phrase("pipOnAir", "ON AIR"), cx,
-                    cy - (text.ascent() + text.descent()) / 2f,
-                    10, Color.WHITE, bold = true, align = Paint.Align.CENTER,
-                )
-            } else {
-                label(
-                    canvas, "🎤", cx, cy - (text.ascent() + text.descent()) / 2f,
-                    15, Color.WHITE, align = Paint.Align.CENTER,
-                )
-            }
         }
 
         private fun drawTitle(canvas: Canvas, divider: Float) {
@@ -1183,6 +1264,16 @@ class OverlayService : Service() {
             // happened to arrive with it.
             card.state = state
 
+            // The light has a gate of its own, and a narrower one than the
+            // card's: it shows three flags and nothing else, so a moving meter
+            // or a changing name is not a reason to redraw it. Ahead of the
+            // card's gate because that one returns early.
+            onAirView?.let { light ->
+                val before = light.state
+                light.state = state
+                if (onAirDiffers(before, state)) light.invalidate()
+            }
+
             val previous = drawn
             if (!worthDrawing(previous, state, card)) return@post
             drawn = state
@@ -1300,6 +1391,12 @@ class OverlayService : Service() {
      * as waking the phone, and a card that starts on the previous connection
      * state and corrects itself a tenth of a second later reads as a fault.
      */
+    /** Everything [OnAirView] reads, and nothing else. */
+    private fun onAirDiffers(a: OverlayState, b: OverlayState): Boolean =
+        a.connected != b.connected ||
+            a.live != b.live ||
+            a.speaking != b.speaking
+
     private fun controlsDiffer(a: OverlayState, b: OverlayState): Boolean =
         a.connectionText != b.connectionText ||
             a.connectionLevel != b.connectionLevel ||
@@ -1340,7 +1437,7 @@ class OverlayService : Service() {
         flashing = on
         flashHandler.removeCallbacksAndMessages(null)
         if (!on) {
-            callView?.let {
+            onAirView?.let {
                 it.lit = true
                 it.invalidate()
             }
@@ -1348,9 +1445,12 @@ class OverlayService : Service() {
         }
         val blink = object : Runnable {
             override fun run() {
-                val card = callView ?: return
-                card.lit = !card.lit
-                card.invalidate()
+                val light = onAirView ?: return
+                light.lit = !light.lit
+                // 60x60dp, rather than the whole card. This is the only redraw
+                // in the window that happens on a timer instead of because
+                // something changed, so it is the one worth keeping small.
+                light.invalidate()
                 flashHandler.postDelayed(this, 350)
             }
         }
@@ -1366,6 +1466,7 @@ class OverlayService : Service() {
         }
         root = null
         callView = null
+        onAirView = null
         // The next window starts blank, so nothing may be skipped as already
         // drawn on it.
         drawn = null

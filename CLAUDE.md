@@ -232,6 +232,38 @@ New user-facing strings need keys in **both** `app_en.arb` and `app_ru.arb`,
 with genuine Russian: a test fails on a key that is missing from one file or
 identical in both. Run `flutter gen-l10n` after editing them.
 
+### "вычитай сайт" — the standing proof-reading pass
+
+When the user says **"вычитай сайт"** (or asks for a site proof-read), it means
+this, and it means all of it:
+
+> Proof-read every Russian page of the site for meaning lost in translation
+> from the English, for anything that has become faintly ridiculous, for
+> factual and technical inaccuracies, and for stylistic or semantic errors that
+> crept in through translating word by word. **Do not stop until every Russian
+> page has been read.**
+
+Every page is `docs/ru/*.md` — today `index`, `settings`, `diagnostics`,
+`scenarios`, `server`, `sending-a-recording`, `licences`, `privacy` — plus the
+`ru:` half of `docs/_data/strings.yml`, which is site text that happens to live
+in a data file and is the half most often forgotten.
+
+The faults to read for are the two lists below: the language ones under this
+heading, and the ones about what the prose asserts about the app under the next.
+Both were written from mistakes that shipped. Two habits make the pass finite
+and are not optional — **read the Russian without the English beside it**, since
+a calque is invisible while the original is in view and obvious once it is not;
+and **go page by page, committing per page**, so a long file does not turn into
+a skim.
+
+One check is mechanical and catches the fault that is hardest to see by eye —
+a control named something the app does not call it:
+
+```bash
+# every quoted control name on the Russian pages, to be looked up in the .arb
+grep -ohE "«[А-ЯЁA-Z][^»]{2,40}»" docs/ru/*.md | sort -u
+```
+
 ### Read the Russian again, against these faults
 
 A translation written straight from the English passes every test here and can

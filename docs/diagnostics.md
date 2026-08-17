@@ -162,7 +162,7 @@ threshold climbs with it — which is what the noise profiles are for.
 
 ### Before the chain, and inside it
 
-Four readings that are not about the network at all.
+Six readings that are not about the network at all.
 
 **Microphone clipped** counts samples that hit the top of the scale on the way
 in — before any stage has touched them. It is the one measurement here taken

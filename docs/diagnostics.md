@@ -58,7 +58,7 @@ switch to remember.
 </div>
 
 One dot per stage of the capture chain: **echo**, **enhancer**, **suppressor**,
-**voice detected**, **gate**, **levelling**, **hiss**, **feedback** and
+**voice detected**, **gate**, **levelling**, **feedback**, **hiss** and
 **to the server**. The colours mean the same thing at every
 stage — green is working and passing audio on, amber is working but holding something back, red
 is stopping audio here, and grey is switched off and therefore has no opinion.

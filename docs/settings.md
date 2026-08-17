@@ -283,7 +283,7 @@ changed, or **Standard** if you are not riding.
 
 ### How Automatic decides
 
-Two things, and they pull in the same direction.
+Two things: what it measures, and how slowly it lets go.
 
 **How far your voice stands above the background.** When the gate opens on a
 phrase, Automatic measures that margin across the **first second** of it. Below

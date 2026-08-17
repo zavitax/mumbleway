@@ -1060,7 +1060,7 @@ abstract class L {
   /// No description provided for @noiseAutoBody.
   ///
   /// In en, this message translates to:
-  /// **'Listens to the background and picks one of the settings above. On a phone it also runs a small sound classifier: when it hears engine, wind or music it takes the helmet setting straight away and holds it for fifteen seconds after they stop. Going back down is slower — fifteen seconds of quiet to leave the helmet setting, and a minute more to reach the lightest. Useful when one ride covers a quiet car park and a motorway.'**
+  /// **'Listens to the background and picks one of the settings above, from how far your voice stands above it in the first second of a phrase. Going back down is slower — fifteen seconds of quiet to leave the helmet setting, and a minute more to reach the lightest. Useful when one ride covers a quiet car park and a motorway.'**
   String get noiseAutoBody;
 
   /// No description provided for @micAlwaysOn.

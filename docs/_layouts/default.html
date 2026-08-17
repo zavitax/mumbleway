@@ -116,8 +116,17 @@
         {%- comment -%} `badge` already carries its extension: Apple and
           Microsoft publish SVG, Google only ever publishes PNG. {%- endcomment -%}
         {% assign badge = st.badge %}
+        {%- comment -%} An optional `note` on a listing that *is* live, for when
+          the badge's own wording is broader than what is actually on sale. The
+          Apple one is the case in point: the artwork Apple publishes for this
+          says "Download on the App Store" and reads as iPhone, while only the
+          macOS build is out — so the note says which, in the tooltip and to a
+          screen reader, rather than leaving somebody to find out by tapping it
+          on a phone. {%- endcomment -%}
         {% if st.url and st.url != '' %}
-      <a class="badge" href="{{ st.url }}">
+      <a class="badge" href="{{ st.url }}"
+         {% if st.note %}title="{{ st.note }}"
+         aria-label="{{ st.alt }} — {{ st.note }}"{% endif %}>
         <img src="{{ '/assets/img/badges/' | append: badge | relative_url }}"
              alt="{{ st.alt }}" loading="lazy" decoding="async">
       </a>

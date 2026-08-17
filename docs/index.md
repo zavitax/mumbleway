@@ -71,7 +71,7 @@ it, and every stage is visible while it runs.
   latency on every transmission to protect the first tenth of a second of one.
   So a phrase opens **240 ms** ahead and the debt is repaid at 1.1× — pitch
   periods removed whole, so duration changes and pitch does not — until the
-  delay settles at **60 ms**. Not zero: a little slack absorbs a late block
+  delay settles at **200 ms**. Not zero: a little slack absorbs a late block
   instead of turning it into a dropout.
 - **The channel then holds for a full second** after you stop, fading over the
   last 30 ms so a trailing "t" or "s" survives and the cut is not a click. A
@@ -294,7 +294,7 @@ to be fixed by a setting.
   <div class="panel warn">
     <h3>Latency is a network's, not a radio's</h3>
     <p>The capture chain contributes little — the look-ahead pays itself down
-    to 60 ms — but the network does not, so expect a couple of hundred
+    to 200 ms — but the network does not, so expect a couple of hundred
     milliseconds on a good mobile link and more on a bad one, against near-zero
     for an intercom between two adjacent helmets. Conversation works;
     interrupting somebody mid-sentence does not land the way it does face to

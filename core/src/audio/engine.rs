@@ -408,7 +408,7 @@ const VAD_TAIL_MS: usize = 1000;
 ///
 /// **This used to be a whole-hold constant** — the tail plus the look-ahead,
 /// less the fade — and it stopped being one when [`super::paydown`] made the
-/// delay vary from 240 ms to 60 within a phrase. The hold is now computed per
+/// delay vary from 240 ms to 200 within a phrase. The hold is now computed per
 /// opening from what the delay line is actually holding; see the call site.
 const VAD_TAIL_SAMPLES: usize = SAMPLE_RATE as usize * VAD_TAIL_MS / 1000;
 
@@ -3409,7 +3409,7 @@ where
                     // older than the decision driving it — so the hold has to
                     // be the tail *plus* however far behind the audio is. That
                     // was a constant while the delay was, and the pay-down
-                    // makes it vary from 240 ms down to 60 within a phrase.
+                    // makes it vary from 240 ms down to 200 within a phrase.
                     // Leaving it fixed would have delivered a tail between 200
                     // and 380 ms depending on how far through the sentence the
                     // rider was — quietly spending airtime the hangover

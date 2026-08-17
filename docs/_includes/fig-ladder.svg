@@ -37,9 +37,14 @@
     <rect x="514" y="184" width="118" height="34" rx="4" fill="#2A3644" stroke="#8695A6"/>
     <text x="573" y="206" fill="#B9C4D0" text-anchor="middle">{{ f.display }}</text>
 
-    <!-- 6. The classifier. Amber: Auto stops adapting. -->
-    <rect x="640" y="220" width="118" height="34" rx="4" fill="#3A2E17" stroke="#FFA53C"/>
-    <text x="699" y="242" fill="#FFA53C" text-anchor="middle">{{ f.classifier }}</text>
+    <!-- 6. The rest of the panel's own liveness — the moving dots and the
+         per-speaker meters. Grey, not amber: this is drawing, and nobody's
+         voice passes through it. It used to be the sound classifier, which was
+         amber because Auto stopped adapting when it went; the classifier has
+         since been removed from the chain altogether and Auto now decides from
+         the signal-to-noise ratio, which costs nothing to keep. -->
+    <rect x="640" y="220" width="118" height="34" rx="4" fill="#2A3644" stroke="#8695A6"/>
+    <text x="699" y="242" fill="#B9C4D0" text-anchor="middle">{{ f.dots }}</text>
 
     <!-- 7. A cheaper model. -->
     <rect x="766" y="256" width="118" height="34" rx="4" fill="#3A2E17" stroke="#FFA53C"/>

@@ -58,8 +58,8 @@ switch to remember.
 </div>
 
 One dot per stage of the capture chain: **echo**, **enhancer**, **suppressor**,
-**voice detected**, **gate**, **levelling**, **hiss**, **feedback**,
-**background** and **to the server**. The colours mean the same thing at every
+**voice detected**, **gate**, **levelling**, **hiss**, **feedback** and
+**to the server**. The colours mean the same thing at every
 stage — green is working and passing audio on, amber is working but holding something back, red
 is stopping audio here, and grey is switched off and therefore has no opinion.
 
@@ -67,41 +67,23 @@ The last one is the one to read first. **To the server** red means your voice
 is not leaving the phone, and the dot to its left usually says which stage
 stopped it.
 
-**Background** is the odd one out: it is not a stage the audio passes through
-but the sound classifier
-[Automatic]({{ '/settings.html' | relative_url }}) runs. Green means it is
-listening and the background is clear, amber that it has heard engine, wind or
-music and is holding the helmet setting, and grey that nothing is classifying —
-because a profile was chosen by hand, or because this is a desktop, where the
-model does not run. When it is grey the line underneath says which.
+### Why Automatic chose what it chose
 
-### What the classifier is actually hearing
+Under **Automatic**, above the dots, one line says where it landed and what
+decided it: *Auto is using Helmet (14 dB over the room)*.
 
-<div class="shots">
-  <figure>
-    <img src="{{ '/assets/img/shots/diag-classifier-phone.webp' | relative_url }}"
-         alt="Auto is using Standard, then three classifier rows with bars and
-              scores — silence 0.50, speech 0.04, inside a small room 0.02 —
-              above the row of stage dots."
-         width="560" height="274" loading="lazy" decoding="async">
-    <figcaption>The evidence behind the profile, in a quiet room: silence well
-    ahead, and nothing near the bar.</figcaption>
-  </figure>
-</div>
+That figure is the margin between your voice and the background, measured
+across the first second after the gate opened on a phrase. It is the whole
+input to the choice — below 20 dB the helmet setting, below 35 dB Standard,
+above that Light — so the line is not a label with a number beside it. It is
+the reason, and you can disagree with it.
 
-Under **Automatic**, above the dots, three rows appear: the classifier's three
-most likely labels, each with a bar and a score between 0 and 1. A label has to
-clear **0.30** to count as heard.
-
-This is the evidence behind the profile line above it. "Automatic chose Helmet"
-is an answer without a reason; three scores say whether it was confident or
-whether the field was level, and reading the bars against each other is the
-point of drawing them rather than listing numbers.
-
-It appears only under Automatic, because under the other four settings the
-panel would be repeating a choice you already made — and only while the devices
-are open. Between calls the model is not running, and the row says so rather
-than showing an empty space that reads as a missing feature.
+**There used to be three more rows here**, the top labels from a sound
+classifier that listened for engine, wind and music, each with a score. The
+classifier has been removed from the chain and those rows are gone with it. A
+margin the chain already measures answers the same question, and answers it
+about the thing that decides whether you are understood: not what is behind
+you, but whether you are louder than it.
 
 ## When the chain has to give something up
 
@@ -178,6 +160,38 @@ has settled on as this environment's quiet, and **opens at** is the level a
 block has to beat to be sent. On a bike at speed the floor climbs and the
 threshold climbs with it — which is what the noise profiles are for.
 
+### Before the chain, and inside it
+
+Four readings that are not about the network at all.
+
+**Microphone clipped** counts samples that hit the top of the scale on the way
+in — before any stage has touched them. It is the one measurement here taken
+*ahead* of everything it could blame, and that placement is the point: a
+measurement taken after the thing you are debugging cannot exonerate it. If
+this is climbing, the microphone gain is too high and no amount of noise
+suppression will fix what has already been squared off.
+
+**Gain backed off** is what the clip guard is holding back to stop that, in
+decibels. A steady small figure is the guard doing its job. A large one is the
+input asking for a gain slider that is too high.
+
+**Floor held** is how long the chain has stopped its background estimate from
+climbing, because something is speaking. Without it the background reading
+would rise into your own voice and the gate would gradually shut on you.
+**A held floor and a low floor are the same number from outside**, and only one
+of them means the chain is protecting a phrase — which is why this says so
+rather than leaving it to be inferred from the row above.
+
+**Freeze overruled** should read zero. Anything else means the floor was held
+down for a full minute without a break: either a phrase longer than any yet
+measured, or something latching onto a sound that is not a voice.
+
+**Voice restored** is the last thing done to your voice before the limiter —
+how much is being lifted back, and where. The speech enhancer takes level as
+well as noise, and this puts it back in a bell around the frequencies it was
+taken from rather than turning everything up. **Restore cost** is what those
+two steps cost the block, in milliseconds.
+
 ### Echo cancellation
 
 Four numbers, because one cannot answer the question. **Echo removed** on its
@@ -190,6 +204,19 @@ actually arrives, and **confidence**, which says whether that is a measurement
 or the last one it managed. A confident delay with nothing removed is a
 canceller that knows where the echo is and cannot cancel it, which is a
 different fault with a different cause.
+
+**Echo returned** is a different measurement from the four above, and the only
+one that says anything about a canceller that is not ours. It is how far below
+what was played the microphone signal sits while the far end is talking and you
+are not — so a large figure means little of the speaker is reaching the
+microphone, by whatever route and whoever removed it.
+
+Read it as a comparison, never against a threshold. It depends on how loud your
+output is, which the app has no way of knowing, so the number alone means
+nothing. What it is good for is A against B: play the test tone, stay quiet, and
+read it with [Claim the microphone]({{ '/settings.html' | relative_url }}) on
+and then off. A figure that changes a lot between the two is the phone running
+its own canceller as well as ours, which is worse than either alone.
 
 Two rows appear only when there is something to say. **Second path, beyond
 reach** means the echo arrives twice — a phone mixing its own playback into the

@@ -98,6 +98,133 @@ en:
       url: /privacy.html
 
   figures:
+    chain:
+      title: "How a block of sound gets from the helmet to the others"
+      desc: >-
+        A single row of stages, left to right: microphone, echo canceller,
+        speech band, enhancer, blend, gate, level, restore, limiter, and out to
+        the others. Solid arrows are the sound itself, which passes through
+        every stage in that order. Dashed arrows underneath carry information
+        rather than sound: the background level and the signal-to-noise ratio
+        pick the profile and set the gate's threshold, a voice test decides
+        whether the gate opens, and what the enhancer removed tells the restore
+        stage what to put back.
+      playback: "what the others are saying"
+      reference: "reference"
+      mic: "Microphone"
+      mic_sub: "in the helmet"
+      s_echo: "Echo"
+      s_echo_sub: "AEC3"
+      s_band: "Band"
+      s_band_sub: "speech only"
+      s_enhancer: "Enhancer"
+      s_enhancer_sub: "DeepFilterNet 3"
+      s_blend: "Blend"
+      s_blend_sub: "by profile"
+      s_gate: "Gate"
+      s_gate_sub: "with look-ahead"
+      s_level: "Level"
+      s_level_sub: "automatic"
+      s_restore: "Restore"
+      s_restore_sub: "on the voice"
+      s_limit: "Limiter"
+      s_limit_sub: "always last"
+      out: "To the others"
+      out_sub: "Opus, 20 ms"
+      i_profile: "Profile"
+      i_profile_sub: "from the first second of speech"
+      i_voice: "Is this a voice?"
+      i_voice_sub: "VAD, pitch, margin"
+      i_took: "What the enhancer removed"
+      i_took_sub: "and in which band"
+      i_floor: "The background level, measured continuously"
+      i_floor_sub: "the quietest it has been lately, not the average"
+      legend_sound: "sound"
+      legend_info: "information"
+      note_echo: "first, or every later stage passes it"
+      note_limiter: "last, or it is not a limiter"
+      footnote: "The order is the code's own, not a tidied version of it."
+      caption: >-
+        Every sample takes the green path, in that order. The amber boxes are
+        never heard: they are measurements taken off the signal that change how
+        a later stage behaves. That distinction is worth holding on to when
+        reading the diagnostics panel — the voice test removes nothing, it only
+        decides whether the gate opens.
+    conditions:
+      title: "The same chain, in the three conditions it is built for"
+      desc: >-
+        Three rows, one per condition. Each shows what the microphone hears on
+        the left and what the others receive on the right. Standing still, the
+        background is a thin band and speech passes almost untouched. At speed,
+        wind is a thick band that is gone from the transmitted side. At a
+        stoplight beside running engines the band is thicker still and is also
+        gone. The stages are identical in all three rows; only the profile
+        differs, chosen from the measured signal-to-noise ratio.
+      heard: "what the microphone hears"
+      sent: "what the others get"
+      quiet: "Standing still, or indoors"
+      quiet_snr: "signal-to-noise above 35 dB"
+      wind: "Wind, at speed"
+      wind_snr: "between 20 and 35 dB"
+      engine: "Engines, at a stoplight"
+      engine_snr: "below 20 dB"
+      p_light: "Light"
+      p_standard: "Standard"
+      p_helmet: "Helmet"
+      legend_noise: "background"
+      legend_speech: "speech"
+      note_same: "Same stages in all three. Only the profile differs."
+      caption: >-
+        Illustrative shapes rather than a measured capture: at this size a real
+        one is a grey smear, and what matters here is which band the chain
+        removes and which it keeps. Automatic picks the profile from the
+        signal-to-noise ratio of the first second after the gate opens, and
+        reconsiders when the background moves. The gaps inside a row are not
+        the channel shutting — it holds open for a second, which is what stops
+        one sentence arriving as three fragments.
+    aec:
+      title: "How the echo canceller works"
+      desc: >-
+        Above, the helmet: what the others say goes to the speaker, and the
+        microphone picks up both the rider's own voice and the speaker's sound
+        again, late and coloured by the path. Below, the canceller: a copy of
+        what was played is kept as a reference, the offset between it and the
+        echo is measured, an adaptive filter models the path, and the result is
+        subtracted from the microphone signal. Whatever the subtraction cannot
+        reach is suppressed separately. ERLE is how much came off.
+      room: "inside the helmet"
+      far: "What the others say"
+      far_sub: "known exactly"
+      speaker: "Speaker"
+      mic: "Microphone"
+      near: "Your voice"
+      echo: "the same sound again, late and coloured"
+      residual: "Residual echo"
+      residual_sub: "suppressed separately"
+      to_chain: "on into the rest of the chain"
+      reference: "a copy, kept to be subtracted"
+      delay: "Where is the echo?"
+      delay_sub: "the offset is measured, not assumed"
+      filter: "Model of the path"
+      filter_sub: "adapts while the far end talks"
+      estimate: "what the echo should look like"
+      erle: "ERLE, how much came off"
+      erle_sub: "shown in Diagnostics"
+      note_delay: >-
+        A helmet speaker returns in about a millisecond. A phone on
+        loudspeaker returns after the mixer, the resampler, the buffer and the
+        hardware, so the offset is found rather than assumed.
+      note_double: >-
+        Claim the microphone hands this job to the phone as well. Two
+        cancellers on one echo is worse than either alone, and Echo returned in
+        Diagnostics is how to see it.
+      caption: >-
+        This works because one of the two sounds arriving at the microphone is
+        known exactly: the app played it. Nothing gives the same advantage over
+        wind, which is why the rest of the chain is so much harder than this
+        part. Read Echo returned as a comparison between settings rather than
+        against a threshold — the figure depends on the output volume, which
+        nothing in the app knows.
     range:
       title: Intercom range against an internet channel
       desc: >-
@@ -123,14 +250,14 @@ en:
         Eight steps descending from left to right. The speech enhancer softens
         first, then the look-ahead pay-down stops, then the echo canceller's
         filter halves, then three cheap detectors, then the diagnostics panel's
-        own drawing, then the background classifier, then a cheaper noise
+        own drawing, then its live dots and meters, then a cheaper noise
         model, and last of all the enhancer is switched off altogether.
       enhancer_soft: enhancer softens
       paydown: pay-down stops
       echo_filter: echo filter halves
       detectors: cheap detectors
       display: panel drawing
-      classifier: classifier stops
+      dots: live dots stop
       simple_model: cheaper model
       enhancer_off: enhancer off
       first: given up first
@@ -307,6 +434,132 @@ ru:
       url: /ru/privacy.html
 
   figures:
+    chain:
+      title: "Как блок звука доходит от шлема до остальных"
+      desc: >-
+        Один ряд ступеней слева направо: микрофон, подавление эха, полоса речи,
+        очиститель, смешение, гейт, уровень, подъём, лимитер и выход к
+        остальным. Сплошные стрелки — сам звук, он проходит все ступени именно
+        в этом порядке. Пунктирные стрелки снизу несут не звук, а сведения:
+        уровень фона и отношение сигнал/шум выбирают профиль и задают порог
+        гейта, проверка на голос решает, открыть ли гейт, а то, что убрал
+        очиститель, подсказывает ступени подъёма, что вернуть обратно.
+      playback: "то, что говорят другие"
+      reference: "опорный сигнал"
+      mic: "Микрофон"
+      mic_sub: "в шлеме"
+      s_echo: "Эхо"
+      s_echo_sub: "AEC3"
+      s_band: "Полоса"
+      s_band_sub: "только речь"
+      s_enhancer: "Очиститель"
+      s_enhancer_sub: "DeepFilterNet 3"
+      s_blend: "Смешение"
+      s_blend_sub: "по профилю"
+      s_gate: "Гейт"
+      s_gate_sub: "с упреждением"
+      s_level: "Уровень"
+      s_level_sub: "автоматически"
+      s_restore: "Подъём"
+      s_restore_sub: "на голосе"
+      s_limit: "Лимитер"
+      s_limit_sub: "всегда последний"
+      out: "Остальным"
+      out_sub: "Opus, 20 мс"
+      i_profile: "Профиль"
+      i_profile_sub: "по первой секунде речи"
+      i_voice: "Это голос?"
+      i_voice_sub: "VAD, высота тона, запас"
+      i_took: "Что убрал очиститель"
+      i_took_sub: "и в какой полосе"
+      i_floor: "Уровень шума, измеряется непрерывно"
+      i_floor_sub: "самое тихое за последнее время, а не среднее"
+      legend_sound: "звук"
+      legend_info: "сведения"
+      note_echo: "первым, иначе эхо пройдёт дальше"
+      note_limiter: "последним, иначе это не лимитер"
+      footnote: "Порядок ступеней взят из кода, а не упрощён для картинки."
+      caption: >-
+        Каждый отсчёт идёт по зелёному пути и именно в этом порядке. Оранжевые
+        блоки никто не слышит: это измерения, снятые с сигнала, которые меняют
+        поведение следующих ступеней. Об этом стоит помнить, читая панель
+        диагностики: проверка на голос ничего не убирает, она только решает,
+        открыть ли гейт.
+    conditions:
+      title: "Тот же тракт в трёх условиях, ради которых он сделан"
+      desc: >-
+        Три строки, по одной на условие. Слева то, что слышит микрофон, справа
+        то, что получают остальные. На стоянке фон — тонкая полоса, и речь
+        проходит почти нетронутой. На скорости ветер даёт толстую полосу,
+        которой на переданной стороне уже нет. На светофоре рядом с работающими
+        моторами полоса ещё толще, и её тоже нет. Ступени во всех трёх строках
+        одинаковы, разный только профиль, выбранный по измеренному отношению
+        сигнал/шум.
+      heard: "что слышит микрофон"
+      sent: "что получают остальные"
+      quiet: "Стоя или в помещении"
+      quiet_snr: "сигнал/шум выше 35 дБ"
+      wind: "Ветер на скорости"
+      wind_snr: "от 20 до 35 дБ"
+      engine: "Моторы на светофоре"
+      engine_snr: "ниже 20 дБ"
+      p_light: "Слабое"
+      p_standard: "Обычное"
+      p_helmet: "Шлем"
+      legend_noise: "фон"
+      legend_speech: "речь"
+      note_same: "Ступени во всех трёх одни и те же. Разный только профиль."
+      caption: >-
+        Формы здесь условные, а не снятые с реальной записи: в таком
+        размере настоящая превратилась бы в серое пятно, а важно тут другое —
+        какую полосу тракт убирает, а какую оставляет. «Автоматически»
+        выбирает профиль по отношению сигнал/шум в первую секунду после
+        открытия гейта и пересматривает выбор, когда фон меняется. Промежутки
+        внутри строки — это не закрытая передача: гейт держится открытым ещё
+        секунду, и именно поэтому одна фраза не приходит тремя обрывками.
+    aec:
+      title: "Как работает подавление эха"
+      desc: >-
+        Сверху шлем: то, что говорят другие, идёт в динамик, а микрофон ловит и
+        собственный голос водителя, и звук динамика снова — с задержкой,
+        изменённый отражениями. Снизу сам подавитель: копия сыгранного остаётся как
+        опорный сигнал, измеряется смещение между ней и эхом, адаптивный фильтр
+        строит модель пути, и результат вычитается из сигнала микрофона. То,
+        до чего вычитание не дотянулось, подавляется отдельно. ERLE — сколько
+        удалось убрать.
+      room: "внутри шлема"
+      far: "Что говорят другие"
+      far_sub: "известно точно"
+      speaker: "Динамик"
+      mic: "Микрофон"
+      near: "Ваш голос"
+      echo: "тот же звук снова, с задержкой и окрашенный"
+      residual: "Остаточное эхо"
+      residual_sub: "подавляется отдельно"
+      to_chain: "дальше по тракту"
+      reference: "копия — только для вычитания"
+      delay: "Где эхо?"
+      delay_sub: "смещение измеряют, а не угадывают"
+      filter: "Модель пути"
+      filter_sub: "подстраивается, пока говорит дальняя сторона"
+      estimate: "каким эхо должно быть"
+      erle: "ERLE, сколько удалось убрать"
+      erle_sub: "видно в «Диагностике»"
+      note_delay: >-
+        Динамик в шлеме возвращает звук примерно через миллисекунду. Телефон на
+        громкой связи — после микшера, ресемплера, буфера и самого железа,
+        поэтому смещение измеряют, а не задают заранее.
+      note_double: >-
+        «Забирать микрофон» отдаёт эту работу ещё и телефону. Два подавителя на
+        одно эхо хуже, чем любой из них по отдельности, и увидеть это можно по
+        строке «Возврат эха» в диагностике.
+      caption: >-
+        Всё это работает потому, что один из двух звуков, попадающих в микрофон,
+        известен точно: его проиграло само приложение. С ветром такого
+        преимущества нет ни у кого — потому остальная часть тракта и устроена
+        куда сложнее этой. «Возврат эха» читайте как сравнение между
+        настройками, а не как значение относительно порога: оно зависит от
+        громкости выхода, а её приложение не знает.
     range:
       title: Дальность интеркома и дальность интернет-канала
       desc: >-
@@ -330,15 +583,15 @@ ru:
         Восемь ступеней, спускающихся слева направо. Сначала слабеет очиститель
         речи, затем перестаёт выплачиваться упреждение, затем вдвое
         укорачивается фильтр эхоподавителя, затем отключаются три дешёвых
-        детектора, затем отрисовка панели диагностики, затем фоновый
-        классификатор, затем берётся более дешёвая модель шумоподавления, и в
-        самом конце очиститель выключается совсем.
+        детектора, затем отрисовка панели диагностики, затем её живые
+        индикаторы и полоски, затем берётся более дешёвая модель
+        шумоподавления, и в самом конце очиститель выключается совсем.
       enhancer_soft: очиститель слабеет
       paydown: упреждение стоит
       echo_filter: фильтр эха вдвое
       detectors: дешёвые детекторы
       display: отрисовка панели
-      classifier: фон не слушают
+      dots: индикаторы замирают
       simple_model: модель попроще
       enhancer_off: без очистителя
       first: отдают первым

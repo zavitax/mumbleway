@@ -767,7 +767,9 @@ class AppState extends ChangeNotifier {
       jitterBufferMs = _clampJitter(v);
     }
     reverb = prefs.getBool(_prefsReverb) ?? true;
-    voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? false;
+    // On by default; see the field. A rider who has already chosen keeps
+    // their choice — this only decides what a fresh install starts with.
+    voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? true;
     simpleModel = prefs.getBool(_prefsSimpleModel) ?? false;
     // Into the core immediately, and before the probe: it decides which model
     // every enhancer built afterwards loads, and the probe has to time the
@@ -2255,19 +2257,28 @@ class AppState extends ChangeNotifier {
 
   /// Asks Android for the telephony capture preset.
   ///
-  /// **Off by default, and that is a measurement waiting to be made rather
-  /// than a preference.** It stops another app capturing alongside us — from
-  /// Android 10 two apps may record at once and the loser is handed digital
-  /// silence, and only this preset is treated as privacy sensitive — which is
-  /// the fault a rider reported as a navigation app making them inaudible.
+  /// **On by default**, which is a judgement about which failure is worse
+  /// rather than a claim that the preset is free.
   ///
-  /// But the same preset switches on the device's own echo cancellation, noise
-  /// suppression and gain control on most phones, and this chain runs all three
-  /// itself. Two cancellers on one echo is a known hazard here, not a
-  /// hypothetical. The diagnostics panel's echo-returned figure is how to see
-  /// which is happening: play the test tone, stay quiet, and read it under each
-  /// setting.
-  bool voiceCommunication = false;
+  /// It stops another app capturing alongside us. From Android 10 two apps may
+  /// record at once and the loser is handed digital silence, and only this
+  /// preset is treated as privacy sensitive — which is the fault a rider
+  /// reported as a navigation app making them inaudible. That failure is
+  /// silent, total, and gives the rider nothing to act on: the app looks
+  /// connected and nobody hears them.
+  ///
+  /// The cost is that the same preset switches on the device's own echo
+  /// cancellation, noise suppression and gain control on most phones, and this
+  /// chain runs all three itself. Two cancellers on one echo is a known hazard
+  /// here, not a hypothetical. But it degrades audio that is still getting
+  /// through, and a rider can hear it happening and switch this off — which is
+  /// everything the other failure denies them.
+  ///
+  /// The diagnostics panel's echo-returned figure is how to tell which is
+  /// happening: play the test tone, stay quiet, and read it under each setting.
+  /// **Read it as a comparison, not against a threshold** — the figure depends
+  /// on the output volume, which nothing here knows.
+  bool voiceCommunication = true;
 
   /// Applied on the next device open, so the devices are closed and reopened.
   ///

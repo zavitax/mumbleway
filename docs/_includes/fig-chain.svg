@@ -1,0 +1,162 @@
+{%- assign f = site.data.strings[include.lang].figures.chain -%}
+<!-- The capture chain, in the order the code runs it, with the decisions that
+     steer it drawn separately from the sound they steer.
+
+     Two kinds of line on purpose. Solid green is audio: every sample takes
+     that path, left to right, and each box may change it. Dashed amber is
+     information — a measurement taken off the signal that changes how a later
+     stage behaves without itself being heard. The distinction is the thing
+     riders most often get wrong about the panel: the voice test does not
+     remove anything, it decides whether the gate opens.
+
+     Stage order is `CaptureProcessor::suppress` in core/src/audio/denoise.rs
+     and not a tidied version of it. Two orderings here were arrived at the
+     hard way and are worth keeping visible: the echo canceller is first
+     because echo is speech and every later stage would pass it, and the
+     limiter is last because a limiter that is not last is not a limiter.
+
+     Inlined rather than linked as an <img> for the same reason as the other
+     figures: an SVG loaded as an image cannot see the document's webfonts. -->
+<figure class="figure">
+<svg viewBox="0 0 1020 322" role="img" aria-labelledby="ch-title ch-desc" class="fig">
+  <title id="ch-title">{{ f.title }}</title>
+  <desc id="ch-desc">{{ f.desc | strip_newlines }}</desc>
+
+  <defs>
+    <marker id="ch-sound" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ECF7E"/>
+    </marker>
+    <marker id="ch-info" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FFA53C"/>
+    </marker>
+  </defs>
+
+  <g font-family="inherit">
+
+    <!-- What the others are saying. The same audio goes to the speaker and to
+         the canceller, which is the whole trick: one of the two signals in the
+         room is known exactly. -->
+    <rect x="109" y="8" width="200" height="34" rx="4" fill="#263140" stroke="#61707F"/>
+    <text x="209" y="30" font-size="11" fill="#B9C4D0" text-anchor="middle">{{ f.playback }}</text>
+    <path d="M 209 42 L 209 52 L 153 52 L 153 60" fill="none" stroke="#FFA53C"
+          stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ch-info)"/>
+    <text x="219" y="56" font-size="10" fill="#FFA53C">{{ f.reference }}</text>
+
+    <!-- The sound path. One row, left to right, no branches: every sample goes
+         through all of it in this order. -->
+    <g font-size="11" text-anchor="middle">
+      <!-- The microphone and the wire out are drawn as open boxes, so the
+           eight that actually do something are the eight that are filled. -->
+      <rect x="7" y="62" width="88" height="46" rx="4" fill="none" stroke="#61707F" stroke-dasharray="4 3"/>
+      <text x="51" y="82" fill="#DDE6EF">{{ f.mic }}</text>
+      <text x="51" y="96" font-size="9" fill="#8695A6">{{ f.mic_sub }}</text>
+
+      <rect x="109" y="62" width="88" height="46" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="153" y="82" fill="#DDE6EF">{{ f.s_echo }}</text>
+      <text x="153" y="96" font-size="9" fill="#8695A6">{{ f.s_echo_sub }}</text>
+
+      <rect x="211" y="62" width="88" height="46" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="255" y="82" fill="#DDE6EF">{{ f.s_band }}</text>
+      <text x="255" y="96" font-size="9" fill="#8695A6">{{ f.s_band_sub }}</text>
+
+      <!-- Green: the largest single lever in the chain, and the one the
+           performance ladder softens first. -->
+      <rect x="313" y="62" width="88" height="46" rx="4" fill="#1E3A2C" stroke="#3ECF7E"/>
+      <text x="357" y="82" fill="#3ECF7E">{{ f.s_enhancer }}</text>
+      <text x="357" y="96" font-size="9" fill="#3ECF7E">{{ f.s_enhancer_sub }}</text>
+
+      <rect x="415" y="62" width="88" height="46" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="459" y="82" fill="#DDE6EF">{{ f.s_blend }}</text>
+      <text x="459" y="96" font-size="9" fill="#8695A6">{{ f.s_blend_sub }}</text>
+
+      <!-- Amber: the only stage that decides whether anything is sent at all. -->
+      <rect x="517" y="62" width="88" height="46" rx="4" fill="#3A2E17" stroke="#FFA53C"/>
+      <text x="561" y="82" fill="#FFA53C">{{ f.s_gate }}</text>
+      <text x="561" y="96" font-size="9" fill="#FFA53C">{{ f.s_gate_sub }}</text>
+
+      <rect x="619" y="62" width="88" height="46" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="663" y="82" fill="#DDE6EF">{{ f.s_level }}</text>
+      <text x="663" y="96" font-size="9" fill="#8695A6">{{ f.s_level_sub }}</text>
+
+      <rect x="721" y="62" width="88" height="46" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="765" y="82" fill="#DDE6EF">{{ f.s_restore }}</text>
+      <text x="765" y="96" font-size="9" fill="#8695A6">{{ f.s_restore_sub }}</text>
+
+      <rect x="823" y="62" width="88" height="46" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="867" y="82" fill="#DDE6EF">{{ f.s_limit }}</text>
+      <text x="867" y="96" font-size="9" fill="#8695A6">{{ f.s_limit_sub }}</text>
+
+      <rect x="925" y="62" width="88" height="46" rx="4" fill="none" stroke="#61707F" stroke-dasharray="4 3"/>
+      <text x="969" y="82" fill="#DDE6EF">{{ f.out }}</text>
+      <text x="969" y="96" font-size="9" fill="#8695A6">{{ f.out_sub }}</text>
+    </g>
+
+    <!-- Sound, between the boxes. -->
+    <g stroke="#3ECF7E" stroke-width="2" marker-end="url(#ch-sound)" fill="none">
+      <path d="M 95 85 L 107 85"/>
+      <path d="M 197 85 L 209 85"/>
+      <path d="M 299 85 L 311 85"/>
+      <path d="M 401 85 L 413 85"/>
+      <path d="M 503 85 L 515 85"/>
+      <path d="M 605 85 L 617 85"/>
+      <path d="M 707 85 L 719 85"/>
+      <path d="M 809 85 L 821 85"/>
+      <path d="M 911 85 L 923 85"/>
+    </g>
+
+    <!-- What steers it. Nothing on this row is heard; all of it changes what
+         the row above does. -->
+    <g font-size="10" fill="#FFA53C" text-anchor="middle">
+      <rect x="313" y="150" width="190" height="52" rx="4" fill="#3A2E17" stroke="#FFA53C" stroke-dasharray="4 3"/>
+      <text x="408" y="170">{{ f.i_profile }}</text>
+      <text x="408" y="186" font-size="9">{{ f.i_profile_sub }}</text>
+
+      <rect x="517" y="150" width="150" height="52" rx="4" fill="#3A2E17" stroke="#FFA53C" stroke-dasharray="4 3"/>
+      <text x="592" y="170">{{ f.i_voice }}</text>
+      <text x="592" y="186" font-size="9">{{ f.i_voice_sub }}</text>
+
+      <rect x="693" y="150" width="170" height="52" rx="4" fill="#3A2E17" stroke="#FFA53C" stroke-dasharray="4 3"/>
+      <text x="778" y="170">{{ f.i_took }}</text>
+      <text x="778" y="186" font-size="9">{{ f.i_took_sub }}</text>
+
+      <rect x="313" y="232" width="354" height="44" rx="4" fill="#3A2E17" stroke="#FFA53C" stroke-dasharray="4 3"/>
+      <text x="490" y="252">{{ f.i_floor }}</text>
+      <text x="490" y="266" font-size="9">{{ f.i_floor_sub }}</text>
+    </g>
+
+    <!-- Information, upwards into the stage it changes. -->
+    <g stroke="#FFA53C" stroke-width="1.5" stroke-dasharray="4 3"
+       marker-end="url(#ch-info)" fill="none">
+      <path d="M 357 148 L 357 110"/>
+      <path d="M 459 148 L 459 110"/>
+      <path d="M 561 148 L 561 110"/>
+      <path d="M 765 148 L 765 110"/>
+      <path d="M 380 230 L 380 204"/>
+      <path d="M 580 230 L 580 204"/>
+    </g>
+
+    <!-- Legend. Two lines, because which is which is the one thing a reader
+         has to take from this drawing before anything else on it means
+         anything. -->
+    <g font-size="10">
+      <path d="M 700 246 L 730 246" stroke="#3ECF7E" stroke-width="2"
+            marker-end="url(#ch-sound)"/>
+      <text x="738" y="250" fill="#B9C4D0">{{ f.legend_sound }}</text>
+      <path d="M 700 266 L 730 266" stroke="#FFA53C" stroke-width="1.5"
+            stroke-dasharray="4 3" marker-end="url(#ch-info)"/>
+      <text x="738" y="270" fill="#B9C4D0">{{ f.legend_info }}</text>
+    </g>
+
+    <!-- The two orderings that were paid for. -->
+    <g font-size="9" fill="#61707F">
+      <text x="109" y="128">{{ f.note_echo }}</text>
+      <text x="823" y="128">{{ f.note_limiter }}</text>
+    </g>
+
+    <text x="7" y="302" font-size="10" fill="#8695A6">{{ f.footnote }}</text>
+  </g>
+</svg>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
+</figure>

@@ -43,6 +43,10 @@ mouth, inside a helmet, at speed, with wind and an engine underneath.
 Speech from inside a helmet at speed is a hard signal. The chain is built for
 it, and every stage is visible while it runs.
 
+{% include fig-chain.svg lang=page.lang %}
+
+{% include fig-conditions.svg lang=page.lang %}
+
 - **A neural speech enhancer at the head of the chain.** DeepFilterNet 3, on
   the phone, in the 10 ms a block gets. It is the single largest lever here —
   on the road it separates speech from the gaps between it by around 16 dB
@@ -110,10 +114,10 @@ which changes no sample a listener hears — only the delay goes back up to what
 it was before that existed. Then the echo canceller's filter halves, keeping
 the loud direct path and giving up about 10 ms of the tail behind it. Then
 three detectors whose work the level meter largely duplicates. Then the diagnostics panel's own drawing, which is free to
-give up because nobody's voice passes through it. Then the background
-classifier, so *Automatic* stops noticing that the road has become a car park.
+give up because nobody's voice passes through it. Then the rest of the panel's
+liveness — the moving dots and the per-speaker meters — for the same reason.
 Then a cheaper, more aggressive noise model. **Switching the enhancer off is
-the fifteenth and last thing tried**, because it is the one that turns 16 dB
+the thirteenth and last thing tried**, because it is the one that turns 16 dB
 of separation between speech and gaps back into 1.5.
 
 **Below the ladder there is one thing left.** If every stage above has gone and

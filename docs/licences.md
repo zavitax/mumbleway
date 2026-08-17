@@ -40,12 +40,26 @@ The parts that do the actual work.
 | [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet) | Speech enhancement at the head of the capture chain, with its weights. The low-latency DFN3 comes from the `deep_filter` crate; the plain DFN3 is vendored at `core/models/` for the performance ladder's last rung | MIT / Apache-2.0 |
 | [`tract`](https://github.com/sonos/tract) | Runs that model, in pure Rust with no native runtime to cross-compile. `tract-core` is vendored under `third_party` and patched in one hunk, without which the plain DFN3 cannot be loaded at all — see `third_party/tract-core/PATCH.md` | MIT / Apache-2.0 |
 | [`ndarray`](https://crates.io/crates/ndarray) | The array type the enhancer's own API takes and returns | MIT / Apache-2.0 |
-| [`cpal`](https://crates.io/crates/cpal) | Cross-platform audio device access | Apache-2.0 |
+| [`cpal`](https://crates.io/crates/cpal) | Cross-platform audio device access. Vendored under `third_party` and patched in one hunk so an Android capture stream can ask for the telephony input preset, which cpal otherwise never requests — see `third_party/cpal/PATCH.md` | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Sample format conversion | MIT / Apache-2.0 |
-| [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | The sound classifier that lets *Automatic* hear an engine and choose the helmet profile. Shipped as `assets/models/yamnet.tflite` | Apache-2.0 |
+| [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | A sound classifier. **No longer used** — *Automatic* now picks its profile from the measured signal-to-noise ratio instead. Still shipped as `assets/models/yamnet.tflite` and so still listed here | Apache-2.0 |
 | [LiteRT / TensorFlow Lite](https://ai.google.dev/edge/litert) | Runs that model. From Google's own Maven and CocoaPods on Android and iOS; the universal `libtensorflowlite_c` inside `tflite_flutter` on macOS; on Windows built from the TensorFlow r2.17 source and vendored at `app/blobs/`, because upstream publishes no binary for it | Apache-2.0 |
 | [`tflite_flutter`](https://github.com/tensorflow/flutter-tflite) | The Dart binding, vendored under `app/third_party` and patched in one line so its macOS library loads from `Contents/Frameworks`, where Apple requires it | Apache-2.0 |
 
+</div>
+
+<div class="panel warn" markdown="1">
+**Three of those are shipped and unused.** The sound classifier was removed
+from the capture chain: *Automatic* now chooses its profile from the
+signal-to-noise ratio it measures in the first second of speech, which needs no
+model. YAMNet, the LiteRT runtime and the `tflite_flutter` binding are still
+inside the package because taking them out touches every platform's build and
+nothing but CI can check it, so it is queued rather than done.
+
+They are listed above for exactly that reason. **This page says what is
+distributed, not what is running** — a licence obligation follows the copy in
+the package, and removing a row because the code stopped calling it would
+understate what you are being given.
 </div>
 
 Everything else in the capture chain — the echo canceller, gate, expander,

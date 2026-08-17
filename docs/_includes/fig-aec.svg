@@ -1,0 +1,131 @@
+{%- assign f = site.data.strings[include.lang].figures.aec -%}
+<!-- How the echo canceller works, split into the half that happens in the
+     helmet and the half that happens in the code.
+
+     The whole trick is on the left and is easy to miss: of the two sounds
+     arriving at the microphone, one of them is *known exactly*, because the
+     app played it. Everything else here follows from having a clean copy of
+     one of the two things you are trying to separate — which is why this works
+     at all, and why no amount of cleverness does the same for wind.
+
+     The delay box is drawn as its own stage rather than folded into the
+     filter, because it is the part that was an unsolved fault here. A helmet
+     speaker sits centimetres from the microphone and comes back almost at
+     once; a phone on loudspeaker comes back after the mixer, the resampler,
+     the buffer and the hardware have each had their turn. A filter given the
+     wrong offset models silence and removes nothing, while reporting that it
+     is working.
+
+     Inlined rather than linked as an <img> for the same reason as the other
+     figures: an SVG loaded as an image cannot see the document's webfonts. -->
+<figure class="figure">
+<svg viewBox="0 0 1020 344" role="img" aria-labelledby="ae-title ae-desc" class="fig">
+  <title id="ae-title">{{ f.title }}</title>
+  <desc id="ae-desc">{{ f.desc | strip_newlines }}</desc>
+
+  <defs>
+    <marker id="ae-sound" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ECF7E"/>
+    </marker>
+    <marker id="ae-ref" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FFA53C"/>
+    </marker>
+    <marker id="ae-echo" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#FF5D5D"/>
+    </marker>
+  </defs>
+
+  <g font-family="inherit">
+
+    <!-- The helmet. Everything inside this panel is physics; nothing in it is
+         under the app's control, which is the reason the panel is drawn. -->
+    <rect x="176" y="16" width="524" height="140" rx="6" fill="none"
+          stroke="#3E4E61" stroke-dasharray="5 4"/>
+    <text x="188" y="34" font-size="10" fill="#61707F">{{ f.room }}</text>
+
+    <g font-size="11" text-anchor="middle">
+      <!-- Known exactly, because we played it. -->
+      <rect x="8" y="44" width="140" height="42" rx="4" fill="#263140" stroke="#8695A6"/>
+      <text x="78" y="62" fill="#DDE6EF">{{ f.far }}</text>
+      <text x="78" y="76" font-size="9" fill="#8695A6">{{ f.far_sub }}</text>
+
+      <rect x="196" y="44" width="110" height="42" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="251" y="70" fill="#DDE6EF">{{ f.speaker }}</text>
+
+      <!-- Two sounds arrive here and only one of them is wanted. -->
+      <rect x="560" y="44" width="110" height="42" rx="4" fill="#2A3644" stroke="#8695A6"/>
+      <text x="615" y="70" fill="#DDE6EF">{{ f.mic }}</text>
+
+      <rect x="392" y="112" width="150" height="34" rx="4" fill="#1E3A2C" stroke="#3ECF7E"/>
+      <text x="467" y="134" fill="#3ECF7E">{{ f.near }}</text>
+    </g>
+
+    <!-- Sound out to the speaker, and the rider's own voice in. -->
+    <g stroke="#3ECF7E" stroke-width="2" marker-end="url(#ae-sound)" fill="none">
+      <path d="M 148 65 L 194 65"/>
+      <path d="M 542 129 L 600 90"/>
+    </g>
+
+    <!-- The echo: the same sound again, late, coloured by the path and bent by
+         a small speaker driven hard. Red because it is the thing being removed. -->
+    <path d="M 306 58 C 380 22 490 22 558 54" fill="none" stroke="#FF5D5D"
+          stroke-width="2" marker-end="url(#ae-echo)"/>
+    <text x="432" y="26" font-size="10" fill="#FF5D5D" text-anchor="middle">{{ f.echo }}</text>
+
+    <!-- Out of the helmet and into the arithmetic. -->
+    <path d="M 670 65 L 742 65" stroke="#3ECF7E" stroke-width="2"
+          marker-end="url(#ae-sound)" fill="none"/>
+
+    <!-- Subtract. -->
+    <circle cx="768" cy="65" r="18" fill="#2A3644" stroke="#8695A6"/>
+    <text x="768" y="70" font-size="16" fill="#DDE6EF" text-anchor="middle">&#8722;</text>
+
+    <path d="M 786 65 L 814 65" stroke="#3ECF7E" stroke-width="2"
+          marker-end="url(#ae-sound)" fill="none"/>
+
+    <!-- What the linear filter could not reach: a speaker driven hard is not
+         linear, so a little always survives the subtraction. -->
+    <rect x="818" y="44" width="150" height="42" rx="4" fill="#2A3644" stroke="#8695A6"/>
+    <text x="893" y="62" font-size="11" fill="#DDE6EF" text-anchor="middle">{{ f.residual }}</text>
+    <text x="893" y="76" font-size="9" fill="#8695A6" text-anchor="middle">{{ f.residual_sub }}</text>
+    <text x="893" y="104" font-size="10" fill="#3ECF7E" text-anchor="middle">{{ f.to_chain }}</text>
+
+    <!-- The reference. Dashed, because it is never heard by anybody: it is a
+         copy of the far end kept purely to be subtracted. -->
+    <path d="M 78 86 L 78 210 L 174 210" fill="none" stroke="#FFA53C"
+          stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ae-ref)"/>
+    <text x="88" y="152" font-size="10" fill="#FFA53C">{{ f.reference }}</text>
+
+    <g font-size="11" text-anchor="middle">
+      <!-- The stage that was the fault. -->
+      <rect x="176" y="188" width="200" height="54" rx="4" fill="#3A2E17" stroke="#FFA53C"/>
+      <text x="276" y="208" fill="#FFA53C">{{ f.delay }}</text>
+      <text x="276" y="224" font-size="9" fill="#FFA53C">{{ f.delay_sub }}</text>
+
+      <rect x="406" y="188" width="220" height="54" rx="4" fill="#3A2E17" stroke="#FFA53C"/>
+      <text x="516" y="208" fill="#FFA53C">{{ f.filter }}</text>
+      <text x="516" y="224" font-size="9" fill="#FFA53C">{{ f.filter_sub }}</text>
+    </g>
+
+    <path d="M 376 215 L 404 215" stroke="#FFA53C" stroke-width="1.5"
+          stroke-dasharray="4 3" marker-end="url(#ae-ref)" fill="none"/>
+
+    <!-- The estimate, up into the minus input. -->
+    <path d="M 626 215 L 768 215 L 768 87" fill="none" stroke="#FF5D5D"
+          stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ae-echo)"/>
+    <text x="778" y="180" font-size="10" fill="#FF5D5D">{{ f.estimate }}</text>
+
+    <!-- The measure. A number the rider can actually read, which is the point
+         of naming it here. -->
+    <text x="818" y="215" font-size="10" fill="#B9C4D0">{{ f.erle }}</text>
+    <text x="818" y="230" font-size="9" fill="#61707F">{{ f.erle_sub }}</text>
+
+    <text x="8" y="288" font-size="10" fill="#8695A6">{{ f.note_delay }}</text>
+    <text x="8" y="306" font-size="10" fill="#8695A6">{{ f.note_double }}</text>
+  </g>
+</svg>
+<figcaption>{{ f.caption | strip_newlines }}</figcaption>
+</figure>

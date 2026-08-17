@@ -74,6 +74,31 @@ delay, which is more distracting than almost any other audio fault.
 
 On a headset there is no echo to cancel and it can only take something away.
 
+{% include fig-aec.svg lang=page.lang %}
+
+### Claim the microphone
+
+**On by default.** It hands the microphone to the phone's own call processing —
+the same treatment an ordinary phone call gets.
+
+On Android it also stops other apps recording at the same time. From Android 10
+two apps may hold the microphone at once, and the one that loses is handed
+digital silence rather than an error: a navigation app listening for voice
+commands can stop the others hearing you while MumbleWay still looks connected.
+That failure is silent, complete, and leaves nothing on screen to act on, which
+is why this setting is on rather than off.
+
+The cost is real and you may be able to hear it. The same switch lets the phone
+apply its own echo cancelling, noise suppression and volume levelling — all
+three of which MumbleWay already does. Two cancellers working on one echo is
+worse than either of them alone.
+
+**How to tell.** Open Diagnostics and read **Echo returned** under *This
+device*, once with this on and once with it off. Read it as a comparison
+between the two, never against a number: the figure depends on how loud your
+output is, which the app has no way of knowing. On one iPhone the setting made
+speech loud and harsh, which is audible without opening any panel.
+
 ### Light noise model
 
 <div class="shots">
@@ -249,17 +274,23 @@ changed, or **Standard** if you are not riding.
 
 Two things, and they pull in the same direction.
 
-**A sound classifier, on phones.** Automatic runs a small neural model on
-what the microphone hears — about one look per two seconds, on the phone's
-accelerator where there is one. When it hears **engine, wind or music** it takes
-the helmet setting *immediately*, without the few seconds the level-based part
-waits, and holds it for **fifteen seconds** after they stop.
+**How far your voice stands above the background.** When the gate opens on a
+phrase, Automatic measures that margin across the **first second** of it. Below
+**20 dB** it takes the helmet setting, below **35 dB** Standard, and above that
+Light.
 
-It is a vote for the helmet setting and nothing else. It can never choose a
-lighter one, it never touches the decision about whether to transmit, and it
-does nothing at all unless Automatic is chosen — a profile you picked by hand is
-an instruction. It runs on Android, iOS and macOS; on Windows there is no
-classifier yet and Automatic uses levels alone.
+The choice lands on the phrase it was measured from rather than the next one, so
+you are not heard through the old profile while the new one waits its turn. It
+decides again at the start of the next phrase, and sooner than that if the
+background falls by half — pulling up at a light does not leave you on the
+helmet setting until you happen to speak.
+
+**This replaced a sound classifier**, a small neural model that listened for
+engine, wind and music and voted for the helmet setting when it heard them. It
+has been removed from the chain: the margin above the background answers the
+same question without a model to run, and it answers the question that actually
+decides whether you are understood — not what is behind you, but whether you
+are louder than it.
 
 **Dialling down is slow, and slower the further down it goes.** Leaving the
 helmet setting for Standard needs **fifteen seconds** of the background actually
@@ -270,8 +301,8 @@ anything and arriving there wrongly is the expensive mistake.
 Going *up* has no such wait. Being under-suppressed at speed loses you; being
 over-suppressed at a coffee stop sounds slightly processed.
 
-**Diagnostics shows where it landed** — the profile in force, and a
-**Background** light for what the classifier is saying. See
+**Diagnostics shows where it landed** — the profile in force, and beside it the
+margin it was chosen from, as *Auto is using Helmet (14 dB over the room)*. See
 [Diagnostics]({{ '/diagnostics.html' | relative_url }}).
 
 ## Feedback suppression

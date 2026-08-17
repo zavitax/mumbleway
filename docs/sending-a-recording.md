@@ -112,8 +112,9 @@ again; a file on a public issue cannot.</p>
 ### If you would rather not send audio at all
 
 Send **only the `.csv` file** from the archive. It contains no sound — it is
-numbers, one row per 10 ms of the ride: whether the channel was open, whether
-speech was detected, the signal-to-noise ratio, the level, the noise floor.
+numbers — twenty-three columns, one row per 10 ms of the ride. Whether the
+channel was open, whether speech was detected, the signal-to-noise ratio, the
+level, the noise floor, and eighteen more listed below.
 
 Most questions are answerable from that alone: *did the gate close, when, and
 what was the chain looking at when it did.* It is small enough to attach to an
@@ -126,7 +127,7 @@ issue directly, and there is no voice in it to think twice about.
 | File | What it is |
 |---|---|
 | `YYYYMMDD-HHMM-NNN.s16` | The audio, exactly as the chain received it: raw 16-bit PCM, mono, 48 kHz, no header |
-| `YYYYMMDD-HHMM-NNN.csv` | One row per 10 ms — `transmitting`, `speaking`, `gate_open`, `vad`, `snr_db`, `level_db`, `floor_db`, `harmonicity`, `modulation`, `mode`, `muted`, `gain_db` |
+| `YYYYMMDD-HHMM-NNN.csv` | One row per 10 ms of the ride, twenty-three columns, named in a header line. They are listed in full below |
 
 </div>
 
@@ -152,6 +153,54 @@ setting in the app that left no trace in the file.
 
 New columns are added on the end and never in the middle, so a reader that
 finds them by name keeps working and older recordings stay readable.
+
+### Every column
+
+In the order they appear. The file carries a header line naming them, so a
+reader should find them by name rather than by counting commas.
+
+<div class="table-wrap" markdown="1">
+
+| Column | What it holds |
+|---|---|
+| `block` | Which 10 ms this is, counting from the start of the recording |
+| `transmitting` | What actually went on the wire — envelope, mode and mute included |
+| `speaking` | The chain's own verdict that this block is speech |
+| `gate_open` | Whether the gate was open, which is not the same thing: the gate can be open on a block the chain does not call speech |
+| `vad` | RNNoise's own probability, 0 to 1, before the other two tests are applied to it |
+| `snr_db` | How far this block stands above the tracked background |
+| `level_db` | The level the gate judges, measured after suppression |
+| `floor_db` | The background the chain believes it is in |
+| `harmonicity` | How periodic the block is at a human pitch, 0 to 1. This is what rejects a loud engine: its firing fundamental sits below the range searched |
+| `modulation` | Whether the recent loudness is moving at a talking rate. **Measured and recorded, and nothing is decided by it** — it is here to be looked at, not because it acts |
+| `mode` | 0 voice activated, 1 push to talk, 2 continuous |
+| `muted` | The microphone switch |
+| `gain_db` | The microphone gain slider, per block, because a rider can move it mid-ride |
+| `echo_ref_samples` | How much reference the canceller had for this block. 480 is a full block; 0 is none, so nothing could have been cancelled; anything between is the queue running dry mid-block, which splices silence into the reference and moves every alignment after it |
+| `aec_on` | Whether echo cancellation was switched on at all |
+| `erle_db` | How much the canceller removed |
+| `aec_lag_ms` | Where it believes the echo is, behind the reference |
+| `aec_confidence` | How convincing that measurement was, 0 to 1. **Read as a pair with the lag**: the aligner aims deliberately early, so a low lag is the design working, while a confidence that will not rise is the estimator failing to find the echo at all |
+| `aec_spread_ms` | How far apart the arrivals were. Wider than the filter's own span means a second echo it cannot reach |
+| `aec_taps` | The filter's length, which the performance ladder shortens. Meaningless when `aec3` is 1 — AEC3 has no such dial |
+| `aec3` | Which canceller produced the block: 1 for AEC3, 0 for the time-domain filter. They fail differently, so a recording that cannot say which it came from cannot be read |
+| `profile` | The suppression profile actually in force: 0 off, 1 light, 2 standard, 3 helmet. **Never `Auto`** — Auto is a rule for choosing, and what is recorded is what the audio went through |
+| `route` | Which microphone it came from: 0 not known, 1 the phone's own, 2 a wired headset, 3 Bluetooth hands-free, which is narrowband, 4 USB or dock, 5 something else the platform named |
+
+</div>
+
+**The numbers in `mode`, `profile` and `route` are a wire format and are never
+renumbered.** Recordings already sitting on phones are read with the meanings
+above, and a reader written months from now has nothing else to go on. New
+values take the next free number.
+
+`route` is worth knowing about even if you never read the file. It exists
+because a directory of recordings from the phone's own microphone looks exactly
+like one from the headset's, and a whole round of measurements was once thrown
+away over that. Before this column, the answer had to be inferred from the
+audio's bandwidth — a Bluetooth hands-free link stops dead at 3.4 kHz where a
+built-in microphone runs to 16 — which worked, and was a spectrum analysis
+standing in for a digit.
 
 ## Playing the audio yourself
 

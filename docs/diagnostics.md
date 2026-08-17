@@ -46,14 +46,14 @@ switch to remember.
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/diag-lights-phone.webp' | relative_url }}"
-         alt="The profile Automatic has landed on, then two rows of coloured
-              dots labelled enhancer, echo, suppressor, voice detected, gate,
-              levelling, hiss, feedback, background and to the server, and a
-              note saying background detection is running on the processor at
-              130 milliseconds per check."
-         width="560" height="170" loading="lazy" decoding="async">
-    <figcaption>Where Automatic landed, every stage of the chain, and what the
-    classifier costs on this device.</figcaption>
+         alt="The profile in force, then two rows of coloured dots labelled
+              echo, enhancer, suppressor, voice detected, gate, levelling,
+              feedback, hiss and to the server, and below them the enhancer's
+              effort and which model it is running."
+         width="560" height="166" loading="lazy" decoding="async">
+    <figcaption>One dot per stage. Nothing is connected here, so the gate is
+    shut and <strong>to the server</strong> is red — a grey dot is a stage with
+    no opinion yet.</figcaption>
   </figure>
 </div>
 

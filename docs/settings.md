@@ -78,6 +78,17 @@ On a headset there is no echo to cancel and it can only take something away.
 
 ### Claim the microphone
 
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/set-claimmic.webp' | relative_url }}"
+         alt="The Claim the microphone row, switched on, above its explanation
+              of what the phone's own call processing does and what it costs."
+         width="560" height="411" loading="lazy" decoding="async">
+    <figcaption>On by default. The switch that stops another app taking the
+    microphone — and lets the phone add its own processing to ours.</figcaption>
+  </figure>
+</div>
+
 **On by default.** It hands the microphone to the phone's own call processing —
 the same treatment an ordinary phone call gets.
 

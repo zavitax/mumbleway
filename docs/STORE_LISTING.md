@@ -65,8 +65,21 @@ A Mumble voice client built for talking from inside a motorcycle helmet at speed
 
 Changeable without a review, so use it for what is new.
 
+Two sentences and then two more. The first pair says what the app is to
+somebody who has never heard of Mumble; the second says what it does about the
+one thing a rider cares about. Nothing here needs a review to change, so it can
+follow whatever is worth saying this month.
+
+The Russian is 165 characters against the English's 164, which is the rare case
+of Russian not overrunning — it does here only because «Ради одного» carries
+"built for one job" in three words. The whole of it is within five characters
+of the limit in both languages, so a single added word breaks it; run
+`tool/check_listing.py` rather than trusting an edit to be small.
+
 ```
-On a slow phone the noise chain steps down in a measured order and says which stages went. Word starts survive. Hear a recording as the far end did, or through the chain.
+Talk through the wind. Voice chat for bikers.
+
+Built for one job: being heard from inside a helmet at speed. Wind and engine noise suppression with AI voice filter.
 ```
 
 ## Keywords — App Store (100, comma-separated, no spaces)
@@ -115,7 +128,9 @@ person to edit this line should know which sense they are inheriting.
 ## Russian promotional text — App Store (170)
 
 ```
-На медленном телефоне цепочка отключает ступени в заранее измеренном порядке и говорит, каких не стало. Начала слов целы. Запись звучит так, как её услышал бы собеседник.
+Говорите сквозь ветер. Голосовая связь для байкеров.
+
+Ради одного: чтобы вас слышали в шлеме на скорости. Подавление шума ветра и мотора, нейросетевой фильтр голоса.
 ```
 
 ## Russian keywords — App Store (100, comma-separated, no spaces)

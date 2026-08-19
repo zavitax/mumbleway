@@ -25,13 +25,29 @@ Alternates, if a store wants a different length or the primary is taken:
 
 ---
 
-## Short promotional text
+## A hundred-word blurb
 
-For the fields that take a paragraph rather than a page: Google Play's short
-description, a store's promotional text, a press blurb. **100–120 words.** Both
-languages are kept in this one section rather than beside their own long
-descriptions, because the two have to stay in step and a pair split across a
-file drifts apart.
+A standalone paragraph, for the places that want the app described once and
+briefly: the opening of a long description, a forum or press post, a paragraph
+on somebody else's site. **100–120 words.** Both languages are kept in this one
+section rather than beside their own long descriptions, because the two have to
+stay in step and a pair split across a file drifts apart.
+
+**It does not fit any of the stores' short fields, and it is not meant to.**
+Those are much tighter and already have their own entries in
+`STORE_LISTING.md`, checked by `tool/check_listing.py`:
+
+| Field | Limit | This blurb |
+|---|---|---|
+| Short description — Google Play | 80 characters | 707 (en) / 754 (ru) |
+| Promotional text — App Store | 170 characters | far over |
+| Short description — Microsoft Store | 500 characters | over |
+| Description — all three | 4000 characters | fits, with room |
+
+The section was first written claiming it was *for* the first three of those,
+which it never could have been. Sizes are why the table gives characters as
+well as words: a word count is the brief a person is given and a character
+count is what a store enforces, and the two do not convert.
 
 Counted rather than estimated: **English 120 words, Russian 112.** The Russian
 is shorter for once in the helpful direction — it carries this particular
@@ -76,8 +92,10 @@ MumbleWay — клиент Mumble, сделанный ради одного: ч�
 runs on the device; the noise floor is tracked and the transmit margin measured
 against it, which is why a steady drone never clears it and speech does; and
 "no servers of ours" is the sentence the privacy policy already makes. There is
-deliberately not a single number in it that can go stale — after the "60 ms" in
-the long description below did exactly that.
+deliberately not a single number in it that can go stale. The long description
+below had one that did: it promised the look-ahead was paid back to 60 ms long
+after `FLOOR_MS` became 200, and nothing in the repository was in a position to
+notice.
 
 The Russian uses the names the app and the site already use — «тракт»,
 «очиститель речи», «По нажатию», «по голосу», «открытый микрофон» — so somebody
@@ -105,7 +123,7 @@ MumbleWay connects to any of them — a friend's box, one at the clubhouse, a pu
 
 BUILT FOR A BIKE
 • Noise profiles from Light to Helmet, or Auto, which picks from what it hears and shows where it landed.
-• Voice activation opens 240 ms ahead of its own decision, so a word keeps its first consonant; the delay is then paid back to 60 ms.
+• Voice activation opens 240 ms ahead of its own decision, so a word keeps its first consonant; the delay is then paid back to 200 ms.
 • Push to talk, voice activation, or open microphone.
 • Works over Bluetooth intercom headsets on the hands-free profile, where the boom microphone lives.
 • Pair a handlebar Bluetooth remote and it learns whatever yours actually sends, rather than offering a list of keys that may not match it. Hold to talk, or tap to toggle.
@@ -171,7 +189,7 @@ MumbleWay подключается к любому: к серверу друга
 
 СДЕЛАНО ПОД МОТОЦИКЛ
 • Профили шумоподавления от «Слабого» до «Шлема» и «Авто», который выбирает по тому, что слышит, и показывает, на чём остановился.
-• Голосовая активация открывает передачу на 240 мс раньше, чем принимает решение, — у слова остаётся первый согласный. Потом задержка снижается до 60 мс.
+• Голосовая активация открывает передачу на 240 мс раньше, чем принимает решение, — у слова остаётся первый согласный. Потом задержка снижается до 200 мс.
 • Кнопка передачи, голосовая активация или открытый микрофон.
 • Работает через Bluetooth-интеркомы по профилю hands-free — там находится микрофон на штанге.
 • Пульт на руле приложение опознаёт по тому, что он на самом деле присылает, а не по списку клавиш. Держать для передачи или нажимать для переключения.

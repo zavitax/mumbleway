@@ -25,6 +25,74 @@ Alternates, if a store wants a different length or the primary is taken:
 
 ---
 
+## Short promotional text
+
+For the fields that take a paragraph rather than a page: Google Play's short
+description, a store's promotional text, a press blurb. **100–120 words.** Both
+languages are kept in this one section rather than beside their own long
+descriptions, because the two have to stay in step and a pair split across a
+file drifts apart.
+
+Counted rather than estimated: **English 120 words, Russian 112.** The Russian
+is shorter for once in the helpful direction — it carries this particular
+argument in fewer words. That is the opposite of the long description, where
+Russian overruns and `tool/check_listing.py` exists to catch it.
+
+**Do not count these with `wc -w`.** It is not UTF-8 aware in the shell on the
+development machine and miscounts Cyrillic — it read this Russian text as 114
+words where it is 112, and the English, being ASCII, agreed exactly. A tool
+that is right on one language and quietly wrong on the other is worse than no
+tool. Count with something that decodes first:
+
+```bash
+python -c "import io,sys; print(len(io.open(sys.argv[1],encoding='utf-8').read().split()))" file.txt
+```
+
+Both counts include the three standalone em-dashes as words, which no store
+cares about at this length but is worth knowing before anybody argues about a
+limit.
+
+```
+Talk through the wind. Voice chat for bikers.
+
+MumbleWay is a client for Mumble servers, built for one job: being heard from inside a helmet at speed. Wind defeats the noise suppression in ordinary voice apps, tuned for offices. This one is tuned for a motorcycle: a neural speech cleaner running on the phone, wind and engine filters, and a transmit decision weighing your voice against a noise floor that climbs with your speed. A steady drone never clears it. Speech does.
+
+Group voice with no range limit: one channel over mobile data, however far apart. Push to talk, voice activation or open mic, through your Bluetooth intercom.
+
+No account, no subscription, no servers of ours. Free and open source.
+```
+
+```
+Говорите сквозь ветер. Голосовая связь для байкеров.
+
+MumbleWay — клиент Mumble, сделанный ради одного: чтобы вас слышали в шлеме на скорости. Ветер сбивает шумоподавление обычных голосовых приложений — их настраивали для офиса. Здешний тракт настроен под мотоцикл: нейросетевой очиститель речи прямо на телефоне, фильтры ветра и мотора и решение о передаче, которое сравнивает ваш голос с уровнем шума, а тот растёт вместе со скоростью. Ровный гул этот порог не берёт. Речь берёт.
+
+Групповая связь без ограничения по дальности: все заходят в один канал через мобильный интернет, как бы далеко ни растянулись. По нажатию, по голосу или открытый микрофон — через вашу Bluetooth-гарнитуру.
+
+Ни учётных записей, ни подписки, ни наших серверов. Свободное ПО.
+```
+
+**Every claim in it is checkable, and that constraint shaped it.** The enhancer
+runs on the device; the noise floor is tracked and the transmit margin measured
+against it, which is why a steady drone never clears it and speech does; and
+"no servers of ours" is the sentence the privacy policy already makes. There is
+deliberately not a single number in it that can go stale — after the "60 ms" in
+the long description below did exactly that.
+
+The Russian uses the names the app and the site already use — «тракт»,
+«очиститель речи», «По нажатию», «по голосу», «открытый микрофон» — so somebody
+who installs it meets the same words on screen. Written as Russian rather than
+translated across: «Ровный гул этот порог не берёт. Речь берёт.» is the pair the
+whole argument turns on, and it had to land as a pair in both languages.
+
+The opening line is two sentences on purpose. **Talk through the wind** names
+the problem and nothing else, which is why it is the tagline; a reader who has
+never heard of Mumble still needs telling what the thing *is*, and **Voice chat
+for bikers** does that in four words without a category label nobody searches
+for.
+
+---
+
 ## Description
 
 ```

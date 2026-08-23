@@ -53,10 +53,6 @@ en:
         badge: app-store.svg
         alt: Download on the App Store
         url: 'https://apps.apple.com/app/id6797305046'
-        # Apple publishes a separate Mac App Store badge and this is not
-        # it, so the artwork reads as iPhone while only macOS is on sale.
-        # Said in words rather than left to be found by tapping it.
-        note: 'On the Mac App Store. The iPhone and iPad version is still in testing.'
       - id: google
         badge: google-play.png
         alt: Get it on Google Play
@@ -397,7 +393,6 @@ ru:
         badge: app-store-ru.svg
         alt: Загрузите в App Store
         url: 'https://apps.apple.com/app/id6797305046'
-        note: 'В Mac App Store. Версия для iPhone и iPad ещё проходит испытания.'
       - id: google
         badge: google-play-ru.png
         alt: Доступно в Google Play

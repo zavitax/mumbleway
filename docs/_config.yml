@@ -55,3 +55,6 @@ defaults:
 repo: https://github.com/zavitax/mumbleway
 mumble: https://www.mumble.info/
 mumble_docs: https://www.mumble.info/documentation/
+# Приглашение постоянное. Если его когда-нибудь придётся отозвать, оно
+# меняется здесь и в docs/STORE_DESCRIPTION.md — больше нигде не вписано.
+discord: https://discord.gg/NTASPRFjm

@@ -89,6 +89,16 @@ button was never pressed.
 The share button produces one or more `.zip` files, each under 18 MB so they
 fit through anything.
 
+### The quickest way to ask
+
+[The Discord server]({{ site.discord }}) is where to say what went wrong and
+find out what to send. It is also the fastest way to be told the Telegram
+bot's name, which is the easiest route for the archive itself.
+
+**Do not post the archive into a Discord channel.** It is a recording of your
+own microphone, and a channel is other people. Ask first and send it where you
+are told to.
+
 ### If you are already in touch with the developer
 
 Send the archive to the Telegram bot. It unpacks, converts and files it

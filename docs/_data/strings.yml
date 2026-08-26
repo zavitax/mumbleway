@@ -69,6 +69,7 @@ en:
     blurb: Voice for bikers. Free software, GPL&nbsp;v3.
     source: Source
     mumble: Mumble project
+    discord: Chat on Discord
     colophon: >-
       MumbleWay is an independent client for the Mumble protocol. It is not
       affiliated with or endorsed by the Mumble project.
@@ -409,6 +410,7 @@ ru:
     blurb: Связь для байкеров. Свободное ПО, GPL&nbsp;v3.
     source: Исходный код
     mumble: Проект Mumble
+    discord: Чат в Discord
     colophon: >-
       MumbleWay — независимый клиент протокола Mumble. С проектом Mumble он
       не связан и им не одобрен.

@@ -117,12 +117,15 @@
           Microsoft publish SVG, Google only ever publishes PNG. {%- endcomment -%}
         {% assign badge = st.badge %}
         {%- comment -%} An optional `note` on a listing that *is* live, for when
-          the badge's own wording is broader than what is actually on sale. The
-          Apple one is the case in point: the artwork Apple publishes for this
-          says "Download on the App Store" and reads as iPhone, while only the
-          macOS build is out — so the note says which, in the tooltip and to a
-          screen reader, rather than leaving somebody to find out by tapping it
-          on a phone. {%- endcomment -%}
+          the badge's own wording is broader than what is actually on sale. It
+          shows in the tooltip and to a screen reader, rather than leaving
+          somebody to find out by tapping it.
+
+          Nothing sets one today. Apple's did for five days: that badge says
+          "Download on the App Store" and reads as iPhone, and for those five
+          days only the macOS build was on sale. It came off when the listing
+          became universal. Kept because the next narrow listing will want
+          it. {%- endcomment -%}
         {% if st.url and st.url != '' %}
       <a class="badge" href="{{ st.url }}"
          {% if st.note %}title="{{ st.note }}"
@@ -179,6 +182,7 @@
       {%- endfor %}
       <a href="{{ site.repo }}">{{ s.footer.source }}</a>
       <a href="{{ site.mumble }}">{{ s.footer.mumble }}</a>
+      <a href="{{ site.discord }}">{{ s.footer.discord }}</a>
     </nav>
   </div>
   <p class="colophon">{{ s.footer.colophon | strip_newlines }}</p>

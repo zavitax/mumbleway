@@ -2892,6 +2892,30 @@ abstract class L {
   /// In en, this message translates to:
   /// **'The server has reached its listener limit.'**
   String get denyListenerLimit;
+
+  /// No description provided for @reviewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Getting on with MumbleWay?'**
+  String get reviewTitle;
+
+  /// No description provided for @reviewBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A word in the store helps other riders find it. It takes a minute and there is nothing else we ask for.'**
+  String get reviewBody;
+
+  /// No description provided for @reviewNotNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get reviewNotNow;
+
+  /// No description provided for @reviewRate.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave a review'**
+  String get reviewRate;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

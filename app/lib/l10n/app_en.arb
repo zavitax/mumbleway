@@ -854,5 +854,9 @@
   "denyChannelFull": "That channel is full.",
   "denyNestingLimit": "Channels cannot be nested any deeper on this server.",
   "denyChannelCountLimit": "The server has as many channels as it allows.",
-  "denyListenerLimit": "The server has reached its listener limit."
+  "denyListenerLimit": "The server has reached its listener limit.",
+  "reviewTitle": "Getting on with MumbleWay?",
+  "reviewBody": "A word in the store helps other riders find it. It takes a minute and there is nothing else we ask for.",
+  "reviewNotNow": "Not now",
+  "reviewRate": "Leave a review"
 }

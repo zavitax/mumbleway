@@ -8,6 +8,7 @@ import '../widgets/diagnostics_panel.dart';
 import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import '../widgets/ptt_button.dart';
+import '../widgets/review_request.dart';
 import '../widgets/server_card.dart';
 import '../widgets/server_detail_pane.dart';
 import '../widgets/wordmark.dart';
@@ -198,6 +199,14 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: Stack(
           children: [
+            // Asked here rather than inside either body: one place, above the
+            // sliding diagnostics panel and below everything a rider came for.
+            // It renders to nothing unless `shouldAskForReview` says otherwise,
+            // which it never does while a call is up.
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: SafeArea(child: ReviewRequest()),
+            ),
             LayoutBuilder(
               builder: (context, constraints) {
                 // Above the breakpoint the extra width goes to a detail pane

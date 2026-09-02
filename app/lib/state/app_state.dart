@@ -20,6 +20,7 @@ import '../services/engine_log.dart';
 import '../services/overlay.dart';
 import '../services/power.dart';
 import '../services/proxy.dart';
+import '../services/store_links.dart';
 import '../src/rust/api/mumbleway.dart';
 import 'server_sync.dart';
 import '../widgets/voice_meter.dart';
@@ -348,6 +349,13 @@ class AppState extends ChangeNotifier {
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsVoiceCommunication = 'mumbleway.voiceCommunication';
+
+  /// Counters behind the request for a store review, and the fact of having
+  /// asked. All three are local and never leave the device; the privacy policy
+  /// says nothing is collected and this must not become the exception.
+  static const _prefsLaunches = 'mumbleway.usesLaunches';
+  static const _prefsCalls = 'mumbleway.usesCalls';
+  static const _prefsReviewDone = 'mumbleway.reviewDone';
   static const _prefsSimpleModel = 'mumbleway.simpleModel';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
@@ -770,6 +778,7 @@ class AppState extends ChangeNotifier {
     // On by default; see the field. A rider who has already chosen keeps
     // their choice — this only decides what a fresh install starts with.
     voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? true;
+    _loadReviewCounters(prefs);
     simpleModel = prefs.getBool(_prefsSimpleModel) ?? false;
     // Into the core immediately, and before the probe: it decides which model
     // every enhancer built afterwards loads, and the probe has to time the
@@ -2280,6 +2289,60 @@ class AppState extends ChangeNotifier {
   /// on the output volume, which nothing here knows.
   bool voiceCommunication = true;
 
+  /// Launches and completed calls since the last time we asked for a review.
+  ///
+  /// Two counters rather than one because they answer different questions. A
+  /// launch says somebody opened the app; a call that ran says the app did the
+  /// thing it exists for. Whichever reaches its threshold first triggers the
+  /// ask, so a rider who talks every weekend and one who fiddles with settings
+  /// on the sofa both get asked eventually.
+  int _launchesSinceAsk = 0;
+  int _callsSinceAsk = 0;
+
+  /// True once the rider has actually gone to the store. Then we stop, for
+  /// good: they have done the thing being asked for, and asking again is how
+  /// an app earns the review it did not want.
+  bool _reviewDone = false;
+
+  /// Whether we have asked before, which decides which pair of thresholds
+  /// applies — the first ask comes sooner than the ones after it.
+  bool _askedBefore = false;
+
+  /// When the current call went live, so a connection that dropped in seconds
+  /// is not counted as a use.
+  DateTime? _callStartedAt;
+
+  /// First ask: three calls, or ten launches.
+  static const _firstCalls = 3;
+  static const _firstLaunches = 10;
+
+  /// After a "not now": seven more calls, or twenty more launches.
+  static const _againCalls = 7;
+  static const _againLaunches = 20;
+
+  /// How long a call has to last to count as one.
+  ///
+  /// **Not a detail.** A connection that failed after four seconds is the
+  /// worst possible moment to ask somebody what they think of the app, and
+  /// without this it would be the moment most likely to trigger it — a rider
+  /// under a bridge reconnecting six times would meet the prompt before a
+  /// rider who had a good hour.
+  static const _callCounts = Duration(seconds: 60);
+
+  /// Whether to show the review request right now.
+  ///
+  /// Deliberately conservative about *when*. Never while anything is
+  /// connected: this app is used at speed with the phone in a cradle, and a
+  /// card appearing over a live call is a distraction at best. The home screen
+  /// with nothing running is the only place it is safe to ask.
+  bool get shouldAskForReview {
+    if (_reviewDone || !_ready) return false;
+    if (_anyServerLive || _callInProgress || _audioActive) return false;
+    final calls = _askedBefore ? _againCalls : _firstCalls;
+    final launches = _askedBefore ? _againLaunches : _firstLaunches;
+    return _callsSinceAsk >= calls || _launchesSinceAsk >= launches;
+  }
+
   /// Applied on the next device open, so the devices are closed and reopened.
   ///
   /// The preset is read when the input stream is built. Setting it without the
@@ -2812,6 +2875,92 @@ class AppState extends ChangeNotifier {
   /// The setting still decides whether it may appear at all; this decides
   /// when. It arms itself again by itself the moment a server connects, which
   /// is why turning it off here does not touch the stored preference.
+  /// Counts a call once it ends, and only if it ran long enough to be one.
+  ///
+  /// Called from the same place as everything else that follows the call
+  /// state, so it sees every transition without a timer of its own.
+  void _syncUseCounter() {
+    final live = _anyServerLive;
+    if (live && _callStartedAt == null) {
+      _callStartedAt = DateTime.now();
+      return;
+    }
+    if (live || _callStartedAt == null) return;
+
+    final ran = DateTime.now().difference(_callStartedAt!);
+    _callStartedAt = null;
+    if (_reviewDone || ran < _callCounts) return;
+
+    _callsSinceAsk += 1;
+    unawaited(
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.setInt(_prefsCalls, _callsSinceAsk),
+      ),
+    );
+    // The card is on the home screen, which is already listening.
+    notifyListeners();
+  }
+
+  /// Reads the review counters and records that this is another launch.
+  ///
+  /// Separate from `_loadSettings` because that one reaches across to the Rust
+  /// engine on its way through, and these three numbers have nothing to do
+  /// with audio — which is what lets a test exercise the rule without an
+  /// engine to start.
+  void _loadReviewCounters(SharedPreferences prefs) {
+    _reviewDone = prefs.getBool(_prefsReviewDone) ?? false;
+    _callsSinceAsk = prefs.getInt(_prefsCalls) ?? 0;
+    // Counted here rather than at first frame: this runs once per start of the
+    // process, which is what a launch is. Written back immediately, because a
+    // count kept only in memory is a count that never survives the thing it is
+    // measuring.
+    _launchesSinceAsk = (prefs.getInt(_prefsLaunches) ?? 0) + 1;
+    if (!_reviewDone) {
+      // The caller is synchronous and the write is not worth waiting for: if
+      // the process dies before it lands, one launch goes uncounted.
+      unawaited(prefs.setInt(_prefsLaunches, _launchesSinceAsk));
+    }
+  }
+
+  /// Reads just those counters, for a test with no engine behind it.
+  @visibleForTesting
+  Future<void> debugLoadForTesting() async {
+    _loadReviewCounters(await SharedPreferences.getInstance());
+  }
+
+  /// Adds completed calls without having to hold one for a minute each.
+  @visibleForTesting
+  void debugAddCallsForTesting(int n) {
+    _callsSinceAsk += n;
+    notifyListeners();
+  }
+
+  /// "Not now". Both counters go back to zero and the later, longer thresholds
+  /// apply from here on.
+  Future<void> dismissReviewRequest() async {
+    _askedBefore = true;
+    _launchesSinceAsk = 0;
+    _callsSinceAsk = 0;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsLaunches, 0);
+    await prefs.setInt(_prefsCalls, 0);
+  }
+
+  /// "Rate it": opens this platform's own listing and never asks again.
+  ///
+  /// Marked done before the store opens rather than after. Whether the rider
+  /// then writes anything is not knowable from here — no store reports it —
+  /// and an app that keeps asking because it cannot tell is the failure mode
+  /// worth avoiding. Having been taken to the page is enough.
+  Future<Uri?> openStoreForReview() async {
+    _reviewDone = true;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsReviewDone, true);
+    return StoreLinks.review();
+  }
+
   void _syncOverlayToCalls() {
     if (!_wantOverlay || !overlay.isSupported || _overlayBusy) return;
     final wanted = _anyServerLive;
@@ -2885,6 +3034,7 @@ class AppState extends ChangeNotifier {
     _syncOverlayToCalls();
     _syncKeepAliveToCalls();
     _syncAudioToUse();
+    _syncUseCounter();
     if (!overlayEnabled) return;
     final names = allSpeakingNames;
     final speakers = [

@@ -1556,4 +1556,17 @@ class LRu extends L {
 
   @override
   String get denyListenerLimit => 'Сервер достиг предела по числу слушателей.';
+
+  @override
+  String get reviewTitle => 'Как вам MumbleWay?';
+
+  @override
+  String get reviewBody =>
+      'Пара слов в магазине помогает другим мотоциклистам его найти. Это минута, и больше мы ни о чём не просим.';
+
+  @override
+  String get reviewNotNow => 'Не сейчас';
+
+  @override
+  String get reviewRate => 'Оставить отзыв';
 }

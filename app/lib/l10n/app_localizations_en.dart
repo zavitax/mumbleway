@@ -1568,4 +1568,17 @@ class LEn extends L {
 
   @override
   String get denyListenerLimit => 'The server has reached its listener limit.';
+
+  @override
+  String get reviewTitle => 'Getting on with MumbleWay?';
+
+  @override
+  String get reviewBody =>
+      'A word in the store helps other riders find it. It takes a minute and there is nothing else we ask for.';
+
+  @override
+  String get reviewNotNow => 'Not now';
+
+  @override
+  String get reviewRate => 'Leave a review';
 }

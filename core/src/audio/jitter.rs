@@ -550,8 +550,28 @@ impl SpeakerBuffer {
 
             self.concealed_total += 1;
             out.resize(FRAME_SAMPLES, 0.0);
-            // The FEC copy inside the next packet beats interpolation.
-            let fec = self.pending.get(&available).cloned();
+            // The FEC copy inside the next packet beats interpolation — but
+            // only the packet immediately after this slot carries a copy of
+            // *this* frame. Opus puts the redundant copy of frame N inside
+            // packet N+1 and nowhere else.
+            //
+            // **So a two-packet gap must not reach for it.** The packet in
+            // hand is then N+2, whose FEC is a copy of N+1: decoding it here
+            // plays the wrong frame in this slot, and the next call plays the
+            // same frame again in its own. Measured in
+            // `tests/fec_alignment.rs`, which had a double loss playing frame
+            // 2 twice and frame 1 never.
+            //
+            // Concealing this one without FEC is not a loss of protection: on
+            // the next call `next` has advanced, the packet in hand is exactly
+            // one step ahead of it, and the FEC lands on the slot it belongs
+            // to. One frame of the pair is properly recovered instead of
+            // neither.
+            let fec = if available == next + self.step() {
+                self.pending.get(&available).cloned()
+            } else {
+                None
+            };
             let n = self.decoder.decode_lost(fec.as_deref(), out).ok()?;
             if self.normalise {
                 self.normalizer.process(&mut out[..n]);

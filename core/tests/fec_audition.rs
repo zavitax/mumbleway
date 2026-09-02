@@ -21,13 +21,28 @@ use mumbleway_core::audio::jitter::SpeakerBuffer;
 struct Burst {
     state: u64,
     bad: bool,
+    /// Chance per packet of falling into the bad state; set from the target.
+    enter: f32,
 }
 
+const BAD_LEAVE: f32 = 0.35;
+const BAD_DROP: f32 = 0.60;
+const GOOD_DROP: f32 = 0.01;
+
 impl Burst {
-    fn new(seed: u64) -> Self {
+    /// `target` is the overall loss fraction wanted. The bad state's own
+    /// figures are held fixed — it is a bad radio moment, and that does not
+    /// change character with how often it happens — and how *often* the link
+    /// falls into it is solved for. So doubling the loss doubles the number of
+    /// bursts rather than making each one worse, which is what a rougher road
+    /// does.
+    fn new(seed: u64, target: f32) -> Self {
+        let bad_share = ((target - GOOD_DROP) / (BAD_DROP - GOOD_DROP)).clamp(0.0, 0.9);
+        let enter = BAD_LEAVE * bad_share / (1.0 - bad_share);
         Self {
             state: seed,
             bad: false,
+            enter,
         }
     }
 
@@ -41,9 +56,12 @@ impl Burst {
 
     /// True when this packet is lost.
     fn lost(&mut self) -> bool {
-        // ~12% overall, arriving in runs of a few packets.
-        let (leave, drop_p) = if self.bad { (0.35, 0.60) } else { (0.08, 0.01) };
-        if self.next_f32() < leave {
+        let (switch, drop_p) = if self.bad {
+            (BAD_LEAVE, BAD_DROP)
+        } else {
+            (self.enter, GOOD_DROP)
+        };
+        if self.next_f32() < switch {
             self.bad = !self.bad;
         }
         self.next_f32() < drop_p
@@ -100,11 +118,11 @@ fn seg_snr(reference: &[f32], damaged: &[f32]) -> f32 {
 }
 
 /// One run: encode at `protection`, drop the same packets, play what is left.
-fn render(pcm: &[f32], protection: u8, lose: bool) -> (Vec<f32>, usize, usize) {
+fn render(pcm: &[f32], protection: u8, lose: bool, target: f32) -> (Vec<f32>, usize, usize) {
     let mut enc = VoiceEncoder::new(Quality::Balanced).unwrap();
     enc.set_packet_loss_perc(protection).unwrap();
     let mut buf = SpeakerBuffer::new().unwrap();
-    let mut burst = Burst::new(0x5EED_1234_ABCD_0001);
+    let mut burst = Burst::new(0x5EED_1234_ABCD_0001, target);
 
     let mut out = Vec::with_capacity(pcm.len());
     let mut frame = vec![0.0f32; FRAME_SAMPLES];
@@ -150,20 +168,25 @@ fn render_each_protection_level() {
     println!("clip: {:.1} s", pcm.len() as f32 / 48_000.0);
 
     // One no-loss render, to hear what the codec alone does.
-    let (clean10, _, _) = render(&pcm, 10, false);
+    let target: f32 = std::env::var("MW_LOSS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.12);
+    println!("target loss: {:.1}%", target * 100.0);
+    let (clean10, _, _) = render(&pcm, 10, false, target);
     write_wav(&format!("{dir}/00-no-loss.wav"), &clean10);
     println!("wrote 00-no-loss.wav  (codec only, no packets dropped)");
     println!();
     println!("  file            lost    damage vs its own no-loss render");
 
     for pct in [0u8, 10, 20, 30, 50, 100] {
-        let (audio, sent, dropped) = render(&pcm, pct, true);
+        let (audio, sent, dropped) = render(&pcm, pct, true, target);
         // **Its own** reference, at the same protection setting. Comparing
         // every level against one shared reference measures the difference
         // between encoder settings, which swamps the difference loss makes:
         // the level that happens to match the reference scores 26 dB better
         // than the rest for no reason a listener would ever hear.
-        let (reference, _, _) = render(&pcm, pct, false);
+        let (reference, _, _) = render(&pcm, pct, false, target);
         let snr = seg_snr(&reference, &audio);
         write_wav(&format!("{dir}/fec-{pct:03}.wav"), &audio);
         println!(

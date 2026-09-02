@@ -145,7 +145,7 @@ fn render(pcm: &[f32], protection: u8, lose: bool, target: f32) -> (Vec<f32>, us
         // first and returns None until it has, which is the real behaviour.
         match buf.pop(&mut frame) {
             Some(n) => out.extend_from_slice(&frame[..n]),
-            None => out.extend(std::iter::repeat(0.0).take(FRAME_SAMPLES)),
+            None => out.extend(std::iter::repeat_n(0.0, FRAME_SAMPLES)),
         }
     }
     // Drain whatever the buffer is still holding.

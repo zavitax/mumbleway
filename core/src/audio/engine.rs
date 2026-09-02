@@ -487,20 +487,39 @@ const LOSS_WINDOW_FRAMES: u64 = 100;
 /// Protection is set in steps of this many percent.
 const PROTECTION_STEP: u8 = 5;
 
-/// Never protect less than this, however clean the link looks.
+/// Protection, floor and ceiling — both 100, so it is simply always on.
 ///
-/// A mobile link that is losing nothing this second is not a link that will
-/// keep losing nothing, and the cheapest moment to have bought protection is
-/// before it was needed — the FEC copy travels in the *next* packet, so a
-/// setting made after the loss starts protects nothing that was already lost.
-const MIN_PROTECTION_PCT: u8 = 5;
-
-/// And never more than this.
+/// **This used to be a ladder from 5 to 40 driven by measured loss, and the
+/// ladder was measured to do nothing.** `core/tests/fec_cost.rs` encodes 30
+/// seconds of a real ride at every setting and counts the bytes:
 ///
-/// Past here the FEC copy is taking so many bits from the audio that the
-/// frames which do arrive are worse than the ones being recovered. A link
-/// losing 40% is not going to be rescued by spending more of it on redundancy.
-const MAX_PROTECTION_PCT: u8 = 40;
+/// ```text
+///     0%   23888 bit/s
+///    10%   21080 bit/s
+///    20%   20849 bit/s
+///   100%   20869 bit/s
+/// ```
+///
+/// Two things fall out of that. Turning protection on *lowers* the rate rather
+/// than raising it — Opus drops the primary to make room, and on audio this
+/// noisy it emits the redundant copy rarely enough that the net is smaller.
+/// And from 10% upward the size does not move at all, so every rung the ladder
+/// could choose cost the same. The reasoning the ladder rested on — that
+/// protection is "a real trade" bought out of the audio's bitrate — is not
+/// what the encoder actually does here.
+///
+/// So there is nothing to ration and no reason to ration it. Asking for 100
+/// tells Opus to protect every frame it can, and the measured cost of that
+/// against 20% is zero bytes.
+///
+/// **What this does not do is guarantee recovery.** The redundant copy still
+/// travels in the *next* packet, so it survives a single lost packet and not a
+/// burst; `core/tests/fec_audition.rs` renders what that sounds like. Raising
+/// the number cannot fix a gap where the packet carrying the copy was lost
+/// too. Kept as two constants rather than one so that a future measurement
+/// showing a real cost has somewhere to put a ceiling back.
+const MIN_PROTECTION_PCT: u8 = 100;
+const MAX_PROTECTION_PCT: u8 = 100;
 
 /// Holds the audio back so the transmit decision can be made with hindsight.
 ///
@@ -3839,15 +3858,21 @@ mod tests {
     }
 
     #[test]
-    fn protection_follows_the_loss_the_link_is_actually_showing() {
+    fn protection_does_not_follow_the_loss_any_more() {
+        // **This replaces two tests that asserted the opposite**, and they were
+        // right about the code at the time: protection climbed with measured
+        // loss between a floor of 5 and a ceiling of 40.
+        //
+        // Both would still pass today without testing anything, because the
+        // floor and the ceiling are now the same number. A test that cannot
+        // fail is worse than no test, so this asserts what is actually true:
+        // the encoder is asked for everything, whatever the link is doing.
+        //
+        // Why is in `MIN_PROTECTION_PCT`. Briefly: the ladder was measured to
+        // cost the same at every rung, so there was nothing to ration.
         let shared = AudioShared::new();
-        // A clean link still buys the floor: the FEC copy rides in the *next*
-        // packet, so protection bought after the loss starts protects nothing
-        // that was already lost.
-        shared.note_inbound_loss(0, LOSS_WINDOW_FRAMES);
-        assert_eq!(shared.protection_percent(), MIN_PROTECTION_PCT);
+        assert_eq!(shared.protection_percent(), 100, "clean link");
 
-        // Now a bad stretch. Several windows, because the estimate glides.
         let mut invented = 0u64;
         let mut decoded = LOSS_WINDOW_FRAMES;
         for _ in 0..10 {
@@ -3855,33 +3880,21 @@ mod tests {
             decoded += LOSS_WINDOW_FRAMES * 2 / 3;
             shared.note_inbound_loss(invented, decoded);
         }
-        let bad = shared.protection_percent();
-        assert!(
-            bad >= 25,
-            "a third of the frames concealed and protection only reached {bad}%"
-        );
+        assert_eq!(shared.protection_percent(), 100, "a third of frames lost");
 
-        // And it comes back down once the link does, or every call after a
-        // bad minute pays for a link that recovered.
-        for _ in 0..40 {
-            decoded += LOSS_WINDOW_FRAMES;
-            shared.note_inbound_loss(invented, decoded);
-        }
-        assert_eq!(shared.protection_percent(), MIN_PROTECTION_PCT);
-    }
-
-    #[test]
-    fn protection_is_bounded_at_both_ends() {
-        let shared = AudioShared::new();
-        // A link losing nearly everything: past the ceiling the FEC copy takes
-        // so many bits from the audio that the frames which do arrive are
-        // worse than the ones being recovered.
-        let mut invented = 0u64;
         for _ in 0..20 {
             invented += LOSS_WINDOW_FRAMES;
-            shared.note_inbound_loss(invented, 0);
+            shared.note_inbound_loss(invented, decoded);
         }
-        assert_eq!(shared.protection_percent(), MAX_PROTECTION_PCT);
+        assert_eq!(shared.protection_percent(), 100, "losing nearly everything");
+
+        // The estimate underneath still moves, and is still worth having: it
+        // is what a future ceiling would read, and what the diagnostics panel
+        // would show if it grew a row for it.
+        assert!(
+            shared.inbound_loss_percent() > 20,
+            "the loss estimate stopped tracking, so a ceiling could not return"
+        );
     }
 
     #[test]

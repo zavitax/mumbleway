@@ -85,6 +85,55 @@ void main() {
     expect(second.shouldAskForReview, isFalse);
   });
 
+  test(
+    'a call left open when the app stopped is counted at the next start',
+    () async {
+      // The marker the last run left behind, dated far enough back to have been
+      // a real call. This is the only way "or closes the app" can be honoured:
+      // a phone kills a backgrounded app without running anything on the way
+      // out, so the call cannot be counted at the time.
+      final long = DateTime.now()
+          .subtract(const Duration(minutes: 5))
+          .millisecondsSinceEpoch;
+      SharedPreferences.setMockInitialValues({
+        'mumbleway.usesCalls': 2,
+        'mumbleway.callOpenSince': long,
+      });
+      final state = AppState();
+      addTearDown(state.dispose);
+      await state.debugLoadForTesting();
+      state.markReadyForTesting();
+
+      expect(
+        state.shouldAskForReview,
+        isTrue,
+        reason: 'the third call was the one interrupted by closing',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getInt('mumbleway.callOpenSince'),
+        isNull,
+        reason: 'the marker must be cleared or it counts again every start',
+      );
+    },
+  );
+
+  test('a call cut short by closing the app does not count', () async {
+    final brief = DateTime.now()
+        .subtract(const Duration(seconds: 5))
+        .millisecondsSinceEpoch;
+    SharedPreferences.setMockInitialValues({
+      'mumbleway.usesCalls': 2,
+      'mumbleway.callOpenSince': brief,
+    });
+    final state = AppState();
+    addTearDown(state.dispose);
+    await state.debugLoadForTesting();
+    state.markReadyForTesting();
+
+    expect(state.shouldAskForReview, isFalse);
+  });
+
   test('never asks while the audio devices are open', () async {
     // The strongest of the guards: this stands in for a ride in progress.
     final state = await ready(calls: 9);

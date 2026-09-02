@@ -356,6 +356,15 @@ class AppState extends ChangeNotifier {
   static const _prefsLaunches = 'mumbleway.usesLaunches';
   static const _prefsCalls = 'mumbleway.usesCalls';
   static const _prefsReviewDone = 'mumbleway.reviewDone';
+
+  /// When the call currently in progress began, if one is.
+  ///
+  /// **Persisted, and that is what makes "or closes the app" work.** A phone
+  /// kills a backgrounded app without ceremony and without running anything on
+  /// the way out, so a call that ends because the process ended cannot be
+  /// counted at the time. It is counted at the next start instead: a marker
+  /// still sitting here means the last run had a call open when it stopped.
+  static const _prefsCallOpenSince = 'mumbleway.callOpenSince';
   static const _prefsSimpleModel = 'mumbleway.simpleModel';
   static const _prefsFeedbackGuard = 'mumbleway.feedbackGuard';
   static const _prefsDehiss = 'mumbleway.dehiss';
@@ -2014,10 +2023,17 @@ class AppState extends ChangeNotifier {
     return detail.isEmpty ? 'That server could not be prepared.' : detail;
   }
 
+  /// Puts down one connection, because somebody asked.
+  ///
+  /// Every deliberate route out arrives here — the button on the card, the
+  /// floating window's hang-up, [hangupAll], and [disconnectAll] on the way
+  /// out — and nothing automatic does. That is what lets [_endCallIfOver]
+  /// tell "the rider is finished" from "the road went quiet for a moment".
   Future<void> disconnect(String id) async {
     try {
       await disconnectServer(serverId: id);
     } catch (_) {}
+    await _endCallIfOver();
   }
 
   /// Closes every live connection, for an app that is going away.
@@ -2309,7 +2325,8 @@ class AppState extends ChangeNotifier {
   bool _askedBefore = false;
 
   /// When the current call went live, so a connection that dropped in seconds
-  /// is not counted as a use.
+  /// is not counted as a use. Mirrored into storage; see
+  /// [_prefsCallOpenSince].
   DateTime? _callStartedAt;
 
   /// First ask: three calls, or ten launches.
@@ -2324,9 +2341,7 @@ class AppState extends ChangeNotifier {
   ///
   /// **Not a detail.** A connection that failed after four seconds is the
   /// worst possible moment to ask somebody what they think of the app, and
-  /// without this it would be the moment most likely to trigger it — a rider
-  /// under a bridge reconnecting six times would meet the prompt before a
-  /// rider who had a good hour.
+  /// without this it would be the moment most likely to trigger it.
   static const _callCounts = Duration(seconds: 60);
 
   /// Whether to show the review request right now.
@@ -2875,30 +2890,71 @@ class AppState extends ChangeNotifier {
   /// The setting still decides whether it may appear at all; this decides
   /// when. It arms itself again by itself the moment a server connects, which
   /// is why turning it off here does not touch the stored preference.
-  /// Counts a call once it ends, and only if it ran long enough to be one.
+  /// Notes that a call is open, the first time anything goes live.
   ///
-  /// Called from the same place as everything else that follows the call
-  /// state, so it sees every transition without a timer of its own.
+  /// **It does not close one.** A link that drops on a bad stretch of road is
+  /// not the end of a call — the app is already chasing it, the rider has not
+  /// decided anything, and the conversation resumes when the signal does.
+  /// Counting that as a completed call would count one ride through patchy
+  /// coverage as four or five of them, and would let the review card appear
+  /// during the very ride it is meant to stay out of.
+  ///
+  /// A call ends when the rider ends it, or when the app stops. Nothing else.
+  /// See [_endCallIfOver] and [_prefsCallOpenSince].
   void _syncUseCounter() {
-    final live = _anyServerLive;
-    if (live && _callStartedAt == null) {
-      _callStartedAt = DateTime.now();
-      return;
-    }
-    if (live || _callStartedAt == null) return;
+    if (!_anyServerLive || _callStartedAt != null) return;
+    final now = DateTime.now();
+    _callStartedAt = now;
+    unawaited(
+      SharedPreferences.getInstance().then(
+        (prefs) =>
+            prefs.setInt(_prefsCallOpenSince, now.millisecondsSinceEpoch),
+      ),
+    );
+  }
+
+  /// Counts the call, if the rider has just put down the last connection.
+  ///
+  /// Called after a deliberate disconnect and nowhere else, so a drop the app
+  /// is still fighting cannot reach it. Checks *every* server rather than the
+  /// one just closed: on two servers at once, hanging up one is not the end of
+  /// the conversation.
+  Future<void> _endCallIfOver() async {
+    if (_callStartedAt == null) return;
+    if (_anyServerLive || _callInProgress) return;
 
     final ran = DateTime.now().difference(_callStartedAt!);
     _callStartedAt = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsCallOpenSince);
     if (_reviewDone || ran < _callCounts) return;
 
     _callsSinceAsk += 1;
-    unawaited(
-      SharedPreferences.getInstance().then(
-        (prefs) => prefs.setInt(_prefsCalls, _callsSinceAsk),
-      ),
-    );
+    await prefs.setInt(_prefsCalls, _callsSinceAsk);
     // The card is on the home screen, which is already listening.
     notifyListeners();
+  }
+
+  /// Counts a call the last run had open when the process stopped.
+  ///
+  /// The rider closed the app, or the system took it — either way the call is
+  /// over and it is over because of them, which is the rule. The length comes
+  /// from the marker's own timestamp, so a call that ran twenty seconds before
+  /// the app was swiped away still does not count.
+  void _countCallInterruptedByClosing(SharedPreferences prefs) {
+    final since = prefs.getInt(_prefsCallOpenSince);
+    if (since == null) return;
+    unawaited(prefs.remove(_prefsCallOpenSince));
+    if (_reviewDone) return;
+    final ran = DateTime.now().difference(
+      DateTime.fromMillisecondsSinceEpoch(since),
+    );
+    // Measured to *now* rather than to when the app actually stopped, which
+    // nothing recorded. It can only overstate, and only for a call that was
+    // short and a gap before restarting that was long.
+    if (ran < _callCounts) return;
+    _callsSinceAsk += 1;
+    unawaited(prefs.setInt(_prefsCalls, _callsSinceAsk));
   }
 
   /// Reads the review counters and records that this is another launch.
@@ -2920,6 +2976,7 @@ class AppState extends ChangeNotifier {
       // the process dies before it lands, one launch goes uncounted.
       unawaited(prefs.setInt(_prefsLaunches, _launchesSinceAsk));
     }
+    _countCallInterruptedByClosing(prefs);
   }
 
   /// Reads just those counters, for a test with no engine behind it.

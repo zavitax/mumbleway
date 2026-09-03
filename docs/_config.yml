@@ -30,6 +30,7 @@ exclude:
   - SITE_PLAN.md
   - STORE_DESCRIPTION.md
   - STORE_LISTING.md
+  - STORE_SURVEY.md
   - ENHANCER_GPU.md
   - ONSET_LATENCY.md
   - SESSION_2026-08-10.md

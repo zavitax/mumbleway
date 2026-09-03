@@ -11,6 +11,12 @@ who tried it at 120 km/h, and those are the reviews that stay at the top.
 Character limits are the stores' own, and each field below is inside its limit.
 Re-check with `tool/check_listing.py` after editing.
 
+**This file is what the listing should say. [STORE_SURVEY.md](STORE_SURVEY.md)
+is what it does**, read from the stores themselves — and the two are not the
+same. Nothing measures the gap on its own: `check_listing.py` reads this
+repository and cannot know whether a field was ever pasted into a store, or how
+long ago. Re-survey after any release that changes what the app does.
+
 ---
 
 ## Name
@@ -87,6 +93,17 @@ Built for one job: being heard from inside a helmet at speed. Wind and engine no
 ```
 motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,comms,murmur,headset
 ```
+
+**iOS and the Mac App Store have separate keyword fields, and this file has
+always had one.** They live on different version localisations and can hold
+different words, which they should: nobody searches the Mac App Store for a
+helmet. A Mac buyer arrives having wanted a Mumble client, a push-to-talk key or
+a voice server. [STORE_SURVEY.md](STORE_SURVEY.md) proposes a set for each.
+
+Two of the fourteen words above are also being paid for twice. Apple indexes the
+name, the subtitle and the keyword field as one bag, and the subtitle is already
+"Mumble voice for motorcycles" — so `mumble` and `motorcycle` here are eighteen
+characters spent on words Apple already has.
 
 ## Russian subtitle — App Store, Mac App Store (30)
 
@@ -173,6 +190,13 @@ Deliberately not repeated here. Two copies of three thousand characters drift,
 and the copy that ends up pasted into a store is never reliably the one that was
 edited.
 
+**Which is exactly what happened, and it is still live.** Every store carries a
+copy one line behind this repository: the look-ahead is described as paid back
+to 60 ms where `FLOOR_MS` is 200. Six copies, four stores, both languages —
+Apple, Microsoft and the Play Console alike. The rest is byte-identical, so it
+is one edit per store and nothing else needs re-reading. See
+[STORE_SURVEY.md](STORE_SURVEY.md).
+
 ---
 
 ## What is deliberately not claimed
@@ -225,13 +249,20 @@ The site's own captures are in `docs/assets/img/shots/` and are cropped for the
 web rather than to any of these sizes — a store screenshot is a whole device
 frame, so it is a separate pass and not a resize of these.
 
-## Still needed before any of this can be submitted
+## What is submitted, and what is not
 
-- **Screenshots at the sizes above**, per store and per device size.
-- **An age rating** questionnaire per store.
-- **Apple App Privacy answers**: the microphone is used for the app's core
-  function and audio is not collected — but that questionnaire is answered in
-  App Store Connect, not here.
+Three of the four are live: the App Store, the Mac App Store and the Microsoft
+Store. Screenshots, age ratings and Apple's App Privacy answers are all done —
+this section used to list them as blockers and it outlived that by several
+releases.
+
+**Google Play is the one that is not, and it is not the listing's fault.** The
+Play listing is complete in the console — both languages, an icon, a feature
+graphic and screenshots at every size Play asks for — but the production track
+has no releases, so there is no public page at all and the product URL 404s.
+`publish.yml` uploads to the internal track and puts every wider track up as a
+draft, on purpose, so this is a decision waiting to be made rather than work
+waiting to be done. [STORE_SURVEY.md](STORE_SURVEY.md) has the track listing.
 
 **The privacy policy URL is done**:
 <https://zavitax.github.io/mumbleway/privacy>. Mandatory on every store here for

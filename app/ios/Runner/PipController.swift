@@ -137,9 +137,24 @@ final class PipController: NSObject {
   /// is pinned to this height by absolute y coordinates (84, 126, 172, 200,
   /// 246), so it is a redesign rather than a constant.
   ///
-  /// Note also that PiP cannot be tested on an iPhone simulator at all:
+  /// Two things about testing this, both of which cost an afternoon to find:
+  ///
+  /// **PiP does not exist on an iPhone simulator.**
   /// `isPictureInPictureSupported()` returns false there. The iPad simulator
   /// supports it, which is where the table above came from.
+  ///
+  /// **And even on the iPad simulator the window renders black.** It appears,
+  /// it reports its size, and it shows nothing — with the same buffers drawing
+  /// correctly in the layer inline, and with the app kept alive by a running
+  /// audio engine so the frames really are still arriving. A control that
+  /// filled the whole frame with flat opaque magenta came out just as black.
+  ///
+  /// So the simulator can answer questions about *geometry*, which is reported
+  /// through the delegate, and cannot answer any question about *appearance*.
+  /// That is why the table above is sizes and not colours, and why "can the
+  /// window be made translucent by putting alpha in the buffers" is still
+  /// open — it needs a device. The window has no opacity API either way: it
+  /// belongs to the system, and the pixels are the only thing we hand it.
   private static let frameSize = CGSize(width: 480, height: 270)
 
   init(channel: FlutterMethodChannel, hostView: UIView) {

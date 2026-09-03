@@ -109,6 +109,37 @@ final class PipController: NSObject {
   }
 
   /// 16:9 at a size that stays legible when the system shrinks the window.
+  ///
+  /// **Changing these numbers does not change how big the window is.** That was
+  /// assumed here and has now been measured, against this exact API — an
+  /// `AVSampleBufferDisplayLayer` content source — on an iPad simulator, by
+  /// reading the size the system reports back through
+  /// `didTransitionToRenderSize`:
+  ///
+  /// ```text
+  ///     source            settles at
+  ///      480x270  16:9      335x188
+  ///      360x202  16:9      335x188     <- 0.75 of the source, same window
+  ///     1920x1080 16:9      335x188     <- sixteen times the pixels, same window
+  ///      480x360  4:3       335x251
+  /// ```
+  ///
+  /// The width is pinned at 335 points and the height follows the *aspect
+  /// ratio*. Pixel count does not enter into it. So shrinking this to make the
+  /// floating window smaller — which is the obvious thing to try, and was
+  /// tried — buys an identically sized window drawn from fewer pixels, which is
+  /// to say a blurrier one.
+  ///
+  /// The only lever on the window's footprint from in here is the aspect ratio,
+  /// and it is one-sided: a taller frame makes a taller window, but nothing
+  /// makes it narrower than 335. Making the window shorter therefore means
+  /// re-laying-out the card into a wider, shorter frame — and the layout below
+  /// is pinned to this height by absolute y coordinates (84, 126, 172, 200,
+  /// 246), so it is a redesign rather than a constant.
+  ///
+  /// Note also that PiP cannot be tested on an iPhone simulator at all:
+  /// `isPictureInPictureSupported()` returns false there. The iPad simulator
+  /// supports it, which is where the table above came from.
   private static let frameSize = CGSize(width: 480, height: 270)
 
   init(channel: FlutterMethodChannel, hostView: UIView) {

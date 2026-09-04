@@ -475,6 +475,53 @@ two cases it can see coming:
   zero, so any pre-1.0 `version:` in `pubspec.yaml` is a hard stop;
 - **any component above 65535**, which is the range the format allows.
 
+### 4e-bis. Changing listing text and the package in one certification run
+
+**Every Microsoft submission costs a certification run of hours to days, and one
+in flight blocks the next.** So a listing fix and a new package must go in the
+*same* submission or the second waits for the first. This is the route, and it
+was worked out the expensive way on 4 September 2026, when the description had
+been wrong in the Store for three weeks.
+
+```bash
+# 1. stage the package without committing — this is what makes it one run
+msstore publish path/to/mumbleway-store-<version>.msix -id <productId> --noCommit
+
+# 2. read the draft it just created
+msstore submission get <productId> > draft.json
+
+# 3. edit draft.json  (see the warnings below), then put the whole thing back
+msstore submission update <productId> -p draft.json
+
+# 4. read it back and check, then commit
+msstore submission get <productId>
+msstore submission publish <productId>
+```
+
+Four things fail in ways that do not name themselves:
+
+- **`msstore publish` wants the package *file*, not the folder it is in.** Given
+  a directory it looks for a *project* to infer a publisher from, and answers
+  `We could not find a project publisher for the project at ...` — which reads
+  as a credentials or identity problem and is a wrong argument.
+- **`msstore submission updateMetadata` will not take a partial payload.**
+  Sending `{"Listings": ...}` alone returns HTTP 400 `InvalidParameterValue`
+  complaining about `'NotSet'` — a value that appears nowhere in what was sent,
+  because the CLI inflates the fragment into a whole product and everything left
+  out becomes that. Use `update` with the *complete* product from `get`.
+- **Send back every field, not the ones being changed.** A listing object with
+  `Features` or the search-term `Keywords` omitted is a listing with those
+  fields cleared, and they are not recoverable from the published submission
+  once committed.
+- **The first call may simply fail.** `💥 Error while creating submission` on an
+  otherwise clean account was transient here and succeeded on the retry. Check
+  `msstore submission status` before assuming it did nothing — the failed call
+  may still have created the draft.
+
+Verify before committing rather than after. `get` returns the draft, and the
+package list should show the new version as `PendingUpload` beside the old one
+as `PendingDelete`; anything else means the package did not attach.
+
 ### 4f. Automating the submission
 
 **The build was always automated; this is about the upload.** Every publish run

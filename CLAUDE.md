@@ -45,10 +45,34 @@ interactively, and for nothing that writes.
 
 ### Build numbers come from `github.run_number`
 
-Not from `pubspec.yaml`. The version there (`1.0.0+1`) is the human-facing one
-and does not need bumping to publish. Both stores reject a build number they
-have seen before, and the rejection arrives *after* the build, so the number has
+Not from `pubspec.yaml`. The version there is the human-facing one. Both stores
+reject a build number they have seen before, and the rejection arrives *after*
+the build, so the number has
 to rise on its own — `run_number` only ever goes up.
+
+#### But the *marketing* version has to rise once a version ships
+
+**This section used to say `pubspec.yaml` "does not need bumping to publish",
+and that stopped being true the moment 1.0 was approved.** Apple closes a
+version train when it releases. Publishing at the same `version:` afterwards
+fails at the upload, after the whole matrix has built, with two errors that name
+the cause plainly enough once you have seen them:
+
+```text
+90062  CFBundleShortVersionString [1.0.0] in the Info.plist file must contain
+       a higher version than that of the previously approved version [1.0.0]
+90186  Invalid Pre-Release Train. The train version '1.0.0' is closed for new
+       build submissions
+```
+
+**TestFlight and the Mac App Store fail; Google Play and Windows carry on** —
+the same half-red run described under the upload limit below, and worth telling
+apart from it. That one clears by waiting an hour. This one never clears: the
+fix is to raise `version:` in `app/pubspec.yaml`, and no amount of retrying
+does it.
+
+So bump it as part of preparing a release, not as a reaction to a red run. The
+build number still comes from `run_number` and still needs no help.
 
 ### App Store Connect allows six uploads per app per *hour*
 

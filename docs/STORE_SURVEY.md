@@ -21,20 +21,22 @@ matter renders with no navigation and no footer while building perfectly.
 
 | Store | Route | What came back |
 |---|---|---|
-| App Store, iOS | `itunes.apple.com/lookup`, US and RU storefronts, plus the public product page | Description, subtitle, promotional text |
-| Mac App Store | same | Apple returns the iOS payload for this id; the Mac version could not be isolated |
+| App Store, iOS | App Store Connect API, `tool/read_app_store_listing.mjs` | Everything, keywords included |
+| Mac App Store | same | Everything, and it is a separate version record after all |
 | Google Play | Play Developer API, `edits.listings.get` | Listings, tracks and graphics, both languages |
 | Microsoft Store | the Store's own product endpoint, `en-us` and `ru-ru` | Everything including the Features list |
 
 Two things could not be read at all, and both are worth knowing before somebody
 spends an afternoon trying again.
 
-**App Store keyword fields.** Apple never publishes them, and the App Store
-Connect API key this project uses is refused a collection read on version
-localisations — `The resource 'appStoreVersionLocalizations' does not allow
-'GET_COLLECTION'`. The instance read is allowed, so a localisation id would be
-enough, and there is no way to obtain one without the collection read. This
-needs a browser.
+**App Store keyword fields — since solved, and the obstacle was not a
+permission.** The `app-store-connect` MCP is refused what looks like a
+permissions error: `The resource 'appStoreVersionLocalizations' does not allow
+'GET_COLLECTION'`. It is the wrong URL. Apple offers no top-level collection
+there, only the relationship under a version, and walking the relationships
+returns everything including the keywords. `tool/read_app_store_listing.mjs`
+does that, taking its credentials from whatever the MCP is already configured
+with rather than keeping a second copy of them.
 
 **`play.google.com` from the Windows machine.** TLS is reset immediately after
 the Client Hello, which is SNI filtering rather than an outage: DNS resolves,
@@ -67,20 +69,26 @@ Every count below was measured on the fetched string, not estimated.
 `Social Networking, Lifestyle` · 4+ · free · version 1.0, released 23 August
 2026 · no ratings yet.
 
-| Field | Limit | Live |
-|---|---|---|
-| Name | 30 | 9 |
-| Subtitle, EN | 30 | 28 |
-| Promotional text, EN | 170 | 164 |
-| Promotional text, RU | 170 | 165 |
-| Description, EN | 4000 | 3924 |
-| Description, RU | 4000 | 3954 |
-| Keywords | 100 | not readable |
+Name and subtitle are shared: they live on the app record, not on a version,
+and change without a release.
 
-Apple's description is a platform-trimmed variant: where the shared copy names
-three platforms, Apple's says only "A floating Picture in Picture window on
-iPhone and iPad". That is right for iOS and a problem for the Mac — see the
-findings.
+| Field | Limit | iOS | Mac App Store |
+|---|---|---|---|
+| Name | 30 | 9 | 9 |
+| Subtitle, EN | 30 | 28 | 28 |
+| Subtitle, RU | 30 | 24 | 24 |
+| Keywords, EN | 100 | **99** | **94** |
+| Keywords, RU | 100 | 85 | 85 |
+| Promotional text, EN | 170 | 164 | **170** |
+| Promotional text, RU | 170 | 165 | 170 |
+| Description, EN | 4000 | 3924 | **3978** |
+| Description, RU | 4000 | 3954 | 3981 |
+| What's New | 4000 | empty | empty |
+
+**They are two version records and they have drifted apart.** Same subtitle,
+different keywords, different promotional text, different description — see
+findings 5 and 6. "What's New" is empty on both, which is correct: neither has
+shipped a version after 1.0, and Apple shows nothing for a first release.
 
 ### Google Play
 
@@ -178,15 +186,52 @@ it, so either the shipped 1.0 predates that or Apple's metadata is stale.
 Either way a Russian shopper is told the app does not speak Russian, which is
 the sort of thing that stops a download before the description is read.
 
-### 5. Apple's copy drops the Mac, and the Mac listing may be reading it.
+### 5. The two Apple listings are not the same, and the Mac one is the odd one.
 
-The trimmed bullet in Apple's description mentions Picture in Picture on iPhone
-and iPad and nothing else. If the Mac version localisation carries the same
-string, the Mac listing describes an iPhone feature and never mentions the Mac
-panel at all. **Unverified** — Apple's lookup returns the iOS payload for this
-id, so the two could not be told apart from here.
+This was recorded the wrong way round on the first pass, when the two could not
+be told apart. Read directly, they differ:
 
-### 6. The Microsoft Store is running at a quarter of its metadata.
+- **iOS** carries the trimmed description, 3924 characters, whose floating-window
+  bullet names only Picture in Picture on iPhone and iPad.
+- **The Mac App Store** carries the *full* shared text, 3978 characters — the one
+  whose bullet begins "A floating window over your navigation app on Android".
+
+So the worry was that the Mac listing described an iPhone feature. It is worse
+than that and in the other direction: the Mac listing opens its
+not-looking-at-the-screen section by naming **Android**, on Apple's own store,
+and mentions the Mac panel third. It passed review, so this is a quality problem
+rather than a compliance one — but it is the first thing a Mac buyer reads about
+what the app does when it is not in front of them.
+
+Their promotional texts differ too: iOS English sits at 164 of 170 and the Mac
+at exactly 170.
+
+### 6. The Mac keyword field is a copy of the iOS one, and the record of both is stale.
+
+Now readable, and both halves of the recommendation turn out to be evidenced
+rather than argued. The Mac App Store keyword field is:
+
+```
+motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,comms,murmur,headset
+```
+
+— which is the iOS set, word for word, on a store where nobody searches for a
+helmet. And it is the *old* iOS set: live iOS English is
+
+```
+motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,murmur,headset,voice chat
+```
+
+at 99 of 100, where `comms` has been replaced by `voice chat`. **Neither of
+those is what `STORE_LISTING.md` records**, which still has the 94-character
+version with `comms`. Somebody edited iOS in the console and the repository
+never heard about it — exactly the drift this survey exists to catch, and the
+reason the reading tool is now committed rather than improvised.
+
+Note also that `voice chat` spends a character on a space. Apple splits on
+commas, so a space inside a term buys nothing that `voice,chat` would not.
+
+### 7. The Microsoft Store is running at a quarter of its metadata.
 
 Four Features of twenty. Four search terms of seven in English, two of seven in
 Russian. Search terms are never displayed and cost nothing to be wrong about,
@@ -194,7 +239,7 @@ which makes them the cheapest discoverability anywhere in this project —
 [STORE_LISTING.md](STORE_LISTING.md) said exactly that months ago and the slots
 are still empty.
 
-### 7. The Russian Features list drops both words a Russian user would search for.
+### 8. The Russian Features list drops both words a Russian user would search for.
 
 English reads *Voice communication · Mumble client · Murmur client · Helmet
 noise cancellation*. Russian reads «Шумоподавление · Созвон · Коммуникация ·
@@ -202,7 +247,7 @@ noise cancellation*. Russian reads «Шумоподавление · Созво�
 synonyms. Somebody looking for a Mumble client in Russian will not find that
 list.
 
-### 8. Play's short description never names a motorcycle.
+### 9. Play's short description never names a motorcycle.
 
 "Talk to your group over Mumble. Built for wind and engine noise inside a
 helmet." — no *motorcycle*, no *bike*, no *rider*, no *Bluetooth*, no

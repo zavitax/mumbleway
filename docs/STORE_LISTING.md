@@ -90,12 +90,26 @@ Built for one job: being heard from inside a helmet at speed. Wind and engine no
 
 ## Keywords — App Store (100, comma-separated, no spaces)
 
+**Both of these were read back out of App Store Connect on 4 September 2026,
+and neither is what this file used to say.** It recorded a single 94-character
+set for both platforms; iOS had since been edited in the console and the change
+never came back here. Re-read with `tool/read_app_store_listing.mjs` rather than
+trusting this block.
+
+iOS, English — 99/100:
+
+```
+motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,murmur,headset,voice chat
+```
+
+Mac App Store, English — 94/100, and the older iOS set word for word:
+
 ```
 motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,comms,murmur,headset
 ```
 
-**iOS and the Mac App Store have separate keyword fields, and this file has
-always had one.** They live on different version localisations and can hold
+**iOS and the Mac App Store have separate keyword fields, and this file used to
+have one.** They live on different version localisations and can hold
 different words, which they should: nobody searches the Mac App Store for a
 helmet. A Mac buyer arrives having wanted a Mumble client, a push-to-talk key or
 a voice server. [STORE_SURVEY.md](STORE_SURVEY.md) proposes a set for each.

@@ -156,21 +156,32 @@ store was read back on 4 September 2026. It has since been replaced, on the
 live 1.0 as well as on 1.0.1 — promotional text is the one App Store field that
 changes without a review, so there was no reason to leave it wrong.
 
-English — 156/170:
+English — 163/170:
 
 ```
-A Mumble client that shows its work.
+Clear voice with your group.
 
-Push to talk, open mic or voice activation, volume per person, and a panel showing what each stage does to your voice.
+Join any Mumble server and talk — press a key or just speak, everyone in one channel. No account, no subscription, nothing to set up.
 ```
 
-Russian — 153/170:
+Russian — 160/170:
 
 ```
-Клиент Mumble, который показывает свою работу.
+Чистый голос в вашей группе.
 
-Передача по кнопке, открытый микрофон или голосовая активация, громкость по каждому и панель диагностики.
+Подключитесь к любому серверу Mumble и говорите — по кнопке или просто голосом, все в одном канале. Без учётной записи и подписки.
 ```
+
+**The rule this field kept breaking: say what somebody gets, not what the
+program does.** It has now been wrong twice in opposite directions. First it led
+with a caveat — the app stepping down on slow hardware. Then it led with the
+diagnostics panel, "a Mumble client that shows its work", which is a reason an
+engineer finds the app interesting and not a reason anybody installs it. Nobody
+is shopping for a client that shows its work; they are shopping for a way to
+talk to people. Clearly, and without being asked for an account.
+
+The features are still worth having and still belong further down the page. The
+first 170 characters are not where they earn their place.
 
 <details>
 <summary>What it replaced, and why it had to go</summary>

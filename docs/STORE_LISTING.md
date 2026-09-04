@@ -151,20 +151,45 @@ characters spent on words Apple already has.
 
 ## Promotional text — Mac App Store (170)
 
-**Different copy from iOS, and this file did not know it existed.** The Mac
-carries neither the tagline nor the "built for one job" pair; it sells the
-performance ladder and the recorder, which is a reasonable thing to lead with
-for somebody at a desk. Found by reading the store rather than by anybody
-writing it down, and at exactly 170 of 170 in both languages, so a single added
-word breaks it.
+**Different copy from iOS, and this file did not know it existed** until the
+store was read back on 4 September 2026. It has since been replaced, on the
+live 1.0 as well as on 1.0.1 — promotional text is the one App Store field that
+changes without a review, so there was no reason to leave it wrong.
+
+English — 156/170:
+
+```
+A Mumble client that shows its work.
+
+Push to talk, open mic or voice activation, volume per person, and a panel showing what each stage does to your voice.
+```
+
+Russian — 153/170:
+
+```
+Клиент Mumble, который показывает свою работу.
+
+Передача по кнопке, открытый микрофон или голосовая активация, громкость по каждому и панель диагностики.
+```
+
+<details>
+<summary>What it replaced, and why it had to go</summary>
+
+At exactly 170 of 170 in both languages, and it opened on the app getting
+worse:
 
 ```
 On a slow phone the noise chain steps down in a measured order and says which stages went. Word starts survive. Hear a recording as the far end did, or through the chain.
 ```
 
-```
-На медленном телефоне цепочка отключает ступени в заранее измеренном порядке и говорит, каких не стало. Начала слов целы. Запись звучит так, как её услышал бы собеседник.
-```
+**Promotional text is the first thing a shopper reads** — it sits above the
+description on the product page. That one spent its first sentence on a caveat
+about degrading on slow hardware. Every clause of it is true and the graceful
+step-down is a good piece of engineering; none of that makes it the thing to
+lead with. The replacement says what the Mac version is *for*, and keeps the
+diagnostics panel as the reason to prefer it rather than as an apology.
+
+</details>
 
 **A new version record does not inherit promotional text.** It comes up empty
 while every other field is cloned, so a version submitted without noticing

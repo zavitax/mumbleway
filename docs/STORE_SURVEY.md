@@ -264,7 +264,15 @@ Play displays on the product page once one exists.
 
 ## Recommended keywords
 
-Nothing below has been applied. Every string is measured against its field's
+**Applied on 4 September 2026 for Apple, staged on the 1.0.1 version records
+and live when that version ships.** Microsoft's are *not* applied and could not
+be: the search terms and Features sit in the listing, and the listing was
+locked by a submission that had already gone to certification — one in flight
+blocks the next. They were free to change in that same submission and were
+missed, which cost a certification cycle. Play has no keyword field; its
+short-description rewrite below is unapplied.
+
+Everything else below. Every string is measured against its field's
 limit; re-measure after editing rather than trusting an edit to be small.
 
 ### The App Store field is worth more than 100 characters suggests

@@ -90,23 +90,53 @@ Built for one job: being heard from inside a helmet at speed. Wind and engine no
 
 ## Keywords — App Store (100, comma-separated, no spaces)
 
-**Both of these were read back out of App Store Connect on 4 September 2026,
-and neither is what this file used to say.** It recorded a single 94-character
-set for both platforms; iOS had since been edited in the console and the change
-never came back here. Re-read with `tool/read_app_store_listing.mjs` rather than
-trusting this block.
+**Four fields, two platforms, and they are staged on 1.0.1 rather than live.**
+Keywords cannot be edited on a released version, so these sit on the 1.0.1
+records and go out when that version does. Version 1.0 keeps the old sets until
+then. Re-read with `tool/read_app_store_listing.mjs` rather than trusting this
+block — it has been wrong before.
 
-iOS, English — 99/100:
+iOS, English — 97/100. Drops `mumble` and `motorcycle`, which the subtitle
+already indexes, and buys the room back as `bluetooth`, `radio` and `moto`:
+
+```
+helmet,intercom,bluetooth,walkie,talkie,radio,ptt,voip,rider,group,bike,moto,headset,murmur,comms
+```
+
+iOS, Russian — 90/100. Drops `mumble`, which the Russian subtitle carries, and
+buys «шумоподавление» — the word Russian shoppers actually type, and one `шум`
+will not match, since Apple's Russian stemming does not reach from a root to a
+compound:
+
+```
+мотоцикл,шлем,интерком,рация,связь,байкер,группа,гарнитура,шумоподавление,мото,voip,murmur
+```
+
+Mac App Store, English — 93/100. No motorcycle vocabulary at all:
+
+```
+murmur,voip,chat,intercom,ptt,walkie,talkie,group,server,radio,headset,opus,client,comms,talk
+```
+
+Mac App Store, Russian — 88/100:
+
+```
+рация,интерком,связь,голосовой,чат,гарнитура,сервер,шумоподавление,murmur,voip,ptt,канал
+```
+
+<details>
+<summary>What 1.0 still carries, until 1.0.1 ships</summary>
+
+iOS English was 99/100 and the Mac held the older iOS set at 94 — the two had
+drifted, and neither matched what this file said. That is the drift the survey
+exists to catch.
 
 ```
 motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,murmur,headset,voice chat
-```
-
-Mac App Store, English — 94/100, and the older iOS set word for word:
-
-```
 motorcycle,helmet,intercom,mumble,voip,rider,ptt,walkie,talkie,group,bike,comms,murmur,headset
 ```
+
+</details>
 
 **iOS and the Mac App Store have separate keyword fields, and this file used to
 have one.** They live on different version localisations and can hold
@@ -118,6 +148,29 @@ Two of the fourteen words above are also being paid for twice. Apple indexes the
 name, the subtitle and the keyword field as one bag, and the subtitle is already
 "Mumble voice for motorcycles" — so `mumble` and `motorcycle` here are eighteen
 characters spent on words Apple already has.
+
+## Promotional text — Mac App Store (170)
+
+**Different copy from iOS, and this file did not know it existed.** The Mac
+carries neither the tagline nor the "built for one job" pair; it sells the
+performance ladder and the recorder, which is a reasonable thing to lead with
+for somebody at a desk. Found by reading the store rather than by anybody
+writing it down, and at exactly 170 of 170 in both languages, so a single added
+word breaks it.
+
+```
+On a slow phone the noise chain steps down in a measured order and says which stages went. Word starts survive. Hear a recording as the far end did, or through the chain.
+```
+
+```
+На медленном телефоне цепочка отключает ступени в заранее измеренном порядке и говорит, каких не стало. Начала слов целы. Запись звучит так, как её услышал бы собеседник.
+```
+
+**A new version record does not inherit promotional text.** It comes up empty
+while every other field is cloned, so a version submitted without noticing
+publishes with the field blank — the one Apple field that can be changed
+without a review, silently dropped. Copy it forward per platform, since these
+two are not the same text.
 
 ## Russian subtitle — App Store, Mac App Store (30)
 

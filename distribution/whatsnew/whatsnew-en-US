@@ -1,0 +1,3 @@
+Steadier voice on a poor mobile signal.
+
+When two packets went missing together, the repair took the wrong copy and damaged three pieces of audio instead of one — a click or a stutter where a word should have been. That is fixed. Error correction now runs at full strength all the time: measuring it showed the stronger setting costs no extra data at all, so there was nothing to save by being sparing with it.

@@ -188,6 +188,20 @@ jobs:
           packageName: com.mumbleway.mumbleway
           releaseFiles: app/build/app/outputs/bundle/release/app-release.aab
           track: ${{ inputs.track || 'internal' }}
+          # What testers see on the update, in both languages.
+          #
+          # A directory rather than a string because the action wants one file
+          # per language, named for the listing's own codes — `whatsnew-en-US`
+          # and `whatsnew-ru-RU`, which have to match the locales Play holds or
+          # the file is ignored without complaint. The text is written and
+          # reviewed in docs/RELEASE_NOTES.md; these are the copies that ship,
+          # and they are the ones to edit before a release.
+          #
+          # Play is the only store this can be done for from here. Apple's
+          # notes need a version record that does not exist until somebody
+          # decides to ship a version, and Microsoft's start a certification
+          # run — both decisions rather than steps.
+          whatsNewDirectory: distribution/whatsnew
           # Live on the internal track, draft everywhere else.
           #
           # Internal testing reaches only people who have been named in the

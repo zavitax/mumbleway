@@ -522,6 +522,30 @@ Verify before committing rather than after. `get` returns the draft, and the
 package list should show the new version as `PendingUpload` beside the old one
 as `PendingDelete`; anything else means the package did not attach.
 
+#### If you realise too late, a submission you made can be cancelled
+
+`msstore submission delete <productId> --no-confirm` removes a submission that
+is already in certification, and the app drops straight back to its last
+published state. Then re-stage and rebuild as above.
+
+**`--no-confirm` is not optional in a non-interactive shell.** Without it the
+command asks Yes/No, finds no stdin, and dies inside `YesNoConfirmationAsync`
+with a stack trace — which reads like a failure to delete and is a failure to
+*ask*. Nothing is changed when that happens; check the status and try again.
+
+**And the warning under 4f about a wedged cancelled submission does not apply
+to this.** That one is about a submission cancelled by a person in Partner
+Center, which the Ingestion API then refuses to delete because it did not
+create it. A submission the API created, the API can remove — verified on
+4 September 2026, when the search terms and Features were left out of a
+submission that had already reached certification and the whole thing had to be
+withdrawn and redone. It came back clean.
+
+Which is the real lesson: **put everything in the first submission.** The
+listing is locked the moment one is in flight, so a field left out is either a
+second certification run or a cancellation. Description, search terms, Features
+and release notes all live in `BaseListing` and all go in together.
+
 ### 4f. Automating the submission
 
 **The build was always automated; this is about the upload.** Every publish run

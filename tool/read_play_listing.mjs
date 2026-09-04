@@ -126,6 +126,18 @@ try {
     // A track with no releases is why a public page can 404 while the listing
     // in the console is complete.
     console.log(`  ${t.track.padEnd(12)} ${rel || 'no releases'}`);
+    // Release notes are worth printing because the way they go missing is
+    // silent: `whatsNewDirectory` matches files by locale name, and a file
+    // named for a locale the listing does not have is skipped without a word.
+    // "No notes" and "notes that never uploaded" look identical in the console.
+    for (const r of t.releases ?? []) {
+      for (const n of r.releaseNotes ?? []) {
+        console.log(`    ${n.language}: ${(n.text ?? '').split('\n')[0].slice(0, 72)}`);
+      }
+      if (r.status === 'completed' && !(r.releaseNotes ?? []).length) {
+        console.log('    (no release notes on this one)');
+      }
+    }
   }
 
   const listings = await call(tok, 'GET', `/applications/${PKG}/edits/${editId}/listings`);

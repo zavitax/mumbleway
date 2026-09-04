@@ -59,18 +59,36 @@ only phrase in the notice nobody could say out loud.
 | Store | Field | How it gets there |
 |---|---|---|
 | Google Play | *What's new* | **Automatic.** `distribution/whatsnew/` is uploaded with the bundle by `publish.yml`. |
-| TestFlight | *What to Test* | By hand, in App Store Connect, per build. |
-| App Store | *What's New in This Version* | By hand — **and it needs a new version record.** A released version's notes cannot be edited. |
-| Mac App Store | *What's New in This Version* | Same, and separately from iOS: they are different version records. |
-| Microsoft Store | *What's new in this version* | By hand in Partner Center, as part of a submission. |
+| TestFlight | *What to Test* | API: `betaBuildLocalizations.whatsNew`, per build. |
+| App Store | *What's New in This Version* | API: `appStoreVersionLocalizations.whatsNew` — **needs an editable version record.** A released version's notes cannot be changed. |
+| Mac App Store | *What's New in This Version* | Same, and separately from iOS: two version records, and they drift. |
+| Microsoft Store | *What's new in this version* | Part of a submission, and a submission in certification locks it. |
+
+**Apple has two release-note fields and they are not connected.** The App Store
+one lives on a *version* localization and is what a customer reads; TestFlight's
+lives on a *build* as a `betaBuildLocalization` and is what a tester reads.
+Writing one does nothing for the other, so on Apple release notes are always
+done twice. Both were empty on 1.0.1 until they were filled deliberately.
+
+Two traps in the API, each of which reads as something else:
+
+- **`/apps/{id}/builds` refuses `sort` and returns an unordered page.** Asking
+  it for "the newest" gave a build from three weeks earlier and hid the two
+  uploaded that morning entirely — which looks exactly like a build that failed
+  to upload. Use `/builds?filter[app]=…&sort=-uploadedDate`, which sorts.
+- **A new version record does not inherit promotional text.** Every other field
+  clones and that one arrives empty, so a version submitted without noticing
+  publishes with Apple's one review-free field blank.
 
 </div>
 
-**Only Play is wired up.** That is not an oversight to fix casually: Apple's
-notes belong to a version record that does not exist until somebody decides to
-ship a version, and Microsoft's belong to a submission that starts a
-certification run. Both are decisions rather than steps, and a workflow that
-made them automatically would be making them on nobody's authority.
+**Only Play is wired into `publish.yml`, and that stays true even though the
+Apple half turned out to be scriptable.** Apple's notes belong to a version
+record that does not exist until somebody decides to ship a version, and
+Microsoft's belong to a submission that starts a certification run. Both are
+decisions rather than steps, and a workflow that made them automatically would
+be making them on nobody's authority. Scripting them for a human to run is a
+different thing from a release doing it unasked.
 
 ## Writing the next one
 

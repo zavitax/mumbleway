@@ -10,8 +10,9 @@ two files rather than a fenced block, because the action reads a directory.
 This file is where the text is written and reviewed; those files are what ships.
 Change both, or Play gets last release's notes.
 
-The other three stores have no route from this repository and are pasted by
-hand. Where they are pasted is in [the table below](#where-each-one-goes).
+Only Play is uploaded by the workflow. Apple's two fields are scriptable and
+Microsoft's are not; [the table below](#where-each-one-goes) says which is
+which, and why that is a choice rather than a gap.
 
 Limits, shortest first: **Google Play 500**, Microsoft Store 1500, App Store
 "What's New" 4000, TestFlight "What to Test" 4000. Writing to 500 means one text
@@ -19,9 +20,11 @@ serves all four.
 
 ---
 
-## Build 143
+## 1.0.1, build 144
 
-The first release since 142, published 17 August.
+The first release since 1.0 build 142, published 17 August. It went out as
+1.0.1 rather than 1.0.0 because a shipped version closes its train and Apple
+refuses another build under it — see `CLAUDE.md`.
 
 Two things changed under the floor and one of them is worth a rider's
 attention. The review prompt is not mentioned: it announces itself, and a

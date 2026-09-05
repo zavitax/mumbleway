@@ -72,20 +72,20 @@ A Mumble voice client built for talking from inside a motorcycle helmet at speed
 Changeable without a review, so use it for what is new.
 
 Two sentences and then two more. The first pair says what the app is to
-somebody who has never heard of Mumble; the second says what it does about the
-one thing a rider cares about. Nothing here needs a review to change, so it can
-follow whatever is worth saying this month.
+somebody who has never heard of Mumble; the second says what a rider gets.
 
-The Russian is 165 characters against the English's 164, which is the rare case
-of Russian not overrunning — it does here only because «Ради одного» carries
-"built for one job" in three words. The whole of it is within five characters
-of the limit in both languages, so a single added word breaks it; run
-`tool/check_listing.py` rather than trusting an edit to be small.
+**The second pair used to be a feature list** — "Built for one job: being heard
+from inside a helmet at speed. Wind and engine noise suppression with AI voice
+filter." True, and aimed at the problem rather than the outcome, in the space
+that has to earn the install. The same fault the Mac copy had twice; the rule
+is written out under the Mac text below.
+
+English — 150/170:
 
 ```
 Talk through the wind. Voice chat for bikers.
 
-Built for one job: being heard from inside a helmet at speed. Wind and engine noise suppression with AI voice filter.
+Hear your group and be heard, however far apart you ride — through the intercom already in your helmet.
 ```
 
 ## Keywords — App Store (100, comma-separated, no spaces)
@@ -247,10 +247,14 @@ person to edit this line should know which sense they are inheriting.
 
 ## Russian promotional text — App Store (170)
 
+144/170. Replaced alongside the English, and for the same reason; «Ради одного:
+чтобы вас слышали в шлеме на скорости. Подавление шума ветра и мотора,
+нейросетевой фильтр голоса.» was what it said before.
+
 ```
 Говорите сквозь ветер. Голосовая связь для байкеров.
 
-Ради одного: чтобы вас слышали в шлеме на скорости. Подавление шума ветра и мотора, нейросетевой фильтр голоса.
+Слышать своих и быть услышанным на любом расстоянии — через интерком, который уже в шлеме.
 ```
 
 ## Russian keywords — App Store (100, comma-separated, no spaces)

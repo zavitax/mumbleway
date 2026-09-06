@@ -1,6 +1,6 @@
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 
 /// Where to send somebody who has agreed to leave a review.
 ///
@@ -20,9 +20,15 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 class StoreLinks {
   const StoreLinks._();
 
-  /// Apple's numeric id for MumbleWay, from App Store Connect. The listing is
-  /// universal — iPhone, iPad and Mac are one product page — so one id covers
-  /// all three and `apps.apple.com` redirects to the reader's own storefront.
+  /// Apple's numeric id for MumbleWay, from App Store Connect. One id and one
+  /// URL cover iPhone, iPad and Mac, and `apps.apple.com` redirects to the
+  /// reader's own storefront.
+  ///
+  /// **One page does not mean one listing.** iOS and macOS are separate version
+  /// records behind that id, and they hold different keywords, different
+  /// descriptions and different promotional text — see `docs/STORE_SURVEY.md`,
+  /// which found them drifted apart. It makes no difference to this link, and
+  /// it is worth knowing before assuming a change on one is a change on both.
   static const appleId = '6797305046';
 
   /// The Microsoft Store product id, as it appears in the badge link on the
@@ -31,48 +37,64 @@ class StoreLinks {
 
   static const _androidPackage = 'com.mumbleway.mumbleway';
 
+  /// The operating system, as one string, or `web` / `unknown`.
+  ///
+  /// Split out so the link builders below are pure functions of it. `Platform`
+  /// cannot be faked, so a test running on Windows could only ever exercise
+  /// the Windows branch — and the branch that matters most is whichever one
+  /// the tester is not on.
+  static String get _os {
+    if (kIsWeb) return 'web';
+    try {
+      return Platform.operatingSystem;
+    } catch (_) {
+      // Platform is unavailable under some test harnesses.
+      return 'unknown';
+    }
+  }
+
   /// The page to open, or null where there is no store to review in — a
   /// sideloaded Windows build, a Linux desktop, the web.
-  static Uri? review() {
-    if (kIsWeb) return null;
-    try {
-      if (Platform.isIOS || Platform.isMacOS) {
+  static Uri? review() => reviewFor(_os);
+
+  /// Where to go when the platform's own scheme did not open — Play not
+  /// installed, the Store app missing from a stripped Windows image.
+  static Uri? webFallback() => webFallbackFor(_os);
+
+  @visibleForTesting
+  static Uri? reviewFor(String os) {
+    switch (os) {
+      case 'ios':
+      case 'macos':
         // `action=write-review` opens the page with the review sheet already
         // up, which is the whole point of sending them there.
         return Uri.parse(
           'https://apps.apple.com/app/id$appleId?action=write-review',
         );
-      }
-      if (Platform.isAndroid) {
+      case 'android':
         // The `market:` scheme opens the Play app directly. `url_launcher`
         // reports failure if nothing handles it, and the caller falls back.
         return Uri.parse('market://details?id=$_androidPackage');
-      }
-      if (Platform.isWindows) {
+      case 'windows':
         return Uri.parse('ms-windows-store://review/?ProductId=$microsoftId');
-      }
-    } catch (_) {
-      // Platform is unavailable under some test harnesses.
+      default:
+        return null;
     }
-    return null;
   }
 
-  /// Where to go when the platform's own scheme did not open — Play not
-  /// installed, the Store app missing from a stripped Windows image.
-  static Uri? webFallback() {
-    if (kIsWeb) return null;
-    try {
-      if (Platform.isAndroid) {
+  @visibleForTesting
+  static Uri? webFallbackFor(String os) {
+    switch (os) {
+      case 'android':
         return Uri.parse(
           'https://play.google.com/store/apps/details?id=$_androidPackage',
         );
-      }
-      if (Platform.isWindows) {
+      case 'windows':
         return Uri.parse('https://apps.microsoft.com/detail/$microsoftId');
-      }
-    } catch (_) {
-      // As above.
+      default:
+        // Apple has no second address: `apps.apple.com` is already the web
+        // page, so a failure there is not something another URL fixes.
+        return null;
     }
-    return null;
   }
 }

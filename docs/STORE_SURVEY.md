@@ -149,7 +149,7 @@ fixes the lot and nothing else needs re-reading first.
 This is the fault `CLAUDE.md` describes as the one no reader will report,
 because it looks exactly like the rest of the sentence.
 
-### 2. Google Play had no public listing — resolved, and not instant.
+### 2. Google Play had no public listing — resolved, and it took two days.
 
 `play.google.com/store/apps/details?id=com.mumbleway.mumbleway` returns 404 —
 byte for byte the same "Not Found" page as a package name that was never
@@ -191,7 +191,19 @@ a graded set of packages — an enormous one, a mid-sized one and
 profile — all return 200 from the same path. Only this package 404s. Blaming
 the fetcher would have been the comfortable answer and it is wrong.
 
-What is left is **app-level**, and all of it is invisible to the API:
+**It went live on 6 September**, reported by the app's owner rather than
+measured here — by then both machines had lost their route to
+`play.google.com` and a control fetch failed with them, so there was nothing
+left to measure with. Recorded as second-hand for that reason; everything above
+it was measured, this line was not.
+
+The cause was never established. It resolved on its own between the checks
+below and the next morning, which fits a first-release review completing and
+fits managed publishing being released by hand equally well. What follows is
+therefore the shape of the problem rather than its answer, kept because the
+next first release will hit the same wait.
+
+What it was down to is **app-level**, and all of it is invisible to the API:
 
 - **Still in review.** The survey found production with no releases at all on
   3 September, so the release two days later was the app's first ever, and a

@@ -149,7 +149,7 @@ fixes the lot and nothing else needs re-reading first.
 This is the fault `CLAUDE.md` describes as the one no reader will report,
 because it looks exactly like the rest of the sentence.
 
-### 2. Google Play has no public listing.
+### 2. Google Play had no public listing — resolved, and not instant.
 
 `play.google.com/store/apps/details?id=com.mumbleway.mumbleway` returns 404 —
 byte for byte the same "Not Found" page as a package name that was never
@@ -157,15 +157,37 @@ registered, in `en_US`, `ru` and three storefronts. A control fetch of a
 well-known app from the same machine returns 200, so it is the listing and not
 the fetcher.
 
-The console gives the reason in one line: **production has no releases.** The
-listing itself is finished — both languages written, every required graphic
-present — so nothing is blocking publication except the decision to publish.
-Which follows from `publish.yml` uploading to the internal track and putting
+The console gave the reason in one line: **production had no releases.** The
+listing itself was finished — both languages written, every required graphic
+present — so nothing was blocking publication except the decision to publish.
+Which followed from `publish.yml` uploading to the internal track and putting
 every wider track up as a draft, on purpose.
 
-Worth stating because "we are on four stores" is easy to believe and is three.
+**That decision was taken on 6 September 2026** and production now carries
+`144 (1.0.1)`, with release notes in both languages.
 
-### 3. The alpha track does not match what the workflow claims.
+**The page did not appear with it.** Hours later the product URL still answered
+404 to an anonymous request — byte for byte the same "Not Found" as before —
+while a control fetch of a well-known app from the same machine returned 200. A
+first production release waits on Google's own review, and the listing does not
+serve until that clears. So "completed" on the track and "live on the store"
+are different things, and the gap between them is the window in which sharing
+the link sends people to a 404.
+
+Re-check with the control before concluding either way; the track state alone
+cannot tell you.
+
+### 3. Beta carries the build without its release notes.
+
+Every other track has them in both languages. Beta has `144 (1.0.1)` and
+nothing to read, because it was promoted in the console rather than through
+`whatsNewDirectory`, and a console promotion carries no notes unless somebody
+types them.
+
+Which is the same silent failure the reader was taught to report: nothing
+distinguishes "this release has no notes" from "the notes never arrived".
+
+### 4. The alpha track does not match what the workflow claims.
 
 `publish.yml` uploads every track wider than internal as a draft, so that a
 release cannot go live because a workflow ran. Alpha carries a **completed**
@@ -175,7 +197,7 @@ that is a draft with no name and no version codes at all.
 An empty draft is what a run leaves behind when a bundle is uploaded and never
 assigned. Harmless until the next promotion, which it can quietly block.
 
-### 4. Apple says the app speaks English only.
+### 5. Apple says the app speaks English only.
 
 The Russian storefront serves a fully Russian description, so the listing
 localisation is there. But the product page's *Languages* row reads `EN` alone,
@@ -186,7 +208,7 @@ it, so either the shipped 1.0 predates that or Apple's metadata is stale.
 Either way a Russian shopper is told the app does not speak Russian, which is
 the sort of thing that stops a download before the description is read.
 
-### 5. The two Apple listings are not the same, and the Mac one is the odd one.
+### 6. The two Apple listings are not the same, and the Mac one is the odd one.
 
 This was recorded the wrong way round on the first pass, when the two could not
 be told apart. Read directly, they differ:
@@ -206,7 +228,7 @@ what the app does when it is not in front of them.
 Their promotional texts differ too: iOS English sits at 164 of 170 and the Mac
 at exactly 170.
 
-### 6. The Mac keyword field is a copy of the iOS one, and the record of both is stale.
+### 7. The Mac keyword field is a copy of the iOS one, and the record of both is stale.
 
 Now readable, and both halves of the recommendation turn out to be evidenced
 rather than argued. The Mac App Store keyword field is:
@@ -231,7 +253,7 @@ reason the reading tool is now committed rather than improvised.
 Note also that `voice chat` spends a character on a space. Apple splits on
 commas, so a space inside a term buys nothing that `voice,chat` would not.
 
-### 7. The Microsoft Store is running at a quarter of its metadata.
+### 8. The Microsoft Store is running at a quarter of its metadata.
 
 Four Features of twenty. Four search terms of seven in English, two of seven in
 Russian. Search terms are never displayed and cost nothing to be wrong about,
@@ -239,7 +261,7 @@ which makes them the cheapest discoverability anywhere in this project —
 [STORE_LISTING.md](STORE_LISTING.md) said exactly that months ago and the slots
 are still empty.
 
-### 8. The Russian Features list drops both words a Russian user would search for.
+### 9. The Russian Features list drops both words a Russian user would search for.
 
 English reads *Voice communication · Mumble client · Murmur client · Helmet
 noise cancellation*. Russian reads «Шумоподавление · Созвон · Коммуникация ·
@@ -247,7 +269,7 @@ noise cancellation*. Russian reads «Шумоподавление · Созво�
 synonyms. Somebody looking for a Mumble client in Russian will not find that
 list.
 
-### 9. Play's short description never names a motorcycle.
+### 10. Play's short description never names a motorcycle.
 
 "Talk to your group over Mumble. Built for wind and engine noise inside a
 helmet." — no *motorcycle*, no *bike*, no *rider*, no *Bluetooth*, no

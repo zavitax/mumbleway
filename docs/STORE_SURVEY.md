@@ -38,11 +38,27 @@ returns everything including the keywords. `tool/read_app_store_listing.mjs`
 does that, taking its credentials from whatever the MCP is already configured
 with rather than keeping a second copy of them.
 
-**`play.google.com` from the Windows machine.** TLS is reset immediately after
-the Client Hello, which is SNI filtering rather than an outage: DNS resolves,
-`www.google.com` answers, and the same request from the Mac over SSH completes.
-`androidpublisher.googleapis.com` is *not* filtered, so the Developer API works
-from either machine and is the better route anyway.
+**`play.google.com` — unreachable from here by every route now.** TLS is reset
+straight after the Client Hello, which is SNI filtering rather than an outage:
+DNS resolves and `www.google.com` answers. The Mac over SSH was the way round
+it on 3 September; by the 6th the Mac failed the same way, and a control fetch
+of a well-known app failed with it, so the workaround is gone rather than the
+app being at fault.
+
+**The system proxy does not help, and it is not broken.** Windows has a client
+on `127.0.0.1:10809` (HTTP) and `:10808` (SOCKS). The tunnel works —
+`api.ipify.org` reports a different address through it than direct, and
+`www.google.com` answers on every route. `play.google.com` fails on all four:
+direct, `--noproxy '*'`, the HTTP proxy and SOCKS. That pattern fits a
+per-domain rule in the proxy client sending this one host outside the tunnel
+and back into the filter. Worth knowing before spending an afternoon on curl
+flags, as this did.
+
+So **the public Play page cannot be checked from this project's machines.** The
+console can: `androidpublisher.googleapis.com` is a different host and is not
+filtered, so `tool/read_play_listing.mjs` works normally and everything in the
+Google Play section above came through it. What needs a browser is the rendered
+page — whether it serves at all, and what a visitor sees.
 
 ### Repeating it
 

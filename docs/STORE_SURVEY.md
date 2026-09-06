@@ -151,19 +151,31 @@ whose 4000 is the binding limit. That is deliberate and should stay.
 
 ## Findings
 
-### 1. Every store says the delay settles at 60 ms. It is 200.
+### 1. Every store said the delay settles at 60 ms — three of four now fixed.
 
 Six copies across four stores — Apple EN and RU, Microsoft EN and RU, Play EN
 and RU. All carry "the delay is then paid back to 60 ms" / «задержка снижается
 до 60 мс». `FLOOR_MS` is 200.
 
 `STORE_DESCRIPTION.md` was corrected, and so was the site. **No store was.**
-Diffed against the repository copy, this one line is the *only* substantive
-difference in all six — everything else is byte-identical, so one edit per store
-fixes the lot and nothing else needs re-reading first.
+Diffed against the repository copy, this one line was the *only* substantive
+difference in all six — everything else byte-identical.
+
+**Fixed and verified live on 6 September**, read back from the public listings
+rather than from the consoles that were written to:
+
+- **Google Play** — the listing carries 200 ms in both languages.
+- **App Store and Mac App Store** — 1.0.1 is `READY_FOR_SALE` and the public
+  description carries 200 ms in both languages, with the release notes.
+- **Microsoft Store — still serving 60 ms.** The app is live, the *update* is
+  not: the submission carrying the corrected description, the 7-of-7 search
+  terms, the 14 Features and the release notes is still in certification, and
+  the public payload still reports the old four Features and a last update of
+  4 September. Nothing more to do but wait for it.
 
 This is the fault `CLAUDE.md` describes as the one no reader will report,
-because it looks exactly like the rest of the sentence.
+because it looks exactly like the rest of the sentence — and it survived three
+weeks and a full survey before anybody read the store instead of the repository.
 
 ### 2. Google Play had no public listing — resolved, and it took two days.
 

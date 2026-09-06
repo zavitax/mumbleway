@@ -166,16 +166,38 @@ every wider track up as a draft, on purpose.
 **That decision was taken on 6 September 2026** and production now carries
 `144 (1.0.1)`, with release notes in both languages.
 
-**The page did not appear with it.** Hours later the product URL still answered
-404 to an anonymous request — byte for byte the same "Not Found" as before —
-while a control fetch of a well-known app from the same machine returned 200. A
-first production release waits on Google's own review, and the listing does not
-serve until that clears. So "completed" on the track and "live on the store"
-are different things, and the gap between them is the window in which sharing
-the link sends people to a 404.
+**The page did not appear with it**, and the reason cannot be read from the
+API. Hours later the product URL still answered 404 to an anonymous request in
+**six storefronts** — US, GB, DE, IL, IN and RU — while a control fetch of a
+well-known app through the same path returned 200 every time.
 
-Re-check with the control before concluding either way; the track state alone
-cannot tell you.
+Measurement rules out most of the usual answers. Not caching: a cache-busted
+request 404s and the control does not. Not the rollout: the release is
+`status: completed` with no `userFraction`, so it is at 100%. Not country
+targeting on the release: there is no `countryTargeting` field on it. Not one
+misbehaving storefront: all six agree.
+
+Two candidates remain and they look identical from outside:
+
+- **Google has not finished reviewing it.** A first production release is
+  reviewed before the listing appears.
+- **The production track's country list is empty.** An app published to no
+  countries 404s everywhere, exactly as observed.
+
+**The API cannot tell them apart, and that is the thing worth writing down.**
+`androidpublisher` v3 has no app-level publishing or review status at all, so a
+track reading `completed` is a record of what *you* asked for and says nothing
+about what Google did with it. Country availability is not readable either:
+`edits/{id}/countryavailability/{track}` was removed and now answers 404 itself,
+which is easy to misread as another symptom rather than a dead endpoint.
+
+So this one ends in the console: the app dashboard shows the review state, and
+**Production → Countries/regions** shows the list. Everything up to that point
+is in `tool/read_play_listing.mjs`; past it, a browser is required.
+
+The general lesson is the same one this file keeps finding: "completed" on the
+track and "live on the store" are different things, and the gap between them is
+the window in which sharing the link sends people to a 404.
 
 ### 3. Beta carries the build without its release notes.
 

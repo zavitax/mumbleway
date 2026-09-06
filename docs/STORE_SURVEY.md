@@ -177,12 +177,30 @@ request 404s and the control does not. Not the rollout: the release is
 targeting on the release: there is no `countryTargeting` field on it. Not one
 misbehaving storefront: all six agree.
 
-Two candidates remain and they look identical from outside:
+The country list turned out to be full, which kills the second of the two
+candidates that were left, and one more probe killed the rest of the guesswork.
 
-- **Google has not finished reviewing it.** A first production release is
-  reviewed before the listing appears.
-- **The production track's country list is empty.** An app published to no
-  countries 404s everywhere, exactly as observed.
+**The app appears nowhere in Play search** — zero hits for its package in the
+results, while a control app appears in its own search through the same
+fetcher. So this is not a detail page that is broken. The app has never entered
+the public catalogue.
+
+And the instrument was checked before that conclusion was drawn, which mattered:
+a graded set of packages — an enormous one, a mid-sized one and
+`se.lublin.mumla`, a small open-source Mumble client much closer to this app's
+profile — all return 200 from the same path. Only this package 404s. Blaming
+the fetcher would have been the comfortable answer and it is wrong.
+
+What is left is **app-level**, and all of it is invisible to the API:
+
+- **Still in review.** The survey found production with no releases at all on
+  3 September, so the release two days later was the app's first ever, and a
+  first production release is reviewed before the app joins the catalogue.
+- **Managed publishing is on.** Approved changes are then held until somebody
+  presses Publish — track completed, review possibly finished, nothing public.
+- **A declaration is unresolved.** Data safety, content rating, target
+  audience, app access, ads, privacy policy: any one of them incomplete and the
+  app never goes live.
 
 **The API cannot tell them apart, and that is the thing worth writing down.**
 `androidpublisher` v3 has no app-level publishing or review status at all, so a

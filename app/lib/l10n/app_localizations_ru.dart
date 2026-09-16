@@ -181,6 +181,11 @@ class LRu extends L {
   String get connectFirst => 'Сначала подключитесь';
 
   @override
+  String peerUsesMumbleway(String version) {
+    return 'Использует MumbleWay $version';
+  }
+
+  @override
   String get removeServerTitle => 'Удалить сервер?';
 
   @override

@@ -783,14 +783,26 @@ class StartupOptions {
   final NoiseSetting noise;
   final MicMode micMode;
 
+  /// The app's version as the stores know it, e.g. `1.0.1`.
+  ///
+  /// From Dart, where it is read off the installed package, rather than from
+  /// this crate's `CARGO_PKG_VERSION` — which is `0.1.0` and has never been
+  /// bumped, and is how every server came to be told this was "MumbleWay 0.1".
+  final String appVersion;
+
   const StartupOptions({
     required this.storageDir,
     required this.noise,
     required this.micMode,
+    required this.appVersion,
   });
 
   @override
-  int get hashCode => storageDir.hashCode ^ noise.hashCode ^ micMode.hashCode;
+  int get hashCode =>
+      storageDir.hashCode ^
+      noise.hashCode ^
+      micMode.hashCode ^
+      appVersion.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -799,7 +811,8 @@ class StartupOptions {
           runtimeType == other.runtimeType &&
           storageDir == other.storageDir &&
           noise == other.noise &&
-          micMode == other.micMode;
+          micMode == other.micMode &&
+          appVersion == other.appVersion;
 }
 
 /// A status change for one server.
@@ -1812,6 +1825,15 @@ class UiUser {
   /// One word for the roster: talking, silent, muted, deafened, muted for you.
   final String status;
 
+  /// The MumbleWay version this user's client reported, or `None` if it has
+  /// not identified itself as MumbleWay.
+  ///
+  /// **`None` is not "does not run MumbleWay".** A build from before the
+  /// handshake says nothing, and on a server older than 1.4.0 nobody can say
+  /// anything. For our own row it is set only where the handshake can run, so
+  /// a badge on ourselves means everybody else's badges mean something too.
+  final String? mumblewayVersion;
+
   const UiUser({
     required this.session,
     required this.name,
@@ -1821,6 +1843,7 @@ class UiUser {
     required this.deafened,
     required this.localMute,
     required this.status,
+    this.mumblewayVersion,
   });
 
   @override
@@ -1832,7 +1855,8 @@ class UiUser {
       muted.hashCode ^
       deafened.hashCode ^
       localMute.hashCode ^
-      status.hashCode;
+      status.hashCode ^
+      mumblewayVersion.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1846,7 +1870,8 @@ class UiUser {
           muted == other.muted &&
           deafened == other.deafened &&
           localMute == other.localMute &&
-          status == other.status;
+          status == other.status &&
+          mumblewayVersion == other.mumblewayVersion;
 }
 
 /// A window of raw microphone audio for the background classifier.

@@ -46,6 +46,9 @@ pub enum MessageType {
     RequestBlob = 23,
     ServerConfig = 24,
     SuggestConfig = 25,
+    /// Data one client addresses to others, relayed by a 1.4.0+ server with
+    /// the sender stamped on it. See `session::peers`, which is its only user.
+    PluginDataTransmission = 26,
 }
 
 impl MessageType {
@@ -78,6 +81,7 @@ impl MessageType {
             23 => RequestBlob,
             24 => ServerConfig,
             25 => SuggestConfig,
+            26 => PluginDataTransmission,
             _ => return None,
         })
     }

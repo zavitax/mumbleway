@@ -6,6 +6,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, listEquals, visibleForTesting;
 import 'package:flutter/widgets.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -674,6 +675,7 @@ class AppState extends ChangeNotifier {
           storageDir: dir.path,
           noise: noise,
           micMode: micMode,
+          appVersion: await _appVersion(),
         ),
       );
 
@@ -812,6 +814,19 @@ class AppState extends ChangeNotifier {
     final code = prefs.getString(_prefsLocale);
     if (code != null && supportedLocales.any((l) => l.languageCode == code)) {
       _locale = Locale(code);
+    }
+  }
+
+  /// The installed version, as the stores know it — `1.0.1`, not a build number.
+  ///
+  /// Other MumbleWay clients are told this in the handshake, and servers show it
+  /// in their user information. An empty string if the platform will not say,
+  /// which still identifies the app as MumbleWay; it just cannot say which one.
+  Future<String> _appVersion() async {
+    try {
+      return (await PackageInfo.fromPlatform()).version;
+    } catch (_) {
+      return '';
     }
   }
 

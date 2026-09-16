@@ -6,7 +6,7 @@ description: What MumbleWay does with your voice, and what it does not.
 ---
 
 **MumbleWay** — voice for bikers.
-Developer: Ilya Melamed. Last updated: 15 August 2026.
+Developer: Ilya Melamed. Last updated: 16 September 2026.
 
 ## The short version
 
@@ -69,13 +69,27 @@ stops further syncing.
 
 | To | When | What it sees |
 |---|---|---|
-| The Mumble server you chose | While connected | Your voice, your username, your IP address |
+| The Mumble server you chose | While connected | Your voice, your username, your IP address, and the app's name and version, your operating system and its processor type |
 | `publist.mumble.info` | Only when you open the public server directory | Your IP address, as any website would |
 | `zavitax.github.io` | Only when an invitation link is *followed* in a browser | Your IP address. **Not** the server, channel or password in the invitation |
 | Your local network | Only if you connect to a server on it | — |
 
 The public directory is run by the Mumble project, not by MumbleWay. If you
 never open it, the app never contacts it.
+
+### Other MumbleWay users on the same server
+
+When you connect, MumbleWay tells the other MumbleWay users on that server that
+you are using it too, and which version. Their app marks you in the list of
+people in the channel, and yours marks them.
+
+That is all it says: the app's name, its version, and which MumbleWay features
+it understands. Nothing about your device, your location or anything you have
+entered. Only people on the same server at the same time receive it, the
+server passes it on like everything else, and on a server older than Mumble
+1.4 nobody receives it at all.
+
+People using other Mumble apps are told nothing — their app ignores it.
 
 ### Invitation links
 

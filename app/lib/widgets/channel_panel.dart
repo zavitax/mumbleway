@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../src/rust/api/mumbleway.dart';
 import '../l10n/app_localizations.dart';
@@ -190,6 +191,50 @@ class ChannelUserList extends StatelessWidget {
   }
 }
 
+/// Marks somebody whose client identified itself as MumbleWay.
+///
+/// **The app's own icon, very small**, rather than a generic symbol. It is the
+/// picture riders already know from their home screen, so it says "same app as
+/// you" without a legend, and nothing else in the roster looks like it.
+///
+/// Only ever shown on evidence — see `session::peers` in the core. Its absence
+/// is not a claim: an older MumbleWay says nothing, and on a server too old to
+/// relay the handshake nobody can say anything. For the same reason the core
+/// badges our own row only where the handshake runs, so that everybody else's
+/// badges mean something.
+class MumblewayBadge extends StatelessWidget {
+  const MumblewayBadge({super.key, required this.version});
+
+  /// As the peer reported it, already cleaned and cut to length by the core.
+  /// May be empty, which still identifies the app, just not which build.
+  final String version;
+
+  static const double size = 16;
+
+  @override
+  Widget build(BuildContext context) {
+    // Trimmed so an empty version does not leave a trailing space in either
+    // language.
+    final label = L.of(context).peerUsesMumbleway(version).trim();
+    return Tooltip(
+      message: label,
+      child: ClipRRect(
+        // The launcher's own rounding at this size, near enough; the SVG is
+        // full-bleed because the platforms mask it themselves.
+        borderRadius: BorderRadius.circular(size * 0.22),
+        child: SvgPicture.asset(
+          'assets/icon/mumbleway.svg',
+          width: size,
+          height: size,
+          // The tooltip carries the label for screen readers; the picture adds
+          // nothing a second reading would.
+          excludeFromSemantics: true,
+        ),
+      ),
+    );
+  }
+}
+
 class _UserRow extends StatelessWidget {
   const _UserRow({required this.serverId, required this.user});
 
@@ -224,14 +269,27 @@ class _UserRow extends StatelessWidget {
           Icon(icon, size: 18, color: color),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              user.name,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: speaking ? FontWeight.w700 : FontWeight.w400,
-                color: speaking ? StatusColors.talking : null,
-              ),
+            // The badge rides directly after the name rather than at the end
+            // of the row, so it reads as something about this person. The name
+            // is Flexible so a long one still truncates with the badge visible.
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    user.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: speaking ? FontWeight.w700 : FontWeight.w400,
+                      color: speaking ? StatusColors.talking : null,
+                    ),
+                  ),
+                ),
+                if (user.mumblewayVersion case final version?) ...[
+                  const SizedBox(width: 6),
+                  MumblewayBadge(version: version),
+                ],
+              ],
             ),
           ),
           const SizedBox(width: 8),

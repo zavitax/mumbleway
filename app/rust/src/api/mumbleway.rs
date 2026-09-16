@@ -96,6 +96,14 @@ pub struct UiUser {
     pub local_mute: bool,
     /// One word for the roster: talking, silent, muted, deafened, muted for you.
     pub status: String,
+    /// The MumbleWay version this user's client reported, or `None` if it has
+    /// not identified itself as MumbleWay.
+    ///
+    /// **`None` is not "does not run MumbleWay".** A build from before the
+    /// handshake says nothing, and on a server older than 1.4.0 nobody can say
+    /// anything. For our own row it is set only where the handshake can run, so
+    /// a badge on ourselves means everybody else's badges mean something too.
+    pub mumbleway_version: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +306,12 @@ pub struct StartupOptions {
     pub storage_dir: String,
     pub noise: NoiseSetting,
     pub mic_mode: MicMode,
+    /// The app's version as the stores know it, e.g. `1.0.1`.
+    ///
+    /// From Dart, where it is read off the installed package, rather than from
+    /// this crate's `CARGO_PKG_VERSION` — which is `0.1.0` and has never been
+    /// bumped, and is how every server came to be told this was "MumbleWay 0.1".
+    pub app_version: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +546,14 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
 
     // Aggregate every session's events onto the Dart stream.
     let (ev_tx, mut ev_rx) = mpsc::channel::<TaggedEvent>(512);
-    let manager = SessionManager::new(identity.clone(), "MumbleWay 0.1", ev_tx);
+    // The name servers show in their user information, and the version other
+    // MumbleWay clients are told in the handshake. One value for both, so the
+    // two can never disagree about which build this is.
+    let client_name = format!("MumbleWay {}", options.app_version)
+        .trim()
+        .to_string();
+    let manager = SessionManager::new(identity.clone(), client_name, ev_tx)
+        .with_app_version(options.app_version.clone());
 
     let level_shared = shared.clone();
     // Shared with App so the level task can name the server a stream belongs to.
@@ -575,6 +596,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 deafened: u.deaf || u.self_deaf,
                                 local_mute: u.local_mute,
                                 status,
+                                mumbleway_version: u.mumbleway,
                             }
                         })
                         .collect(),

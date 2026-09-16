@@ -3226,10 +3226,12 @@ impl SseDecode for crate::api::mumbleway::StartupOptions {
         let mut var_storageDir = <String>::sse_decode(deserializer);
         let mut var_noise = <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         let mut var_micMode = <crate::api::mumbleway::MicMode>::sse_decode(deserializer);
+        let mut var_appVersion = <String>::sse_decode(deserializer);
         return crate::api::mumbleway::StartupOptions {
             storage_dir: var_storageDir,
             noise: var_noise,
             mic_mode: var_micMode,
+            app_version: var_appVersion,
         };
     }
 }
@@ -3622,6 +3624,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
         let mut var_deafened = <bool>::sse_decode(deserializer);
         let mut var_localMute = <bool>::sse_decode(deserializer);
         let mut var_status = <String>::sse_decode(deserializer);
+        let mut var_mumblewayVersion = <Option<String>>::sse_decode(deserializer);
         return crate::api::mumbleway::UiUser {
             session: var_session,
             name: var_name,
@@ -3631,6 +3634,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
             deafened: var_deafened,
             local_mute: var_localMute,
             status: var_status,
+            mumbleway_version: var_mumblewayVersion,
         };
     }
 }
@@ -4122,6 +4126,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::StartupOptions {
             self.storage_dir.into_into_dart().into_dart(),
             self.noise.into_into_dart().into_dart(),
             self.mic_mode.into_into_dart().into_dart(),
+            self.app_version.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -4535,6 +4540,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiUser {
             self.deafened.into_into_dart().into_dart(),
             self.local_mute.into_into_dart().into_dart(),
             self.status.into_into_dart().into_dart(),
+            self.mumbleway_version.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5031,6 +5037,7 @@ impl SseEncode for crate::api::mumbleway::StartupOptions {
         <String>::sse_encode(self.storage_dir, serializer);
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.noise, serializer);
         <crate::api::mumbleway::MicMode>::sse_encode(self.mic_mode, serializer);
+        <String>::sse_encode(self.app_version, serializer);
     }
 }
 
@@ -5275,6 +5282,7 @@ impl SseEncode for crate::api::mumbleway::UiUser {
         <bool>::sse_encode(self.deafened, serializer);
         <bool>::sse_encode(self.local_mute, serializer);
         <String>::sse_encode(self.status, serializer);
+        <Option<String>>::sse_encode(self.mumbleway_version, serializer);
     }
 }
 

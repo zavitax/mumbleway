@@ -42,6 +42,8 @@ pub struct SessionManager {
     slots: HashMap<String, Slot>,
     identity: Identity,
     client_name: String,
+    /// The app's own version, as other MumbleWay clients are told it.
+    app_version: String,
     events_out: mpsc::Sender<TaggedEvent>,
     max_sessions: usize,
 }
@@ -56,9 +58,21 @@ impl SessionManager {
             slots: HashMap::new(),
             identity,
             client_name: client_name.into(),
+            app_version: String::new(),
             events_out,
             max_sessions: MAX_CONCURRENT_SESSIONS,
         }
+    }
+
+    /// Sets the version announced to other MumbleWay clients.
+    ///
+    /// A builder rather than another argument to [`SessionManager::new`], so a
+    /// caller that has no version — a test — does not have to invent one. An
+    /// empty version still identifies the client as MumbleWay; it just cannot
+    /// say which.
+    pub fn with_app_version(mut self, version: impl Into<String>) -> Self {
+        self.app_version = version.into();
+        self
     }
 
     /// Overrides the concurrency limit (used by tests).
@@ -118,6 +132,7 @@ impl SessionManager {
             profile: profile.clone(),
             identity: self.identity.clone(),
             client_name: self.client_name.clone(),
+            app_version: self.app_version.clone(),
             backoff: BackoffPolicy::default(),
         };
 

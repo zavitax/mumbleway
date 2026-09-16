@@ -1,6 +1,7 @@
 //! A single server session: connect, authenticate, stay alive, reconnect.
 
 pub mod manager;
+pub mod peers;
 pub mod profile;
 pub mod reconnect;
 pub mod types;
@@ -48,6 +49,8 @@ pub struct SessionConfig {
     pub profile: ServerProfile,
     pub identity: Identity,
     pub client_name: String,
+    /// The app's own version, as other MumbleWay clients are told it.
+    pub app_version: String,
     pub backoff: BackoffPolicy,
 }
 
@@ -63,6 +66,14 @@ struct LiveState {
     last_heard: Instant,
     /// When the current connection became fully established.
     connected_at: Option<Instant>,
+    /// Other sessions that have identified themselves as MumbleWay.
+    peers: peers::Peers,
+    /// Whether this server relays `PluginDataTransmission`, and so whether the
+    /// handshake can run at all. Set from the server's `Version`, and set again
+    /// by receiving one — receipt is proof, whatever the version said.
+    plugin_data: bool,
+    /// Our own version, for our own roster entry.
+    own_version: String,
 }
 
 impl LiveState {
@@ -76,6 +87,9 @@ impl LiveState {
             stats: NetworkStats::default(),
             last_heard: Instant::now(),
             connected_at: None,
+            peers: peers::Peers::default(),
+            plugin_data: false,
+            own_version: String::new(),
         }
     }
 
@@ -110,7 +124,23 @@ impl LiveState {
     }
 
     fn user_list(&self) -> Vec<UserInfo> {
-        let mut v: Vec<_> = self.users.values().cloned().collect();
+        let mut v: Vec<_> = self
+            .users
+            .values()
+            .cloned()
+            .map(|mut u| {
+                u.mumbleway = if Some(u.session) == self.self_session {
+                    // **Ourselves only where the handshake can run.** Badging
+                    // our own row on a server too old to relay it would make
+                    // everybody else's missing badge read as "nobody else runs
+                    // MumbleWay", when the truth is that nobody can tell.
+                    self.plugin_data.then(|| self.own_version.clone())
+                } else {
+                    self.peers.get(u.session).map(|p| p.version.clone())
+                };
+                u
+            })
+            .collect();
         v.sort_by_key(|u| u.name.to_lowercase());
         v
     }
@@ -336,6 +366,7 @@ impl Session {
 
         self.set_state(ConnectionState::Handshaking).await;
         let mut state = LiveState::new();
+        state.own_version = self.config.app_version.clone();
 
         // --- handshake -----------------------------------------------------
         let version = mumble::Version {
@@ -380,6 +411,22 @@ impl Session {
             if state.self_session.is_some() {
                 break;
             }
+        }
+
+        // Tell every MumbleWay client already here that another has arrived.
+        //
+        // Now rather than earlier because `ServerSync` is the end of the
+        // roster: the server sends every present user's `UserState` before it,
+        // so this reaches everybody in one message. Whoever arrives later
+        // announces themselves, and is answered on the next tick.
+        if state.plugin_data {
+            let everyone: Vec<u32> = state
+                .users
+                .keys()
+                .copied()
+                .filter(|s| Some(*s) != state.self_session)
+                .collect();
+            send_hello(&mut writer, &state.own_version, everyone, false).await?;
         }
 
         // Join the remembered default channel. The server places us in the
@@ -583,6 +630,20 @@ impl Session {
                     }
                     state.stats.transport = Some(state.transport.into());
                     self.emit(SessionEvent::Stats(state.stats)).await;
+
+                    // Answer every announcement heard since the last tick, all
+                    // in one message. Once a second at most, however many
+                    // arrived — which is what keeps a crowd reconnecting after
+                    // a server restart under the server's burst limit.
+                    if state.plugin_data {
+                        let owed: Vec<u32> = state
+                            .peers
+                            .take_owed()
+                            .into_iter()
+                            .filter(|s| state.users.contains_key(s))
+                            .collect();
+                        send_hello(writer, &state.own_version, owed, true).await?;
+                    }
                 }
             }
         }
@@ -779,6 +840,7 @@ impl Session {
                         self_deaf: false,
                         talking: false,
                         local_mute: false,
+                        mumbleway: None,
                     });
                     if let Some(n) = m.name {
                         e.name = n;
@@ -818,6 +880,9 @@ impl Session {
             MessageType::UserRemove => {
                 let m = mumble::UserRemove::decode(payload)?;
                 state.users.remove(&m.session);
+                // The number goes back to the server and may be handed to
+                // somebody who runs something else entirely.
+                state.peers.forget(m.session);
                 self.emit(SessionEvent::Users(state.user_list())).await;
             }
             MessageType::TextMessage => {
@@ -859,8 +924,42 @@ impl Session {
                 .await;
             }
             MessageType::Version => {
-                // Nothing to do; we already sent ours.
+                // Ours is already sent. Theirs decides whether the server relays
+                // the MumbleWay handshake, which arrived in 1.4.0.
+                if let Ok(m) = mumble::Version::decode(payload) {
+                    state.plugin_data |=
+                        peers::server_supports_plugin_data(m.version_v1, m.version_v2);
+                }
+                // No arm here sends anything, but the writer stays in the
+                // signature for the ones that will; this is what keeps it.
                 let _ = writer;
+            }
+            MessageType::PluginDataTransmission => {
+                // **Written by another client, not by the server.** Every other
+                // arm here may treat a message it cannot decode as a broken
+                // connection; nothing another rider sends should be able to cost
+                // us ours, so this one drops what it cannot read and carries on.
+                let Ok(m) = mumble::PluginDataTransmission::decode(payload) else {
+                    return Ok(None);
+                };
+                // Whatever the version said, a relayed message proves relaying.
+                state.plugin_data = true;
+                // The server stamps the sender; the client cannot choose it.
+                let (Some(sender), Some(id)) = (m.sender_session, m.data_id.as_deref()) else {
+                    return Ok(None);
+                };
+                if Some(sender) == state.self_session {
+                    return Ok(None);
+                }
+                if id == peers::DATA_ID_HELLO {
+                    if let Some(hello) = m.data.as_deref().and_then(peers::decode_hello) {
+                        state.peers.on_hello(sender, hello);
+                        self.emit(SessionEvent::Users(state.user_list())).await;
+                    }
+                }
+                // Other `mumbleway/` IDs are reserved for the exchanges this
+                // handshake exists to enable, and nothing under any other
+                // prefix is ours to read.
             }
             _ => {}
         }
@@ -991,6 +1090,29 @@ impl Session {
 /// `ControlReader::recv` is not cancel-safe, so it must not be a `select!`
 /// branch. Channel receives are cancel-safe, so the session loop races this
 /// receiver instead and a message is either fully read or not read at all.
+/// Sends one hello to every session in `receivers`, as a single message.
+///
+/// One message whatever the count, because the server's rate limit is charged
+/// per message rather than per recipient. The sender is left unset: the server
+/// fills it in and would overwrite anything put here.
+async fn send_hello(
+    writer: &mut ControlWriter,
+    version: &str,
+    receivers: Vec<u32>,
+    reply: bool,
+) -> Result<()> {
+    if receivers.is_empty() {
+        return Ok(());
+    }
+    let m = mumble::PluginDataTransmission {
+        sender_session: None,
+        receiver_sessions: receivers,
+        data: Some(peers::encode_hello(version, peers::CAPABILITIES, reply).into()),
+        data_id: Some(peers::DATA_ID_HELLO.to_string()),
+    };
+    writer.send(MessageType::PluginDataTransmission, &m).await
+}
+
 fn spawn_reader(mut reader: ControlReader) -> mpsc::Receiver<Result<(u16, Vec<u8>)>> {
     let (tx, rx) = mpsc::channel(64);
     tokio::spawn(async move {

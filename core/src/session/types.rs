@@ -128,6 +128,15 @@ pub struct UserInfo {
     /// and is invisible to everyone else — their audio is simply dropped before
     /// it reaches the mixer.
     pub local_mute: bool,
+    /// The MumbleWay version this user's client reported, if it identified
+    /// itself as MumbleWay. `None` means *not known* to run it — an older
+    /// MumbleWay says nothing, and neither does anybody on a server too old to
+    /// relay the handshake — so its absence is never proof of anything.
+    ///
+    /// Filled in by `LiveState::user_list` from `peers::Peers`, which is the one
+    /// record of it; the copy kept in the roster map is always `None`.
+    #[serde(default)]
+    pub mumbleway: Option<String>,
 }
 
 impl UserInfo {

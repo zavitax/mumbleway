@@ -74,6 +74,15 @@
   "registerUser": "Register on this server",
   "registerUserSent": "Asked the server to register you.",
   "connectFirst": "Connect first",
+  "peerUsesMumbleway": "Uses MumbleWay {version}",
+  "@peerUsesMumbleway": {
+    "description": "Tooltip and screen-reader label on the roster badge marking someone whose client identified itself as MumbleWay. {version} may be empty.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "removeServerTitle": "Remove server?",
   "removeServerBody": "{name} will be removed from your list.",
   "@removeServerBody": {

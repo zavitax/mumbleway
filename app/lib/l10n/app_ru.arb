@@ -74,6 +74,7 @@
   "registerUser": "Зарегистрироваться на сервере",
   "registerUserSent": "Запрос на регистрацию отправлен.",
   "connectFirst": "Сначала подключитесь",
+  "peerUsesMumbleway": "Использует MumbleWay {version}",
   "removeServerTitle": "Удалить сервер?",
   "removeServerBody": "{name} будет удалён из вашего списка.",
   "@removeServerBody": {

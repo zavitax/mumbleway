@@ -415,6 +415,12 @@ abstract class L {
   /// **'Connect first'**
   String get connectFirst;
 
+  /// Tooltip and screen-reader label on the roster badge marking someone whose client identified itself as MumbleWay. {version} may be empty.
+  ///
+  /// In en, this message translates to:
+  /// **'Uses MumbleWay {version}'**
+  String peerUsesMumbleway(String version);
+
   /// No description provided for @removeServerTitle.
   ///
   /// In en, this message translates to:

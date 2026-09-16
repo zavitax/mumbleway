@@ -181,6 +181,11 @@ class LEn extends L {
   String get connectFirst => 'Connect first';
 
   @override
+  String peerUsesMumbleway(String version) {
+    return 'Uses MumbleWay $version';
+  }
+
+  @override
   String get removeServerTitle => 'Remove server?';
 
   @override

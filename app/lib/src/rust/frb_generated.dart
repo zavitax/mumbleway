@@ -2770,12 +2770,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   StartupOptions dco_decode_startup_options(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 3)
-      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return StartupOptions(
       storageDir: dco_decode_String(arr[0]),
       noise: dco_decode_noise_setting(arr[1]),
       micMode: dco_decode_mic_mode(arr[2]),
+      appVersion: dco_decode_String(arr[3]),
     );
   }
 
@@ -3065,8 +3066,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiUser dco_decode_ui_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return UiUser(
       session: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -3076,6 +3077,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       deafened: dco_decode_bool(arr[5]),
       localMute: dco_decode_bool(arr[6]),
       status: dco_decode_String(arr[7]),
+      mumblewayVersion: dco_decode_opt_String(arr[8]),
     );
   }
 
@@ -3584,10 +3586,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_storageDir = sse_decode_String(deserializer);
     var var_noise = sse_decode_noise_setting(deserializer);
     var var_micMode = sse_decode_mic_mode(deserializer);
+    var var_appVersion = sse_decode_String(deserializer);
     return StartupOptions(
       storageDir: var_storageDir,
       noise: var_noise,
       micMode: var_micMode,
+      appVersion: var_appVersion,
     );
   }
 
@@ -3952,6 +3956,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_deafened = sse_decode_bool(deserializer);
     var var_localMute = sse_decode_bool(deserializer);
     var var_status = sse_decode_String(deserializer);
+    var var_mumblewayVersion = sse_decode_opt_String(deserializer);
     return UiUser(
       session: var_session,
       name: var_name,
@@ -3961,6 +3966,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       deafened: var_deafened,
       localMute: var_localMute,
       status: var_status,
+      mumblewayVersion: var_mumblewayVersion,
     );
   }
 
@@ -4459,6 +4465,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.storageDir, serializer);
     sse_encode_noise_setting(self.noise, serializer);
     sse_encode_mic_mode(self.micMode, serializer);
+    sse_encode_String(self.appVersion, serializer);
   }
 
   @protected
@@ -4696,6 +4703,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.deafened, serializer);
     sse_encode_bool(self.localMute, serializer);
     sse_encode_String(self.status, serializer);
+    sse_encode_opt_String(self.mumblewayVersion, serializer);
   }
 
   @protected

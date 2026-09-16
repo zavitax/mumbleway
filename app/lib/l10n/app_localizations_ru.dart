@@ -172,6 +172,15 @@ class LRu extends L {
   String get duplicate => 'Дублировать';
 
   @override
+  String get registerUser => 'Зарегистрироваться на сервере';
+
+  @override
+  String get registerUserSent => 'Запрос на регистрацию отправлен.';
+
+  @override
+  String get connectFirst => 'Сначала подключитесь';
+
+  @override
   String get removeServerTitle => 'Удалить сервер?';
 
   @override

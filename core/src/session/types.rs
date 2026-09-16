@@ -264,6 +264,19 @@ pub enum SessionCommand {
         session: u32,
         reason: String,
     },
+    /// Ask the server to register us as a permanent user.
+    ///
+    /// **Registration is what makes a name yours.** On an unregistered server
+    /// account anybody may take the name once you disconnect, and no ACL can
+    /// name you. Registered, the server remembers the certificate behind the
+    /// name and can put you in groups.
+    ///
+    /// Requires the SelfRegister permission on the root channel, which many
+    /// servers withhold; without it the server answers `PermissionDenied` and
+    /// the refusal surfaces the same way a refused kick does. It also needs the
+    /// certificate we already keep — see `net::tls`, which is careful not to
+    /// regenerate it precisely because that would lose this.
+    RegisterSelf,
     /// Channel to join automatically on every future connect. `None` clears it.
     SetDefaultChannel(Option<String>),
     /// Push-to-talk / voice-activation gate.

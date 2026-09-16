@@ -429,6 +429,19 @@ Future<void> setDefaultChannel({required String serverId, String? channel}) =>
       channel: channel,
     );
 
+/// Asks the server to register this account permanently.
+///
+/// Registration ties the name to the certificate this app already keeps, so it
+/// stays yours between visits and the server can put it in groups. Most servers
+/// gate it behind the SelfRegister permission; where it is withheld the server
+/// answers with a permission-denied message, which arrives the same way a
+/// refused kick does rather than as an error from this call.
+///
+/// Returning `Ok` therefore means the request was sent, not that it worked —
+/// the same contract as every other permission-gated action here.
+Future<void> registerSelf({required String serverId}) =>
+    RustLib.instance.api.crateApiMumblewayRegisterSelf(serverId: serverId);
+
 /// Removes a user from the server. Requires the Kick permission; without it the
 /// server answers with a permission-denied message that arrives as text.
 ///

@@ -71,6 +71,9 @@
   "shareInviteLink": "Поделиться ссылкой",
   "shareProfileFile": "Поделиться файлом профиля",
   "duplicate": "Дублировать",
+  "registerUser": "Зарегистрироваться на сервере",
+  "registerUserSent": "Запрос на регистрацию отправлен.",
+  "connectFirst": "Сначала подключитесь",
   "removeServerTitle": "Удалить сервер?",
   "removeServerBody": "{name} будет удалён из вашего списка.",
   "@removeServerBody": {

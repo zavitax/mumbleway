@@ -172,6 +172,15 @@ class LEn extends L {
   String get duplicate => 'Duplicate';
 
   @override
+  String get registerUser => 'Register on this server';
+
+  @override
+  String get registerUserSent => 'Asked the server to register you.';
+
+  @override
+  String get connectFirst => 'Connect first';
+
+  @override
   String get removeServerTitle => 'Remove server?';
 
   @override

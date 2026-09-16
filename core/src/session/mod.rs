@@ -925,6 +925,22 @@ impl Session {
                 }
                 self.emit(SessionEvent::Users(state.user_list())).await;
             }
+            SessionCommand::RegisterSelf => {
+                if let Some(me) = state.self_session {
+                    // **`user_id: 0` is the request, not an id.** Mumble has no
+                    // "register me" message: a `UserState` naming yourself with
+                    // a user id of zero is how the client asks, and the server
+                    // answers by sending back a `UserState` carrying the real
+                    // id it assigned. Any other value would be an attempt to
+                    // set somebody's id, which is not what this is.
+                    let m = mumble::UserState {
+                        session: Some(me),
+                        user_id: Some(0),
+                        ..Default::default()
+                    };
+                    writer.send(MessageType::UserState, &m).await?;
+                }
+            }
             SessionCommand::SetUserServerMute { session, muted } => {
                 let m = mumble::UserState {
                     session: Some(session),

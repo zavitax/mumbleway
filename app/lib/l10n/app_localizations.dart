@@ -397,6 +397,24 @@ abstract class L {
   /// **'Duplicate'**
   String get duplicate;
 
+  /// No description provided for @registerUser.
+  ///
+  /// In en, this message translates to:
+  /// **'Register on this server'**
+  String get registerUser;
+
+  /// No description provided for @registerUserSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked the server to register you.'**
+  String get registerUserSent;
+
+  /// No description provided for @connectFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect first'**
+  String get connectFirst;
+
   /// No description provided for @removeServerTitle.
   ///
   /// In en, this message translates to:

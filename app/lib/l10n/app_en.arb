@@ -71,6 +71,9 @@
   "shareInviteLink": "Share invite link",
   "shareProfileFile": "Share profile file",
   "duplicate": "Duplicate",
+  "registerUser": "Register on this server",
+  "registerUserSent": "Asked the server to register you.",
+  "connectFirst": "Connect first",
   "removeServerTitle": "Remove server?",
   "removeServerBody": "{name} will be removed from your list.",
   "@removeServerBody": {

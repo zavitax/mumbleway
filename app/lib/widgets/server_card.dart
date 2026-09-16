@@ -232,6 +232,8 @@ class ServerCard extends StatelessWidget {
                                 _share(context, state, rt, asFile: false);
                               case 'file':
                                 _share(context, state, rt, asFile: true);
+                              case 'register':
+                                _register(context, state);
                               case 'duplicate':
                                 state.duplicateServer(server);
                               case 'remove':
@@ -284,6 +286,23 @@ class ServerCard extends StatelessWidget {
                                 contentPadding: EdgeInsets.zero,
                                 leading: const Icon(Icons.description_outlined),
                                 title: Text(l.shareProfileFile),
+                              ),
+                            ),
+                            // The mirror image of `edit` above: this one needs
+                            // the session the others cannot survive, because
+                            // registering is a request made *on* a connection.
+                            // Greyed with the reason rather than hidden, for
+                            // the same reason as the rest of this menu.
+                            PopupMenuItem(
+                              value: 'register',
+                              enabled: rt.isLive,
+                              child: ListTile(
+                                dense: true,
+                                enabled: rt.isLive,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.how_to_reg_outlined),
+                                title: Text(l.registerUser),
+                                subtitle: rt.isLive ? null : Text(l.connectFirst),
                               ),
                             ),
                             PopupMenuItem(
@@ -345,6 +364,22 @@ class ServerCard extends StatelessWidget {
   /// That question is deliberate rather than a checkbox buried in settings: a
   /// link carrying a password grants access to anyone who ever sees it,
   /// including whatever chat app it travels through.
+  /// Asks the server to register this account, and says the request went.
+  ///
+  /// **It deliberately does not claim success.** Registration is granted or
+  /// refused by the server, and a refusal comes back as a permission-denied
+  /// message on the session rather than as an error here — so "Registered!"
+  /// would be a lie on every server that withholds the permission, which is
+  /// most of them. The confirmation names what actually happened: we asked.
+  Future<void> _register(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await state.registerOnServer(server.id);
+    messenger.showSnackBar(
+      SnackBar(content: Text(error ?? l.registerUserSent)),
+    );
+  }
+
   Future<void> _share(
     BuildContext context,
     AppState state,

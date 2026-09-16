@@ -2214,6 +2214,22 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Asks the server to register this account permanently.
+  ///
+  /// **Returning null means the request went out, not that it worked.** Most
+  /// servers gate registration behind a permission, and a server that refuses
+  /// says so in a `PermissionDenied` that arrives through the same path as a
+  /// refused kick — see [RefusalListener] — rather than as an error here. The
+  /// same contract as every other permission-gated action on this class.
+  Future<String?> registerOnServer(String id) async {
+    try {
+      await registerSelf(serverId: id);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   // --- audio -------------------------------------------------------------
 
   Future<void> refreshDevices() async {

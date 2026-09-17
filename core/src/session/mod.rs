@@ -74,6 +74,8 @@ struct LiveState {
     plugin_data: bool,
     /// Our own version, for our own roster entry.
     own_version: String,
+    /// When to announce ourselves, and when to stop.
+    announcer: peers::Announcer,
 }
 
 impl LiveState {
@@ -90,6 +92,7 @@ impl LiveState {
             peers: peers::Peers::default(),
             plugin_data: false,
             own_version: String::new(),
+            announcer: peers::Announcer::armed(Instant::now()),
         }
     }
 
@@ -413,21 +416,10 @@ impl Session {
             }
         }
 
-        // Tell every MumbleWay client already here that another has arrived.
-        //
-        // Now rather than earlier because `ServerSync` is the end of the
-        // roster: the server sends every present user's `UserState` before it,
-        // so this reaches everybody in one message. Whoever arrives later
-        // announces themselves, and is answered on the next tick.
-        if state.plugin_data {
-            let everyone: Vec<u32> = state
-                .users
-                .keys()
-                .copied()
-                .filter(|s| Some(*s) != state.self_session)
-                .collect();
-            send_hello(&mut writer, &state.own_version, everyone, false).await?;
-        }
+        // The announcement is not sent here. It goes out on the first health
+        // tick, from the same code that repeats it — see `run_connected`. That
+        // tick fires immediately, so it costs nothing, and it leaves one path
+        // rather than a first hello here and its repeats elsewhere.
 
         // Join the remembered default channel. The server places us in the
         // root channel on connect, so this has to be an explicit move; matching
@@ -643,6 +635,23 @@ impl Session {
                             .filter(|s| state.users.contains_key(s))
                             .collect();
                         send_hello(writer, &state.own_version, owed, true).await?;
+
+                        // Say who we are, and say it again to anybody who has
+                        // not answered — the server drops a plugin message
+                        // over its rate limit without telling the sender, and
+                        // that is the one way a hello is lost quietly.
+                        if state.announcer.is_due(now) {
+                            let present: Vec<u32> = state.users.keys().copied().collect();
+                            let unheard = state.peers.unheard(&present, state.self_session);
+                            if unheard.is_empty() {
+                                // Everybody here has answered, or there is
+                                // nobody else here at all.
+                                state.announcer.stop();
+                            } else {
+                                send_hello(writer, &state.own_version, unheard, false).await?;
+                                state.announcer.sent(now);
+                            }
+                        }
                     }
                 }
             }

@@ -36,6 +36,30 @@
 //! everybody present replies. So both halves of every pair learn about each
 //! other whichever of them came first.
 //!
+//! # Saying it again
+//!
+//! The announcement is repeated every [`RETRY_INTERVAL`], up to
+//! [`MAX_ANNOUNCEMENTS`] times, to whichever present sessions have not answered
+//! — see [`Peers::unheard`] and [`Announcer`].
+//!
+//! **Not for packet loss.** This is the control channel: TLS over TCP, so a
+//! hello that goes astray is retransmitted by TCP and cannot simply vanish.
+//! What it covers is the server's own rate limiter, which drops a plugin
+//! message when the sender's bucket is empty, logs it on the server and tells
+//! the sender **nothing** — the one way a hello is lost silently. Five seconds
+//! is far longer than a bucket refilling at four a second needs.
+//!
+//! **And it has to stop.** Hearing nothing back is the ordinary case, not a
+//! fault: on a server where nobody else runs MumbleWay there is no reply to be
+//! had, ever. Retrying until somebody answers would therefore mean announcing
+//! to every session on that server every five seconds for the length of the
+//! ride. So the count is bounded, and it also stops early once everybody
+//! present has answered.
+//!
+//! Only the sessions that have not answered are told again, rather than
+//! everybody: it covers the case of one reply among several going missing, and
+//! it keeps the repetition away from people who have already answered.
+//!
 //! # Limits the server imposes, and how this stays inside them
 //!
 //! Checked against the server source rather than assumed:
@@ -72,6 +96,7 @@
 //! to trust what it sends.
 
 use std::collections::{BTreeSet, HashMap};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +122,22 @@ pub const PROTOCOL: u32 = 1;
 /// client that would not know what to do with it, and never needs a change to
 /// the handshake to be introduced.
 pub const CAPABILITIES: &[&str] = &[];
+
+/// How long to wait before announcing again.
+///
+/// Generous on purpose: the thing being worked around is a rate-limit bucket
+/// that refills at four messages a second, so anything upwards of a second
+/// would do, and a longer gap costs nothing when the total is bounded.
+pub const RETRY_INTERVAL: Duration = Duration::from_secs(5);
+
+/// How many announcements one connection may make in total — the first, and
+/// three more.
+///
+/// **Bounded because silence is the ordinary answer.** On a server where nobody
+/// else runs MumbleWay there is never a reply, so a rule of "repeat until
+/// somebody answers" would announce to every session every five seconds for the
+/// whole ride. Four covers a message the server dropped without covering that.
+pub const MAX_ANNOUNCEMENTS: u8 = 4;
 
 /// The server's cap on a plugin message's payload.
 pub const MAX_DATA_LENGTH: usize = 1000;
@@ -274,6 +315,58 @@ impl Peers {
 
     pub fn is_mumbleway(&self, session: u32) -> bool {
         self.known.contains_key(&session)
+    }
+
+    /// Of the sessions present, the ones that have not identified themselves —
+    /// the only ones an announcement needs to reach again.
+    ///
+    /// Ourselves excluded: the server would relay it straight back.
+    pub fn unheard(&self, present: &[u32], me: Option<u32>) -> Vec<u32> {
+        present
+            .iter()
+            .copied()
+            .filter(|s| Some(*s) != me && !self.known.contains_key(s))
+            .collect()
+    }
+}
+
+/// Decides when to announce, and when to give up announcing.
+///
+/// Starts armed, so the first announcement goes out on the first tick after the
+/// session is up rather than needing a separate path of its own. Time is passed
+/// in rather than read, so the stopping rules can be tested without waiting.
+#[derive(Debug)]
+pub struct Announcer {
+    left: u8,
+    next: Option<Instant>,
+}
+
+impl Announcer {
+    /// Armed to announce at `now`.
+    pub fn armed(now: Instant) -> Self {
+        Self {
+            left: MAX_ANNOUNCEMENTS,
+            next: Some(now),
+        }
+    }
+
+    /// Whether an announcement is due.
+    pub fn is_due(&self, now: Instant) -> bool {
+        self.next.is_some_and(|due| now >= due)
+    }
+
+    /// Records that one has just gone out, and schedules the next unless the
+    /// allowance is spent.
+    pub fn sent(&mut self, now: Instant) {
+        self.left = self.left.saturating_sub(1);
+        self.next = (self.left > 0).then(|| now + RETRY_INTERVAL);
+    }
+
+    /// Stops for good — everybody present has answered, so there is nobody left
+    /// to ask, and repeating would be talking to people who already replied.
+    pub fn stop(&mut self) {
+        self.left = 0;
+        self.next = None;
     }
 }
 
@@ -466,6 +559,76 @@ mod tests {
         p.on_hello(7, hello("1.0.1", true));
         p.on_hello(7, hello("1.0.2", true));
         assert_eq!(p.get(7).unwrap().version, "1.0.2");
+    }
+
+    #[test]
+    fn only_the_sessions_that_have_not_answered_are_told_again() {
+        let mut p = Peers::default();
+        p.on_hello(20, hello("1.0.1", true));
+        let present = [10, 20, 30, 99];
+
+        // 20 answered, 99 is us, so 10 and 30 are what is left to ask.
+        assert_eq!(p.unheard(&present, Some(99)), vec![10, 30]);
+
+        p.on_hello(10, hello("1.0.1", true));
+        p.on_hello(30, hello("1.0.1", true));
+        assert!(
+            p.unheard(&present, Some(99)).is_empty(),
+            "everybody present has answered"
+        );
+    }
+
+    #[test]
+    fn we_never_announce_to_ourselves() {
+        // The server would relay it straight back to us.
+        let p = Peers::default();
+        assert_eq!(p.unheard(&[7], Some(7)), Vec::<u32>::new());
+        assert_eq!(p.unheard(&[7], None), vec![7], "before ServerSync names us");
+    }
+
+    #[test]
+    fn the_announcement_goes_out_at_once_and_then_every_five_seconds() {
+        let t0 = Instant::now();
+        let mut a = Announcer::armed(t0);
+        assert!(a.is_due(t0), "the first one waits for nothing");
+
+        a.sent(t0);
+        assert!(!a.is_due(t0 + Duration::from_secs(4)), "too soon");
+        assert!(a.is_due(t0 + RETRY_INTERVAL));
+    }
+
+    #[test]
+    fn announcing_stops_after_its_allowance() {
+        // **The rule that keeps this from becoming a broadcast every five
+        // seconds for the whole ride.** Hearing nothing is the ordinary case on
+        // a server where nobody else runs MumbleWay, so "repeat until somebody
+        // answers" would never stop.
+        let mut now = Instant::now();
+        let mut a = Announcer::armed(now);
+        let mut sent = 0;
+        for _ in 0..100 {
+            if a.is_due(now) {
+                a.sent(now);
+                sent += 1;
+            }
+            now += RETRY_INTERVAL;
+        }
+        assert_eq!(sent, MAX_ANNOUNCEMENTS as usize);
+        assert!(!a.is_due(now + Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn announcing_stops_early_once_everybody_has_answered() {
+        let now = Instant::now();
+        let mut a = Announcer::armed(now);
+        a.sent(now);
+        assert!(a.is_due(now + RETRY_INTERVAL), "more attempts remain");
+
+        a.stop();
+        assert!(
+            !a.is_due(now + RETRY_INTERVAL),
+            "nobody left to ask, so nothing more to say"
+        );
     }
 
     #[test]

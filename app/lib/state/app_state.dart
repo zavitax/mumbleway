@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/server_refusal.dart';
+import '../services/remote_mute_notice.dart';
 import '../services/audio_session.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
@@ -350,6 +351,7 @@ class AppState extends ChangeNotifier {
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsVoiceCommunication = 'mumbleway.voiceCommunication';
+  static const _prefsAllowRemoteUnmute = 'mumbleway.allowRemoteUnmute';
 
   /// Counters behind the request for a store review, and the fact of having
   /// asked. All three are local and never leave the device; the privacy policy
@@ -413,6 +415,14 @@ class AppState extends ChangeNotifier {
   Stream<ServerRefusal> get refusals => _refusals.stream;
   final StreamController<ServerRefusal> _refusals =
       StreamController<ServerRefusal>.broadcast();
+
+  /// Another MumbleWay rider having turned our microphone off or on.
+  ///
+  /// A stream for the same reasons as [refusals]: each one is something the
+  /// rider needs told, and whatever screen is on top is the one to tell them.
+  Stream<RemoteMuteNotice> get remoteMuteNotices => _remoteMutes.stream;
+  final StreamController<RemoteMuteNotice> _remoteMutes =
+      StreamController<RemoteMuteNotice>.broadcast();
 
   /// Server shown in the detail pane on wide layouts. Narrow layouts ignore it
   /// and expand cards inline instead.
@@ -789,6 +799,7 @@ class AppState extends ChangeNotifier {
     // On by default; see the field. A rider who has already chosen keeps
     // their choice — this only decides what a fresh install starts with.
     voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? true;
+    allowRemoteUnmute = prefs.getBool(_prefsAllowRemoteUnmute) ?? true;
     _loadReviewCounters(prefs);
     simpleModel = prefs.getBool(_prefsSimpleModel) ?? false;
     // Into the core immediately, and before the probe: it decides which model
@@ -839,6 +850,7 @@ class AppState extends ChangeNotifier {
     setReverb(on_: reverb);
     setFeedbackGuard(mode: feedbackGuard);
     setDehiss(mode: dehiss);
+    setAllowRemoteUnmute(allow: allowRemoteUnmute);
     if (selectedInput != null || selectedOutput != null) {
       await setAudioDevices(input: selectedInput, output: selectedOutput);
     }
@@ -2336,6 +2348,15 @@ class AppState extends ChangeNotifier {
   /// on the output volume, which nothing here knows.
   bool voiceCommunication = true;
 
+  /// Whether another MumbleWay rider may turn our microphone back on.
+  ///
+  /// On by default, and only unmuting is governed by it: being muted by
+  /// somebody costs a rider nothing their own button cannot undo, while being
+  /// unmuted puts them on air. The reason it is on is the rider who muted to
+  /// take a call and forgot, and is now talking to a channel that hears
+  /// nothing. The core holds the live copy; see `set_allow_remote_unmute`.
+  bool allowRemoteUnmute = true;
+
   /// Launches and completed calls since the last time we asked for a review.
   ///
   /// Two counters rather than one because they answer different questions. A
@@ -2394,6 +2415,16 @@ class AppState extends ChangeNotifier {
   /// The preset is read when the input stream is built. Setting it without the
   /// restart would leave a toggle that appears to work, changes nothing, and
   /// takes effect at some unrelated moment later.
+  Future<void> setAllowRemoteUnmuteEnabled({required bool value}) async {
+    allowRemoteUnmute = value;
+    try {
+      setAllowRemoteUnmute(allow: value);
+    } catch (_) {}
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefsAllowRemoteUnmute, value);
+  }
+
   Future<void> setVoiceCommunicationEnabled({required bool value}) async {
     voiceCommunication = value;
     setVoiceCommunication(on_: value);
@@ -3294,11 +3325,36 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void toggleMute() {
-    _muted = !_muted;
-    setMicrophoneMuted(muted: _muted);
+  void toggleMute() => _applyMute(!_muted);
+
+  /// The one way the microphone's mute changes, whoever asked.
+  ///
+  /// **Also told to every server, as Mumble's `self_mute`.** It never used to
+  /// be: the mute was ours alone and the channel simply heard nothing, which
+  /// left the other riders unable to tell a muted rider from a silent one —
+  /// and left a MumbleWay rider unable to offer "Unmute on server" to somebody
+  /// who muted themselves and forgot, because nothing said they had.
+  void _applyMute(bool muted) {
+    _muted = muted;
+    try {
+      setMicrophoneMuted(muted: muted);
+    } catch (_) {}
+    for (final entry in runtimes.entries) {
+      if (entry.value.isLive) _mirrorSelfMute(entry.key, muted);
+    }
     _pushOverlay();
     notifyListeners();
+  }
+
+  /// Best-effort, and deliberately so: the server is being told what the
+  /// microphone is doing, not asked for permission. A server that has gone
+  /// away is told again when it comes back; see the `AppEvent_Status` case.
+  void _mirrorSelfMute(String serverId, bool muted) {
+    try {
+      unawaited(
+        setSelfMute(serverId: serverId, muted: muted).catchError((_) {}),
+      );
+    } catch (_) {}
   }
 
   void toggleDeafen() {
@@ -3501,6 +3557,7 @@ class AppState extends ChangeNotifier {
     switch (event) {
       case AppEvent_Status(:final field0):
         final rt = runtimeFor(field0.serverId);
+        final wasLive = rt.isLive;
         rt
           ..status = field0.status
           ..detail = field0.detail
@@ -3512,6 +3569,12 @@ class AppState extends ChangeNotifier {
         rt.retryDeadline = field0.retryInMs > BigInt.zero
             ? DateTime.now().add(Duration(milliseconds: rt.retryInMs))
             : null;
+        // A fresh session starts unmuted as far as the server knows, so a
+        // rider who was muted when the link dropped would come back looking
+        // open. Only the muted case needs saying; unmuted is the default.
+        if (!wasLive && rt.isLive && _muted) {
+          _mirrorSelfMute(field0.serverId, true);
+        }
       case AppEvent_Users(:final serverId, :final users):
         final rt = runtimeFor(serverId);
         rt.users = users;
@@ -3572,6 +3635,16 @@ class AppState extends ChangeNotifier {
             ? (deafened ? 'deafened you' : 'undeafened you')
             : (muted == true ? 'muted you' : 'unmuted you');
         lastModerationMessage = '$by $what';
+      case AppEvent_RemoteMuted(:final serverId, :final muted, :final by):
+        // The core has already changed the microphone and played the cue;
+        // this catches the interface up, and tells every server, so the
+        // button reads true and the rider can undo it the way they would
+        // undo their own.
+        _applyMute(muted);
+        _remoteMutes.add(
+          RemoteMuteNotice(serverId: serverId, muted: muted, by: by),
+        );
+        return;
       case AppEvent_Certificate(
         :final serverId,
         :final fingerprint,
@@ -3624,6 +3697,7 @@ class AppState extends ChangeNotifier {
     _lifecycle?.dispose();
     _events?.cancel();
     _meters.dispose();
+    _remoteMutes.close();
     super.dispose();
   }
 }

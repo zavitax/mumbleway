@@ -1595,4 +1595,21 @@ class LEn extends L {
 
   @override
   String get reviewRate => 'Leave a review';
+
+  @override
+  String remoteMutedYou(String name) {
+    return '$name muted your microphone';
+  }
+
+  @override
+  String remoteUnmutedYou(String name) {
+    return '$name unmuted your microphone';
+  }
+
+  @override
+  String get allowRemoteUnmute => 'Let MumbleWay users unmute me';
+
+  @override
+  String get allowRemoteUnmuteBody =>
+      'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.';
 }

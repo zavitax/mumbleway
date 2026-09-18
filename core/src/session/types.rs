@@ -215,6 +215,17 @@ pub enum SessionEvent {
         deafened: Option<bool>,
         by: String,
     },
+    /// Another MumbleWay rider asked this client to turn its microphone off
+    /// (`mute: true`) or back on.
+    ///
+    /// **A request, not a change.** Nothing has happened yet: the app decides —
+    /// the rider may have refused remote unmute, it may already be in that
+    /// state, or it may be too soon after the last one — and only then acts and
+    /// plays the cue. See `peers::RemoteMuteGuard`.
+    RemoteMuteRequested {
+        mute: bool,
+        by: String,
+    },
     /// The server's certificate, reported so the UI can pin or compare it.
     ServerCertificate {
         fingerprint: String,

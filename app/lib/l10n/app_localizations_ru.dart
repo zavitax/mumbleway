@@ -1583,4 +1583,22 @@ class LRu extends L {
 
   @override
   String get reviewRate => 'Оставить отзыв';
+
+  @override
+  String remoteMutedYou(String name) {
+    return 'Ваш микрофон выключил участник $name';
+  }
+
+  @override
+  String remoteUnmutedYou(String name) {
+    return 'Ваш микрофон включил участник $name';
+  }
+
+  @override
+  String get allowRemoteUnmute =>
+      'Разрешить пользователям MumbleWay включать мой микрофон';
+
+  @override
+  String get allowRemoteUnmuteBody =>
+      'Другие участники, у которых тоже MumbleWay, могут выключить ваш микрофон, если от вас идёт шум, а ваша кнопка микрофона включит его обратно. Эта настройка позволяет им и включать его — на случай, если вы выключили микрофон и забыли. Выключите её, и включить микрофон сможете только вы.';
 }

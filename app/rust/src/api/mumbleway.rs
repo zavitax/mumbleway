@@ -6,6 +6,7 @@
 //! UI observes it through a single event stream.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use flutter_rust_bridge::frb;
@@ -21,6 +22,7 @@ use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
+use mumbleway_core::session::peers::{MuteCueEcho, RemoteMuteDecision, RemoteMuteGuard};
 use mumbleway_core::session::{
     AudioBridge, ConnectionState, ServerProfile, SessionCommand, SessionEvent, Transport,
     TransportStat,
@@ -178,6 +180,18 @@ pub enum AppEvent {
         server_id: String,
         muted: Option<bool>,
         deafened: Option<bool>,
+        by: String,
+    },
+    /// Another MumbleWay rider asked for our microphone to be turned off or on,
+    /// and the request was acted on — the microphone has already changed and
+    /// the cue has already played by the time this arrives.
+    ///
+    /// Requests that were *not* acted on never reach the UI: a notice about a
+    /// change that did not happen would be noise at best and alarming at
+    /// worst.
+    RemoteMuted {
+        server_id: String,
+        muted: bool,
         by: String,
     },
     /// The server presented a certificate. `changed` means it differs from the
@@ -338,6 +352,9 @@ struct App {
     /// rather than on every repeated status event.
     last_status: Arc<Mutex<HashMap<String, ConnStatus>>>,
     identity: Identity,
+    /// Whether another MumbleWay rider may turn this rider's microphone on.
+    /// A setting, on by default; see `set_allow_remote_unmute`.
+    allow_remote_unmute: Arc<AtomicBool>,
 }
 
 /// Decides which audio cue, if any, a status transition should play.
@@ -562,8 +579,21 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     let cue_shared = shared.clone();
     let last_status: Arc<Mutex<HashMap<String, ConnStatus>>> = Arc::new(Mutex::new(HashMap::new()));
     let status_tracker = last_status.clone();
+    // On by default, and overwritten from the saved setting as soon as Dart has
+    // read it. Default-on is the setting's own default, so the brief window
+    // before that write cannot do anything the rider has not left enabled.
+    let allow_remote_unmute = Arc::new(AtomicBool::new(true));
+    let allow_unmute_task = allow_remote_unmute.clone();
+    // One guard for the whole app, not one per server: a rider on two servers
+    // at once still gets one cooldown, and nobody gets round it by asking from
+    // the other one.
+    let remote_mute_guard = Mutex::new(RemoteMuteGuard::default());
 
     rt.spawn(async move {
+        // Owned by this task, which is the only place either kind of mute cue
+        // is played from; see `MuteCueEcho`.
+        let mut mute_cue_echo = MuteCueEcho::default();
+        let now = std::time::Instant::now;
         while let Some(TaggedEvent { server_id, event }) = ev_rx.recv().await {
             match event {
                 SessionEvent::State(s) => {
@@ -655,6 +685,64 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::RemoteMuteRequested { mute, by } => {
+                    // Decided here rather than in the session, because this is
+                    // where all three inputs meet: the microphone's real state,
+                    // the rider's setting, and a cooldown that has to hold
+                    // across every server.
+                    let decision = remote_mute_guard.lock().decide(
+                        mute,
+                        cue_shared.is_muted(),
+                        allow_unmute_task.load(Ordering::Relaxed),
+                        now(),
+                    );
+                    match decision {
+                        RemoteMuteDecision::Apply => {
+                            // The change and the cue together, here, rather
+                            // than leaving the change to Dart: the cue says the
+                            // microphone moved, and it must not be able to play
+                            // for a change that a busy UI thread then never
+                            // makes.
+                            cue_shared.set_muted(mute);
+                            if mute_cue_echo.should_play(mute, now()) {
+                                cue_shared.play_cue(if mute {
+                                    AudioCue::MutedByOther
+                                } else {
+                                    AudioCue::UnmutedByOther
+                                });
+                            }
+                            diag::record(
+                                LogLevel::Info,
+                                "remote-mute",
+                                format!(
+                                    "{} microphone at {}'s request",
+                                    if mute { "muted" } else { "unmuted" },
+                                    by
+                                ),
+                            );
+                            emit(AppEvent::RemoteMuted {
+                                server_id,
+                                muted: mute,
+                                by,
+                            });
+                        }
+                        other => {
+                            // Logged, because "I asked them to unmute and
+                            // nothing happened" is a question somebody will
+                            // ask, and this is the only place the answer is.
+                            diag::record(
+                                LogLevel::Info,
+                                "remote-mute",
+                                format!(
+                                    "ignored a request to {} from {}: {:?}",
+                                    if mute { "mute" } else { "unmute" },
+                                    by,
+                                    other
+                                ),
+                            );
+                        }
+                    }
+                }
                 SessionEvent::SelfModerated {
                     muted,
                     deafened,
@@ -662,7 +750,11 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 } => {
                     // Audible, because this happens *to* the user: they are not
                     // looking at the screen when someone mutes them.
-                    if let Some(cue) = cue_for_moderation(muted, deafened) {
+                    // A mute on its own may be the same change a request is
+                    // about to make, and is heard once between the two.
+                    let echo = deafened.is_none()
+                        && muted.is_some_and(|m| !mute_cue_echo.should_play(m, now()));
+                    if let Some(cue) = cue_for_moderation(muted, deafened).filter(|_| !echo) {
                         cue_shared.play_cue(cue);
                     }
                     emit(AppEvent::Moderated {
@@ -797,7 +889,22 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         slots,
         last_status,
         identity,
+        allow_remote_unmute,
     });
+    Ok(())
+}
+
+/// Whether another MumbleWay rider may turn this rider's microphone back on.
+///
+/// **Only unmuting is governed by this.** Being muted by somebody closes a
+/// microphone and costs a rider nothing but the chance to be heard, which they
+/// can take back with their own button; being unmuted opens it, and they are
+/// on air from that moment, whatever they are saying. A rider who mutes to
+/// talk to a passenger, or to take a call, should be able to say that nobody
+/// else decides when that ends.
+#[frb(sync)]
+pub fn set_allow_remote_unmute(allow: bool) -> anyhow::Result<()> {
+    app()?.allow_remote_unmute.store(allow, Ordering::Relaxed);
     Ok(())
 }
 

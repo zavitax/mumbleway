@@ -6,7 +6,7 @@ description: What MumbleWay does with your voice, and what it does not.
 ---
 
 **MumbleWay** — voice for bikers.
-Developer: Ilya Melamed. Last updated: 16 September 2026.
+Developer: Ilya Melamed. Last updated: 18 September 2026.
 
 ## The short version
 
@@ -69,7 +69,7 @@ stops further syncing.
 
 | To | When | What it sees |
 |---|---|---|
-| The Mumble server you chose | While connected | Your voice, your username, your IP address, and the app's name and version, your operating system and its processor type |
+| The Mumble server you chose | While connected | Your voice, your username, your IP address, whether your microphone is muted, and the app's name and version, your operating system and its processor type |
 | `publist.mumble.info` | Only when you open the public server directory | Your IP address, as any website would |
 | `zavitax.github.io` | Only when an invitation link is *followed* in a browser | Your IP address. **Not** the server, channel or password in the invitation |
 | Your local network | Only if you connect to a server on it | — |
@@ -90,6 +90,15 @@ server passes it on like everything else, and on a server older than Mumble
 1.4 nobody receives it at all.
 
 People using other Mumble apps are told nothing — their app ignores it.
+
+**Muting.** When you mute your microphone, the server is told, so everyone on it
+can see that you are muted rather than just quiet — people using other Mumble
+apps included. And another MumbleWay user can ask your app to mute your
+microphone, for when it is sending noise, or to unmute it, for when you muted
+yourself and forgot. Either way you hear a sound and see who did it, and your
+app acts on at most one such request every 30 seconds. Being unmuted by others
+can be turned off in Settings, with "Let MumbleWay users unmute me". Being
+muted cannot, and your own mute button always turns the microphone back on.
 
 ### Invitation links
 

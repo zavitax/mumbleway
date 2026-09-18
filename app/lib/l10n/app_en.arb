@@ -870,5 +870,25 @@
   "reviewTitle": "Getting on with MumbleWay?",
   "reviewBody": "A word in the store helps other riders find it. It takes a minute and there is nothing else we ask for.",
   "reviewNotNow": "Not now",
-  "reviewRate": "Leave a review"
+  "reviewRate": "Leave a review",
+  "remoteMutedYou": "{name} muted your microphone",
+  "@remoteMutedYou": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "description": "Shown when another MumbleWay rider turned this rider's microphone off, and it has already happened."
+  },
+  "remoteUnmutedYou": "{name} unmuted your microphone",
+  "@remoteUnmutedYou": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    },
+    "description": "Shown when another MumbleWay rider turned this rider's microphone back on, and it has already happened."
+  },
+  "allowRemoteUnmute": "Let MumbleWay users unmute me",
+  "allowRemoteUnmuteBody": "Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute."
 }

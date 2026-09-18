@@ -2940,6 +2940,30 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Leave a review'**
   String get reviewRate;
+
+  /// Shown when another MumbleWay rider turned this rider's microphone off, and it has already happened.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} muted your microphone'**
+  String remoteMutedYou(String name);
+
+  /// Shown when another MumbleWay rider turned this rider's microphone back on, and it has already happened.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} unmuted your microphone'**
+  String remoteUnmutedYou(String name);
+
+  /// No description provided for @allowRemoteUnmute.
+  ///
+  /// In en, this message translates to:
+  /// **'Let MumbleWay users unmute me'**
+  String get allowRemoteUnmute;
+
+  /// No description provided for @allowRemoteUnmuteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.'**
+  String get allowRemoteUnmuteBody;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

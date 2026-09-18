@@ -116,12 +116,45 @@ pub const PROTOCOL: u32 = 1;
 
 /// What this build tells peers it understands.
 ///
-/// **Empty, and that is the point of having it.** Nothing MumbleWay-specific is
-/// exchanged yet. When something is, its name goes here, and it is offered only
-/// to peers whose hello listed the same name — so a new exchange never reaches a
+/// A name goes here when an exchange is added, and that exchange is offered
+/// only to peers whose hello listed the same name — so it never reaches a
 /// client that would not know what to do with it, and never needs a change to
 /// the handshake to be introduced.
-pub const CAPABILITIES: &[&str] = &[];
+pub const CAPABILITIES: &[&str] = &[CAP_REMOTE_MUTE];
+
+/// This client will act on a request to mute or unmute its microphone — see
+/// [`DATA_ID_MUTE`].
+pub const CAP_REMOTE_MUTE: &str = "remote-mute";
+
+/// Asks a peer to turn its own microphone off or on.
+///
+/// **What it is for.** A rider whose noise cancellation has failed fills the
+/// channel with wind, and on most servers nobody present holds the Mute
+/// permission that would let them do anything but mute that rider for
+/// themselves. The opposite case is as common: a rider muted, forgot, and is
+/// talking to nobody. The server can fix neither — no one, admins included, may
+/// change another user's *self*-mute (`msgUserState` refuses it outright) — so
+/// it has to be the rider's own client that acts, at a peer's request.
+///
+/// It rides alongside the ordinary server mute rather than replacing it: the
+/// roster's "Mute on server" sends both, so a rider with the permission gets the
+/// real, binding mute and one without still gets the request.
+pub const DATA_ID_MUTE: &str = "mumbleway/mute";
+
+/// How long after acting on one remote mute request the next is ignored.
+///
+/// **This is what stops a peer holding someone muted.** Without it, a request
+/// every second would re-mute a rider the moment they unmuted themselves. With
+/// it, whoever is on the receiving end gets half a minute of their own
+/// microphone after every remote change — long enough to notice and undo it,
+/// short enough that a genuine second request after the noise comes back is
+/// not refused for long. Global across senders and servers, because a new
+/// session is one reconnect away and a per-sender limit is therefore no limit.
+pub const REMOTE_MUTE_COOLDOWN: Duration = Duration::from_secs(30);
+
+/// How long after sending a mute request a matching refusal from the server is
+/// taken to be covered by it. See [`Peers::backup_covers`].
+pub const BACKUP_WINDOW: Duration = Duration::from_secs(5);
 
 /// How long to wait before announcing again.
 ///
@@ -267,6 +300,115 @@ pub fn server_supports_plugin_data(v1: Option<u32>, v2: Option<u64>) -> bool {
     (major, minor) >= (1, 4)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct MuteWire {
+    mute: bool,
+}
+
+/// Encodes a request to mute (`true`) or unmute (`false`).
+pub fn encode_mute_request(mute: bool) -> Vec<u8> {
+    serde_json::to_vec(&MuteWire { mute }).unwrap_or_default()
+}
+
+/// Decodes a mute request, or `None` for anything that is not one. The same
+/// distrust as [`decode_hello`]: this arrived from another client.
+pub fn decode_mute_request(data: &[u8]) -> Option<bool> {
+    if data.is_empty() || data.len() > MAX_DATA_LENGTH {
+        return None;
+    }
+    serde_json::from_slice::<MuteWire>(data)
+        .ok()
+        .map(|w| w.mute)
+}
+
+/// What to do with a mute request that arrived from a peer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteMuteDecision {
+    /// Change the microphone to the requested state.
+    Apply,
+    /// It is already in that state. Nothing to do, and no cue — a tone for a
+    /// change that did not happen would teach the rider to ignore the tone.
+    AlreadyThere,
+    /// An unmute, and the rider has turned off being unmuted by others.
+    UnmuteNotAllowed,
+    /// Too soon after the last remote change; see [`REMOTE_MUTE_COOLDOWN`].
+    CoolingDown,
+}
+
+/// Decides whether a remote mute request is acted on.
+///
+/// One per app rather than per connection, so the cooldown holds across every
+/// server a rider is on at once.
+#[derive(Debug, Default)]
+pub struct RemoteMuteGuard {
+    last: Option<Instant>,
+}
+
+impl RemoteMuteGuard {
+    /// Decides, and records the decision if it is to act.
+    ///
+    /// **Only a request that is acted on starts the cooldown.** One that is
+    /// ignored — already in that state, or an unmute the rider has refused —
+    /// changes nothing, so it must not spend the half-minute either: otherwise a
+    /// stream of refused unmutes would block the one mute request that was
+    /// genuinely needed.
+    pub fn decide(
+        &mut self,
+        mute: bool,
+        currently_muted: bool,
+        allow_unmute: bool,
+        now: Instant,
+    ) -> RemoteMuteDecision {
+        if mute == currently_muted {
+            return RemoteMuteDecision::AlreadyThere;
+        }
+        if !mute && !allow_unmute {
+            return RemoteMuteDecision::UnmuteNotAllowed;
+        }
+        if self
+            .last
+            .is_some_and(|t| now.saturating_duration_since(t) < REMOTE_MUTE_COOLDOWN)
+        {
+            return RemoteMuteDecision::CoolingDown;
+        }
+        self.last = Some(now);
+        RemoteMuteDecision::Apply
+    }
+}
+
+/// How close together two reports of the same mute change have to be to count
+/// as one change.
+pub const MUTE_CUE_ECHO: Duration = Duration::from_secs(2);
+
+/// Plays one cue for one change, when that change arrives by two routes.
+///
+/// A rider who *does* have permission to mute sends both the server mute and
+/// the request (see `SetUserServerMute`), and both land: the server reports the
+/// mute, then the request mutes the microphone. Two falling pairs a moment
+/// apart is not two things happening — and in this cue vocabulary a figure
+/// said twice means *urgent*, which would be exactly the wrong thing to hear.
+#[derive(Debug, Default)]
+pub struct MuteCueEcho {
+    last: Option<(Instant, bool)>,
+}
+
+impl MuteCueEcho {
+    /// Whether the cue for the microphone going `muted` should play, noting it
+    /// if so.
+    ///
+    /// A suppressed one does not extend the window: it measures from the cue
+    /// the rider actually heard.
+    pub fn should_play(&mut self, muted: bool, now: Instant) -> bool {
+        if let Some((at, was)) = self.last {
+            if was == muted && now.saturating_duration_since(at) < MUTE_CUE_ECHO {
+                return false;
+            }
+        }
+        self.last = Some((now, muted));
+        true
+    }
+}
+
 /// Which sessions on this server run MumbleWay, and who is owed a reply.
 ///
 /// Lives inside a connection's state, so a reconnect starts it empty — session
@@ -275,6 +417,8 @@ pub fn server_supports_plugin_data(v1: Option<u32>, v2: Option<u64>) -> bool {
 pub struct Peers {
     known: HashMap<u32, Peer>,
     owed: BTreeSet<u32>,
+    /// Sessions a mute request went to, and when — see [`Peers::backup_covers`].
+    backups: HashMap<u32, Instant>,
 }
 
 impl Peers {
@@ -301,6 +445,33 @@ impl Peers {
     pub fn forget(&mut self, session: u32) {
         self.known.remove(&session);
         self.owed.remove(&session);
+        self.backups.remove(&session);
+    }
+
+    /// Whether `session` said it will act on a mute request.
+    pub fn accepts_remote_mute(&self, session: u32) -> bool {
+        self.get(session)
+            .is_some_and(|p| p.supports(CAP_REMOTE_MUTE))
+    }
+
+    /// Records that a mute request went to `session` alongside a server mute.
+    pub fn note_backup(&mut self, session: u32, now: Instant) {
+        self.backups.insert(session, now);
+    }
+
+    /// Whether a refusal from the server about `session` is covered by a mute
+    /// request sent to it moments ago.
+    ///
+    /// **Without this the roster tells a lie at the moment it works.** A rider
+    /// without the Mute permission taps "Mute on server": the server refuses,
+    /// the request reaches the peer, the peer mutes itself — and the screen
+    /// says "the server refused", about a mute that has just happened. Inside a
+    /// few seconds of a request to that same session, the refusal is the
+    /// expected half of a pair and not news.
+    pub fn backup_covers(&self, session: u32, now: Instant) -> bool {
+        self.backups
+            .get(&session)
+            .is_some_and(|t| now.saturating_duration_since(*t) < BACKUP_WINDOW)
     }
 
     /// Takes every session owed a reply, so all of them can be answered in a
@@ -628,6 +799,166 @@ mod tests {
         assert!(
             !a.is_due(now + RETRY_INTERVAL),
             "nobody left to ask, so nothing more to say"
+        );
+    }
+
+    #[test]
+    fn this_build_offers_remote_mute() {
+        // Without it in the hello, no peer would ever send us a request, and
+        // the feature would be present and unreachable.
+        assert!(CAPABILITIES.contains(&CAP_REMOTE_MUTE));
+        assert!(DATA_ID_MUTE.starts_with(DATA_ID_PREFIX));
+        assert!(DATA_ID_MUTE.len() <= MAX_DATA_ID_LENGTH);
+    }
+
+    #[test]
+    fn a_mute_request_survives_the_round_trip() {
+        assert_eq!(decode_mute_request(&encode_mute_request(true)), Some(true));
+        assert_eq!(
+            decode_mute_request(&encode_mute_request(false)),
+            Some(false)
+        );
+        assert_eq!(decode_mute_request(b""), None);
+        assert_eq!(decode_mute_request(b"{}"), None, "no instruction in it");
+        assert_eq!(decode_mute_request(b"yes please"), None);
+    }
+
+    #[test]
+    fn only_a_peer_that_offered_it_is_sent_a_mute_request() {
+        let mut p = Peers::default();
+        p.on_hello(
+            1,
+            Hello {
+                version: "1.0.2".into(),
+                proto: 1,
+                caps: vec![CAP_REMOTE_MUTE.into()],
+                reply: true,
+            },
+        );
+        p.on_hello(2, hello("1.0.1", true)); // MumbleWay, but before this feature
+        assert!(p.accepts_remote_mute(1));
+        assert!(
+            !p.accepts_remote_mute(2),
+            "would not know what to do with it"
+        );
+        assert!(
+            !p.accepts_remote_mute(3),
+            "not known to run MumbleWay at all"
+        );
+    }
+
+    #[test]
+    fn a_request_is_acted_on_once_and_then_the_rider_has_their_microphone() {
+        // **The protection against being held muted.** A request every second
+        // would otherwise re-mute somebody the moment they unmuted themselves.
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(g.decide(true, false, true, t0), RemoteMuteDecision::Apply);
+
+        // They unmute themselves; the next request, from anybody, waits.
+        let soon = t0 + Duration::from_secs(10);
+        assert_eq!(
+            g.decide(true, false, true, soon),
+            RemoteMuteDecision::CoolingDown
+        );
+
+        let later = t0 + REMOTE_MUTE_COOLDOWN;
+        assert_eq!(
+            g.decide(true, false, true, later),
+            RemoteMuteDecision::Apply
+        );
+    }
+
+    #[test]
+    fn a_rider_who_refused_remote_unmute_is_never_unmuted() {
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(
+            g.decide(false, true, false, Instant::now()),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+        // Muting is still allowed: the setting is about opening a microphone,
+        // not about closing one.
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(
+            g.decide(true, false, false, Instant::now()),
+            RemoteMuteDecision::Apply
+        );
+    }
+
+    #[test]
+    fn a_request_that_changes_nothing_is_silent_and_costs_nothing() {
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        // Already muted: no change, so no cue — and no cooldown spent.
+        assert_eq!(
+            g.decide(true, true, true, t0),
+            RemoteMuteDecision::AlreadyThere
+        );
+        assert_eq!(g.decide(true, false, true, t0), RemoteMuteDecision::Apply);
+    }
+
+    #[test]
+    fn refused_unmutes_do_not_block_a_needed_mute() {
+        // A peer sending unmutes that the rider has refused must not spend the
+        // cooldown, or they could block the one mute request that mattered.
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        for s in 0..5 {
+            let t = t0 + Duration::from_secs(s);
+            assert_eq!(
+                g.decide(false, true, false, t),
+                RemoteMuteDecision::UnmuteNotAllowed
+            );
+        }
+        // Unmuted by their own hand in the meantime, then asked to mute.
+        assert_eq!(
+            g.decide(true, false, false, t0 + Duration::from_secs(6)),
+            RemoteMuteDecision::Apply
+        );
+    }
+
+    #[test]
+    fn one_change_by_two_routes_is_one_cue() {
+        let t0 = Instant::now();
+        let mut e = MuteCueEcho::default();
+        assert!(e.should_play(true, t0), "the server's report");
+        assert!(
+            !e.should_play(true, t0 + Duration::from_millis(80)),
+            "the request, right behind it, is the same change"
+        );
+        // Measured from the cue that was heard, not pushed on by the echo.
+        assert!(e.should_play(true, t0 + MUTE_CUE_ECHO));
+    }
+
+    #[test]
+    fn opposite_changes_are_both_heard() {
+        // Muted and straight back: two real changes, however close.
+        let t0 = Instant::now();
+        let mut e = MuteCueEcho::default();
+        assert!(e.should_play(true, t0));
+        assert!(e.should_play(false, t0 + Duration::from_millis(100)));
+        assert!(e.should_play(true, t0 + Duration::from_millis(200)));
+    }
+
+    #[test]
+    fn a_refusal_right_after_a_request_is_covered_by_it() {
+        let t0 = Instant::now();
+        let mut p = Peers::default();
+        p.note_backup(4, t0);
+        assert!(p.backup_covers(4, t0 + Duration::from_secs(1)));
+        assert!(
+            !p.backup_covers(4, t0 + BACKUP_WINDOW),
+            "too late to be the pair"
+        );
+        assert!(
+            !p.backup_covers(5, t0),
+            "a different person's refusal is news"
+        );
+
+        p.forget(4);
+        assert!(
+            !p.backup_covers(4, t0),
+            "the number may belong to somebody else now"
         );
     }
 

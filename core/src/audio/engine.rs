@@ -910,7 +910,9 @@ impl AudioCue {
     /// The vocabulary is consistent so it can be learned without a manual:
     /// falling means something was taken away, rising means it came back, and
     /// the number of tones tells you how big a deal it is — two for the
-    /// microphone, three for hearing, which matters more.
+    /// microphone, three for hearing, which matters more. A figure said twice
+    /// is urgent: it is used once, for somebody else making your microphone
+    /// live.
     fn segments(self) -> &'static [(f32, u32)] {
         match self {
             // Falling, so it reads as "something went wrong" without thinking.
@@ -930,7 +932,26 @@ impl AudioCue {
             AudioCue::ParticipantLeft => &[(880.0, 55), (0.0, 20), (587.33, 75)],
 
             AudioCue::MutedByOther => &[(659.25, 110), (0.0, 30), (440.0, 170)],
-            AudioCue::UnmutedByOther => &[(440.0, 110), (0.0, 30), (659.25, 170)],
+            // **The one cue that must never be mistaken for another.** Somebody
+            // else has just made this rider's microphone live — in voice
+            // activation or an open mic, they are being heard from this moment,
+            // whatever they are saying. A single rising pair is the shape
+            // `Reconnected` already has, a few semitones away, and a rider who
+            // takes it for the link coming back has no idea they are on air.
+            //
+            // So the pair is said twice. It is still two tones in the grammar
+            // above — this is about the microphone, not about hearing — and the
+            // repetition is what makes it urgent rather than routine. It plays
+            // for an admin's unmute too: the meaning is the same.
+            AudioCue::UnmutedByOther => &[
+                (440.0, 110),
+                (0.0, 30),
+                (659.25, 170),
+                (0.0, 110),
+                (440.0, 110),
+                (0.0, 30),
+                (659.25, 170),
+            ],
             AudioCue::DeafenedByOther => &[
                 (659.25, 100),
                 (0.0, 30),
@@ -4862,6 +4883,27 @@ mod tests {
             "the press cue should be quieter than a status change"
         );
         assert!(peak(AudioCue::TransmitEnd) < peak(AudioCue::Disconnected));
+    }
+
+    #[test]
+    fn being_unmuted_by_somebody_cannot_be_taken_for_reconnecting() {
+        // Both rise. A rider who heard their microphone being opened and took
+        // it for the link coming back would be on air without knowing it, so
+        // the two have to differ in something a listener cannot miss: how many
+        // times the figure is said, and so how long it lasts.
+        let tones = |c: AudioCue| c.segments().iter().filter(|(f, _)| *f > 0.0).count();
+        assert!(
+            tones(AudioCue::UnmutedByOther) >= 2 * tones(AudioCue::Reconnected),
+            "the unmute cue must say its figure twice"
+        );
+        assert!(
+            render_cue(AudioCue::UnmutedByOther).len()
+                > render_cue(AudioCue::Reconnected).len() * 3 / 2,
+            "and last clearly longer"
+        );
+        // Muting stays a single falling pair: losing your microphone is worth
+        // a notice, not an alarm.
+        assert_eq!(tones(AudioCue::MutedByOther), 2);
     }
 
     #[test]

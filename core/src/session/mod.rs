@@ -921,6 +921,22 @@ impl Session {
             }
             MessageType::PermissionDenied => {
                 let m = mumble::PermissionDenied::decode(payload)?;
+
+                // A refusal of the Mute permission, about somebody we have just
+                // sent a mute request to, is the expected half of a pair: the
+                // request went through, and saying "the server refused" about
+                // a mute that is happening would be the screen lying. Only that
+                // exact refusal, only for that person, only for a few seconds.
+                const DENY_PERMISSION: i32 = 1;
+                const ACL_MUTE_DEAFEN: u32 = 0x10;
+                let covered = m.r#type == Some(DENY_PERMISSION)
+                    && m.permission == Some(ACL_MUTE_DEAFEN)
+                    && m.session
+                        .is_some_and(|s| state.peers.backup_covers(s, Instant::now()));
+                if covered {
+                    return Ok(None);
+                }
+
                 // Passed through as the server wrote it, empty included. A
                 // placeholder invented here would be English text the UI could
                 // not tell from the server's own and could not translate, and
@@ -964,6 +980,24 @@ impl Session {
                     if let Some(hello) = m.data.as_deref().and_then(peers::decode_hello) {
                         state.peers.on_hello(sender, hello);
                         self.emit(SessionEvent::Users(state.user_list())).await;
+                    }
+                } else if id == peers::DATA_ID_MUTE {
+                    // Only from somebody who has said they run MumbleWay, so
+                    // there is a name to tell the rider. Whether to act is not
+                    // decided here: the rider's setting, their current state
+                    // and the cooldown all live in the app, and one guard has
+                    // to hold across every server they are on.
+                    if !state.peers.is_mumbleway(sender) {
+                        return Ok(None);
+                    }
+                    if let Some(mute) = m.data.as_deref().and_then(peers::decode_mute_request) {
+                        let by = state
+                            .users
+                            .get(&sender)
+                            .map(|u| u.name.clone())
+                            .unwrap_or_default();
+                        self.emit(SessionEvent::RemoteMuteRequested { mute, by })
+                            .await;
                     }
                 }
                 // Other `mumbleway/` IDs are reserved for the exchanges this
@@ -1056,6 +1090,22 @@ impl Session {
                     ..Default::default()
                 };
                 writer.send(MessageType::UserState, &m).await?;
+
+                // And, to a MumbleWay rider who will act on it, the same thing
+                // as a request. The server mute is the binding one and needs a
+                // permission most riders lack; this needs none, and it is also
+                // the only thing that can reach a *self*-mute, which no server
+                // command may touch. See `peers::DATA_ID_MUTE`.
+                if state.plugin_data && state.peers.accepts_remote_mute(session) {
+                    let m = mumble::PluginDataTransmission {
+                        sender_session: None,
+                        receiver_sessions: vec![session],
+                        data: Some(peers::encode_mute_request(muted).into()),
+                        data_id: Some(peers::DATA_ID_MUTE.to_string()),
+                    };
+                    writer.send(MessageType::PluginDataTransmission, &m).await?;
+                    state.peers.note_backup(session, Instant::now());
+                }
             }
             SessionCommand::SetUserServerDeaf { session, deaf } => {
                 let m = mumble::UserState {

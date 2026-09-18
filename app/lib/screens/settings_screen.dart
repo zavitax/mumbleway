@@ -204,6 +204,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          // With the microphone's other settings, because it is one: it
+          // decides who besides the rider may open it.
+          const _AllowRemoteUnmuteTile(),
 
           if (state.overlaySupported) ...[
             const Divider(height: 32),
@@ -570,6 +573,25 @@ class _VoiceCommunicationTile extends StatelessWidget {
         isThreeLine: true,
         value: state.voiceCommunication,
         onChanged: (v) => state.setVoiceCommunicationEnabled(value: v),
+      );
+    });
+  }
+}
+
+class _AllowRemoteUnmuteTile extends StatelessWidget {
+  const _AllowRemoteUnmuteTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Watch<bool>((state) => state.allowRemoteUnmute, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.record_voice_over),
+        title: Text(l.allowRemoteUnmute),
+        subtitle: Text(l.allowRemoteUnmuteBody),
+        isThreeLine: true,
+        value: state.allowRemoteUnmute,
+        onChanged: (v) => state.setAllowRemoteUnmuteEnabled(value: v),
       );
     });
   }

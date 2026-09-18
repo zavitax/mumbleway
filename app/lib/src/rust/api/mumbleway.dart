@@ -16,6 +16,17 @@ part 'mumbleway.freezed.dart';
 Future<void> startEngine({required StartupOptions options}) =>
     RustLib.instance.api.crateApiMumblewayStartEngine(options: options);
 
+/// Whether another MumbleWay rider may turn this rider's microphone back on.
+///
+/// **Only unmuting is governed by this.** Being muted by somebody closes a
+/// microphone and costs a rider nothing but the chance to be heard, which they
+/// can take back with their own button; being unmuted opens it, and they are
+/// on air from that moment, whatever they are saying. A rider who mutes to
+/// talk to a passenger, or to take a call, should be able to say that nobody
+/// else decides when that ends.
+void setAllowRemoteUnmute({required bool allow}) =>
+    RustLib.instance.api.crateApiMumblewaySetAllowRemoteUnmute(allow: allow);
+
 /// Opens the event stream the UI listens on.
 Stream<AppEvent> appEvents() =>
     RustLib.instance.api.crateApiMumblewayAppEvents();
@@ -610,6 +621,19 @@ sealed class AppEvent with _$AppEvent {
     bool? deafened,
     required String by,
   }) = AppEvent_Moderated;
+
+  /// Another MumbleWay rider asked for our microphone to be turned off or on,
+  /// and the request was acted on — the microphone has already changed and
+  /// the cue has already played by the time this arrives.
+  ///
+  /// Requests that were *not* acted on never reach the UI: a notice about a
+  /// change that did not happen would be noise at best and alarming at
+  /// worst.
+  const factory AppEvent.remoteMuted({
+    required String serverId,
+    required bool muted,
+    required String by,
+  }) = AppEvent_RemoteMuted;
 
   /// The server presented a certificate. `changed` means it differs from the
   /// pinned one and the user must decide.

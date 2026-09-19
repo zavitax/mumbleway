@@ -236,7 +236,7 @@ class ServerCard extends StatelessWidget {
                               case 'register':
                                 _register(context, state);
                               case 'note':
-                                _setNote(context, state, rt);
+                                _setNote(context, state);
                               case final v when v.startsWith('server:'):
                                 // One of the server's own entries. Channel
                                 // ones are sent with the channel we are in,
@@ -343,21 +343,25 @@ class ServerCard extends StatelessWidget {
                                 ),
                               );
                             }(),
-                            // A note needs a session as much as registering
-                            // does: it is a property of being on the server,
-                            // not of the saved entry.
+                            // Unlike registering, this works disconnected: the
+                            // note is kept with the entry and put back on the
+                            // session whenever there is one.
                             PopupMenuItem(
                               value: 'note',
-                              enabled: rt.isLive,
                               child: ListTile(
                                 dense: true,
-                                enabled: rt.isLive,
                                 contentPadding: EdgeInsets.zero,
                                 leading: const Icon(
                                   Icons.sticky_note_2_outlined,
                                 ),
                                 title: Text(l.setNote),
-                                subtitle: rt.isLive ? null : Text(l.connectFirst),
+                                subtitle: server.note.isEmpty
+                                    ? null
+                                    : Text(
+                                        server.note,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                               ),
                             ),
                             // Only for somebody who can act on it: reading the
@@ -459,18 +463,13 @@ class ServerCard extends StatelessWidget {
   /// including whatever chat app it travels through.
   /// Edits the note that sits beside our own name for everybody on the server.
   ///
-  /// Prefilled with whatever is there now, read back off our own roster row —
-  /// which is the only copy, since the server holds it and we are simply one
-  /// of the clients being told about it.
-  Future<void> _setNote(
-    BuildContext context,
-    AppState state,
-    ServerRuntime rt,
-  ) async {
+  /// Prefilled from the saved entry rather than from our own roster row: the
+  /// saved one is the copy that lasts, since a server keeps a comment only for
+  /// registered users and the roster has nothing to show before connecting.
+  Future<void> _setNote(BuildContext context, AppState state) async {
     final l = L.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final mine = rt.users.where((u) => u.session == rt.selfSession).firstOrNull;
-    final field = TextEditingController(text: mine?.comment ?? '');
+    final field = TextEditingController(text: server.note);
 
     final save = await showDialog<bool>(
       context: context,

@@ -1650,7 +1650,7 @@ class LEn extends L {
 
   @override
   String get setNoteBody =>
-      'A line beside your name that everyone on this server can see. Leave it empty to remove it.';
+      'A line beside your name that everyone on this server can see. It is kept with this server and set again each time you connect. Leave it empty to remove it.';
 
   @override
   String get setNoteHint => 'Back in ten';

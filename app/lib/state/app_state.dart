@@ -38,6 +38,7 @@ class SavedServer {
     this.password,
     this.certFingerprint,
     this.defaultChannel,
+    this.note = '',
     String? localId,
     this.updatedAt = 0,
   }) : localId = localId ?? '$host:$port';
@@ -51,6 +52,18 @@ class SavedServer {
 
   /// Channel joined automatically on every connect.
   final String? defaultChannel;
+
+  /// The note to show beside our own name on this server.
+  ///
+  /// **Kept here because the server does not keep it.** A Mumble server stores
+  /// a comment only for *registered* users; for everybody else it lives as long
+  /// as the session and is gone on the next connect — and reconnecting is
+  /// ordinary on a bike. So this is the copy that lasts, and it is sent again
+  /// every time the session comes up.
+  ///
+  /// Per server rather than per app: "back in ten" is true on the ride you are
+  /// on, not on the club server you join tonight.
+  final String note;
 
   /// Unique key for this entry.
   ///
@@ -95,6 +108,7 @@ class SavedServer {
     String? username,
     String? certFingerprint,
     String? defaultChannel,
+    String? note,
     String? localId,
     int? updatedAt,
     bool clearDefaultChannel = false,
@@ -109,6 +123,9 @@ class SavedServer {
     defaultChannel: clearDefaultChannel
         ? null
         : (defaultChannel ?? this.defaultChannel),
+    // An empty note is a real value — it is how a rider clears one — so this
+    // takes whatever it is given rather than treating empty as "unchanged".
+    note: note ?? this.note,
     localId: localId ?? this.localId,
   );
 
@@ -121,6 +138,7 @@ class SavedServer {
     'password': password,
     'certFingerprint': certFingerprint,
     'defaultChannel': defaultChannel,
+    'note': note,
     'updatedAt': updatedAt,
   };
 
@@ -135,6 +153,7 @@ class SavedServer {
     password: j['password'] as String?,
     certFingerprint: j['certFingerprint'] as String?,
     defaultChannel: j['defaultChannel'] as String?,
+    note: j['note'] as String? ?? '',
     updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
   );
 
@@ -2255,16 +2274,48 @@ class AppState extends ChangeNotifier {
 
   /// Sets the note shown beside our own name on this server, or clears it.
   ///
-  /// Returns what went wrong, or null. The server may refuse — a note is
-  /// permission-gated like everything else — and that refusal arrives on the
-  /// session rather than here, the same way registering does.
+  /// **Saved with the server entry, and sent again on every connect.** A Mumble
+  /// server keeps a comment only for registered users, so for everybody else
+  /// the note would be gone the first time the link dropped — which on a bike
+  /// is not an edge case.
+  ///
+  /// Editable while disconnected for the same reason: there is somewhere to
+  /// put it, and the session will carry it when there is one.
+  ///
+  /// Returns what went wrong, or null. The server may still refuse the change
+  /// itself, and that refusal arrives on the session rather than here, the same
+  /// way registering does.
   Future<String?> setNoteOn(String id, String text) async {
+    final note = text.trim();
+    final i = servers.indexWhere((s) => s.id == id);
+    if (i >= 0 && servers[i].note != note) {
+      // Stamped: a rider typing a note is a deliberate edit, and it should win
+      // against an older copy of this entry on another device.
+      servers[i] = servers[i].copyWith(note: note).stamped();
+      await _persist();
+      notifyListeners();
+    }
+    if (!runtimeFor(id).isLive) return null;
     try {
-      await setComment(serverId: id, text: text.trim());
+      await setComment(serverId: id, text: note);
       return null;
     } catch (e) {
       return '$e';
     }
+  }
+
+  /// Puts this server's saved note back on the session that has just come up.
+  ///
+  /// Best-effort and silent: the rider did not ask for anything here, so a
+  /// server that refuses a comment should not produce an error out of nowhere.
+  /// An empty note sends nothing at all — clearing somebody's server-side
+  /// comment on every connect is not the same as having none saved.
+  void _restoreNote(String id) {
+    final note = servers.where((s) => s.id == id).firstOrNull?.note ?? '';
+    if (note.isEmpty) return;
+    try {
+      unawaited(setComment(serverId: id, text: note).catchError((_) {}));
+    } catch (_) {}
   }
 
   Future<void> toggleUserLocalMute(String id, UiUser user) async {
@@ -3711,11 +3762,13 @@ class AppState extends ChangeNotifier {
         rt.retryDeadline = field0.retryInMs > BigInt.zero
             ? DateTime.now().add(Duration(milliseconds: rt.retryInMs))
             : null;
-        // A fresh session starts unmuted as far as the server knows, so a
-        // rider who was muted when the link dropped would come back looking
-        // open. Only the muted case needs saying; unmuted is the default.
-        if (!wasLive && rt.isLive && _muted) {
-          _mirrorSelfMute(field0.serverId, true);
+        // A fresh session starts unmuted as far as the server knows, and with
+        // no note. Both are ours to re-assert, and for the same reason: the
+        // rider set them, and a dropped link did not unset them. Only the
+        // muted case needs saying; unmuted is what a new session already is.
+        if (!wasLive && rt.isLive) {
+          if (_muted) _mirrorSelfMute(field0.serverId, true);
+          _restoreNote(field0.serverId);
         }
       case AppEvent_Rights(:final serverId, :final rights):
         runtimeFor(serverId).rights = rights;

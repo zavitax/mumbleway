@@ -3016,7 +3016,7 @@ abstract class L {
   /// No description provided for @setNoteBody.
   ///
   /// In en, this message translates to:
-  /// **'A line beside your name that everyone on this server can see. Leave it empty to remove it.'**
+  /// **'A line beside your name that everyone on this server can see. It is kept with this server and set again each time you connect. Leave it empty to remove it.'**
   String get setNoteBody;
 
   /// No description provided for @setNoteHint.

@@ -1629,4 +1629,8 @@ class LRu extends L {
 
   @override
   String get qualitySinceConnect => 'С момента подключения';
+
+  @override
+  String get registerNotAllowed =>
+      'Этот сервер не разрешает регистрироваться самостоятельно';
 }

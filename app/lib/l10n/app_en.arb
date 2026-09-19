@@ -933,5 +933,6 @@
       }
     }
   },
-  "qualitySinceConnect": "Since they connected"
+  "qualitySinceConnect": "Since they connected",
+  "registerNotAllowed": "This server does not let users register themselves"
 }

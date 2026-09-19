@@ -114,6 +114,31 @@ pub struct UiUser {
     pub quality: Option<UiQuality>,
 }
 
+/// What the server says this rider may do, here and on this server.
+///
+/// For greying out what would be refused. **Never a substitute for handling the
+/// refusal**: an ACL can change between this answer and the tap, so anything
+/// that gets through is still sent and a refusal is still shown.
+#[derive(Debug, Clone, Copy)]
+pub struct UiRights {
+    /// Whether the server has answered at all. Everything below is false until
+    /// it has, which is not the same as being refused.
+    pub known: bool,
+    pub speak: bool,
+    /// Mute and deafen others in this channel, for everyone.
+    pub mute_deafen: bool,
+    pub move_users: bool,
+    pub text: bool,
+    pub whisper: bool,
+    pub make_channel: bool,
+    /// Rename or re-describe this channel.
+    pub write: bool,
+    pub kick: bool,
+    pub ban: bool,
+    pub register_others: bool,
+    pub self_register: bool,
+}
+
 /// The server's measurements of one rider's connection.
 #[derive(Debug, Clone, Copy)]
 pub struct UiQuality {
@@ -198,6 +223,11 @@ pub enum AppEvent {
     /// the audio itself.
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
+    },
+    /// What this rider may do on this server has been answered, or changed.
+    Rights {
+        server_id: String,
+        rights: UiRights,
     },
     /// Someone else changed our mute or deafen state.
     Moderated {
@@ -717,6 +747,23 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::Rights(r) => emit(AppEvent::Rights {
+                    server_id,
+                    rights: UiRights {
+                        known: r.known,
+                        speak: r.speak,
+                        mute_deafen: r.mute_deafen,
+                        move_users: r.move_users,
+                        text: r.text,
+                        whisper: r.whisper,
+                        make_channel: r.make_channel,
+                        write: r.write,
+                        kick: r.kick,
+                        ban: r.ban,
+                        register_others: r.register_others,
+                        self_register: r.self_register,
+                    },
+                }),
                 SessionEvent::RemoteMuteRequested { mute, by } => {
                     // Decided here rather than in the session, because this is
                     // where all three inputs meet: the microphone's real state,

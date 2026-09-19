@@ -1640,4 +1640,8 @@ class LEn extends L {
 
   @override
   String get qualitySinceConnect => 'Since they connected';
+
+  @override
+  String get registerNotAllowed =>
+      'This server does not let users register themselves';
 }

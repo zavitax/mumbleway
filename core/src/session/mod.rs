@@ -2,6 +2,7 @@
 
 pub mod manager;
 pub mod peers;
+pub mod permissions;
 pub mod profile;
 pub mod quality;
 pub mod reconnect;
@@ -86,6 +87,12 @@ struct LiveState {
     quality_fresh: bool,
     /// Whose turn it is to be asked about, and when.
     quality_poller: quality::QualityPoller,
+    /// What the server says this rider may do, per channel — the root's mask
+    /// and the current channel's are the two that matter. See [`permissions`].
+    perms: HashMap<u32, u32>,
+    /// The last rights reported upward, so an unchanged answer is not sent
+    /// again: the server re-sends its cached mask freely.
+    rights_sent: Option<permissions::Rights>,
 }
 
 impl LiveState {
@@ -106,7 +113,18 @@ impl LiveState {
             quality: HashMap::new(),
             quality_fresh: false,
             quality_poller: quality::QualityPoller::default(),
+            perms: HashMap::new(),
+            rights_sent: None,
         }
+    }
+
+    /// What the rider may do, from the two masks that decide it.
+    fn rights(&self) -> permissions::Rights {
+        permissions::Rights::from_masks(
+            self.perms.get(&permissions::ROOT_CHANNEL).copied(),
+            self.self_channel(self.self_session)
+                .and_then(|c| self.perms.get(&c).copied()),
+        )
     }
 
     fn channel_list(&self) -> Vec<ChannelInfo> {
@@ -210,6 +228,18 @@ impl Session {
     async fn emit(&self, e: SessionEvent) {
         // A full or closed event channel must never stall the network loop.
         let _ = self.events.try_send(e);
+    }
+
+    /// Reports what the rider may do, when it has changed.
+    ///
+    /// The server re-sends a channel's mask freely — on every entry, and from
+    /// its cache — and an unchanged answer is not news the interface needs.
+    async fn push_rights(&self, state: &mut LiveState) {
+        let now = state.rights();
+        if state.rights_sent != Some(now) {
+            state.rights_sent = Some(now);
+            self.emit(SessionEvent::Rights(now)).await;
+        }
     }
 
     async fn set_state(&self, s: ConnectionState) {
@@ -492,6 +522,12 @@ impl Session {
         self.emit(SessionEvent::Channels(state.channel_list()))
             .await;
         self.emit(SessionEvent::Users(state.user_list())).await;
+
+        // Ask what this rider may do here, before they reach for anything that
+        // needs it. A server that volunteers the answer costs one extra
+        // message; one that does not would otherwise leave every moderation
+        // action to be discovered by refusal.
+        ask_rights_for(&mut writer, state.self_channel(state.self_session)).await?;
 
         // From here the reader lives in its own task; see [`spawn_reader`].
         let mut messages = spawn_reader(reader);
@@ -911,7 +947,16 @@ impl Session {
                         e.name = n;
                     }
                     if let Some(c) = m.channel_id {
+                        let moved_ourselves = Some(s) == state.self_session && e.channel_id != c;
                         e.channel_id = c;
+                        // Permissions are per channel, so moving invalidates
+                        // the half of the answer that was about *here*. Asked
+                        // on every move rather than only for a channel never
+                        // seen: an ACL may have changed since we last stood in
+                        // it, and one message is nothing.
+                        if moved_ourselves {
+                            ask_permissions(writer, c).await?;
+                        }
                     }
                     if let Some(v) = m.mute {
                         e.mute = v;
@@ -941,6 +986,26 @@ impl Session {
                     })
                     .await;
                 }
+            }
+            MessageType::PermissionQuery => {
+                let m = mumble::PermissionQuery::decode(payload)?;
+                // The server says "forget everything I told you" when an ACL
+                // changes, because what it told us may now be wrong for any
+                // channel, not only the one that changed.
+                let flushed = m.flush.unwrap_or(false);
+                if flushed {
+                    state.perms.clear();
+                }
+                if let (Some(channel), Some(bits)) = (m.channel_id, m.permissions) {
+                    state.perms.insert(channel, bits);
+                }
+                if flushed {
+                    // Being told to forget leaves the rider with no answer at
+                    // all, so ask again rather than wait for a move that may
+                    // never come.
+                    ask_rights_for(writer, state.self_channel(state.self_session)).await?;
+                }
+                self.push_rights(state).await;
             }
             MessageType::UserStats => {
                 let m = mumble::UserStats::decode(payload)?;
@@ -1247,6 +1312,25 @@ impl Session {
 /// One message whatever the count, because the server's rate limit is charged
 /// per message rather than per recipient. The sender is left unset: the server
 /// fills it in and would overwrite anything put here.
+/// Asks what this rider may do in one channel.
+async fn ask_permissions(writer: &mut ControlWriter, channel: u32) -> Result<()> {
+    let m = mumble::PermissionQuery {
+        channel_id: Some(channel),
+        ..Default::default()
+    };
+    writer.send(MessageType::PermissionQuery, &m).await
+}
+
+/// Asks about both channels that decide what the rider may do: the root, which
+/// carries kicking, banning and registration, and the one they are standing in.
+async fn ask_rights_for(writer: &mut ControlWriter, here: Option<u32>) -> Result<()> {
+    ask_permissions(writer, permissions::ROOT_CHANNEL).await?;
+    match here {
+        Some(c) if c != permissions::ROOT_CHANNEL => ask_permissions(writer, c).await,
+        _ => Ok(()),
+    }
+}
+
 async fn send_hello(
     writer: &mut ControlWriter,
     version: &str,

@@ -231,6 +231,13 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// What the server says this rider may do, here and on this server.
+    ///
+    /// Sent when it changes: on connect, on moving channel, and whenever the
+    /// server revises or flushes its answer. See [`crate::session::permissions`]
+    /// — it is a hint for greying out what would be refused, never a substitute
+    /// for the refusal itself.
+    Rights(crate::session::permissions::Rights),
     /// The server's certificate, reported so the UI can pin or compare it.
     ServerCertificate {
         fingerprint: String,

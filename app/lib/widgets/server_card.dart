@@ -293,18 +293,31 @@ class ServerCard extends StatelessWidget {
                             // registering is a request made *on* a connection.
                             // Greyed with the reason rather than hidden, for
                             // the same reason as the rest of this menu.
-                            PopupMenuItem(
-                              value: 'register',
-                              enabled: rt.isLive,
-                              child: ListTile(
-                                dense: true,
-                                enabled: rt.isLive,
-                                contentPadding: EdgeInsets.zero,
-                                leading: const Icon(Icons.how_to_reg_outlined),
-                                title: Text(l.registerUser),
-                                subtitle: rt.isLive ? null : Text(l.connectFirst),
-                              ),
-                            ),
+                            // And the server may simply not allow it: many
+                            // withhold SelfRegister, and asking anyway comes
+                            // back as a bare refusal a while later. Having
+                            // asked what we may do, say so here instead.
+                            () {
+                              final mayRegister =
+                                  !rt.rights.known || rt.rights.selfRegister;
+                              final enabled = rt.isLive && mayRegister;
+                              return PopupMenuItem(
+                                value: 'register',
+                                enabled: enabled,
+                                child: ListTile(
+                                  dense: true,
+                                  enabled: enabled,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.how_to_reg_outlined),
+                                  title: Text(l.registerUser),
+                                  subtitle: switch (enabled) {
+                                    true => null,
+                                    false when !rt.isLive => Text(l.connectFirst),
+                                    false => Text(l.registerNotAllowed),
+                                  },
+                                ),
+                              );
+                            }(),
                             PopupMenuItem(
                               value: 'duplicate',
                               child: ListTile(

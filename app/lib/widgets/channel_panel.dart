@@ -355,26 +355,43 @@ class _UserRow extends StatelessWidget {
                   _confirmKick(context, state);
               }
             },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'mute',
-                child: Text(user.muted ? l.unmuteOnServer : l.muteOnServer),
-              ),
-              PopupMenuItem(
-                value: 'deafen',
-                child: Text(
-                  user.deafened ? l.undeafenOnServer : l.deafenOnServer,
+            itemBuilder: (_) {
+              // What the server has said we may do here. Until it has said
+              // anything, everything is offered: greying out the menu for the
+              // second before the first answer arrives reads as a broken app,
+              // and a refusal is still handled if we guess wrong.
+              final rights = state.runtimeFor(serverId).rights;
+              final unanswered = !rights.known;
+              return [
+                PopupMenuItem(
+                  value: 'mute',
+                  // Offered without the permission when they run MumbleWay:
+                  // the request reaches their app directly and needs none.
+                  // This is the case the whole request exists for.
+                  enabled:
+                      unanswered ||
+                      rights.muteDeafen ||
+                      user.mumblewayVersion != null,
+                  child: Text(user.muted ? l.unmuteOnServer : l.muteOnServer),
                 ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'kick',
-                child: Text(
-                  l.kickFromServer,
-                  style: const TextStyle(color: StatusColors.failed),
+                PopupMenuItem(
+                  value: 'deafen',
+                  enabled: unanswered || rights.muteDeafen,
+                  child: Text(
+                    user.deafened ? l.undeafenOnServer : l.deafenOnServer,
+                  ),
                 ),
-              ),
-            ],
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'kick',
+                  enabled: unanswered || rights.kick,
+                  child: Text(
+                    l.kickFromServer,
+                    style: const TextStyle(color: StatusColors.failed),
+                  ),
+                ),
+              ];
+            },
           ),
         ],
       ),

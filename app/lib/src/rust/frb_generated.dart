@@ -2501,41 +2501,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           levels: dco_decode_list_ui_speaker_level(raw[1]),
         );
       case 7:
+        return AppEvent_Rights(
+          serverId: dco_decode_String(raw[1]),
+          rights: dco_decode_box_autoadd_ui_rights(raw[2]),
+        );
+      case 8:
         return AppEvent_Moderated(
           serverId: dco_decode_String(raw[1]),
           muted: dco_decode_opt_box_autoadd_bool(raw[2]),
           deafened: dco_decode_opt_box_autoadd_bool(raw[3]),
           by: dco_decode_String(raw[4]),
         );
-      case 8:
+      case 9:
         return AppEvent_RemoteMuted(
           serverId: dco_decode_String(raw[1]),
           muted: dco_decode_bool(raw[2]),
           by: dco_decode_String(raw[3]),
         );
-      case 9:
+      case 10:
         return AppEvent_Certificate(
           serverId: dco_decode_String(raw[1]),
           fingerprint: dco_decode_String(raw[2]),
           changed: dco_decode_bool(raw[3]),
         );
-      case 10:
+      case 11:
         return AppEvent_Refused(
           serverId: dco_decode_String(raw[1]),
           reason: dco_decode_String(raw[2]),
           kind: dco_decode_u_32(raw[3]),
         );
-      case 11:
+      case 12:
         return AppEvent_Welcome(
           serverId: dco_decode_String(raw[1]),
           text: dco_decode_String(raw[2]),
         );
-      case 12:
+      case 13:
         return AppEvent_SelfSession(
           serverId: dco_decode_String(raw[1]),
           session: dco_decode_u_32(raw[2]),
         );
-      case 13:
+      case 14:
         return AppEvent_Log(entries: dco_decode_list_ui_log_entry(raw[1]));
       default:
         throw Exception("unreachable");
@@ -2588,6 +2593,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiQuality dco_decode_box_autoadd_ui_quality(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_ui_quality(raw);
+  }
+
+  @protected
+  UiRights dco_decode_box_autoadd_ui_rights(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_ui_rights(raw);
   }
 
   @protected
@@ -3020,6 +3031,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiRights dco_decode_ui_rights(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 12)
+      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
+    return UiRights(
+      known: dco_decode_bool(arr[0]),
+      speak: dco_decode_bool(arr[1]),
+      muteDeafen: dco_decode_bool(arr[2]),
+      moveUsers: dco_decode_bool(arr[3]),
+      text: dco_decode_bool(arr[4]),
+      whisper: dco_decode_bool(arr[5]),
+      makeChannel: dco_decode_bool(arr[6]),
+      write: dco_decode_bool(arr[7]),
+      kick: dco_decode_bool(arr[8]),
+      ban: dco_decode_bool(arr[9]),
+      registerOthers: dco_decode_bool(arr[10]),
+      selfRegister: dco_decode_bool(arr[11]),
+    );
+  }
+
+  @protected
   UiServerStatus dco_decode_ui_server_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -3232,6 +3265,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         return AppEvent_SpeakerLevels(levels: var_levels);
       case 7:
         var var_serverId = sse_decode_String(deserializer);
+        var var_rights = sse_decode_box_autoadd_ui_rights(deserializer);
+        return AppEvent_Rights(serverId: var_serverId, rights: var_rights);
+      case 8:
+        var var_serverId = sse_decode_String(deserializer);
         var var_muted = sse_decode_opt_box_autoadd_bool(deserializer);
         var var_deafened = sse_decode_opt_box_autoadd_bool(deserializer);
         var var_by = sse_decode_String(deserializer);
@@ -3241,7 +3278,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           deafened: var_deafened,
           by: var_by,
         );
-      case 8:
+      case 9:
         var var_serverId = sse_decode_String(deserializer);
         var var_muted = sse_decode_bool(deserializer);
         var var_by = sse_decode_String(deserializer);
@@ -3250,7 +3287,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           muted: var_muted,
           by: var_by,
         );
-      case 9:
+      case 10:
         var var_serverId = sse_decode_String(deserializer);
         var var_fingerprint = sse_decode_String(deserializer);
         var var_changed = sse_decode_bool(deserializer);
@@ -3259,7 +3296,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           fingerprint: var_fingerprint,
           changed: var_changed,
         );
-      case 10:
+      case 11:
         var var_serverId = sse_decode_String(deserializer);
         var var_reason = sse_decode_String(deserializer);
         var var_kind = sse_decode_u_32(deserializer);
@@ -3268,18 +3305,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           reason: var_reason,
           kind: var_kind,
         );
-      case 11:
+      case 12:
         var var_serverId = sse_decode_String(deserializer);
         var var_text = sse_decode_String(deserializer);
         return AppEvent_Welcome(serverId: var_serverId, text: var_text);
-      case 12:
+      case 13:
         var var_serverId = sse_decode_String(deserializer);
         var var_session = sse_decode_u_32(deserializer);
         return AppEvent_SelfSession(
           serverId: var_serverId,
           session: var_session,
         );
-      case 13:
+      case 14:
         var var_entries = sse_decode_list_ui_log_entry(deserializer);
         return AppEvent_Log(entries: var_entries);
       default:
@@ -3339,6 +3376,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiQuality sse_decode_box_autoadd_ui_quality(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_ui_quality(deserializer));
+  }
+
+  @protected
+  UiRights sse_decode_box_autoadd_ui_rights(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_ui_rights(deserializer));
   }
 
   @protected
@@ -3945,6 +3988,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiRights sse_decode_ui_rights(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_known = sse_decode_bool(deserializer);
+    var var_speak = sse_decode_bool(deserializer);
+    var var_muteDeafen = sse_decode_bool(deserializer);
+    var var_moveUsers = sse_decode_bool(deserializer);
+    var var_text = sse_decode_bool(deserializer);
+    var var_whisper = sse_decode_bool(deserializer);
+    var var_makeChannel = sse_decode_bool(deserializer);
+    var var_write = sse_decode_bool(deserializer);
+    var var_kick = sse_decode_bool(deserializer);
+    var var_ban = sse_decode_bool(deserializer);
+    var var_registerOthers = sse_decode_bool(deserializer);
+    var var_selfRegister = sse_decode_bool(deserializer);
+    return UiRights(
+      known: var_known,
+      speak: var_speak,
+      muteDeafen: var_muteDeafen,
+      moveUsers: var_moveUsers,
+      text: var_text,
+      whisper: var_whisper,
+      makeChannel: var_makeChannel,
+      write: var_write,
+      kick: var_kick,
+      ban: var_ban,
+      registerOthers: var_registerOthers,
+      selfRegister: var_selfRegister,
+    );
+  }
+
+  @protected
   UiServerStatus sse_decode_ui_server_status(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_serverId = sse_decode_String(deserializer);
@@ -4171,13 +4245,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case AppEvent_SpeakerLevels(levels: final levels):
         sse_encode_i_32(6, serializer);
         sse_encode_list_ui_speaker_level(levels, serializer);
+      case AppEvent_Rights(serverId: final serverId, rights: final rights):
+        sse_encode_i_32(7, serializer);
+        sse_encode_String(serverId, serializer);
+        sse_encode_box_autoadd_ui_rights(rights, serializer);
       case AppEvent_Moderated(
         serverId: final serverId,
         muted: final muted,
         deafened: final deafened,
         by: final by,
       ):
-        sse_encode_i_32(7, serializer);
+        sse_encode_i_32(8, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_opt_box_autoadd_bool(muted, serializer);
         sse_encode_opt_box_autoadd_bool(deafened, serializer);
@@ -4187,7 +4265,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         muted: final muted,
         by: final by,
       ):
-        sse_encode_i_32(8, serializer);
+        sse_encode_i_32(9, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_bool(muted, serializer);
         sse_encode_String(by, serializer);
@@ -4196,7 +4274,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         fingerprint: final fingerprint,
         changed: final changed,
       ):
-        sse_encode_i_32(9, serializer);
+        sse_encode_i_32(10, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(fingerprint, serializer);
         sse_encode_bool(changed, serializer);
@@ -4205,23 +4283,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         reason: final reason,
         kind: final kind,
       ):
-        sse_encode_i_32(10, serializer);
+        sse_encode_i_32(11, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(reason, serializer);
         sse_encode_u_32(kind, serializer);
       case AppEvent_Welcome(serverId: final serverId, text: final text):
-        sse_encode_i_32(11, serializer);
+        sse_encode_i_32(12, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(text, serializer);
       case AppEvent_SelfSession(
         serverId: final serverId,
         session: final session,
       ):
-        sse_encode_i_32(12, serializer);
+        sse_encode_i_32(13, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_u_32(session, serializer);
       case AppEvent_Log(entries: final entries):
-        sse_encode_i_32(13, serializer);
+        sse_encode_i_32(14, serializer);
         sse_encode_list_ui_log_entry(entries, serializer);
     }
   }
@@ -4284,6 +4362,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_ui_quality(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_ui_rights(
+    UiRights self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_ui_rights(self, serializer);
   }
 
   @protected
@@ -4768,6 +4855,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.active, serializer);
     sse_encode_u_64(self.droppedBlocks, serializer);
     sse_encode_String(self.directory, serializer);
+  }
+
+  @protected
+  void sse_encode_ui_rights(UiRights self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.known, serializer);
+    sse_encode_bool(self.speak, serializer);
+    sse_encode_bool(self.muteDeafen, serializer);
+    sse_encode_bool(self.moveUsers, serializer);
+    sse_encode_bool(self.text, serializer);
+    sse_encode_bool(self.whisper, serializer);
+    sse_encode_bool(self.makeChannel, serializer);
+    sse_encode_bool(self.write, serializer);
+    sse_encode_bool(self.kick, serializer);
+    sse_encode_bool(self.ban, serializer);
+    sse_encode_bool(self.registerOthers, serializer);
+    sse_encode_bool(self.selfRegister, serializer);
   }
 
   @protected

@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -613,6 +613,12 @@ sealed class AppEvent with _$AppEvent {
   /// the audio itself.
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
+
+  /// What this rider may do on this server has been answered, or changed.
+  const factory AppEvent.rights({
+    required String serverId,
+    required UiRights rights,
+  }) = AppEvent_Rights;
 
   /// Someone else changed our mute or deafen state.
   const factory AppEvent.moderated({
@@ -1584,6 +1590,80 @@ class UiRecordingState {
           active == other.active &&
           droppedBlocks == other.droppedBlocks &&
           directory == other.directory;
+}
+
+/// What the server says this rider may do, here and on this server.
+///
+/// For greying out what would be refused. **Never a substitute for handling the
+/// refusal**: an ACL can change between this answer and the tap, so anything
+/// that gets through is still sent and a refusal is still shown.
+class UiRights {
+  /// Whether the server has answered at all. Everything below is false until
+  /// it has, which is not the same as being refused.
+  final bool known;
+  final bool speak;
+
+  /// Mute and deafen others in this channel, for everyone.
+  final bool muteDeafen;
+  final bool moveUsers;
+  final bool text;
+  final bool whisper;
+  final bool makeChannel;
+
+  /// Rename or re-describe this channel.
+  final bool write;
+  final bool kick;
+  final bool ban;
+  final bool registerOthers;
+  final bool selfRegister;
+
+  const UiRights({
+    required this.known,
+    required this.speak,
+    required this.muteDeafen,
+    required this.moveUsers,
+    required this.text,
+    required this.whisper,
+    required this.makeChannel,
+    required this.write,
+    required this.kick,
+    required this.ban,
+    required this.registerOthers,
+    required this.selfRegister,
+  });
+
+  @override
+  int get hashCode =>
+      known.hashCode ^
+      speak.hashCode ^
+      muteDeafen.hashCode ^
+      moveUsers.hashCode ^
+      text.hashCode ^
+      whisper.hashCode ^
+      makeChannel.hashCode ^
+      write.hashCode ^
+      kick.hashCode ^
+      ban.hashCode ^
+      registerOthers.hashCode ^
+      selfRegister.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiRights &&
+          runtimeType == other.runtimeType &&
+          known == other.known &&
+          speak == other.speak &&
+          muteDeafen == other.muteDeafen &&
+          moveUsers == other.moveUsers &&
+          text == other.text &&
+          whisper == other.whisper &&
+          makeChannel == other.makeChannel &&
+          write == other.write &&
+          kick == other.kick &&
+          ban == other.ban &&
+          registerOthers == other.registerOthers &&
+          selfRegister == other.selfRegister;
 }
 
 /// What an unauthenticated status probe reported about a server.

@@ -3000,6 +3000,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Since they connected'**
   String get qualitySinceConnect;
+
+  /// No description provided for @registerNotAllowed.
+  ///
+  /// In en, this message translates to:
+  /// **'This server does not let users register themselves'**
+  String get registerNotAllowed;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

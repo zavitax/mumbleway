@@ -195,6 +195,28 @@ class ServerRuntime {
 
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
+
+  /// What this rider may do on this server, once the server has said.
+  ///
+  /// **Everything is false until it answers**, which is why `known` is carried
+  /// with it: an interface that greys out every moderation action for the
+  /// second before the first reply looks broken. Ask `known` before reading the
+  /// rest.
+  UiRights rights = const UiRights(
+    known: false,
+    speak: false,
+    muteDeafen: false,
+    moveUsers: false,
+    text: false,
+    whisper: false,
+    makeChannel: false,
+    write: false,
+    kick: false,
+    ban: false,
+    registerOthers: false,
+    selfRegister: false,
+  );
+
   double tcpPingMs = 0;
   double udpPingMs = 0;
   String transport = 'tcp';
@@ -3575,6 +3597,8 @@ class AppState extends ChangeNotifier {
         if (!wasLive && rt.isLive && _muted) {
           _mirrorSelfMute(field0.serverId, true);
         }
+      case AppEvent_Rights(:final serverId, :final rights):
+        runtimeFor(serverId).rights = rights;
       case AppEvent_Users(:final serverId, :final users):
         final rt = runtimeFor(serverId);
         rt.users = users;

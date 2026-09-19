@@ -673,5 +673,6 @@
       }
     }
   },
-  "qualitySinceConnect": "С момента подключения"
+  "qualitySinceConnect": "С момента подключения",
+  "registerNotAllowed": "Этот сервер не разрешает регистрироваться самостоятельно"
 }

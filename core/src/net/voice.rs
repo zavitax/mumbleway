@@ -34,6 +34,10 @@ pub enum UdpEvent {
     },
     /// A datagram we could not authenticate or parse.
     Rejected(&'static str),
+    /// Decryption has been failing long enough to mean the cipher is out of
+    /// step rather than the road being bad, and it is time to ask the server
+    /// for its nonce. See [`crate::crypto::resync`].
+    ResyncNeeded,
 }
 
 pub struct VoiceSocket {
@@ -42,6 +46,8 @@ pub struct VoiceSocket {
     last_pong: Option<Instant>,
     last_ping_sent: Option<Instant>,
     established: bool,
+    /// When decryption last worked, and when a resync was last asked for.
+    resync: crate::crypto::ResyncGuard,
 }
 
 impl VoiceSocket {
@@ -62,6 +68,7 @@ impl VoiceSocket {
             last_pong: None,
             last_ping_sent: None,
             established: false,
+            resync: crate::crypto::ResyncGuard::new(Instant::now()),
         })
     }
 
@@ -80,6 +87,16 @@ impl VoiceSocket {
 
     pub fn crypt_stats(&self) -> crate::crypto::CryptStats {
         self.crypt.stats()
+    }
+
+    /// Takes the nonce the server sent in answer to a resync request.
+    pub fn set_decrypt_iv(&mut self, iv: &[u8]) -> Result<()> {
+        self.crypt.set_decrypt_iv(iv)?;
+        // Counted as good: the cipher is in step again as far as anybody here
+        // knows, so the next failure is a fresh fault with its own patience
+        // rather than one that asks again immediately.
+        self.resync.note_good(Instant::now());
+        Ok(())
     }
 
     /// Encrypts and sends a voice packet.
@@ -112,10 +129,21 @@ impl VoiceSocket {
         super::stats::note_bytes_in(n);
 
         let plain = match self.crypt.decrypt(&buf[..n]) {
-            Ok(p) => p,
+            Ok(p) => {
+                self.resync.note_good(Instant::now());
+                p
+            }
             // A failed decrypt is normal on a lossy link (replays, reordering
-            // beyond the window). Report it but keep the socket alive.
-            Err(_) => return Ok(UdpEvent::Rejected("decryption failed")),
+            // beyond the window). Report it but keep the socket alive — unless
+            // it has been failing long enough to mean the two ends have lost
+            // step, which nothing recovers from on its own.
+            Err(_) => {
+                return Ok(if self.resync.should_request(Instant::now()) {
+                    UdpEvent::ResyncNeeded
+                } else {
+                    UdpEvent::Rejected("decryption failed")
+                });
+            }
         };
 
         if audio_packet::is_ping(&plain) {

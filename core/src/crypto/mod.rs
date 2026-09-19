@@ -5,5 +5,7 @@
 //! every deployed server understands.
 
 pub mod ocb2;
+pub mod resync;
 
 pub use ocb2::{CryptState, CryptStats};
+pub use resync::ResyncGuard;

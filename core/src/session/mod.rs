@@ -93,6 +93,9 @@ struct LiveState {
     /// The last rights reported upward, so an unchanged answer is not sent
     /// again: the server re-sends its cached mask freely.
     rights_sent: Option<permissions::Rights>,
+    /// A decrypt nonce from the server, waiting to be applied to whichever half
+    /// of this session is holding the cipher. See the `CryptSetup` arm.
+    pending_decrypt_iv: Option<Vec<u8>>,
 }
 
 impl LiveState {
@@ -115,6 +118,7 @@ impl LiveState {
             quality_poller: quality::QualityPoller::default(),
             perms: HashMap::new(),
             rights_sent: None,
+            pending_decrypt_iv: None,
         }
     }
 
@@ -578,6 +582,21 @@ impl Session {
                     if let Some(reason) = self.handle_control(msg_type, &payload, state, writer).await? {
                         return Ok(reason);
                     }
+                    // Applied here because this is where the cipher is: the UDP
+                    // socket owns it while one exists, and `state.crypt` only
+                    // before the socket is built.
+                    if let Some(iv) = state.pending_decrypt_iv.take() {
+                        let applied = match udp.as_mut() {
+                            Some(s) => s.set_decrypt_iv(&iv),
+                            None => match state.crypt.as_mut() {
+                                Some(c) => c.set_decrypt_iv(&iv),
+                                None => Ok(()),
+                            },
+                        };
+                        if let Err(e) = applied {
+                            tracing::warn!("server sent a resync nonce we could not use: {e}");
+                        }
+                    }
                 }
 
                 // --- UDP voice ---------------------------------------------
@@ -593,6 +612,15 @@ impl Session {
                                 tracing::info!("voice now direct over UDP");
                                 self.emit(SessionEvent::TransportChanged(Transport::Udp)).await;
                             }
+                        }
+                        Ok(Some(UdpEvent::ResyncNeeded)) => {
+                            // An empty CryptSetup means "tell me your nonce".
+                            // Until this existed, a cipher that lost step
+                            // stayed lost: every packet failed, the link looked
+                            // healthy, and voice simply stopped arriving.
+                            tracing::warn!("voice decryption out of step, asking the server to resync");
+                            let m = mumble::CryptSetup::default();
+                            writer.send(MessageType::CryptSetup, &m).await?;
                         }
                         Ok(Some(UdpEvent::Rejected(_))) | Ok(None) => {}
                         Err(_) => {
@@ -849,10 +877,16 @@ impl Session {
                         state.crypt = Some(CryptState::new(&k, &cn, &sn)?);
                     }
                     (None, None, Some(sn)) => {
-                        // Server-initiated resync of just the decrypt IV.
-                        if let Some(c) = state.crypt.as_mut() {
-                            c.set_decrypt_iv(&sn)?;
-                        }
+                        // A resync of the decrypt IV alone: either the answer
+                        // to our own request, or the server volunteering one.
+                        //
+                        // **Kept for the caller to apply**, because once the
+                        // session is connected the cipher lives inside the UDP
+                        // socket rather than here — applying it to
+                        // `state.crypt` would land on a `None` and the resync
+                        // would silently do nothing, which is exactly how this
+                        // path used to fail.
+                        state.pending_decrypt_iv = Some(sn.to_vec());
                     }
                     _ => {}
                 }

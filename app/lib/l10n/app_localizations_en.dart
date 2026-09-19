@@ -1715,4 +1715,8 @@ class LEn extends L {
 
   @override
   String get moveNowhere => 'There is nowhere else to move them.';
+
+  @override
+  String get prioritySpeaker =>
+      'Priority speaker: others are quietened while they talk';
 }

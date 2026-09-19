@@ -1704,4 +1704,8 @@ class LRu extends L {
 
   @override
   String get moveNowhere => 'Больше некуда переводить.';
+
+  @override
+  String get prioritySpeaker =>
+      'Приоритетный участник: пока он говорит, остальных приглушают';
 }

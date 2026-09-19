@@ -323,6 +323,20 @@ class _UserRow extends StatelessWidget {
                   const SizedBox(width: 6),
                   MumblewayBadge(version: version),
                 ],
+                // Why the channel goes quiet when this one person starts
+                // talking. Nothing else in the roster would say so.
+                if (user.prioritySpeaker) ...[
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: l.prioritySpeaker,
+                    triggerMode: TooltipTriggerMode.tap,
+                    child: const Icon(
+                      Icons.campaign_outlined,
+                      size: 14,
+                      color: StatusColors.talking,
+                    ),
+                  ),
+                ],
                 // Beside the name, like the badge, because it is something
                 // about this person rather than about the row: the rider who
                 // keeps breaking up is the one worth finding.

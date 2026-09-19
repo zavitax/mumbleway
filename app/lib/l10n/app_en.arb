@@ -975,5 +975,6 @@
       }
     }
   },
-  "moveNowhere": "There is nowhere else to move them."
+  "moveNowhere": "There is nowhere else to move them.",
+  "prioritySpeaker": "Priority speaker: others are quietened while they talk"
 }

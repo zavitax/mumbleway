@@ -373,6 +373,7 @@ AppState _connectedState() {
       localMute: false,
       status: 'silent',
       comment: '',
+      prioritySpeaker: false,
     ),
     UiUser(
       session: 2,
@@ -384,6 +385,7 @@ AppState _connectedState() {
       localMute: false,
       status: 'talking',
       comment: '',
+      prioritySpeaker: false,
     ),
     UiUser(
       session: 3,
@@ -395,6 +397,7 @@ AppState _connectedState() {
       localMute: false,
       status: 'silent',
       comment: '',
+      prioritySpeaker: false,
     ),
     UiUser(
       session: 4,
@@ -406,6 +409,7 @@ AppState _connectedState() {
       localMute: false,
       status: 'muted',
       comment: '',
+      prioritySpeaker: false,
     ),
   ];
   return state;

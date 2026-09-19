@@ -3393,8 +3393,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiUser dco_decode_ui_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 11)
-      throw Exception('unexpected arr length: expect 11 but see ${arr.length}');
+    if (arr.length != 12)
+      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
     return UiUser(
       session: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -3405,8 +3405,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       localMute: dco_decode_bool(arr[6]),
       status: dco_decode_String(arr[7]),
       mumblewayVersion: dco_decode_opt_String(arr[8]),
-      comment: dco_decode_String(arr[9]),
-      quality: dco_decode_opt_box_autoadd_ui_quality(arr[10]),
+      prioritySpeaker: dco_decode_bool(arr[9]),
+      comment: dco_decode_String(arr[10]),
+      quality: dco_decode_opt_box_autoadd_ui_quality(arr[11]),
     );
   }
 
@@ -4427,6 +4428,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_localMute = sse_decode_bool(deserializer);
     var var_status = sse_decode_String(deserializer);
     var var_mumblewayVersion = sse_decode_opt_String(deserializer);
+    var var_prioritySpeaker = sse_decode_bool(deserializer);
     var var_comment = sse_decode_String(deserializer);
     var var_quality = sse_decode_opt_box_autoadd_ui_quality(deserializer);
     return UiUser(
@@ -4439,6 +4441,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       localMute: var_localMute,
       status: var_status,
       mumblewayVersion: var_mumblewayVersion,
+      prioritySpeaker: var_prioritySpeaker,
       comment: var_comment,
       quality: var_quality,
     );
@@ -5292,6 +5295,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.localMute, serializer);
     sse_encode_String(self.status, serializer);
     sse_encode_opt_String(self.mumblewayVersion, serializer);
+    sse_encode_bool(self.prioritySpeaker, serializer);
     sse_encode_String(self.comment, serializer);
     sse_encode_opt_box_autoadd_ui_quality(self.quality, serializer);
   }

@@ -2114,6 +2114,9 @@ class UiUser {
   /// a badge on ourselves means everybody else's badges mean something too.
   final String? mumblewayVersion;
 
+  /// Whether the server ducks everybody else while this rider talks.
+  final bool prioritySpeaker;
+
   /// The note this rider hung beside their name, as plain text. Empty when
   /// they have none; the markup Mumble's own client writes is stripped in the
   /// core, so this is safe to put straight on screen.
@@ -2136,6 +2139,7 @@ class UiUser {
     required this.localMute,
     required this.status,
     this.mumblewayVersion,
+    required this.prioritySpeaker,
     required this.comment,
     this.quality,
   });
@@ -2151,6 +2155,7 @@ class UiUser {
       localMute.hashCode ^
       status.hashCode ^
       mumblewayVersion.hashCode ^
+      prioritySpeaker.hashCode ^
       comment.hashCode ^
       quality.hashCode;
 
@@ -2168,6 +2173,7 @@ class UiUser {
           localMute == other.localMute &&
           status == other.status &&
           mumblewayVersion == other.mumblewayVersion &&
+          prioritySpeaker == other.prioritySpeaker &&
           comment == other.comment &&
           quality == other.quality;
 }

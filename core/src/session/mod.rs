@@ -997,6 +997,7 @@ impl Session {
                         // always `None`.
                         quality: None,
                         comment: String::new(),
+                        priority_speaker: false,
                     });
                     if let Some(n) = m.name {
                         e.name = n;
@@ -1024,6 +1025,9 @@ impl Session {
                     }
                     if let Some(v) = m.self_deaf {
                         e.self_deaf = v;
+                    }
+                    if let Some(v) = m.priority_speaker {
+                        e.priority_speaker = v;
                     }
                     // A comment arrives whole when it is short and as a hash
                     // when it is not; the body is then asked for once per hash.

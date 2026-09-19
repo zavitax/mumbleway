@@ -3126,6 +3126,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'There is nowhere else to move them.'**
   String get moveNowhere;
+
+  /// No description provided for @prioritySpeaker.
+  ///
+  /// In en, this message translates to:
+  /// **'Priority speaker: others are quietened while they talk'**
+  String get prioritySpeaker;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

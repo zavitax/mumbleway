@@ -24,6 +24,7 @@ UiUser rider({String comment = '', int session = 7}) => UiUser(
   localMute: false,
   status: 'silent',
   comment: comment,
+  prioritySpeaker: false,
 );
 
 /// The smallest thing `Image.memory` will accept: a 1×1 transparent GIF.

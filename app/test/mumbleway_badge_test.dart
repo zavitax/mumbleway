@@ -23,6 +23,7 @@ void main() {
     localMute: false,
     status: 'silent',
     comment: '',
+    prioritySpeaker: false,
     mumblewayVersion: mumbleway,
   );
 

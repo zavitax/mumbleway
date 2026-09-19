@@ -106,6 +106,8 @@ pub struct UiUser {
     /// anything. For our own row it is set only where the handshake can run, so
     /// a badge on ourselves means everybody else's badges mean something too.
     pub mumbleway_version: Option<String>,
+    /// Whether the server ducks everybody else while this rider talks.
+    pub priority_speaker: bool,
     /// The note this rider hung beside their name, as plain text. Empty when
     /// they have none; the markup Mumble's own client writes is stripped in the
     /// core, so this is safe to put straight on screen.
@@ -728,6 +730,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 local_mute: u.local_mute,
                                 status,
                                 mumbleway_version: u.mumbleway,
+                                priority_speaker: u.priority_speaker,
                                 comment: u.comment,
                                 quality: u.quality.map(|q| UiQuality {
                                     ping_ms: q.ping_ms,

@@ -142,6 +142,13 @@ pub struct UserInfo {
     /// arrives, and for anybody outside our own channel.
     #[serde(default)]
     pub quality: Option<crate::session::quality::Quality>,
+    /// Whether the server treats this rider as a priority speaker.
+    ///
+    /// Everyone else is ducked while they talk, which is worth showing: it
+    /// explains why a channel goes quiet when one person starts, and it is not
+    /// otherwise visible from anything the roster shows.
+    #[serde(default)]
+    pub priority_speaker: bool,
     /// The note this rider hung beside their own name, as plain text.
     ///
     /// Empty when they have none, and stripped of the markup Mumble's own

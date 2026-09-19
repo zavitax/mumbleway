@@ -1654,4 +1654,15 @@ class LEn extends L {
 
   @override
   String get setNoteHint => 'Back in ten';
+
+  @override
+  String get serverSuggestsPushToTalk =>
+      'This server asks riders to use push to talk';
+
+  @override
+  String get serverSuggestsSwitch => 'Switch';
+
+  @override
+  String get serverSuggestsPositional =>
+      'This server expects positional audio, which MumbleWay does not have';
 }

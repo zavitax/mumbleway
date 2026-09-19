@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../services/remote_mute_notice.dart';
+import '../src/rust/api/mumbleway.dart' show MicMode;
 import '../state/app_state.dart';
 
 /// Says who turned the rider's microphone off or on.
@@ -25,18 +26,53 @@ class RemoteMuteListener extends StatefulWidget {
 
 class _RemoteMuteListenerState extends State<RemoteMuteListener> {
   StreamSubscription<RemoteMuteNotice>? _sub;
+  StreamSubscription<String>? _suggested;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_sub != null) return;
-    _sub = AppStateScope.of(context).remoteMuteNotices.listen(_show);
+    final state = AppStateScope.of(context);
+    _sub = state.remoteMuteNotices.listen(_show);
+    // The other thing a rider is told rather than asked, and it shares this
+    // widget because it shares everything about how it is shown.
+    _suggested = state.serverSuggestions.listen(_showSuggestion);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _suggested?.cancel();
     super.dispose();
+  }
+
+  /// What the server's administrator asks of riders here.
+  ///
+  /// Push-to-talk comes with the button that does it, because a suggestion a
+  /// rider has to go and find in Settings is one they will not follow. Nothing
+  /// changes on its own: the server is asking, not deciding.
+  void _showSuggestion(String ask) {
+    if (!mounted) return;
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    final state = AppStateScope.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            ask == 'ptt' ? l.serverSuggestsPushToTalk : l.serverSuggestsPositional,
+          ),
+          duration: const Duration(seconds: 8),
+          action: ask == 'ptt'
+              ? SnackBarAction(
+                  label: l.serverSuggestsSwitch,
+                  onPressed: () => state.updateMicMode(MicMode.pushToTalk),
+                )
+              : null,
+        ),
+      );
   }
 
   void _show(RemoteMuteNotice notice) {

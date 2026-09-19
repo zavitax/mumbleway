@@ -3024,6 +3024,24 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Back in ten'**
   String get setNoteHint;
+
+  /// No description provided for @serverSuggestsPushToTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'This server asks riders to use push to talk'**
+  String get serverSuggestsPushToTalk;
+
+  /// No description provided for @serverSuggestsSwitch.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch'**
+  String get serverSuggestsSwitch;
+
+  /// No description provided for @serverSuggestsPositional.
+  ///
+  /// In en, this message translates to:
+  /// **'This server expects positional audio, which MumbleWay does not have'**
+  String get serverSuggestsPositional;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

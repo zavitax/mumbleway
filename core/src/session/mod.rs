@@ -1074,6 +1074,20 @@ impl Session {
                     .await;
                 }
             }
+            MessageType::SuggestConfig => {
+                let m = mumble::SuggestConfig::decode(payload)?;
+                // Only what this app can act on. A suggested *client version*
+                // is dropped: it names a Mumble build, this is not one, and
+                // telling a rider to upgrade to something they cannot install
+                // would be noise dressed as advice.
+                if m.positional.is_some() || m.push_to_talk.is_some() {
+                    self.emit(SessionEvent::ServerSuggests {
+                        push_to_talk: m.push_to_talk,
+                        positional: m.positional,
+                    })
+                    .await;
+                }
+            }
             MessageType::PermissionQuery => {
                 let m = mumble::PermissionQuery::decode(payload)?;
                 // The server says "forget everything I told you" when an ACL

@@ -937,5 +937,8 @@
   "registerNotAllowed": "This server does not let users register themselves",
   "setNote": "Set your note",
   "setNoteBody": "A line beside your name that everyone on this server can see. Leave it empty to remove it.",
-  "setNoteHint": "Back in ten"
+  "setNoteHint": "Back in ten",
+  "serverSuggestsPushToTalk": "This server asks riders to use push to talk",
+  "serverSuggestsSwitch": "Switch",
+  "serverSuggestsPositional": "This server expects positional audio, which MumbleWay does not have"
 }

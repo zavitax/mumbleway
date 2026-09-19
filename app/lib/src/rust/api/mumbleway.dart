@@ -621,6 +621,15 @@ sealed class AppEvent with _$AppEvent {
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
 
+  /// What this server's administrator asks riders to do: push-to-talk,
+  /// positional audio, or both. A suggestion, never enforced, and nothing is
+  /// changed on the rider's behalf.
+  const factory AppEvent.serverSuggests({
+    required String serverId,
+    bool? pushToTalk,
+    bool? positional,
+  }) = AppEvent_ServerSuggests;
+
   /// A rider's picture, as the server holds it. Empty means they removed it.
   ///
   /// Its own event rather than a roster field: the roster goes out many times

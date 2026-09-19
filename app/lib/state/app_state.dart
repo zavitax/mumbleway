@@ -447,6 +447,17 @@ class AppState extends ChangeNotifier {
   final StreamController<ServerRefusal> _refusals =
       StreamController<ServerRefusal>.broadcast();
 
+  /// What a server's administrator asks riders to do, when it is worth saying.
+  ///
+  /// Filtered before it gets here: a suggestion the rider is already following
+  /// is not news, and the same server is not allowed to ask twice in one run of
+  /// the app — a notice that returns on every reconnect is a notice people
+  /// learn to dismiss without reading.
+  Stream<String> get serverSuggestions => _suggestions.stream;
+  final StreamController<String> _suggestions =
+      StreamController<String>.broadcast();
+  final Set<String> _suggestedAlready = {};
+
   /// Another MumbleWay rider having turned our microphone off or on.
   ///
   /// A stream for the same reasons as [refusals]: each one is something the
@@ -3622,6 +3633,21 @@ class AppState extends ChangeNotifier {
         }
       case AppEvent_Rights(:final serverId, :final rights):
         runtimeFor(serverId).rights = rights;
+      case AppEvent_ServerSuggests(
+        :final serverId,
+        :final pushToTalk,
+        :final positional,
+      ):
+        // Only push-to-talk is actionable, and only when the rider is not
+        // already using it. Positional audio this app does not do at all, so
+        // saying so once is the whole of what can honestly be offered.
+        final asks = <String>[
+          if (pushToTalk == true && micMode != MicMode.pushToTalk) 'ptt',
+          if (positional == true) 'positional',
+        ];
+        for (final ask in asks) {
+          if (_suggestedAlready.add('$serverId/$ask')) _suggestions.add(ask);
+        }
       case AppEvent_Avatar(:final serverId, :final session, :final image):
         final rt = runtimeFor(serverId);
         if (image.isEmpty) {
@@ -3752,6 +3778,7 @@ class AppState extends ChangeNotifier {
     _events?.cancel();
     _meters.dispose();
     _remoteMutes.close();
+    _suggestions.close();
     super.dispose();
   }
 }

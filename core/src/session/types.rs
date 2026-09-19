@@ -237,6 +237,16 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// What the server's administrator asks riders to do here.
+    ///
+    /// A suggestion and nothing more: the server neither enforces it nor checks
+    /// it, and this client changes no setting on its own. Only the two this app
+    /// can act on are carried — a suggested Mumble *version* is dropped, since
+    /// this is not a Mumble build and no rider could act on it.
+    ServerSuggests {
+        push_to_talk: Option<bool>,
+        positional: Option<bool>,
+    },
     /// A rider's picture, as the bytes the server holds — PNG, JPEG or
     /// whatever else they uploaded.
     ///

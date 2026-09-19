@@ -1643,4 +1643,15 @@ class LRu extends L {
 
   @override
   String get setNoteHint => 'Буду через десять минут';
+
+  @override
+  String get serverSuggestsPushToTalk =>
+      'Этот сервер просит говорить по нажатию';
+
+  @override
+  String get serverSuggestsSwitch => 'Переключить';
+
+  @override
+  String get serverSuggestsPositional =>
+      'Этот сервер рассчитывает на объёмный звук, а MumbleWay его не передаёт';
 }

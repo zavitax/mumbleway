@@ -228,6 +228,14 @@ pub enum AppEvent {
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
     },
+    /// What this server's administrator asks riders to do: push-to-talk,
+    /// positional audio, or both. A suggestion, never enforced, and nothing is
+    /// changed on the rider's behalf.
+    ServerSuggests {
+        server_id: String,
+        push_to_talk: Option<bool>,
+        positional: Option<bool>,
+    },
     /// A rider's picture, as the server holds it. Empty means they removed it.
     ///
     /// Its own event rather than a roster field: the roster goes out many times
@@ -761,6 +769,14 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::ServerSuggests {
+                    push_to_talk,
+                    positional,
+                } => emit(AppEvent::ServerSuggests {
+                    server_id,
+                    push_to_talk,
+                    positional,
+                }),
                 SessionEvent::Avatar { session, image } => emit(AppEvent::Avatar {
                     server_id,
                     session,

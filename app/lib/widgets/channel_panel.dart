@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
+import 'connection_quality.dart';
 import 'voice_meter.dart';
 import '../theme.dart';
 import 'error_snack.dart';
@@ -288,6 +289,13 @@ class _UserRow extends StatelessWidget {
                 if (user.mumblewayVersion case final version?) ...[
                   const SizedBox(width: 6),
                   MumblewayBadge(version: version),
+                ],
+                // Beside the name, like the badge, because it is something
+                // about this person rather than about the row: the rider who
+                // keeps breaking up is the one worth finding.
+                if (user.quality case final quality?) ...[
+                  const SizedBox(width: 6),
+                  ConnectionQualityBars(quality: quality),
                 ],
               ],
             ),

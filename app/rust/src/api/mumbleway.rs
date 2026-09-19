@@ -106,6 +106,30 @@ pub struct UiUser {
     /// anything. For our own row it is set only where the handshake can run, so
     /// a badge on ourselves means everybody else's badges mean something too.
     pub mumbleway_version: Option<String>,
+    /// How this rider's connection is doing, as the *server* measures it.
+    ///
+    /// `None` until the first stats reply, and for anybody outside our own
+    /// channel — the server only reports loss to people standing in the same
+    /// one. See `session::quality`.
+    pub quality: Option<UiQuality>,
+}
+
+/// The server's measurements of one rider's connection.
+#[derive(Debug, Clone, Copy)]
+pub struct UiQuality {
+    /// Round trip in milliseconds, measured at the server.
+    pub ping_ms: f32,
+    /// Whether the figure is the UDP one. A tunnelled rider has only the TCP
+    /// measurement, which is worth telling apart: it includes the tunnel.
+    pub udp: bool,
+    /// Share of this rider's packets, 0 to 1, that never reached the server.
+    pub loss_up: f32,
+    /// Share of the server's packets that never reached this rider.
+    pub loss_down: f32,
+    /// Seconds the loss covers, or 0 when it is counted from their connect.
+    pub window_secs: u32,
+    /// Seconds since this rider last did anything.
+    pub idle_secs: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -627,6 +651,14 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 local_mute: u.local_mute,
                                 status,
                                 mumbleway_version: u.mumbleway,
+                                quality: u.quality.map(|q| UiQuality {
+                                    ping_ms: q.ping_ms,
+                                    udp: q.udp,
+                                    loss_up: q.loss_up,
+                                    loss_down: q.loss_down,
+                                    window_secs: q.window_secs,
+                                    idle_secs: q.idle_secs,
+                                }),
                             }
                         })
                         .collect(),

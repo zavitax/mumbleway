@@ -54,6 +54,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
+  UiQuality dco_decode_box_autoadd_ui_quality(dynamic raw);
+
+  @protected
   UiSpectrum dco_decode_box_autoadd_ui_spectrum(dynamic raw);
 
   @protected
@@ -132,6 +135,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
+  UiQuality? dco_decode_opt_box_autoadd_ui_quality(dynamic raw);
+
+  @protected
   UiSpectrum? dco_decode_opt_box_autoadd_ui_spectrum(dynamic raw);
 
   @protected
@@ -181,6 +187,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiProbe dco_decode_ui_probe(dynamic raw);
+
+  @protected
+  UiQuality dco_decode_ui_quality(dynamic raw);
 
   @protected
   UiRecordingState dco_decode_ui_recording_state(dynamic raw);
@@ -255,6 +264,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  UiQuality sse_decode_box_autoadd_ui_quality(SseDeserializer deserializer);
 
   @protected
   UiSpectrum sse_decode_box_autoadd_ui_spectrum(SseDeserializer deserializer);
@@ -341,6 +353,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
+  UiQuality? sse_decode_opt_box_autoadd_ui_quality(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   UiSpectrum? sse_decode_opt_box_autoadd_ui_spectrum(
     SseDeserializer deserializer,
   );
@@ -398,6 +415,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiProbe sse_decode_ui_probe(SseDeserializer deserializer);
+
+  @protected
+  UiQuality sse_decode_ui_quality(SseDeserializer deserializer);
 
   @protected
   UiRecordingState sse_decode_ui_recording_state(SseDeserializer deserializer);
@@ -479,6 +499,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_ui_quality(
+    UiQuality self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_box_autoadd_ui_spectrum(
@@ -592,6 +618,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
+  void sse_encode_opt_box_autoadd_ui_quality(
+    UiQuality? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_ui_spectrum(
     UiSpectrum? self,
     SseSerializer serializer,
@@ -656,6 +688,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_probe(UiProbe self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_quality(UiQuality self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_recording_state(

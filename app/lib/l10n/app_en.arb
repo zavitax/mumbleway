@@ -890,5 +890,48 @@
     "description": "Shown when another MumbleWay rider turned this rider's microphone back on, and it has already happened."
   },
   "allowRemoteUnmute": "Let MumbleWay users unmute me",
-  "allowRemoteUnmuteBody": "Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute."
+  "allowRemoteUnmuteBody": "Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.",
+  "qualityPing": "{ms} ms round trip",
+  "@qualityPing": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    },
+    "description": "Tooltip line: the server's own round-trip measurement to this rider."
+  },
+  "qualityPingTunnelled": "{ms} ms round trip, over TCP",
+  "@qualityPingTunnelled": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    },
+    "description": "As qualityPing, when the rider has no UDP link and the figure includes the tunnel."
+  },
+  "qualityLossUp": "Their voice: {percent}% lost",
+  "@qualityLossUp": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityLossDown": "What they hear: {percent}% lost",
+  "@qualityLossDown": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityWindow": "Over the last {secs} s",
+  "@qualityWindow": {
+    "placeholders": {
+      "secs": {
+        "type": "int"
+      }
+    }
+  },
+  "qualitySinceConnect": "Since they connected"
 }

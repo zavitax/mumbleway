@@ -2964,6 +2964,42 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.'**
   String get allowRemoteUnmuteBody;
+
+  /// Tooltip line: the server's own round-trip measurement to this rider.
+  ///
+  /// In en, this message translates to:
+  /// **'{ms} ms round trip'**
+  String qualityPing(int ms);
+
+  /// As qualityPing, when the rider has no UDP link and the figure includes the tunnel.
+  ///
+  /// In en, this message translates to:
+  /// **'{ms} ms round trip, over TCP'**
+  String qualityPingTunnelled(int ms);
+
+  /// No description provided for @qualityLossUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Their voice: {percent}% lost'**
+  String qualityLossUp(int percent);
+
+  /// No description provided for @qualityLossDown.
+  ///
+  /// In en, this message translates to:
+  /// **'What they hear: {percent}% lost'**
+  String qualityLossDown(int percent);
+
+  /// No description provided for @qualityWindow.
+  ///
+  /// In en, this message translates to:
+  /// **'Over the last {secs} s'**
+  String qualityWindow(int secs);
+
+  /// No description provided for @qualitySinceConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Since they connected'**
+  String get qualitySinceConnect;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

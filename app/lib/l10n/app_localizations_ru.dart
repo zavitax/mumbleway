@@ -1601,4 +1601,32 @@ class LRu extends L {
   @override
   String get allowRemoteUnmuteBody =>
       'Другие участники, у которых тоже MumbleWay, могут выключить ваш микрофон, если от вас идёт шум, а ваша кнопка микрофона включит его обратно. Эта настройка позволяет им и включать его — на случай, если вы выключили микрофон и забыли. Выключите её, и включить микрофон сможете только вы.';
+
+  @override
+  String qualityPing(int ms) {
+    return '$ms мс туда и обратно';
+  }
+
+  @override
+  String qualityPingTunnelled(int ms) {
+    return '$ms мс туда и обратно, через TCP';
+  }
+
+  @override
+  String qualityLossUp(int percent) {
+    return 'Их голос: потеряно $percent%';
+  }
+
+  @override
+  String qualityLossDown(int percent) {
+    return 'Что слышат они: потеряно $percent%';
+  }
+
+  @override
+  String qualityWindow(int secs) {
+    return 'За последние $secs с';
+  }
+
+  @override
+  String get qualitySinceConnect => 'С момента подключения';
 }

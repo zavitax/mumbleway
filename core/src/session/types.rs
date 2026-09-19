@@ -137,6 +137,11 @@ pub struct UserInfo {
     /// record of it; the copy kept in the roster map is always `None`.
     #[serde(default)]
     pub mumbleway: Option<String>,
+    /// What the server measures about this rider's connection, once it has been
+    /// asked — see [`crate::session::quality`]. `None` until the first reply
+    /// arrives, and for anybody outside our own channel.
+    #[serde(default)]
+    pub quality: Option<crate::session::quality::Quality>,
 }
 
 impl UserInfo {

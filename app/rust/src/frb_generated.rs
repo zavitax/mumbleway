@@ -3179,6 +3179,17 @@ impl SseDecode for Option<u32> {
     }
 }
 
+impl SseDecode for Option<crate::api::mumbleway::UiQuality> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::api::mumbleway::UiQuality>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::api::mumbleway::UiSpectrum> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3515,6 +3526,26 @@ impl SseDecode for crate::api::mumbleway::UiProbe {
     }
 }
 
+impl SseDecode for crate::api::mumbleway::UiQuality {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_pingMs = <f32>::sse_decode(deserializer);
+        let mut var_udp = <bool>::sse_decode(deserializer);
+        let mut var_lossUp = <f32>::sse_decode(deserializer);
+        let mut var_lossDown = <f32>::sse_decode(deserializer);
+        let mut var_windowSecs = <u32>::sse_decode(deserializer);
+        let mut var_idleSecs = <u32>::sse_decode(deserializer);
+        return crate::api::mumbleway::UiQuality {
+            ping_ms: var_pingMs,
+            udp: var_udp,
+            loss_up: var_lossUp,
+            loss_down: var_lossDown,
+            window_secs: var_windowSecs,
+            idle_secs: var_idleSecs,
+        };
+    }
+}
+
 impl SseDecode for crate::api::mumbleway::UiRecordingState {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -3667,6 +3698,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
         let mut var_localMute = <bool>::sse_decode(deserializer);
         let mut var_status = <String>::sse_decode(deserializer);
         let mut var_mumblewayVersion = <Option<String>>::sse_decode(deserializer);
+        let mut var_quality = <Option<crate::api::mumbleway::UiQuality>>::sse_decode(deserializer);
         return crate::api::mumbleway::UiUser {
             session: var_session,
             name: var_name,
@@ -3677,6 +3709,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
             local_mute: var_localMute,
             status: var_status,
             mumbleway_version: var_mumblewayVersion,
+            quality: var_quality,
         };
     }
 }
@@ -4395,6 +4428,31 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiProbe>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiQuality {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.ping_ms.into_into_dart().into_dart(),
+            self.udp.into_into_dart().into_dart(),
+            self.loss_up.into_into_dart().into_dart(),
+            self.loss_down.into_into_dart().into_dart(),
+            self.window_secs.into_into_dart().into_dart(),
+            self.idle_secs.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::UiQuality
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiQuality>
+    for crate::api::mumbleway::UiQuality
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::UiQuality {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiRecordingState {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4597,6 +4655,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiUser {
             self.local_mute.into_into_dart().into_dart(),
             self.status.into_into_dart().into_dart(),
             self.mumbleway_version.into_into_dart().into_dart(),
+            self.quality.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5028,6 +5087,16 @@ impl SseEncode for Option<u32> {
     }
 }
 
+impl SseEncode for Option<crate::api::mumbleway::UiQuality> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::mumbleway::UiQuality>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::api::mumbleway::UiSpectrum> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5251,6 +5320,18 @@ impl SseEncode for crate::api::mumbleway::UiProbe {
     }
 }
 
+impl SseEncode for crate::api::mumbleway::UiQuality {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <f32>::sse_encode(self.ping_ms, serializer);
+        <bool>::sse_encode(self.udp, serializer);
+        <f32>::sse_encode(self.loss_up, serializer);
+        <f32>::sse_encode(self.loss_down, serializer);
+        <u32>::sse_encode(self.window_secs, serializer);
+        <u32>::sse_encode(self.idle_secs, serializer);
+    }
+}
+
 impl SseEncode for crate::api::mumbleway::UiRecordingState {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5349,6 +5430,7 @@ impl SseEncode for crate::api::mumbleway::UiUser {
         <bool>::sse_encode(self.local_mute, serializer);
         <String>::sse_encode(self.status, serializer);
         <Option<String>>::sse_encode(self.mumbleway_version, serializer);
+        <Option<crate::api::mumbleway::UiQuality>>::sse_encode(self.quality, serializer);
     }
 }
 

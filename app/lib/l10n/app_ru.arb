@@ -632,5 +632,46 @@
     }
   },
   "allowRemoteUnmute": "Разрешить пользователям MumbleWay включать мой микрофон",
-  "allowRemoteUnmuteBody": "Другие участники, у которых тоже MumbleWay, могут выключить ваш микрофон, если от вас идёт шум, а ваша кнопка микрофона включит его обратно. Эта настройка позволяет им и включать его — на случай, если вы выключили микрофон и забыли. Выключите её, и включить микрофон сможете только вы."
+  "allowRemoteUnmuteBody": "Другие участники, у которых тоже MumbleWay, могут выключить ваш микрофон, если от вас идёт шум, а ваша кнопка микрофона включит его обратно. Эта настройка позволяет им и включать его — на случай, если вы выключили микрофон и забыли. Выключите её, и включить микрофон сможете только вы.",
+  "qualityPing": "{ms} мс туда и обратно",
+  "@qualityPing": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityPingTunnelled": "{ms} мс туда и обратно, через TCP",
+  "@qualityPingTunnelled": {
+    "placeholders": {
+      "ms": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityLossUp": "Их голос: потеряно {percent}%",
+  "@qualityLossUp": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityLossDown": "Что слышат они: потеряно {percent}%",
+  "@qualityLossDown": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityWindow": "За последние {secs} с",
+  "@qualityWindow": {
+    "placeholders": {
+      "secs": {
+        "type": "int"
+      }
+    }
+  },
+  "qualitySinceConnect": "С момента подключения"
 }

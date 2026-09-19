@@ -3,6 +3,7 @@
 pub mod manager;
 pub mod peers;
 pub mod profile;
+pub mod quality;
 pub mod reconnect;
 pub mod types;
 
@@ -76,6 +77,15 @@ struct LiveState {
     own_version: String,
     /// When to announce ourselves, and when to stop.
     announcer: peers::Announcer,
+    /// The server's measurements of each rider's connection, by session.
+    quality: HashMap<u32, quality::Quality>,
+    /// Set by a stats reply, cleared when the roster carrying it goes out. One
+    /// emit per round of replies rather than one per reply: the roster is the
+    /// whole list, and sending it eight times in a second to move eight
+    /// indicators would rebuild the interface eight times.
+    quality_fresh: bool,
+    /// Whose turn it is to be asked about, and when.
+    quality_poller: quality::QualityPoller,
 }
 
 impl LiveState {
@@ -93,6 +103,9 @@ impl LiveState {
             plugin_data: false,
             own_version: String::new(),
             announcer: peers::Announcer::armed(Instant::now()),
+            quality: HashMap::new(),
+            quality_fresh: false,
+            quality_poller: quality::QualityPoller::default(),
         }
     }
 
@@ -126,6 +139,21 @@ impl LiveState {
             .map(|u| u.channel_id)
     }
 
+    /// Everybody in our own channel but us.
+    ///
+    /// The roster draws these, and they are also the only riders the server
+    /// reports packet loss for — see [`quality`].
+    fn channel_peers(&self) -> Vec<u32> {
+        let Some(mine) = self.self_channel(self.self_session) else {
+            return Vec::new();
+        };
+        self.users
+            .values()
+            .filter(|u| u.channel_id == mine && Some(u.session) != self.self_session)
+            .map(|u| u.session)
+            .collect()
+    }
+
     fn user_list(&self) -> Vec<UserInfo> {
         let mut v: Vec<_> = self
             .users
@@ -141,6 +169,7 @@ impl LiveState {
                 } else {
                     self.peers.get(u.session).map(|p| p.version.clone())
                 };
+                u.quality = self.quality.get(&u.session).copied();
                 u
             })
             .collect();
@@ -623,6 +652,29 @@ impl Session {
                     state.stats.transport = Some(state.transport.into());
                     self.emit(SessionEvent::Stats(state.stats)).await;
 
+                    // Ask the server how everybody in this channel is doing,
+                    // and put the answers from the last round in front of the
+                    // rider. Both here rather than on each reply, so a busy
+                    // channel costs one roster emit every few seconds.
+                    if state.quality_poller.due(now) {
+                        for session in state.quality_poller.next_batch(&state.channel_peers()) {
+                            let m = mumble::UserStats {
+                                session: Some(session),
+                                // No certificate chain: it is the one part of
+                                // the reply this never uses, it is by far the
+                                // largest, and asking for less is the polite
+                                // way to poll something every few seconds.
+                                stats_only: Some(true),
+                                ..Default::default()
+                            };
+                            writer.send(MessageType::UserStats, &m).await?;
+                        }
+                    }
+                    if state.quality_fresh {
+                        state.quality_fresh = false;
+                        self.emit(SessionEvent::Users(state.user_list())).await;
+                    }
+
                     // Answer every announcement heard since the last tick, all
                     // in one message. Once a second at most, however many
                     // arrived — which is what keeps a crowd reconnecting after
@@ -850,6 +902,10 @@ impl Session {
                         talking: false,
                         local_mute: false,
                         mumbleway: None,
+                        // Both of these live outside the roster map and are
+                        // filled in by `user_list`; the copy kept here is
+                        // always `None`.
+                        quality: None,
                     });
                     if let Some(n) = m.name {
                         e.name = n;
@@ -886,9 +942,46 @@ impl Session {
                     .await;
                 }
             }
+            MessageType::UserStats => {
+                let m = mumble::UserStats::decode(payload)?;
+                if let Some(session) = m.session {
+                    // Rolling first: a minute of loss is what "how is this
+                    // connection now" means, and the count since they connected
+                    // keeps reporting a bad bridge an hour after it.
+                    let rolling = m.rolling_stats.as_ref();
+                    let window = rolling.and_then(|r| r.time_window).unwrap_or(0);
+                    let counts = |s: &mumble::user_stats::Stats| quality::Counts {
+                        good: s.good.unwrap_or(0),
+                        late: s.late.unwrap_or(0),
+                        lost: s.lost.unwrap_or(0),
+                    };
+                    let up = rolling
+                        .and_then(|r| r.from_client.as_ref())
+                        .or(m.from_client.as_ref())
+                        .map(counts);
+                    let down = rolling
+                        .and_then(|r| r.from_server.as_ref())
+                        .or(m.from_server.as_ref())
+                        .map(counts);
+                    state.quality.insert(
+                        session,
+                        quality::Quality::from_stats(
+                            session,
+                            m.udp_ping_avg,
+                            m.tcp_ping_avg,
+                            up,
+                            down,
+                            window,
+                            m.idlesecs.unwrap_or(0),
+                        ),
+                    );
+                    state.quality_fresh = true;
+                }
+            }
             MessageType::UserRemove => {
                 let m = mumble::UserRemove::decode(payload)?;
                 state.users.remove(&m.session);
+                state.quality.remove(&m.session);
                 // The number goes back to the server and may be handed to
                 // somebody who runs something else entirely.
                 state.peers.forget(m.session);

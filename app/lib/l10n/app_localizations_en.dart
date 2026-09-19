@@ -1612,4 +1612,32 @@ class LEn extends L {
   @override
   String get allowRemoteUnmuteBody =>
       'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.';
+
+  @override
+  String qualityPing(int ms) {
+    return '$ms ms round trip';
+  }
+
+  @override
+  String qualityPingTunnelled(int ms) {
+    return '$ms ms round trip, over TCP';
+  }
+
+  @override
+  String qualityLossUp(int percent) {
+    return 'Their voice: $percent% lost';
+  }
+
+  @override
+  String qualityLossDown(int percent) {
+    return 'What they hear: $percent% lost';
+  }
+
+  @override
+  String qualityWindow(int secs) {
+    return 'Over the last $secs s';
+  }
+
+  @override
+  String get qualitySinceConnect => 'Since they connected';
 }

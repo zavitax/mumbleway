@@ -2585,6 +2585,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiQuality dco_decode_box_autoadd_ui_quality(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_ui_quality(raw);
+  }
+
+  @protected
   UiSpectrum dco_decode_box_autoadd_ui_spectrum(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_ui_spectrum(raw);
@@ -2738,6 +2744,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
+  }
+
+  @protected
+  UiQuality? dco_decode_opt_box_autoadd_ui_quality(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_ui_quality(raw);
   }
 
   @protected
@@ -2979,6 +2991,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiQuality dco_decode_ui_quality(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return UiQuality(
+      pingMs: dco_decode_f_32(arr[0]),
+      udp: dco_decode_bool(arr[1]),
+      lossUp: dco_decode_f_32(arr[2]),
+      lossDown: dco_decode_f_32(arr[3]),
+      windowSecs: dco_decode_u_32(arr[4]),
+      idleSecs: dco_decode_u_32(arr[5]),
+    );
+  }
+
+  @protected
   UiRecordingState dco_decode_ui_recording_state(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -3100,8 +3128,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiUser dco_decode_ui_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 9)
-      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
     return UiUser(
       session: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -3112,6 +3140,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       localMute: dco_decode_bool(arr[6]),
       status: dco_decode_String(arr[7]),
       mumblewayVersion: dco_decode_opt_String(arr[8]),
+      quality: dco_decode_opt_box_autoadd_ui_quality(arr[9]),
     );
   }
 
@@ -3304,6 +3333,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
+  UiQuality sse_decode_box_autoadd_ui_quality(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_ui_quality(deserializer));
   }
 
   @protected
@@ -3541,6 +3576,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  UiQuality? sse_decode_opt_box_autoadd_ui_quality(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_ui_quality(deserializer));
     } else {
       return null;
     }
@@ -3865,6 +3913,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiQuality sse_decode_ui_quality(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_pingMs = sse_decode_f_32(deserializer);
+    var var_udp = sse_decode_bool(deserializer);
+    var var_lossUp = sse_decode_f_32(deserializer);
+    var var_lossDown = sse_decode_f_32(deserializer);
+    var var_windowSecs = sse_decode_u_32(deserializer);
+    var var_idleSecs = sse_decode_u_32(deserializer);
+    return UiQuality(
+      pingMs: var_pingMs,
+      udp: var_udp,
+      lossUp: var_lossUp,
+      lossDown: var_lossDown,
+      windowSecs: var_windowSecs,
+      idleSecs: var_idleSecs,
+    );
+  }
+
+  @protected
   UiRecordingState sse_decode_ui_recording_state(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_active = sse_decode_bool(deserializer);
@@ -4000,6 +4067,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_localMute = sse_decode_bool(deserializer);
     var var_status = sse_decode_String(deserializer);
     var var_mumblewayVersion = sse_decode_opt_String(deserializer);
+    var var_quality = sse_decode_opt_box_autoadd_ui_quality(deserializer);
     return UiUser(
       session: var_session,
       name: var_name,
@@ -4010,6 +4078,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       localMute: var_localMute,
       status: var_status,
       mumblewayVersion: var_mumblewayVersion,
+      quality: var_quality,
     );
   }
 
@@ -4206,6 +4275,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_ui_quality(
+    UiQuality self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_ui_quality(self, serializer);
   }
 
   @protected
@@ -4443,6 +4521,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_ui_quality(
+    UiQuality? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_ui_quality(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_ui_spectrum(
     UiSpectrum? self,
     SseSerializer serializer,
@@ -4658,6 +4749,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_ui_quality(UiQuality self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_f_32(self.pingMs, serializer);
+    sse_encode_bool(self.udp, serializer);
+    sse_encode_f_32(self.lossUp, serializer);
+    sse_encode_f_32(self.lossDown, serializer);
+    sse_encode_u_32(self.windowSecs, serializer);
+    sse_encode_u_32(self.idleSecs, serializer);
+  }
+
+  @protected
   void sse_encode_ui_recording_state(
     UiRecordingState self,
     SseSerializer serializer,
@@ -4756,6 +4858,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.localMute, serializer);
     sse_encode_String(self.status, serializer);
     sse_encode_opt_String(self.mumblewayVersion, serializer);
+    sse_encode_opt_box_autoadd_ui_quality(self.quality, serializer);
   }
 
   @protected

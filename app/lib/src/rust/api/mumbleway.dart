@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -1502,6 +1502,58 @@ class UiProbe {
           modelUs == other.modelUs;
 }
 
+/// The server's measurements of one rider's connection.
+class UiQuality {
+  /// Round trip in milliseconds, measured at the server.
+  final double pingMs;
+
+  /// Whether the figure is the UDP one. A tunnelled rider has only the TCP
+  /// measurement, which is worth telling apart: it includes the tunnel.
+  final bool udp;
+
+  /// Share of this rider's packets, 0 to 1, that never reached the server.
+  final double lossUp;
+
+  /// Share of the server's packets that never reached this rider.
+  final double lossDown;
+
+  /// Seconds the loss covers, or 0 when it is counted from their connect.
+  final int windowSecs;
+
+  /// Seconds since this rider last did anything.
+  final int idleSecs;
+
+  const UiQuality({
+    required this.pingMs,
+    required this.udp,
+    required this.lossUp,
+    required this.lossDown,
+    required this.windowSecs,
+    required this.idleSecs,
+  });
+
+  @override
+  int get hashCode =>
+      pingMs.hashCode ^
+      udp.hashCode ^
+      lossUp.hashCode ^
+      lossDown.hashCode ^
+      windowSecs.hashCode ^
+      idleSecs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiQuality &&
+          runtimeType == other.runtimeType &&
+          pingMs == other.pingMs &&
+          udp == other.udp &&
+          lossUp == other.lossUp &&
+          lossDown == other.lossDown &&
+          windowSecs == other.windowSecs &&
+          idleSecs == other.idleSecs;
+}
+
 /// Whether a diagnostic recording is running, and how it is doing.
 class UiRecordingState {
   final bool active;
@@ -1858,6 +1910,13 @@ class UiUser {
   /// a badge on ourselves means everybody else's badges mean something too.
   final String? mumblewayVersion;
 
+  /// How this rider's connection is doing, as the *server* measures it.
+  ///
+  /// `None` until the first stats reply, and for anybody outside our own
+  /// channel — the server only reports loss to people standing in the same
+  /// one. See `session::quality`.
+  final UiQuality? quality;
+
   const UiUser({
     required this.session,
     required this.name,
@@ -1868,6 +1927,7 @@ class UiUser {
     required this.localMute,
     required this.status,
     this.mumblewayVersion,
+    this.quality,
   });
 
   @override
@@ -1880,7 +1940,8 @@ class UiUser {
       deafened.hashCode ^
       localMute.hashCode ^
       status.hashCode ^
-      mumblewayVersion.hashCode;
+      mumblewayVersion.hashCode ^
+      quality.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1895,7 +1956,8 @@ class UiUser {
           deafened == other.deafened &&
           localMute == other.localMute &&
           status == other.status &&
-          mumblewayVersion == other.mumblewayVersion;
+          mumblewayVersion == other.mumblewayVersion &&
+          quality == other.quality;
 }
 
 /// A window of raw microphone audio for the background classifier.

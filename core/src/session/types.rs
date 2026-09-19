@@ -244,6 +244,12 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// Menu entries this server has registered, whenever the set changes.
+    ///
+    /// The whole set rather than the one that changed: it is small, and a menu
+    /// built from a running total drifts out of step with the server in ways
+    /// nobody notices until an entry does the wrong thing.
+    ContextActions(Vec<crate::session::context_actions::ContextAction>),
     /// The server's ban list, in answer to asking for it.
     Bans(Vec<crate::session::bans::BanEntry>),
     /// What the server's administrator asks riders to do here.
@@ -343,6 +349,15 @@ pub enum SessionCommand {
     MoveUser {
         session: u32,
         channel_id: u32,
+    },
+    /// Picks one of the menu entries this server registered.
+    ///
+    /// The identifier goes back exactly as it arrived; what happens next is
+    /// entirely the server's business, and it may be nothing at all.
+    TriggerContextAction {
+        action: String,
+        session: Option<u32>,
+        channel_id: Option<u32>,
     },
     /// Ask for the server's ban list. Requires Ban on the root channel.
     RequestBans,

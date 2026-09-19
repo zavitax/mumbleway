@@ -108,6 +108,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw);
 
   @protected
+  List<UiContextAction> dco_decode_list_ui_context_action(dynamic raw);
+
+  @protected
   List<UiLogEntry> dco_decode_list_ui_log_entry(dynamic raw);
 
   @protected
@@ -187,6 +190,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiChannel dco_decode_ui_channel(dynamic raw);
+
+  @protected
+  UiContextAction dco_decode_ui_context_action(dynamic raw);
 
   @protected
   UiDiagnostics dco_decode_ui_diagnostics(dynamic raw);
@@ -336,6 +342,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> sse_decode_list_ui_channel(SseDeserializer deserializer);
 
   @protected
+  List<UiContextAction> sse_decode_list_ui_context_action(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<UiLogEntry> sse_decode_list_ui_log_entry(SseDeserializer deserializer);
 
   @protected
@@ -427,6 +438,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiChannel sse_decode_ui_channel(SseDeserializer deserializer);
+
+  @protected
+  UiContextAction sse_decode_ui_context_action(SseDeserializer deserializer);
 
   @protected
   UiDiagnostics sse_decode_ui_diagnostics(SseDeserializer deserializer);
@@ -609,6 +623,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_ui_context_action(
+    List<UiContextAction> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ui_log_entry(
     List<UiLogEntry> self,
     SseSerializer serializer,
@@ -715,6 +735,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_channel(UiChannel self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_context_action(
+    UiContextAction self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ui_diagnostics(UiDiagnostics self, SseSerializer serializer);

@@ -197,6 +197,12 @@ class ServerRuntime {
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
 
+  /// Menu entries this server has registered — see `trigger_context_action`.
+  ///
+  /// Usually empty: they come from bots and server plugins, and most servers
+  /// run neither.
+  List<UiContextAction> contextActions = const [];
+
   /// The server's ban list, once it has been asked for.
   ///
   /// Only an admin ever sees this: reading the list needs the same permission
@@ -2291,6 +2297,30 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Picks one of the entries this server put in our menus.
+  ///
+  /// Nothing comes back: the server may act, may refuse, may do nothing at
+  /// all, and says nothing either way. So this reports only whether the
+  /// message went.
+  Future<String?> runContextAction(
+    String id,
+    UiContextAction action, {
+    int? session,
+    int? channelId,
+  }) async {
+    try {
+      await triggerContextAction(
+        serverId: id,
+        action: action.action,
+        session: session,
+        channelId: channelId,
+      );
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   /// Asks the server for its ban list. The answer arrives as an event.
   Future<String?> loadBans(String id) async {
     try {
@@ -3706,6 +3736,8 @@ class AppState extends ChangeNotifier {
         }
       case AppEvent_Bans(:final serverId, :final bans):
         runtimeFor(serverId).bans = bans;
+      case AppEvent_ContextActions(:final serverId, :final actions):
+        runtimeFor(serverId).contextActions = actions;
       case AppEvent_Avatar(:final serverId, :final session, :final image):
         final rt = runtimeFor(serverId);
         if (image.isEmpty) {

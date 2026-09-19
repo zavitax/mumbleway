@@ -120,6 +120,21 @@ pub struct UiUser {
     pub quality: Option<UiQuality>,
 }
 
+/// A menu entry this server registered.
+///
+/// The label is the server's own words, in whatever language it chose; nothing
+/// here translates it, and nothing here knows what the action does.
+#[derive(Debug, Clone)]
+pub struct UiContextAction {
+    /// Sent back when it is picked. Opaque, and never rewritten.
+    pub action: String,
+    pub label: String,
+    /// Where the server said it belongs.
+    pub for_user: bool,
+    pub for_channel: bool,
+    pub for_server: bool,
+}
+
 /// One entry of the server's ban list.
 ///
 /// Carries every field the protocol defines, including the ones nothing
@@ -250,6 +265,11 @@ pub enum AppEvent {
     /// the audio itself.
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
+    },
+    /// The menu entries this server has registered, whenever the set changes.
+    ContextActions {
+        server_id: String,
+        actions: Vec<UiContextAction>,
     },
     /// The server's ban list, in answer to asking for it.
     Bans {
@@ -798,6 +818,19 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::ContextActions(list) => emit(AppEvent::ContextActions {
+                    server_id,
+                    actions: list
+                        .into_iter()
+                        .map(|a| UiContextAction {
+                            for_user: a.for_user(),
+                            for_channel: a.for_channel(),
+                            for_server: a.for_server(),
+                            action: a.action,
+                            label: a.label,
+                        })
+                        .collect(),
+                }),
                 SessionEvent::Bans(list) => emit(AppEvent::Bans {
                     server_id,
                     bans: list
@@ -1199,6 +1232,26 @@ pub fn send_text(server_id: String, message: String) -> anyhow::Result<()> {
         SessionCommand::SendText {
             channel_id: None,
             message,
+        },
+    )
+}
+
+/// Picks one of the menu entries this server registered.
+///
+/// What happens next is the server's business — it may do nothing, and it
+/// reports nothing back either way.
+pub fn trigger_context_action(
+    server_id: String,
+    action: String,
+    session: Option<u32>,
+    channel_id: Option<u32>,
+) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::TriggerContextAction {
+            action,
+            session,
+            channel_id,
         },
     )
 }

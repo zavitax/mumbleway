@@ -237,6 +237,22 @@ class ServerCard extends StatelessWidget {
                                 _register(context, state);
                               case 'note':
                                 _setNote(context, state, rt);
+                              case final v when v.startsWith('server:'):
+                                // One of the server's own entries. Channel
+                                // ones are sent with the channel we are in,
+                                // which is the only one they could mean here.
+                                final action = rt.contextActions
+                                    .where((a) => a.action == v.substring(7))
+                                    .firstOrNull;
+                                if (action != null) {
+                                  state.runContextAction(
+                                    server.id,
+                                    action,
+                                    channelId: action.forChannel
+                                        ? rt.currentChannel?.id
+                                        : null,
+                                  );
+                                }
                               case 'bans':
                                 showDialog<void>(
                                   context: context,
@@ -362,6 +378,26 @@ class ServerCard extends StatelessWidget {
                                       : Text(l.connectFirst),
                                 ),
                               ),
+                            // What the server itself offers, if anything: a
+                            // recording bot, a ride organiser's script. Last,
+                            // under a divider, because this app cannot say
+                            // what any of them does.
+                            for (final action in rt.contextActions.where(
+                              (a) => a.forServer || a.forChannel,
+                            )) ...[
+                              const PopupMenuDivider(),
+                              PopupMenuItem(
+                                value: 'server:${action.action}',
+                                enabled: rt.isLive,
+                                child: ListTile(
+                                  dense: true,
+                                  enabled: rt.isLive,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.bolt_outlined),
+                                  title: Text(action.label),
+                                ),
+                              ),
+                            ],
                             PopupMenuItem(
                               value: 'duplicate',
                               child: ListTile(

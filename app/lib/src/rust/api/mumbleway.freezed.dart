@@ -55,7 +55,7 @@ extension AppEventPatterns on AppEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult Function( AppEvent_Bans value)?  bans,TResult Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult Function( AppEvent_Avatar value)?  avatar,TResult Function( AppEvent_Rights value)?  rights,TResult Function( AppEvent_Moderated value)?  moderated,TResult Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Refused value)?  refused,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,TResult Function( AppEvent_Log value)?  log,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult Function( AppEvent_ContextActions value)?  contextActions,TResult Function( AppEvent_Bans value)?  bans,TResult Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult Function( AppEvent_Avatar value)?  avatar,TResult Function( AppEvent_Rights value)?  rights,TResult Function( AppEvent_Moderated value)?  moderated,TResult Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Refused value)?  refused,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,TResult Function( AppEvent_Log value)?  log,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -65,7 +65,8 @@ return channels(_that);case AppEvent_Text() when text != null:
 return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that);case AppEvent_SpeakerLevels() when speakerLevels != null:
-return speakerLevels(_that);case AppEvent_Bans() when bans != null:
+return speakerLevels(_that);case AppEvent_ContextActions() when contextActions != null:
+return contextActions(_that);case AppEvent_Bans() when bans != null:
 return bans(_that);case AppEvent_ServerSuggests() when serverSuggests != null:
 return serverSuggests(_that);case AppEvent_Avatar() when avatar != null:
 return avatar(_that);case AppEvent_Rights() when rights != null:
@@ -94,7 +95,7 @@ return log(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_SpeakerLevels value)  speakerLevels,required TResult Function( AppEvent_Bans value)  bans,required TResult Function( AppEvent_ServerSuggests value)  serverSuggests,required TResult Function( AppEvent_Avatar value)  avatar,required TResult Function( AppEvent_Rights value)  rights,required TResult Function( AppEvent_Moderated value)  moderated,required TResult Function( AppEvent_RemoteMuted value)  remoteMuted,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Refused value)  refused,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,required TResult Function( AppEvent_Log value)  log,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_SpeakerLevels value)  speakerLevels,required TResult Function( AppEvent_ContextActions value)  contextActions,required TResult Function( AppEvent_Bans value)  bans,required TResult Function( AppEvent_ServerSuggests value)  serverSuggests,required TResult Function( AppEvent_Avatar value)  avatar,required TResult Function( AppEvent_Rights value)  rights,required TResult Function( AppEvent_Moderated value)  moderated,required TResult Function( AppEvent_RemoteMuted value)  remoteMuted,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Refused value)  refused,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,required TResult Function( AppEvent_Log value)  log,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status():
@@ -104,7 +105,8 @@ return channels(_that);case AppEvent_Text():
 return text(_that);case AppEvent_Stats():
 return stats(_that);case AppEvent_InputLevel():
 return inputLevel(_that);case AppEvent_SpeakerLevels():
-return speakerLevels(_that);case AppEvent_Bans():
+return speakerLevels(_that);case AppEvent_ContextActions():
+return contextActions(_that);case AppEvent_Bans():
 return bans(_that);case AppEvent_ServerSuggests():
 return serverSuggests(_that);case AppEvent_Avatar():
 return avatar(_that);case AppEvent_Rights():
@@ -129,7 +131,7 @@ return log(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult? Function( AppEvent_Bans value)?  bans,TResult? Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult? Function( AppEvent_Avatar value)?  avatar,TResult? Function( AppEvent_Rights value)?  rights,TResult? Function( AppEvent_Moderated value)?  moderated,TResult? Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Refused value)?  refused,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,TResult? Function( AppEvent_Log value)?  log,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult? Function( AppEvent_ContextActions value)?  contextActions,TResult? Function( AppEvent_Bans value)?  bans,TResult? Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult? Function( AppEvent_Avatar value)?  avatar,TResult? Function( AppEvent_Rights value)?  rights,TResult? Function( AppEvent_Moderated value)?  moderated,TResult? Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Refused value)?  refused,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,TResult? Function( AppEvent_Log value)?  log,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -139,7 +141,8 @@ return channels(_that);case AppEvent_Text() when text != null:
 return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that);case AppEvent_SpeakerLevels() when speakerLevels != null:
-return speakerLevels(_that);case AppEvent_Bans() when bans != null:
+return speakerLevels(_that);case AppEvent_ContextActions() when contextActions != null:
+return contextActions(_that);case AppEvent_Bans() when bans != null:
 return bans(_that);case AppEvent_ServerSuggests() when serverSuggests != null:
 return serverSuggests(_that);case AppEvent_Avatar() when avatar != null:
 return avatar(_that);case AppEvent_Rights() when rights != null:
@@ -167,7 +170,7 @@ return log(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult Function( String serverId,  List<UiBan> bans)?  bans,TResult Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult Function( String serverId,  int session,  Uint8List image)?  avatar,TResult Function( String serverId,  UiRights rights)?  rights,TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String reason,  int kind)?  refused,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,TResult Function( List<UiLogEntry> entries)?  log,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult Function( String serverId,  List<UiContextAction> actions)?  contextActions,TResult Function( String serverId,  List<UiBan> bans)?  bans,TResult Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult Function( String serverId,  int session,  Uint8List image)?  avatar,TResult Function( String serverId,  UiRights rights)?  rights,TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String reason,  int kind)?  refused,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,TResult Function( List<UiLogEntry> entries)?  log,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -176,7 +179,8 @@ return channels(_that.serverId,_that.channels);case AppEvent_Text() when text !=
 return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when stats != null:
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels() when speakerLevels != null:
-return speakerLevels(_that.levels);case AppEvent_Bans() when bans != null:
+return speakerLevels(_that.levels);case AppEvent_ContextActions() when contextActions != null:
+return contextActions(_that.serverId,_that.actions);case AppEvent_Bans() when bans != null:
 return bans(_that.serverId,_that.bans);case AppEvent_ServerSuggests() when serverSuggests != null:
 return serverSuggests(_that.serverId,_that.pushToTalk,_that.positional);case AppEvent_Avatar() when avatar != null:
 return avatar(_that.serverId,_that.session,_that.image);case AppEvent_Rights() when rights != null:
@@ -205,7 +209,7 @@ return log(_that.entries);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)  inputLevel,required TResult Function( List<UiSpeakerLevel> levels)  speakerLevels,required TResult Function( String serverId,  List<UiBan> bans)  bans,required TResult Function( String serverId,  bool? pushToTalk,  bool? positional)  serverSuggests,required TResult Function( String serverId,  int session,  Uint8List image)  avatar,required TResult Function( String serverId,  UiRights rights)  rights,required TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)  moderated,required TResult Function( String serverId,  bool muted,  String by)  remoteMuted,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String reason,  int kind)  refused,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,required TResult Function( List<UiLogEntry> entries)  log,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)  inputLevel,required TResult Function( List<UiSpeakerLevel> levels)  speakerLevels,required TResult Function( String serverId,  List<UiContextAction> actions)  contextActions,required TResult Function( String serverId,  List<UiBan> bans)  bans,required TResult Function( String serverId,  bool? pushToTalk,  bool? positional)  serverSuggests,required TResult Function( String serverId,  int session,  Uint8List image)  avatar,required TResult Function( String serverId,  UiRights rights)  rights,required TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)  moderated,required TResult Function( String serverId,  bool muted,  String by)  remoteMuted,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String reason,  int kind)  refused,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,required TResult Function( List<UiLogEntry> entries)  log,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status():
 return status(_that.field0);case AppEvent_Users():
@@ -214,7 +218,8 @@ return channels(_that.serverId,_that.channels);case AppEvent_Text():
 return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats():
 return stats(_that.field0);case AppEvent_InputLevel():
 return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels():
-return speakerLevels(_that.levels);case AppEvent_Bans():
+return speakerLevels(_that.levels);case AppEvent_ContextActions():
+return contextActions(_that.serverId,_that.actions);case AppEvent_Bans():
 return bans(_that.serverId,_that.bans);case AppEvent_ServerSuggests():
 return serverSuggests(_that.serverId,_that.pushToTalk,_that.positional);case AppEvent_Avatar():
 return avatar(_that.serverId,_that.session,_that.image);case AppEvent_Rights():
@@ -239,7 +244,7 @@ return log(_that.entries);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult? Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult? Function( String serverId,  List<UiBan> bans)?  bans,TResult? Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult? Function( String serverId,  int session,  Uint8List image)?  avatar,TResult? Function( String serverId,  UiRights rights)?  rights,TResult? Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult? Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String reason,  int kind)?  refused,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,TResult? Function( List<UiLogEntry> entries)?  log,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult? Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult? Function( String serverId,  List<UiContextAction> actions)?  contextActions,TResult? Function( String serverId,  List<UiBan> bans)?  bans,TResult? Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult? Function( String serverId,  int session,  Uint8List image)?  avatar,TResult? Function( String serverId,  UiRights rights)?  rights,TResult? Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult? Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String reason,  int kind)?  refused,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,TResult? Function( List<UiLogEntry> entries)?  log,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -248,7 +253,8 @@ return channels(_that.serverId,_that.channels);case AppEvent_Text() when text !=
 return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when stats != null:
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels() when speakerLevels != null:
-return speakerLevels(_that.levels);case AppEvent_Bans() when bans != null:
+return speakerLevels(_that.levels);case AppEvent_ContextActions() when contextActions != null:
+return contextActions(_that.serverId,_that.actions);case AppEvent_Bans() when bans != null:
 return bans(_that.serverId,_that.bans);case AppEvent_ServerSuggests() when serverSuggests != null:
 return serverSuggests(_that.serverId,_that.pushToTalk,_that.positional);case AppEvent_Avatar() when avatar != null:
 return avatar(_that.serverId,_that.session,_that.image);case AppEvent_Rights() when rights != null:
@@ -759,6 +765,80 @@ class _$AppEvent_SpeakerLevelsCopyWithImpl<$Res>
   return _then(AppEvent_SpeakerLevels(
 levels: null == levels ? _self._levels : levels // ignore: cast_nullable_to_non_nullable
 as List<UiSpeakerLevel>,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppEvent_ContextActions extends AppEvent {
+  const AppEvent_ContextActions({required this.serverId, required final  List<UiContextAction> actions}): _actions = actions,super._();
+  
+
+ final  String serverId;
+ final  List<UiContextAction> _actions;
+ List<UiContextAction> get actions {
+  if (_actions is EqualUnmodifiableListView) return _actions;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_actions);
+}
+
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppEvent_ContextActionsCopyWith<AppEvent_ContextActions> get copyWith => _$AppEvent_ContextActionsCopyWithImpl<AppEvent_ContextActions>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppEvent_ContextActions&&(identical(other.serverId, serverId) || other.serverId == serverId)&&const DeepCollectionEquality().equals(other._actions, _actions));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,serverId,const DeepCollectionEquality().hash(_actions));
+
+@override
+String toString() {
+  return 'AppEvent.contextActions(serverId: $serverId, actions: $actions)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppEvent_ContextActionsCopyWith<$Res> implements $AppEventCopyWith<$Res> {
+  factory $AppEvent_ContextActionsCopyWith(AppEvent_ContextActions value, $Res Function(AppEvent_ContextActions) _then) = _$AppEvent_ContextActionsCopyWithImpl;
+@useResult
+$Res call({
+ String serverId, List<UiContextAction> actions
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppEvent_ContextActionsCopyWithImpl<$Res>
+    implements $AppEvent_ContextActionsCopyWith<$Res> {
+  _$AppEvent_ContextActionsCopyWithImpl(this._self, this._then);
+
+  final AppEvent_ContextActions _self;
+  final $Res Function(AppEvent_ContextActions) _then;
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? serverId = null,Object? actions = null,}) {
+  return _then(AppEvent_ContextActions(
+serverId: null == serverId ? _self.serverId : serverId // ignore: cast_nullable_to_non_nullable
+as String,actions: null == actions ? _self._actions : actions // ignore: cast_nullable_to_non_nullable
+as List<UiContextAction>,
   ));
 }
 

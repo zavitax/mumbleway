@@ -1,6 +1,7 @@
 //! A single server session: connect, authenticate, stay alive, reconnect.
 
 pub mod bans;
+pub mod context_actions;
 pub mod manager;
 pub mod notes;
 pub mod peers;
@@ -101,6 +102,9 @@ struct LiveState {
     /// Which comments and pictures we hold, and which still have to be asked
     /// for. See [`notes`].
     blobs: notes::Blobs,
+    /// Menu entries this server has registered. Per connection: they are the
+    /// server's, and a different server has its own.
+    context_actions: context_actions::ContextActions,
 }
 
 impl LiveState {
@@ -125,6 +129,7 @@ impl LiveState {
             rights_sent: None,
             pending_decrypt_iv: None,
             blobs: notes::Blobs::default(),
+            context_actions: context_actions::ContextActions::default(),
         }
     }
 
@@ -1079,6 +1084,26 @@ impl Session {
                     .await;
                 }
             }
+            MessageType::ContextActionModify => {
+                let m = mumble::ContextActionModify::decode(payload)?;
+                // The operation field postdates Mumble 1.2.4; absent means add,
+                // which is what a server old enough to omit it meant.
+                let removing =
+                    m.operation == Some(mumble::context_action_modify::Operation::Remove as i32);
+                let changed = if removing {
+                    state.context_actions.remove(&m.action)
+                } else {
+                    state.context_actions.add(
+                        &m.action,
+                        m.text.as_deref().unwrap_or_default(),
+                        m.context.unwrap_or(0),
+                    )
+                };
+                if changed {
+                    self.emit(SessionEvent::ContextActions(state.context_actions.all()))
+                        .await;
+                }
+            }
             MessageType::BanList => {
                 let m = mumble::BanList::decode(payload)?;
                 self.emit(SessionEvent::Bans(
@@ -1445,6 +1470,18 @@ impl Session {
                     ..Default::default()
                 };
                 writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::TriggerContextAction {
+                action,
+                session,
+                channel_id,
+            } => {
+                let m = mumble::ContextAction {
+                    session,
+                    channel_id,
+                    action,
+                };
+                writer.send(MessageType::ContextAction, &m).await?;
             }
             SessionCommand::RequestBans => {
                 let m = mumble::BanList {

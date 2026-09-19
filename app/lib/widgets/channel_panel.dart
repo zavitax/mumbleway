@@ -421,6 +421,23 @@ class _UserRow extends StatelessWidget {
                   _confirmKick(context, state);
                 case 'ban':
                   _confirmBan(context, state);
+                default:
+                  // Anything else is one of the server's own entries, keyed by
+                  // the identifier it registered. Prefixed so a server cannot
+                  // register an action called "kick" and have it run ours.
+                  final id = v.startsWith('server:') ? v.substring(7) : null;
+                  final action = state
+                      .runtimeFor(serverId)
+                      .contextActions
+                      .where((a) => a.action == id)
+                      .firstOrNull;
+                  if (action != null) {
+                    state.runContextAction(
+                      serverId,
+                      action,
+                      session: user.session,
+                    );
+                  }
               }
             },
             itemBuilder: (_) {
@@ -474,6 +491,19 @@ class _UserRow extends StatelessWidget {
                     style: const TextStyle(color: StatusColors.failed),
                   ),
                 ),
+                // Below a divider, and last: these come from a bot or a server
+                // plugin, this app has no idea what they do, and they must not
+                // sit where a rider expects the actions that are always there.
+                for (final action in state
+                    .runtimeFor(serverId)
+                    .contextActions
+                    .where((a) => a.forUser)) ...[
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'server:${action.action}',
+                    child: Text(action.label),
+                  ),
+                ],
               ];
             },
           ),

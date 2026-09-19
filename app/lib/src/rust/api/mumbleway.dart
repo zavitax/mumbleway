@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -58,6 +58,22 @@ Future<void> sendText({required String serverId, required String message}) =>
       serverId: serverId,
       message: message,
     );
+
+/// Picks one of the menu entries this server registered.
+///
+/// What happens next is the server's business — it may do nothing, and it
+/// reports nothing back either way.
+Future<void> triggerContextAction({
+  required String serverId,
+  required String action,
+  int? session,
+  int? channelId,
+}) => RustLib.instance.api.crateApiMumblewayTriggerContextAction(
+  serverId: serverId,
+  action: action,
+  session: session,
+  channelId: channelId,
+);
 
 /// Removes a rider and bars them from returning. Needs Ban on the root channel.
 Future<void> banUser({
@@ -658,6 +674,12 @@ sealed class AppEvent with _$AppEvent {
   /// the audio itself.
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
+
+  /// The menu entries this server has registered, whenever the set changes.
+  const factory AppEvent.contextActions({
+    required String serverId,
+    required List<UiContextAction> actions,
+  }) = AppEvent_ContextActions;
 
   /// The server's ban list, in answer to asking for it.
   const factory AppEvent.bans({
@@ -1411,6 +1433,48 @@ class UiChannel {
           description == other.description &&
           userCount == other.userCount &&
           maxUsers == other.maxUsers;
+}
+
+/// A menu entry this server registered.
+///
+/// The label is the server's own words, in whatever language it chose; nothing
+/// here translates it, and nothing here knows what the action does.
+class UiContextAction {
+  /// Sent back when it is picked. Opaque, and never rewritten.
+  final String action;
+  final String label;
+
+  /// Where the server said it belongs.
+  final bool forUser;
+  final bool forChannel;
+  final bool forServer;
+
+  const UiContextAction({
+    required this.action,
+    required this.label,
+    required this.forUser,
+    required this.forChannel,
+    required this.forServer,
+  });
+
+  @override
+  int get hashCode =>
+      action.hashCode ^
+      label.hashCode ^
+      forUser.hashCode ^
+      forChannel.hashCode ^
+      forServer.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiContextAction &&
+          runtimeType == other.runtimeType &&
+          action == other.action &&
+          label == other.label &&
+          forUser == other.forUser &&
+          forChannel == other.forChannel &&
+          forServer == other.forServer;
 }
 
 /// Everything the diagnostics panel shows, gathered in one call.

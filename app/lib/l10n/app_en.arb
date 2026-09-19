@@ -934,5 +934,8 @@
     }
   },
   "qualitySinceConnect": "Since they connected",
-  "registerNotAllowed": "This server does not let users register themselves"
+  "registerNotAllowed": "This server does not let users register themselves",
+  "setNote": "Set your note",
+  "setNoteBody": "A line beside your name that everyone on this server can see. Leave it empty to remove it.",
+  "setNoteHint": "Back in ten"
 }

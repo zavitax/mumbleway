@@ -5,6 +5,7 @@ import 'dart:io' show File, Platform;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, listEquals, visibleForTesting;
+import 'dart:typed_data' show Uint8List;
 import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -195,6 +196,14 @@ class ServerRuntime {
 
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
+
+  /// Riders' pictures on this server, by session.
+  ///
+  /// Kept here rather than on the roster entry because they arrive separately
+  /// and rarely, while the roster itself is replaced many times a second. A
+  /// session that leaves takes its picture with it — the number goes back to
+  /// the server and may return attached to somebody else.
+  final Map<int, Uint8List> avatars = {};
 
   /// What this rider may do on this server, once the server has said.
   ///
@@ -2221,6 +2230,20 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sets the note shown beside our own name on this server, or clears it.
+  ///
+  /// Returns what went wrong, or null. The server may refuse — a note is
+  /// permission-gated like everything else — and that refusal arrives on the
+  /// session rather than here, the same way registering does.
+  Future<String?> setNoteOn(String id, String text) async {
+    try {
+      await setComment(serverId: id, text: text.trim());
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   Future<void> toggleUserLocalMute(String id, UiUser user) async {
     try {
       await setUserLocalMute(
@@ -3599,6 +3622,13 @@ class AppState extends ChangeNotifier {
         }
       case AppEvent_Rights(:final serverId, :final rights):
         runtimeFor(serverId).rights = rights;
+      case AppEvent_Avatar(:final serverId, :final session, :final image):
+        final rt = runtimeFor(serverId);
+        if (image.isEmpty) {
+          rt.avatars.remove(session);
+        } else {
+          rt.avatars[session] = image;
+        }
       case AppEvent_Users(:final serverId, :final users):
         final rt = runtimeFor(serverId);
         rt.users = users;

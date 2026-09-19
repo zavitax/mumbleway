@@ -1633,4 +1633,14 @@ class LRu extends L {
   @override
   String get registerNotAllowed =>
       'Этот сервер не разрешает регистрироваться самостоятельно';
+
+  @override
+  String get setNote => 'Заметка рядом с именем';
+
+  @override
+  String get setNoteBody =>
+      'Строка рядом с вашим именем, её видят все на этом сервере. Оставьте поле пустым, чтобы убрать её.';
+
+  @override
+  String get setNoteHint => 'Буду через десять минут';
 }

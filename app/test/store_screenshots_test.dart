@@ -372,6 +372,7 @@ AppState _connectedState() {
       deafened: false,
       localMute: false,
       status: 'silent',
+      comment: '',
     ),
     UiUser(
       session: 2,
@@ -382,6 +383,7 @@ AppState _connectedState() {
       deafened: false,
       localMute: false,
       status: 'talking',
+      comment: '',
     ),
     UiUser(
       session: 3,
@@ -392,6 +394,7 @@ AppState _connectedState() {
       deafened: false,
       localMute: false,
       status: 'silent',
+      comment: '',
     ),
     UiUser(
       session: 4,
@@ -402,6 +405,7 @@ AppState _connectedState() {
       deafened: false,
       localMute: false,
       status: 'muted',
+      comment: '',
     ),
   ];
   return state;

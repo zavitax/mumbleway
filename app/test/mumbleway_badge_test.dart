@@ -22,6 +22,7 @@ void main() {
     deafened: false,
     localMute: false,
     status: 'silent',
+    comment: '',
     mumblewayVersion: mumbleway,
   );
 

@@ -59,6 +59,13 @@ Future<void> sendText({required String serverId, required String message}) =>
       message: message,
     );
 
+/// Sets the note shown beside our own name on this server, or clears it.
+Future<void> setComment({required String serverId, required String text}) =>
+    RustLib.instance.api.crateApiMumblewaySetComment(
+      serverId: serverId,
+      text: text,
+    );
+
 Future<void> setSelfMute({required String serverId, required bool muted}) =>
     RustLib.instance.api.crateApiMumblewaySetSelfMute(
       serverId: serverId,
@@ -613,6 +620,16 @@ sealed class AppEvent with _$AppEvent {
   /// the audio itself.
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
+
+  /// A rider's picture, as the server holds it. Empty means they removed it.
+  ///
+  /// Its own event rather than a roster field: the roster goes out many times
+  /// a second in a busy channel, and these are measured in kilobytes.
+  const factory AppEvent.avatar({
+    required String serverId,
+    required int session,
+    required Uint8List image,
+  }) = AppEvent_Avatar;
 
   /// What this rider may do on this server has been answered, or changed.
   const factory AppEvent.rights({
@@ -1990,6 +2007,11 @@ class UiUser {
   /// a badge on ourselves means everybody else's badges mean something too.
   final String? mumblewayVersion;
 
+  /// The note this rider hung beside their name, as plain text. Empty when
+  /// they have none; the markup Mumble's own client writes is stripped in the
+  /// core, so this is safe to put straight on screen.
+  final String comment;
+
   /// How this rider's connection is doing, as the *server* measures it.
   ///
   /// `None` until the first stats reply, and for anybody outside our own
@@ -2007,6 +2029,7 @@ class UiUser {
     required this.localMute,
     required this.status,
     this.mumblewayVersion,
+    required this.comment,
     this.quality,
   });
 
@@ -2021,6 +2044,7 @@ class UiUser {
       localMute.hashCode ^
       status.hashCode ^
       mumblewayVersion.hashCode ^
+      comment.hashCode ^
       quality.hashCode;
 
   @override
@@ -2037,6 +2061,7 @@ class UiUser {
           localMute == other.localMute &&
           status == other.status &&
           mumblewayVersion == other.mumblewayVersion &&
+          comment == other.comment &&
           quality == other.quality;
 }
 

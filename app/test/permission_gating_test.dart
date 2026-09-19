@@ -42,6 +42,7 @@ UiUser rider({String name = 'Anna', String? mumbleway}) => UiUser(
   deafened: false,
   localMute: false,
   status: 'silent',
+  comment: '',
   mumblewayVersion: mumbleway,
 );
 

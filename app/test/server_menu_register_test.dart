@@ -74,7 +74,22 @@ void main() {
     // connection is doing, which is the convention the rest of it follows.
     expect(find.text('Register on this server'), findsOneWidget);
     expect(enabled(tester, 'Register on this server'), isFalse);
-    expect(find.text('Connect first'), findsOneWidget);
+    // The reason is on *this* entry. Scoped to it rather than counted across
+    // the menu, because every other entry that needs a session gives the same
+    // reason — the note does — and counting made this test about the size of
+    // the menu instead of about registering.
+    expect(
+      find.descendant(
+        of: find
+            .ancestor(
+              of: find.text('Register on this server'),
+              matching: find.byType(ListTile),
+            )
+            .first,
+        matching: find.text('Connect first'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('still unavailable while a connection is only being chased', (

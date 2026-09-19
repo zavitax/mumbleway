@@ -142,6 +142,12 @@ pub struct UserInfo {
     /// arrives, and for anybody outside our own channel.
     #[serde(default)]
     pub quality: Option<crate::session::quality::Quality>,
+    /// The note this rider hung beside their own name, as plain text.
+    ///
+    /// Empty when they have none, and stripped of the markup Mumble's own
+    /// client writes it in — see [`crate::session::notes`].
+    #[serde(default)]
+    pub comment: String,
 }
 
 impl UserInfo {
@@ -231,6 +237,15 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// A rider's picture, as the bytes the server holds — PNG, JPEG or
+    /// whatever else they uploaded.
+    ///
+    /// Sent on its own rather than with the roster, which goes out many times a
+    /// second in a busy channel; an empty image means they have removed theirs.
+    Avatar {
+        session: u32,
+        image: Vec<u8>,
+    },
     /// What the server says this rider may do, here and on this server.
     ///
     /// Sent when it changes: on connect, on moving channel, and whenever the
@@ -309,6 +324,12 @@ pub enum SessionCommand {
     /// certificate we already keep — see `net::tls`, which is careful not to
     /// regenerate it precisely because that would lose this.
     RegisterSelf,
+    /// Sets the note shown beside our own name. Empty clears it.
+    ///
+    /// Sent as plain text. Mumble's own client writes markup here and this one
+    /// strips it on the way in, so writing markup back would be the one place
+    /// the app produced something it will not display.
+    SetComment(String),
     /// Channel to join automatically on every future connect. `None` clears it.
     SetDefaultChannel(Option<String>),
     /// Push-to-talk / voice-activation gate.

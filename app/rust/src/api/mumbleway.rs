@@ -106,6 +106,10 @@ pub struct UiUser {
     /// anything. For our own row it is set only where the handshake can run, so
     /// a badge on ourselves means everybody else's badges mean something too.
     pub mumbleway_version: Option<String>,
+    /// The note this rider hung beside their name, as plain text. Empty when
+    /// they have none; the markup Mumble's own client writes is stripped in the
+    /// core, so this is safe to put straight on screen.
+    pub comment: String,
     /// How this rider's connection is doing, as the *server* measures it.
     ///
     /// `None` until the first stats reply, and for anybody outside our own
@@ -223,6 +227,15 @@ pub enum AppEvent {
     /// the audio itself.
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
+    },
+    /// A rider's picture, as the server holds it. Empty means they removed it.
+    ///
+    /// Its own event rather than a roster field: the roster goes out many times
+    /// a second in a busy channel, and these are measured in kilobytes.
+    Avatar {
+        server_id: String,
+        session: u32,
+        image: Vec<u8>,
     },
     /// What this rider may do on this server has been answered, or changed.
     Rights {
@@ -681,6 +694,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 local_mute: u.local_mute,
                                 status,
                                 mumbleway_version: u.mumbleway,
+                                comment: u.comment,
                                 quality: u.quality.map(|q| UiQuality {
                                     ping_ms: q.ping_ms,
                                     udp: q.udp,
@@ -747,6 +761,11 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::Avatar { session, image } => emit(AppEvent::Avatar {
+                    server_id,
+                    session,
+                    image,
+                }),
                 SessionEvent::Rights(r) => emit(AppEvent::Rights {
                     server_id,
                     rights: UiRights {
@@ -1120,6 +1139,11 @@ pub fn send_text(server_id: String, message: String) -> anyhow::Result<()> {
             message,
         },
     )
+}
+
+/// Sets the note shown beside our own name on this server, or clears it.
+pub fn set_comment(server_id: String, text: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::SetComment(text))
 }
 
 pub fn set_self_mute(server_id: String, muted: bool) -> anyhow::Result<()> {

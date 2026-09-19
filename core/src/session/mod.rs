@@ -1,6 +1,7 @@
 //! A single server session: connect, authenticate, stay alive, reconnect.
 
 pub mod manager;
+pub mod notes;
 pub mod peers;
 pub mod permissions;
 pub mod profile;
@@ -96,6 +97,9 @@ struct LiveState {
     /// A decrypt nonce from the server, waiting to be applied to whichever half
     /// of this session is holding the cipher. See the `CryptSetup` arm.
     pending_decrypt_iv: Option<Vec<u8>>,
+    /// Which comments and pictures we hold, and which still have to be asked
+    /// for. See [`notes`].
+    blobs: notes::Blobs,
 }
 
 impl LiveState {
@@ -119,6 +123,7 @@ impl LiveState {
             perms: HashMap::new(),
             rights_sent: None,
             pending_decrypt_iv: None,
+            blobs: notes::Blobs::default(),
         }
     }
 
@@ -739,6 +744,20 @@ impl Session {
                         self.emit(SessionEvent::Users(state.user_list())).await;
                     }
 
+                    // Ask for the comments and pictures we have only hashes
+                    // for. Here rather than on arrival of each hash, because a
+                    // channel filling after a server restart would otherwise be
+                    // one request per rider in the same instant.
+                    let (comments, textures) = state.blobs.next_request();
+                    if !comments.is_empty() || !textures.is_empty() {
+                        let m = mumble::RequestBlob {
+                            session_comment: comments,
+                            session_texture: textures,
+                            channel_description: Vec::new(),
+                        };
+                        writer.send(MessageType::RequestBlob, &m).await?;
+                    }
+
                     // Answer every announcement heard since the last tick, all
                     // in one message. Once a second at most, however many
                     // arrived — which is what keeps a crowd reconnecting after
@@ -976,6 +995,7 @@ impl Session {
                         // filled in by `user_list`; the copy kept here is
                         // always `None`.
                         quality: None,
+                        comment: String::new(),
                     });
                     if let Some(n) = m.name {
                         e.name = n;
@@ -1003,6 +1023,39 @@ impl Session {
                     }
                     if let Some(v) = m.self_deaf {
                         e.self_deaf = v;
+                    }
+                    // A comment arrives whole when it is short and as a hash
+                    // when it is not; the body is then asked for once per hash.
+                    if let Some(c) = m.comment {
+                        e.comment = notes::strip_html(&c);
+                        state.blobs.got_comment(s);
+                    }
+                    if let Some(h) = m.comment_hash.as_ref() {
+                        if h.is_empty() {
+                            e.comment.clear();
+                        }
+                        state.blobs.note_comment_hash(s, h);
+                    }
+                    if let Some(t) = m.texture.as_ref() {
+                        state.blobs.got_texture(s);
+                        // Pictures go out on their own rather than riding the
+                        // roster: a roster emit is frequent and small, and a
+                        // channel of riders with pictures is megabytes.
+                        self.emit(SessionEvent::Avatar {
+                            session: s,
+                            image: t.to_vec(),
+                        })
+                        .await;
+                    }
+                    if let Some(h) = m.texture_hash.as_ref() {
+                        if h.is_empty() {
+                            self.emit(SessionEvent::Avatar {
+                                session: s,
+                                image: Vec::new(),
+                            })
+                            .await;
+                        }
+                        state.blobs.note_texture_hash(s, h);
                     }
                     self.emit(SessionEvent::Users(state.user_list())).await;
                 }
@@ -1081,6 +1134,7 @@ impl Session {
                 let m = mumble::UserRemove::decode(payload)?;
                 state.users.remove(&m.session);
                 state.quality.remove(&m.session);
+                state.blobs.forget(m.session);
                 // The number goes back to the server and may be handed to
                 // somebody who runs something else entirely.
                 state.peers.forget(m.session);
@@ -1236,6 +1290,16 @@ impl Session {
                     let m = mumble::UserState {
                         session: Some(me),
                         self_mute: Some(v),
+                        ..Default::default()
+                    };
+                    writer.send(MessageType::UserState, &m).await?;
+                }
+            }
+            SessionCommand::SetComment(text) => {
+                if let Some(me) = state.self_session {
+                    let m = mumble::UserState {
+                        session: Some(me),
+                        comment: Some(text),
                         ..Default::default()
                     };
                     writer.send(MessageType::UserState, &m).await?;

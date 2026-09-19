@@ -234,6 +234,8 @@ class ServerCard extends StatelessWidget {
                                 _share(context, state, rt, asFile: true);
                               case 'register':
                                 _register(context, state);
+                              case 'note':
+                                _setNote(context, state, rt);
                               case 'duplicate':
                                 state.duplicateServer(server);
                               case 'remove':
@@ -318,6 +320,23 @@ class ServerCard extends StatelessWidget {
                                 ),
                               );
                             }(),
+                            // A note needs a session as much as registering
+                            // does: it is a property of being on the server,
+                            // not of the saved entry.
+                            PopupMenuItem(
+                              value: 'note',
+                              enabled: rt.isLive,
+                              child: ListTile(
+                                dense: true,
+                                enabled: rt.isLive,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(
+                                  Icons.sticky_note_2_outlined,
+                                ),
+                                title: Text(l.setNote),
+                                subtitle: rt.isLive ? null : Text(l.connectFirst),
+                              ),
+                            ),
                             PopupMenuItem(
                               value: 'duplicate',
                               child: ListTile(
@@ -377,6 +396,61 @@ class ServerCard extends StatelessWidget {
   /// That question is deliberate rather than a checkbox buried in settings: a
   /// link carrying a password grants access to anyone who ever sees it,
   /// including whatever chat app it travels through.
+  /// Edits the note that sits beside our own name for everybody on the server.
+  ///
+  /// Prefilled with whatever is there now, read back off our own roster row —
+  /// which is the only copy, since the server holds it and we are simply one
+  /// of the clients being told about it.
+  Future<void> _setNote(
+    BuildContext context,
+    AppState state,
+    ServerRuntime rt,
+  ) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final mine = rt.users.where((u) => u.session == rt.selfSession).firstOrNull;
+    final field = TextEditingController(text: mine?.comment ?? '');
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.setNote),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.setNoteBody, style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: field,
+              autofocus: true,
+              maxLength: 200,
+              decoration: InputDecoration(hintText: l.setNoteHint),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.save),
+          ),
+        ],
+      ),
+    );
+
+    if (save != true) {
+      field.dispose();
+      return;
+    }
+    final error = await state.setNoteOn(server.id, field.text);
+    field.dispose();
+    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
+  }
+
   /// Asks the server to register this account, and says the request went.
   ///
   /// **It deliberately does not claim success.** Registration is granted or

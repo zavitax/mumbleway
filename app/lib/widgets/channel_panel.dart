@@ -1,3 +1,5 @@
+import 'dart:typed_data' show Uint8List;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -267,7 +269,38 @@ class _UserRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 18, color: color),
+          // The picture, when they have one, with the status icon tucked into
+          // its corner. The status is what the row is *for* — who is talking,
+          // who is muted — so it is never given up for decoration.
+          switch (state.runtimeFor(serverId).avatars[user.session]) {
+            final Uint8List image? => SizedBox(
+              width: 18,
+              height: 18,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ClipOval(
+                    child: Image.memory(
+                      image,
+                      width: 18,
+                      height: 18,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                      // A picture from a stranger's server that will not
+                      // decode is not a reason to lose the row.
+                      errorBuilder: (_, _, _) => Icon(icon, size: 18, color: color),
+                    ),
+                  ),
+                  Positioned(
+                    right: -3,
+                    bottom: -3,
+                    child: Icon(icon, size: 11, color: color),
+                  ),
+                ],
+              ),
+            ),
+            _ => Icon(icon, size: 18, color: color),
+          },
           const SizedBox(width: 10),
           Expanded(
             // The badge rides directly after the name rather than at the end
@@ -296,6 +329,23 @@ class _UserRow extends StatelessWidget {
                 if (user.quality case final quality?) ...[
                   const SizedBox(width: 6),
                   ConnectionQualityBars(quality: quality),
+                ],
+                // Their own note. An icon rather than the text itself: the row
+                // has a name, two badges, a meter and two controls in it
+                // already, and a note saying where somebody is can be a
+                // sentence. Held to read it, or hovered on a desktop.
+                if (user.comment.isNotEmpty) ...[
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: user.comment,
+                    triggerMode: TooltipTriggerMode.tap,
+                    showDuration: const Duration(seconds: 8),
+                    child: Icon(
+                      Icons.sticky_note_2_outlined,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
               ],
             ),

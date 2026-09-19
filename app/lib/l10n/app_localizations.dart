@@ -3006,6 +3006,24 @@ abstract class L {
   /// In en, this message translates to:
   /// **'This server does not let users register themselves'**
   String get registerNotAllowed;
+
+  /// No description provided for @setNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Set your note'**
+  String get setNote;
+
+  /// No description provided for @setNoteBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A line beside your name that everyone on this server can see. Leave it empty to remove it.'**
+  String get setNoteBody;
+
+  /// No description provided for @setNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Back in ten'**
+  String get setNoteHint;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

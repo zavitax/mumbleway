@@ -1644,4 +1644,14 @@ class LEn extends L {
   @override
   String get registerNotAllowed =>
       'This server does not let users register themselves';
+
+  @override
+  String get setNote => 'Set your note';
+
+  @override
+  String get setNoteBody =>
+      'A line beside your name that everyone on this server can see. Leave it empty to remove it.';
+
+  @override
+  String get setNoteHint => 'Back in ten';
 }

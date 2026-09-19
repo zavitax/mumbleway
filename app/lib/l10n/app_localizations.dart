@@ -3042,6 +3042,90 @@ abstract class L {
   /// In en, this message translates to:
   /// **'This server expects positional audio, which MumbleWay does not have'**
   String get serverSuggestsPositional;
+
+  /// No description provided for @banFromServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Ban from server'**
+  String get banFromServer;
+
+  /// No description provided for @banTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ban {name}?'**
+  String banTitle(String name);
+
+  /// No description provided for @banBody.
+  ///
+  /// In en, this message translates to:
+  /// **'They are removed now and cannot come back. The server bans the address and the certificate, so a new connection does not get round it. Lift it later under Banned users.'**
+  String get banBody;
+
+  /// No description provided for @ban.
+  ///
+  /// In en, this message translates to:
+  /// **'Ban'**
+  String get ban;
+
+  /// No description provided for @banSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Ban sent. If nothing happens, you lack the Ban permission.'**
+  String get banSent;
+
+  /// No description provided for @bannedUsers.
+  ///
+  /// In en, this message translates to:
+  /// **'Banned users'**
+  String get bannedUsers;
+
+  /// No description provided for @noBans.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody is banned on this server.'**
+  String get noBans;
+
+  /// No description provided for @unban.
+  ///
+  /// In en, this message translates to:
+  /// **'Lift'**
+  String get unban;
+
+  /// No description provided for @banPermanent.
+  ///
+  /// In en, this message translates to:
+  /// **'Until lifted'**
+  String get banPermanent;
+
+  /// No description provided for @banLasts.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min left'**
+  String banLasts(int minutes);
+
+  /// No description provided for @close.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
+
+  /// No description provided for @moveToChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Move to channel'**
+  String get moveToChannel;
+
+  /// No description provided for @moveWhere.
+  ///
+  /// In en, this message translates to:
+  /// **'Move {name} to'**
+  String moveWhere(String name);
+
+  /// No description provided for @moveNowhere.
+  ///
+  /// In en, this message translates to:
+  /// **'There is nowhere else to move them.'**
+  String get moveNowhere;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

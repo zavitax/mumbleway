@@ -940,5 +940,40 @@
   "setNoteHint": "Back in ten",
   "serverSuggestsPushToTalk": "This server asks riders to use push to talk",
   "serverSuggestsSwitch": "Switch",
-  "serverSuggestsPositional": "This server expects positional audio, which MumbleWay does not have"
+  "serverSuggestsPositional": "This server expects positional audio, which MumbleWay does not have",
+  "banFromServer": "Ban from server",
+  "banTitle": "Ban {name}?",
+  "@banTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "banBody": "They are removed now and cannot come back. The server bans the address and the certificate, so a new connection does not get round it. Lift it later under Banned users.",
+  "ban": "Ban",
+  "banSent": "Ban sent. If nothing happens, you lack the Ban permission.",
+  "bannedUsers": "Banned users",
+  "noBans": "Nobody is banned on this server.",
+  "unban": "Lift",
+  "banPermanent": "Until lifted",
+  "banLasts": "{minutes} min left",
+  "@banLasts": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "close": "Close",
+  "moveToChannel": "Move to channel",
+  "moveWhere": "Move {name} to",
+  "@moveWhere": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "moveNowhere": "There is nowhere else to move them."
 }

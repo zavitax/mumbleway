@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -57,6 +57,44 @@ Future<void> sendText({required String serverId, required String message}) =>
     RustLib.instance.api.crateApiMumblewaySendText(
       serverId: serverId,
       message: message,
+    );
+
+/// Removes a rider and bars them from returning. Needs Ban on the root channel.
+Future<void> banUser({
+  required String serverId,
+  required int session,
+  required String reason,
+}) => RustLib.instance.api.crateApiMumblewayBanUser(
+  serverId: serverId,
+  session: session,
+  reason: reason,
+);
+
+/// Moves somebody else into a channel. Needs Move.
+Future<void> moveUser({
+  required String serverId,
+  required int session,
+  required int channelId,
+}) => RustLib.instance.api.crateApiMumblewayMoveUser(
+  serverId: serverId,
+  session: session,
+  channelId: channelId,
+);
+
+/// Asks for the server's ban list; it arrives as `AppEvent::Bans`.
+Future<void> requestBans({required String serverId}) =>
+    RustLib.instance.api.crateApiMumblewayRequestBans(serverId: serverId);
+
+/// Replaces the server's ban list with these entries.
+///
+/// Takes the `raw` strings from [`UiBan`], unchanged. **Whatever is left out is
+/// lifted** — the protocol has no way to remove one ban — so the caller sends
+/// every ban that is to remain, and an entry that cannot be read back is kept
+/// rather than dropped, since dropping it would lift a ban nobody asked to lift.
+Future<void> setBans({required String serverId, required List<String> bans}) =>
+    RustLib.instance.api.crateApiMumblewaySetBans(
+      serverId: serverId,
+      bans: bans,
     );
 
 /// Sets the note shown beside our own name on this server, or clears it.
@@ -621,6 +659,12 @@ sealed class AppEvent with _$AppEvent {
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
 
+  /// The server's ban list, in answer to asking for it.
+  const factory AppEvent.bans({
+    required String serverId,
+    required List<UiBan> bans,
+  }) = AppEvent_Bans;
+
   /// What this server's administrator asks riders to do: push-to-talk,
   /// positional audio, or both. A suggestion, never enforced, and nothing is
   /// changed on the rider's behalf.
@@ -911,6 +955,60 @@ class StatusUpdate {
           detail == other.detail &&
           attempt == other.attempt &&
           retryInMs == other.retryInMs;
+}
+
+/// One entry of the server's ban list.
+///
+/// Carries every field the protocol defines, including the ones nothing
+/// displays: lifting a ban means sending the whole list back, so a field
+/// dropped on the way through this type would silently rewrite somebody's ban.
+class UiBan {
+  /// The address, ready to read — IPv4 where the server holds a mapped one.
+  final String address;
+
+  /// Who it was, as recorded at the time.
+  final String name;
+  final String reason;
+
+  /// The server's own date string for when it started.
+  final String start;
+
+  /// Seconds it lasts; 0 means until somebody lifts it.
+  final int duration;
+
+  /// Opaque round-trip payload: this exact entry, as the server sent it.
+  /// Handed back unchanged to keep a ban from being rewritten by being read.
+  final String raw;
+
+  const UiBan({
+    required this.address,
+    required this.name,
+    required this.reason,
+    required this.start,
+    required this.duration,
+    required this.raw,
+  });
+
+  @override
+  int get hashCode =>
+      address.hashCode ^
+      name.hashCode ^
+      reason.hashCode ^
+      start.hashCode ^
+      duration.hashCode ^
+      raw.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiBan &&
+          runtimeType == other.runtimeType &&
+          address == other.address &&
+          name == other.name &&
+          reason == other.reason &&
+          start == other.start &&
+          duration == other.duration &&
+          raw == other.raw;
 }
 
 /// The capture chain, stage by stage, as of the last block.

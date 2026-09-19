@@ -680,5 +680,40 @@
   "setNoteHint": "Буду через десять минут",
   "serverSuggestsPushToTalk": "Этот сервер просит говорить по нажатию",
   "serverSuggestsSwitch": "Переключить",
-  "serverSuggestsPositional": "Этот сервер рассчитывает на объёмный звук, а MumbleWay его не передаёт"
+  "serverSuggestsPositional": "Этот сервер рассчитывает на объёмный звук, а MumbleWay его не передаёт",
+  "banFromServer": "Забанить на сервере",
+  "banTitle": "Забанить {name}?",
+  "@banTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "banBody": "Участника отключат, и вернуться он не сможет: сервер банит и адрес, и сертификат, так что новое подключение это не обойдёт. Снять бан можно в списке забаненных.",
+  "ban": "Забанить",
+  "banSent": "Запрос отправлен. Если ничего не произошло, у вас нет права банить.",
+  "bannedUsers": "Забаненные",
+  "noBans": "На этом сервере никто не забанен.",
+  "unban": "Снять",
+  "banPermanent": "Бессрочно",
+  "banLasts": "осталось {minutes} мин",
+  "@banLasts": {
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "close": "Закрыть",
+  "moveToChannel": "Перевести в канал",
+  "moveWhere": "Перевести {name} в",
+  "@moveWhere": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "moveNowhere": "Больше некуда переводить."
 }

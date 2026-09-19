@@ -401,8 +401,12 @@ class _UserRow extends StatelessWidget {
                   state.toggleUserServerMute(serverId, user);
                 case 'deafen':
                   state.toggleUserServerDeaf(serverId, user);
+                case 'move':
+                  _moveElsewhere(context, state);
                 case 'kick':
                   _confirmKick(context, state);
+                case 'ban':
+                  _confirmBan(context, state);
               }
             },
             itemBuilder: (_) {
@@ -431,6 +435,11 @@ class _UserRow extends StatelessWidget {
                     user.deafened ? l.undeafenOnServer : l.deafenOnServer,
                   ),
                 ),
+                PopupMenuItem(
+                  value: 'move',
+                  enabled: unanswered || rights.moveUsers,
+                  child: Text(l.moveToChannel),
+                ),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'kick',
@@ -440,12 +449,115 @@ class _UserRow extends StatelessWidget {
                     style: const TextStyle(color: StatusColors.failed),
                   ),
                 ),
+                // Banning needs a stronger permission than kicking and is the
+                // one moderation action with no undo inside itself, so it sits
+                // last and asks twice as carefully.
+                PopupMenuItem(
+                  value: 'ban',
+                  enabled: unanswered || rights.ban,
+                  child: Text(
+                    l.banFromServer,
+                    style: const TextStyle(color: StatusColors.failed),
+                  ),
+                ),
               ];
             },
           ),
         ],
       ),
     );
+  }
+
+  /// Banning is kicking that does not wear off, so it asks with the word "ban"
+  /// on the button rather than a generic confirmation, and keeps the reason —
+  /// the server stores it on the ban, where the next admin reads it.
+  Future<void> _confirmBan(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final reason = TextEditingController();
+    final messenger = ScaffoldMessenger.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.banTitle(user.name)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l.banBody, style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 14),
+            TextField(
+              controller: reason,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: l.kickReasonLabel,
+                hintText: l.kickReasonHint,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: StatusColors.failed),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.ban),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      reason.dispose();
+      return;
+    }
+    final error = await state.banUserFrom(serverId, user, reason.text);
+    reason.dispose();
+    if (error != null) {
+      showError(messenger, error);
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(l.banSent)));
+    }
+  }
+
+  /// Moves somebody into another channel.
+  ///
+  /// The list is the channels this server has, with the one they are already
+  /// in left out: offering it would be offering an action that does nothing.
+  Future<void> _moveElsewhere(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final channels = state
+        .runtimeFor(serverId)
+        .channels
+        .where((c) => c.id != user.channelId)
+        .toList();
+
+    final target = await showDialog<int>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: Text(l.moveWhere(user.name)),
+        children: [
+          if (channels.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text(l.moveNowhere),
+            ),
+          for (final channel in channels)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(c, channel.id),
+              child: Text(channel.name),
+            ),
+        ],
+      ),
+    );
+    if (target == null) return;
+
+    final error = await state.moveUserTo(serverId, user, target);
+    if (error != null) showError(messenger, error);
   }
 
   /// Kicking removes someone from the server for everyone, so it asks first and

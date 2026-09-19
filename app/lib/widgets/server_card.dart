@@ -8,6 +8,7 @@ import '../screens/add_server_screen.dart';
 import '../screens/server_qr_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'ban_list_dialog.dart';
 import 'channel_panel.dart';
 import 'status_badge.dart';
 
@@ -236,6 +237,12 @@ class ServerCard extends StatelessWidget {
                                 _register(context, state);
                               case 'note':
                                 _setNote(context, state, rt);
+                              case 'bans':
+                                showDialog<void>(
+                                  context: context,
+                                  builder: (_) =>
+                                      BanListDialog(serverId: server.id),
+                                );
                               case 'duplicate':
                                 state.duplicateServer(server);
                               case 'remove':
@@ -337,6 +344,24 @@ class ServerCard extends StatelessWidget {
                                 subtitle: rt.isLive ? null : Text(l.connectFirst),
                               ),
                             ),
+                            // Only for somebody who can act on it: reading the
+                            // ban list needs the same permission as changing
+                            // it, so there is no such thing as a look.
+                            if (!rt.rights.known || rt.rights.ban)
+                              PopupMenuItem(
+                                value: 'bans',
+                                enabled: rt.isLive,
+                                child: ListTile(
+                                  dense: true,
+                                  enabled: rt.isLive,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.block_outlined),
+                                  title: Text(l.bannedUsers),
+                                  subtitle: rt.isLive
+                                      ? null
+                                      : Text(l.connectFirst),
+                                ),
+                              ),
                             PopupMenuItem(
                               value: 'duplicate',
                               child: ListTile(

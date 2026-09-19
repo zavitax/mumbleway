@@ -197,6 +197,12 @@ class ServerRuntime {
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
 
+  /// The server's ban list, once it has been asked for.
+  ///
+  /// Only an admin ever sees this: reading the list needs the same permission
+  /// as changing it.
+  List<UiBan> bans = const [];
+
   /// Riders' pictures on this server, by session.
   ///
   /// Kept here rather than on the roster entry because they arrive separately
@@ -2285,6 +2291,56 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Asks the server for its ban list. The answer arrives as an event.
+  Future<String?> loadBans(String id) async {
+    try {
+      await requestBans(serverId: id);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Lifts one ban by sending back every other one.
+  ///
+  /// **The protocol has no way to remove a single ban**, so this writes the
+  /// whole list. Anything missing from what is sent is lifted, which is why the
+  /// entries travel as the opaque strings the core produced rather than being
+  /// rebuilt here from what the screen happened to show.
+  Future<String?> liftBan(String id, UiBan ban) async {
+    final rt = runtimeFor(id);
+    final keep = [
+      for (final b in rt.bans)
+        if (b.raw != ban.raw) b.raw,
+    ];
+    try {
+      await setBans(serverId: id, bans: keep);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Bars somebody from the server. Requires Ban on the root channel.
+  Future<String?> banUserFrom(String id, UiUser user, String reason) async {
+    try {
+      await banUser(serverId: id, session: user.session, reason: reason.trim());
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Moves somebody else into a channel. Requires Move.
+  Future<String?> moveUserTo(String id, UiUser user, int channelId) async {
+    try {
+      await moveUser(serverId: id, session: user.session, channelId: channelId);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   /// Removes a user from the server. Requires the Kick permission; the server
   /// replies with a permission-denied message if we lack it, which arrives in
   /// the message log rather than as a thrown error.
@@ -3648,6 +3704,8 @@ class AppState extends ChangeNotifier {
         for (final ask in asks) {
           if (_suggestedAlready.add('$serverId/$ask')) _suggestions.add(ask);
         }
+      case AppEvent_Bans(:final serverId, :final bans):
+        runtimeFor(serverId).bans = bans;
       case AppEvent_Avatar(:final serverId, :final session, :final image):
         final rt = runtimeFor(serverId);
         if (image.isEmpty) {

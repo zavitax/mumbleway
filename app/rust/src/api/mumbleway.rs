@@ -118,6 +118,27 @@ pub struct UiUser {
     pub quality: Option<UiQuality>,
 }
 
+/// One entry of the server's ban list.
+///
+/// Carries every field the protocol defines, including the ones nothing
+/// displays: lifting a ban means sending the whole list back, so a field
+/// dropped on the way through this type would silently rewrite somebody's ban.
+#[derive(Debug, Clone)]
+pub struct UiBan {
+    /// The address, ready to read — IPv4 where the server holds a mapped one.
+    pub address: String,
+    /// Who it was, as recorded at the time.
+    pub name: String,
+    pub reason: String,
+    /// The server's own date string for when it started.
+    pub start: String,
+    /// Seconds it lasts; 0 means until somebody lifts it.
+    pub duration: u32,
+    /// Opaque round-trip payload: this exact entry, as the server sent it.
+    /// Handed back unchanged to keep a ban from being rewritten by being read.
+    pub raw: String,
+}
+
 /// What the server says this rider may do, here and on this server.
 ///
 /// For greying out what would be refused. **Never a substitute for handling the
@@ -227,6 +248,11 @@ pub enum AppEvent {
     /// the audio itself.
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
+    },
+    /// The server's ban list, in answer to asking for it.
+    Bans {
+        server_id: String,
+        bans: Vec<UiBan>,
     },
     /// What this server's administrator asks riders to do: push-to-talk,
     /// positional audio, or both. A suggestion, never enforced, and nothing is
@@ -769,6 +795,23 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
                 }
+                SessionEvent::Bans(list) => emit(AppEvent::Bans {
+                    server_id,
+                    bans: list
+                        .into_iter()
+                        .map(|b| UiBan {
+                            address: mumbleway_core::session::bans::address_text(
+                                &b.address, b.mask,
+                            ),
+                            name: b.name.clone(),
+                            reason: b.reason.clone(),
+                            start: b.start.clone(),
+                            duration: b.duration,
+                            // The entry itself, to hand back untouched.
+                            raw: serde_json::to_string(&b).unwrap_or_default(),
+                        })
+                        .collect(),
+                }),
                 SessionEvent::ServerSuggests {
                     push_to_talk,
                     positional,
@@ -1155,6 +1198,46 @@ pub fn send_text(server_id: String, message: String) -> anyhow::Result<()> {
             message,
         },
     )
+}
+
+/// Removes a rider and bars them from returning. Needs Ban on the root channel.
+pub fn ban_user(server_id: String, session: u32, reason: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::BanUser { session, reason })
+}
+
+/// Moves somebody else into a channel. Needs Move.
+pub fn move_user(server_id: String, session: u32, channel_id: u32) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::MoveUser {
+            session,
+            channel_id,
+        },
+    )
+}
+
+/// Asks for the server's ban list; it arrives as `AppEvent::Bans`.
+pub fn request_bans(server_id: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::RequestBans)
+}
+
+/// Replaces the server's ban list with these entries.
+///
+/// Takes the `raw` strings from [`UiBan`], unchanged. **Whatever is left out is
+/// lifted** — the protocol has no way to remove one ban — so the caller sends
+/// every ban that is to remain, and an entry that cannot be read back is kept
+/// rather than dropped, since dropping it would lift a ban nobody asked to lift.
+pub fn set_bans(server_id: String, bans: Vec<String>) -> anyhow::Result<()> {
+    let mut list = Vec::with_capacity(bans.len());
+    for raw in &bans {
+        match serde_json::from_str(raw) {
+            Ok(entry) => list.push(entry),
+            Err(e) => {
+                anyhow::bail!("a ban could not be read back, so none were changed: {e}")
+            }
+        }
+    }
+    send_command(server_id, SessionCommand::SetBans(list))
 }
 
 /// Sets the note shown beside our own name on this server, or clears it.

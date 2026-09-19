@@ -100,6 +100,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<ServerConfig> dco_decode_list_server_config(dynamic raw);
 
   @protected
+  List<UiBan> dco_decode_list_ui_ban(dynamic raw);
+
+  @protected
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw);
 
   @protected
@@ -173,6 +176,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int dco_decode_u_8(dynamic raw);
+
+  @protected
+  UiBan dco_decode_ui_ban(dynamic raw);
 
   @protected
   UiChainStatus dco_decode_ui_chain_status(dynamic raw);
@@ -322,6 +328,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<UiBan> sse_decode_list_ui_ban(SseDeserializer deserializer);
+
+  @protected
   List<UiChannel> sse_decode_list_ui_channel(SseDeserializer deserializer);
 
   @protected
@@ -407,6 +416,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
+
+  @protected
+  UiBan sse_decode_ui_ban(SseDeserializer deserializer);
 
   @protected
   UiChainStatus sse_decode_ui_chain_status(SseDeserializer deserializer);
@@ -586,6 +598,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_ui_ban(List<UiBan> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_ui_channel(
     List<UiChannel> self,
     SseSerializer serializer,
@@ -689,6 +704,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_ban(UiBan self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_chain_status(UiChainStatus self, SseSerializer serializer);

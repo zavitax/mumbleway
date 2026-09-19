@@ -1665,4 +1665,54 @@ class LEn extends L {
   @override
   String get serverSuggestsPositional =>
       'This server expects positional audio, which MumbleWay does not have';
+
+  @override
+  String get banFromServer => 'Ban from server';
+
+  @override
+  String banTitle(String name) {
+    return 'Ban $name?';
+  }
+
+  @override
+  String get banBody =>
+      'They are removed now and cannot come back. The server bans the address and the certificate, so a new connection does not get round it. Lift it later under Banned users.';
+
+  @override
+  String get ban => 'Ban';
+
+  @override
+  String get banSent =>
+      'Ban sent. If nothing happens, you lack the Ban permission.';
+
+  @override
+  String get bannedUsers => 'Banned users';
+
+  @override
+  String get noBans => 'Nobody is banned on this server.';
+
+  @override
+  String get unban => 'Lift';
+
+  @override
+  String get banPermanent => 'Until lifted';
+
+  @override
+  String banLasts(int minutes) {
+    return '$minutes min left';
+  }
+
+  @override
+  String get close => 'Close';
+
+  @override
+  String get moveToChannel => 'Move to channel';
+
+  @override
+  String moveWhere(String name) {
+    return 'Move $name to';
+  }
+
+  @override
+  String get moveNowhere => 'There is nowhere else to move them.';
 }

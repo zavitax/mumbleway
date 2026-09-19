@@ -1654,4 +1654,54 @@ class LRu extends L {
   @override
   String get serverSuggestsPositional =>
       'Этот сервер рассчитывает на объёмный звук, а MumbleWay его не передаёт';
+
+  @override
+  String get banFromServer => 'Забанить на сервере';
+
+  @override
+  String banTitle(String name) {
+    return 'Забанить $name?';
+  }
+
+  @override
+  String get banBody =>
+      'Участника отключат, и вернуться он не сможет: сервер банит и адрес, и сертификат, так что новое подключение это не обойдёт. Снять бан можно в списке забаненных.';
+
+  @override
+  String get ban => 'Забанить';
+
+  @override
+  String get banSent =>
+      'Запрос отправлен. Если ничего не произошло, у вас нет права банить.';
+
+  @override
+  String get bannedUsers => 'Забаненные';
+
+  @override
+  String get noBans => 'На этом сервере никто не забанен.';
+
+  @override
+  String get unban => 'Снять';
+
+  @override
+  String get banPermanent => 'Бессрочно';
+
+  @override
+  String banLasts(int minutes) {
+    return 'осталось $minutes мин';
+  }
+
+  @override
+  String get close => 'Закрыть';
+
+  @override
+  String get moveToChannel => 'Перевести в канал';
+
+  @override
+  String moveWhere(String name) {
+    return 'Перевести $name в';
+  }
+
+  @override
+  String get moveNowhere => 'Больше некуда переводить.';
 }

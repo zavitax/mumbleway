@@ -237,6 +237,8 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// The server's ban list, in answer to asking for it.
+    Bans(Vec<crate::session::bans::BanEntry>),
     /// What the server's administrator asks riders to do here.
     ///
     /// A suggestion and nothing more: the server neither enforces it nor checks
@@ -321,6 +323,28 @@ pub enum SessionCommand {
         session: u32,
         reason: String,
     },
+    /// Remove a user and bar them from coming back. Requires Ban on the root
+    /// channel, which is a stronger permission than Kick.
+    ///
+    /// The server bans the address *and* the certificate by default, which is
+    /// what makes it survive a new connection.
+    BanUser {
+        session: u32,
+        reason: String,
+    },
+    /// Move somebody else into a channel. Requires Move.
+    MoveUser {
+        session: u32,
+        channel_id: u32,
+    },
+    /// Ask for the server's ban list. Requires Ban on the root channel.
+    RequestBans,
+    /// Replace the server's ban list with this one.
+    ///
+    /// **There is no "remove one ban" in the protocol.** Lifting a ban means
+    /// sending every other ban back unchanged, so this carries the whole list
+    /// and anything left out of it is lifted. See [`crate::session::bans`].
+    SetBans(Vec<crate::session::bans::BanEntry>),
     /// Ask the server to register us as a permanent user.
     ///
     /// **Registration is what makes a name yours.** On an unregistered server

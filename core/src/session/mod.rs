@@ -1,5 +1,6 @@
 //! A single server session: connect, authenticate, stay alive, reconnect.
 
+pub mod bans;
 pub mod manager;
 pub mod notes;
 pub mod peers;
@@ -1074,6 +1075,24 @@ impl Session {
                     .await;
                 }
             }
+            MessageType::BanList => {
+                let m = mumble::BanList::decode(payload)?;
+                self.emit(SessionEvent::Bans(
+                    m.bans
+                        .into_iter()
+                        .map(|b| bans::BanEntry {
+                            address: b.address.to_vec(),
+                            mask: b.mask,
+                            name: b.name.unwrap_or_default(),
+                            hash: b.hash.unwrap_or_default(),
+                            reason: b.reason.unwrap_or_default(),
+                            start: b.start.unwrap_or_default(),
+                            duration: b.duration.unwrap_or(0),
+                        })
+                        .collect(),
+                ))
+                .await;
+            }
             MessageType::SuggestConfig => {
                 let m = mumble::SuggestConfig::decode(payload)?;
                 // Only what this app can act on. A suggested *client version*
@@ -1397,6 +1416,64 @@ impl Session {
                     ban_ip: None,
                 };
                 writer.send(MessageType::UserRemove, &m).await?;
+            }
+            SessionCommand::BanUser { session, reason } => {
+                // `ban_certificate` and `ban_ip` are left unset on purpose: a
+                // server defaults them to both, which is what makes a ban
+                // survive the rider reconnecting from a new address.
+                let m = mumble::UserRemove {
+                    session,
+                    actor: state.self_session,
+                    reason: Some(reason),
+                    ban: Some(true),
+                    ban_certificate: None,
+                    ban_ip: None,
+                };
+                writer.send(MessageType::UserRemove, &m).await?;
+            }
+            SessionCommand::MoveUser {
+                session,
+                channel_id,
+            } => {
+                let m = mumble::UserState {
+                    session: Some(session),
+                    channel_id: Some(channel_id),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::RequestBans => {
+                let m = mumble::BanList {
+                    bans: Vec::new(),
+                    query: Some(true),
+                };
+                writer.send(MessageType::BanList, &m).await?;
+            }
+            SessionCommand::SetBans(list) => {
+                let m = mumble::BanList {
+                    bans: list
+                        .into_iter()
+                        .map(|b| mumble::ban_list::BanEntry {
+                            address: b.address.into(),
+                            mask: b.mask,
+                            name: Some(b.name),
+                            hash: Some(b.hash),
+                            reason: Some(b.reason),
+                            start: Some(b.start),
+                            duration: Some(b.duration),
+                        })
+                        .collect(),
+                    query: Some(false),
+                };
+                writer.send(MessageType::BanList, &m).await?;
+                // Read back rather than trusting the write: between the list
+                // being shown and being sent, another admin may have banned
+                // somebody whose entry was never in this copy.
+                let q = mumble::BanList {
+                    bans: Vec::new(),
+                    query: Some(true),
+                };
+                writer.send(MessageType::BanList, &q).await?;
             }
             SessionCommand::SetDefaultChannel(name) => {
                 // Remembered for the next connect; the UI persists it too.

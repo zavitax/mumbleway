@@ -2740,68 +2740,76 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           levels: dco_decode_list_ui_speaker_level(raw[1]),
         );
       case 7:
+        return AppEvent_Bandwidth(
+          serverId: dco_decode_String(raw[1]),
+          capBps: dco_decode_u_32(raw[2]),
+          bitrateBps: dco_decode_u_32(raw[3]),
+          capped: dco_decode_bool(raw[4]),
+          belowFloor: dco_decode_bool(raw[5]),
+        );
+      case 8:
         return AppEvent_ContextActions(
           serverId: dco_decode_String(raw[1]),
           actions: dco_decode_list_ui_context_action(raw[2]),
         );
-      case 8:
+      case 9:
         return AppEvent_Bans(
           serverId: dco_decode_String(raw[1]),
           bans: dco_decode_list_ui_ban(raw[2]),
         );
-      case 9:
+      case 10:
         return AppEvent_ServerSuggests(
           serverId: dco_decode_String(raw[1]),
           pushToTalk: dco_decode_opt_box_autoadd_bool(raw[2]),
           positional: dco_decode_opt_box_autoadd_bool(raw[3]),
         );
-      case 10:
+      case 11:
         return AppEvent_Avatar(
           serverId: dco_decode_String(raw[1]),
           session: dco_decode_u_32(raw[2]),
           image: dco_decode_list_prim_u_8_strict(raw[3]),
         );
-      case 11:
+      case 12:
         return AppEvent_Rights(
           serverId: dco_decode_String(raw[1]),
           rights: dco_decode_box_autoadd_ui_rights(raw[2]),
         );
-      case 12:
+      case 13:
         return AppEvent_Moderated(
           serverId: dco_decode_String(raw[1]),
           muted: dco_decode_opt_box_autoadd_bool(raw[2]),
           deafened: dco_decode_opt_box_autoadd_bool(raw[3]),
           by: dco_decode_String(raw[4]),
         );
-      case 13:
+      case 14:
         return AppEvent_RemoteMuted(
           serverId: dco_decode_String(raw[1]),
           muted: dco_decode_bool(raw[2]),
           by: dco_decode_String(raw[3]),
         );
-      case 14:
+      case 15:
         return AppEvent_Certificate(
           serverId: dco_decode_String(raw[1]),
           fingerprint: dco_decode_String(raw[2]),
           changed: dco_decode_bool(raw[3]),
         );
-      case 15:
+      case 16:
         return AppEvent_Refused(
           serverId: dco_decode_String(raw[1]),
           reason: dco_decode_String(raw[2]),
           kind: dco_decode_u_32(raw[3]),
         );
-      case 16:
+      case 17:
         return AppEvent_Welcome(
           serverId: dco_decode_String(raw[1]),
           text: dco_decode_String(raw[2]),
         );
-      case 17:
+      case 18:
         return AppEvent_SelfSession(
           serverId: dco_decode_String(raw[1]),
           session: dco_decode_u_32(raw[2]),
         );
-      case 18:
+      case 19:
         return AppEvent_Log(entries: dco_decode_list_ui_log_entry(raw[1]));
       default:
         throw Exception("unreachable");
@@ -3253,8 +3261,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiDiagnostics dco_decode_ui_diagnostics(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 14)
-      throw Exception('unexpected arr length: expect 14 but see ${arr.length}');
+    if (arr.length != 18)
+      throw Exception('unexpected arr length: expect 18 but see ${arr.length}');
     return UiDiagnostics(
       playbackGapMs: dco_decode_u_64(arr[0]),
       captureDroppedMs: dco_decode_u_64(arr[1]),
@@ -3263,13 +3271,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       lostPackets: dco_decode_u_64(arr[4]),
       jitterBufferMs: dco_decode_u_64(arr[5]),
       speakers: dco_decode_u_32(arr[6]),
-      bytesIn: dco_decode_u_64(arr[7]),
-      bytesOut: dco_decode_u_64(arr[8]),
-      voicePacketsIn: dco_decode_u_64(arr[9]),
-      voicePacketsOut: dco_decode_u_64(arr[10]),
-      cpuPercent: dco_decode_f_32(arr[11]),
-      cpuPerCore: dco_decode_list_prim_f_32_strict(arr[12]),
-      memoryMb: dco_decode_f_32(arr[13]),
+      voiceBitrateBps: dco_decode_u_32(arr[7]),
+      bandwidthCapBps: dco_decode_u_32(arr[8]),
+      bitrateCapped: dco_decode_bool(arr[9]),
+      bitrateBelowFloor: dco_decode_bool(arr[10]),
+      bytesIn: dco_decode_u_64(arr[11]),
+      bytesOut: dco_decode_u_64(arr[12]),
+      voicePacketsIn: dco_decode_u_64(arr[13]),
+      voicePacketsOut: dco_decode_u_64(arr[14]),
+      cpuPercent: dco_decode_f_32(arr[15]),
+      cpuPerCore: dco_decode_list_prim_f_32_strict(arr[16]),
+      memoryMb: dco_decode_f_32(arr[17]),
     );
   }
 
@@ -3571,16 +3583,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         return AppEvent_SpeakerLevels(levels: var_levels);
       case 7:
         var var_serverId = sse_decode_String(deserializer);
+        var var_capBps = sse_decode_u_32(deserializer);
+        var var_bitrateBps = sse_decode_u_32(deserializer);
+        var var_capped = sse_decode_bool(deserializer);
+        var var_belowFloor = sse_decode_bool(deserializer);
+        return AppEvent_Bandwidth(
+          serverId: var_serverId,
+          capBps: var_capBps,
+          bitrateBps: var_bitrateBps,
+          capped: var_capped,
+          belowFloor: var_belowFloor,
+        );
+      case 8:
+        var var_serverId = sse_decode_String(deserializer);
         var var_actions = sse_decode_list_ui_context_action(deserializer);
         return AppEvent_ContextActions(
           serverId: var_serverId,
           actions: var_actions,
         );
-      case 8:
+      case 9:
         var var_serverId = sse_decode_String(deserializer);
         var var_bans = sse_decode_list_ui_ban(deserializer);
         return AppEvent_Bans(serverId: var_serverId, bans: var_bans);
-      case 9:
+      case 10:
         var var_serverId = sse_decode_String(deserializer);
         var var_pushToTalk = sse_decode_opt_box_autoadd_bool(deserializer);
         var var_positional = sse_decode_opt_box_autoadd_bool(deserializer);
@@ -3589,7 +3614,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pushToTalk: var_pushToTalk,
           positional: var_positional,
         );
-      case 10:
+      case 11:
         var var_serverId = sse_decode_String(deserializer);
         var var_session = sse_decode_u_32(deserializer);
         var var_image = sse_decode_list_prim_u_8_strict(deserializer);
@@ -3598,11 +3623,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           session: var_session,
           image: var_image,
         );
-      case 11:
+      case 12:
         var var_serverId = sse_decode_String(deserializer);
         var var_rights = sse_decode_box_autoadd_ui_rights(deserializer);
         return AppEvent_Rights(serverId: var_serverId, rights: var_rights);
-      case 12:
+      case 13:
         var var_serverId = sse_decode_String(deserializer);
         var var_muted = sse_decode_opt_box_autoadd_bool(deserializer);
         var var_deafened = sse_decode_opt_box_autoadd_bool(deserializer);
@@ -3613,7 +3638,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           deafened: var_deafened,
           by: var_by,
         );
-      case 13:
+      case 14:
         var var_serverId = sse_decode_String(deserializer);
         var var_muted = sse_decode_bool(deserializer);
         var var_by = sse_decode_String(deserializer);
@@ -3622,7 +3647,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           muted: var_muted,
           by: var_by,
         );
-      case 14:
+      case 15:
         var var_serverId = sse_decode_String(deserializer);
         var var_fingerprint = sse_decode_String(deserializer);
         var var_changed = sse_decode_bool(deserializer);
@@ -3631,7 +3656,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           fingerprint: var_fingerprint,
           changed: var_changed,
         );
-      case 15:
+      case 16:
         var var_serverId = sse_decode_String(deserializer);
         var var_reason = sse_decode_String(deserializer);
         var var_kind = sse_decode_u_32(deserializer);
@@ -3640,18 +3665,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           reason: var_reason,
           kind: var_kind,
         );
-      case 16:
+      case 17:
         var var_serverId = sse_decode_String(deserializer);
         var var_text = sse_decode_String(deserializer);
         return AppEvent_Welcome(serverId: var_serverId, text: var_text);
-      case 17:
+      case 18:
         var var_serverId = sse_decode_String(deserializer);
         var var_session = sse_decode_u_32(deserializer);
         return AppEvent_SelfSession(
           serverId: var_serverId,
           session: var_session,
         );
-      case 18:
+      case 19:
         var var_entries = sse_decode_list_ui_log_entry(deserializer);
         return AppEvent_Log(entries: var_entries);
       default:
@@ -4289,6 +4314,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_lostPackets = sse_decode_u_64(deserializer);
     var var_jitterBufferMs = sse_decode_u_64(deserializer);
     var var_speakers = sse_decode_u_32(deserializer);
+    var var_voiceBitrateBps = sse_decode_u_32(deserializer);
+    var var_bandwidthCapBps = sse_decode_u_32(deserializer);
+    var var_bitrateCapped = sse_decode_bool(deserializer);
+    var var_bitrateBelowFloor = sse_decode_bool(deserializer);
     var var_bytesIn = sse_decode_u_64(deserializer);
     var var_bytesOut = sse_decode_u_64(deserializer);
     var var_voicePacketsIn = sse_decode_u_64(deserializer);
@@ -4304,6 +4333,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       lostPackets: var_lostPackets,
       jitterBufferMs: var_jitterBufferMs,
       speakers: var_speakers,
+      voiceBitrateBps: var_voiceBitrateBps,
+      bandwidthCapBps: var_bandwidthCapBps,
+      bitrateCapped: var_bitrateCapped,
+      bitrateBelowFloor: var_bitrateBelowFloor,
       bytesIn: var_bytesIn,
       bytesOut: var_bytesOut,
       voicePacketsIn: var_voicePacketsIn,
@@ -4646,15 +4679,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       case AppEvent_SpeakerLevels(levels: final levels):
         sse_encode_i_32(6, serializer);
         sse_encode_list_ui_speaker_level(levels, serializer);
+      case AppEvent_Bandwidth(
+        serverId: final serverId,
+        capBps: final capBps,
+        bitrateBps: final bitrateBps,
+        capped: final capped,
+        belowFloor: final belowFloor,
+      ):
+        sse_encode_i_32(7, serializer);
+        sse_encode_String(serverId, serializer);
+        sse_encode_u_32(capBps, serializer);
+        sse_encode_u_32(bitrateBps, serializer);
+        sse_encode_bool(capped, serializer);
+        sse_encode_bool(belowFloor, serializer);
       case AppEvent_ContextActions(
         serverId: final serverId,
         actions: final actions,
       ):
-        sse_encode_i_32(7, serializer);
+        sse_encode_i_32(8, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_list_ui_context_action(actions, serializer);
       case AppEvent_Bans(serverId: final serverId, bans: final bans):
-        sse_encode_i_32(8, serializer);
+        sse_encode_i_32(9, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_list_ui_ban(bans, serializer);
       case AppEvent_ServerSuggests(
@@ -4662,7 +4708,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         pushToTalk: final pushToTalk,
         positional: final positional,
       ):
-        sse_encode_i_32(9, serializer);
+        sse_encode_i_32(10, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_opt_box_autoadd_bool(pushToTalk, serializer);
         sse_encode_opt_box_autoadd_bool(positional, serializer);
@@ -4671,12 +4717,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         session: final session,
         image: final image,
       ):
-        sse_encode_i_32(10, serializer);
+        sse_encode_i_32(11, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_u_32(session, serializer);
         sse_encode_list_prim_u_8_strict(image, serializer);
       case AppEvent_Rights(serverId: final serverId, rights: final rights):
-        sse_encode_i_32(11, serializer);
+        sse_encode_i_32(12, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_box_autoadd_ui_rights(rights, serializer);
       case AppEvent_Moderated(
@@ -4685,7 +4731,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         deafened: final deafened,
         by: final by,
       ):
-        sse_encode_i_32(12, serializer);
+        sse_encode_i_32(13, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_opt_box_autoadd_bool(muted, serializer);
         sse_encode_opt_box_autoadd_bool(deafened, serializer);
@@ -4695,7 +4741,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         muted: final muted,
         by: final by,
       ):
-        sse_encode_i_32(13, serializer);
+        sse_encode_i_32(14, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_bool(muted, serializer);
         sse_encode_String(by, serializer);
@@ -4704,7 +4750,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         fingerprint: final fingerprint,
         changed: final changed,
       ):
-        sse_encode_i_32(14, serializer);
+        sse_encode_i_32(15, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(fingerprint, serializer);
         sse_encode_bool(changed, serializer);
@@ -4713,23 +4759,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         reason: final reason,
         kind: final kind,
       ):
-        sse_encode_i_32(15, serializer);
+        sse_encode_i_32(16, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(reason, serializer);
         sse_encode_u_32(kind, serializer);
       case AppEvent_Welcome(serverId: final serverId, text: final text):
-        sse_encode_i_32(16, serializer);
+        sse_encode_i_32(17, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_String(text, serializer);
       case AppEvent_SelfSession(
         serverId: final serverId,
         session: final session,
       ):
-        sse_encode_i_32(17, serializer);
+        sse_encode_i_32(18, serializer);
         sse_encode_String(serverId, serializer);
         sse_encode_u_32(session, serializer);
       case AppEvent_Log(entries: final entries):
-        sse_encode_i_32(18, serializer);
+        sse_encode_i_32(19, serializer);
         sse_encode_list_ui_log_entry(entries, serializer);
     }
   }
@@ -5279,6 +5325,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.lostPackets, serializer);
     sse_encode_u_64(self.jitterBufferMs, serializer);
     sse_encode_u_32(self.speakers, serializer);
+    sse_encode_u_32(self.voiceBitrateBps, serializer);
+    sse_encode_u_32(self.bandwidthCapBps, serializer);
+    sse_encode_bool(self.bitrateCapped, serializer);
+    sse_encode_bool(self.bitrateBelowFloor, serializer);
     sse_encode_u_64(self.bytesIn, serializer);
     sse_encode_u_64(self.bytesOut, serializer);
     sse_encode_u_64(self.voicePacketsIn, serializer);

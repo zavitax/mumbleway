@@ -396,6 +396,21 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                           _Group(
                             title: l.diagThisDevice,
                             rows: [
+                              // What the encoder is aiming for, and whose
+                              // decision that was. A server enforces its
+                              // bandwidth limit by dropping voice without
+                              // saying so, so "why am I quiet" has to be
+                              // answerable from somewhere.
+                              //
+                              // Read off the engine snapshot like every other
+                              // row here rather than from the app state: this
+                              // build deliberately does not subscribe to the
+                              // state — see the note at the top of `build`.
+                              _Row(
+                                l.diagVoiceBitrate,
+                                audio.bitrateText(l),
+                                bad: audio.bitrateBelowFloor,
+                              ),
                               _Row(
                                 l.diagPlaybackGaps,
                                 '${audio.playbackGapMs} ms',
@@ -1042,6 +1057,10 @@ class _Snapshot {
     required this.cpuPercent,
     required this.cpuPerCore,
     required this.memoryMb,
+    required this.voiceBitrateBps,
+    required this.bandwidthCapBps,
+    required this.bitrateCapped,
+    required this.bitrateBelowFloor,
   });
 
   factory _Snapshot.of(UiDiagnostics d) => _Snapshot(
@@ -1059,6 +1078,10 @@ class _Snapshot {
     cpuPercent: d.cpuPercent,
     cpuPerCore: d.cpuPerCore,
     memoryMb: d.memoryMb,
+    voiceBitrateBps: d.voiceBitrateBps,
+    bandwidthCapBps: d.bandwidthCapBps,
+    bitrateCapped: d.bitrateCapped,
+    bitrateBelowFloor: d.bitrateBelowFloor,
   );
 
   final int playbackGapMs;
@@ -1075,6 +1098,29 @@ class _Snapshot {
   final double cpuPercent;
   final List<double> cpuPerCore;
   final double memoryMb;
+
+  /// What the voice encoder is aiming for.
+  final int voiceBitrateBps;
+
+  /// The tightest allowance among the connected servers, or 0 if none said.
+  final int bandwidthCapBps;
+
+  /// Whether that allowance, rather than this app's choice, decided the rate.
+  final bool bitrateCapped;
+
+  /// Whether the allowance cannot carry usable voice at all.
+  final bool bitrateBelowFloor;
+
+  /// The bitrate, and the limit behind it when a server set one.
+  ///
+  /// The limit is shown only when it is *doing* something. A server that
+  /// allows more than this app sends is not part of the answer to "why am I
+  /// quiet", and putting its number here would invite the reader to blame it.
+  String bitrateText(L l) {
+    final kbps = (voiceBitrateBps / 1000).round();
+    if (!bitrateCapped) return l.diagKbps(kbps);
+    return l.diagKbpsCapped(kbps, (bandwidthCapBps / 1000).round());
+  }
 }
 
 /// A fixed-length window of recent samples.

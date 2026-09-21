@@ -266,6 +266,22 @@ pub enum AppEvent {
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
     },
+    /// A server's bandwidth allowance, and what the encoder is doing about it.
+    ///
+    /// The bitrate is the app's, not this server's: one encoder feeds every
+    /// connection, so the tightest allowance among them decides.
+    Bandwidth {
+        server_id: String,
+        /// What this server allows each client, in bits per second.
+        cap_bps: u32,
+        /// What the encoder is now aiming for.
+        bitrate_bps: u32,
+        /// Whether an allowance, rather than this app's own choice, decided it.
+        capped: bool,
+        /// Whether even the lowest usable bitrate does not fit — voice will be
+        /// dropped by the server, and nothing here can prevent it.
+        below_floor: bool,
+    },
     /// The menu entries this server has registered, whenever the set changes.
     ContextActions {
         server_id: String,
@@ -711,6 +727,11 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     // at once still gets one cooldown, and nobody gets round it by asking from
     // the other one.
     let remote_mute_guard = Mutex::new(RemoteMuteGuard::default());
+    // Every server's bandwidth allowance, by server. One encoder feeds them
+    // all, so what it is set to is decided by the *tightest* of these — see
+    // `audio::bandwidth::tightest`.
+    let bandwidth_caps: Mutex<HashMap<String, u32>> = Mutex::new(HashMap::new());
+    let bandwidth_shared = shared.clone();
 
     rt.spawn(async move {
         // Owned by this task, which is the only place either kind of mute cue
@@ -726,6 +747,24 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                     // Signal drops and recoveries audibly: the phone is usually
                     // in a pocket or behind a navigation app, so a status
                     // change that is only visible is one the rider misses.
+                    // A server that has gone must stop deciding the bitrate.
+                    // Its allowance is the tightest one often enough — that is
+                    // why it was noticed — and leaving it in the map would
+                    // hold the encoder down for every server still connected.
+                    if matches!(
+                        u.status,
+                        ConnStatus::Disconnected | ConnStatus::Failed | ConnStatus::Idle
+                    ) {
+                        let tightest = {
+                            let mut caps = bandwidth_caps.lock();
+                            caps.remove(&server_id);
+                            mumbleway_core::audio::bandwidth::tightest(
+                                caps.values().copied().collect::<Vec<_>>(),
+                            )
+                        };
+                        bandwidth_shared.set_bandwidth_cap(tightest.unwrap_or(0));
+                    }
+
                     let previous = status_tracker.lock().insert(server_id, u.status);
                     if let Some(cue) = cue_for_transition(previous, u.status) {
                         cue_shared.play_cue(cue);
@@ -817,6 +856,28 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::Welcome(text) => emit(AppEvent::Welcome { server_id, text }),
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
+                }
+                SessionEvent::BandwidthCap(bps) => {
+                    let tightest = {
+                        let mut caps = bandwidth_caps.lock();
+                        caps.insert(server_id.clone(), bps);
+                        mumbleway_core::audio::bandwidth::tightest(
+                            caps.values().copied().collect::<Vec<_>>(),
+                        )
+                    };
+                    bandwidth_shared.set_bandwidth_cap(tightest.unwrap_or(0));
+                    let budget = bandwidth_shared.bitrate_budget();
+                    // Reported whether or not it changed anything: "this
+                    // server allows 72 kbit/s and we are inside it" is the
+                    // answer to a question a rider will ask exactly when
+                    // something else has gone wrong.
+                    emit(AppEvent::Bandwidth {
+                        server_id,
+                        cap_bps: bps,
+                        bitrate_bps: budget.bitrate_bps,
+                        capped: budget.capped,
+                        below_floor: budget.below_floor,
+                    });
                 }
                 SessionEvent::ContextActions(list) => emit(AppEvent::ContextActions {
                     server_id,
@@ -1523,6 +1584,17 @@ pub struct UiDiagnostics {
     /// Speakers the mixer is currently tracking.
     pub speakers: u32,
 
+    /// What the voice encoder is aiming for, in bits per second.
+    pub voice_bitrate_bps: u32,
+    /// The tightest bandwidth allowance among the connected servers, or 0 if
+    /// none of them set one. A server enforces this by dropping voice.
+    pub bandwidth_cap_bps: u32,
+    /// Whether that allowance, rather than this app's own choice, is deciding
+    /// the bitrate.
+    pub bitrate_capped: bool,
+    /// Whether the allowance is too low for usable voice at all.
+    pub bitrate_below_floor: bool,
+
     // Cumulative traffic counters. Rates are left to the caller, because a
     // rate depends on the interval it was measured over and only the caller
     // knows how long it waited.
@@ -1563,6 +1635,7 @@ pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
     let (bytes_in, bytes_out, voice_packets_in, voice_packets_out) =
         mumbleway_core::net::stats::snapshot();
     let (cpu_percent, memory_mb) = process_usage();
+    let budget = shared.bitrate_budget();
     let ms = |samples: u64| samples * 1000 / mumbleway_core::audio::denoise::SAMPLE_RATE as u64;
 
     Ok(UiDiagnostics {
@@ -1574,6 +1647,12 @@ pub fn audio_diagnostics() -> anyhow::Result<UiDiagnostics> {
         lost_packets: lost,
         jitter_buffer_ms: depth_frames as u64 * 20,
         speakers: shared.speaker_levels().len() as u32,
+        // Read as one budget rather than as separate numbers, so the flags and
+        // the bitrate can never disagree about the same moment.
+        voice_bitrate_bps: shared.encoder_bitrate_bps(),
+        bandwidth_cap_bps: budget.cap_bps.unwrap_or(0),
+        bitrate_capped: budget.capped,
+        bitrate_below_floor: budget.below_floor,
         bytes_in,
         bytes_out,
         voice_packets_in,

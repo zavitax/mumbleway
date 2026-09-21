@@ -57,13 +57,20 @@ class _RemoteMuteListenerState extends State<RemoteMuteListener> {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
     final state = AppStateScope.of(context);
+    // The bandwidth ones carry a number, read from the state as it is now
+    // rather than captured when the notice was queued.
+    final kbps = (state.audioBitrateBps / 1000).round();
+    final message = switch (ask) {
+      'ptt' => l.serverSuggestsPushToTalk,
+      'positional' => l.serverSuggestsPositional,
+      'bitrate' => l.serverCapsBitrate(kbps),
+      _ => l.serverCapTooLow,
+    };
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            ask == 'ptt' ? l.serverSuggestsPushToTalk : l.serverSuggestsPositional,
-          ),
+          content: Text(message),
           duration: const Duration(seconds: 8),
           action: ask == 'ptt'
               ? SnackBarAction(

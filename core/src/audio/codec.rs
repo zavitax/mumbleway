@@ -36,7 +36,7 @@ pub enum Quality {
 }
 
 impl Quality {
-    pub fn bitrate(self) -> i32 {
+    pub const fn bitrate(self) -> i32 {
         match self {
             Quality::Low => 16_000,
             Quality::Balanced => 24_000,
@@ -73,8 +73,18 @@ impl VoiceEncoder {
     }
 
     pub fn set_quality(&mut self, quality: Quality) -> Result<()> {
+        self.set_bitrate_bps(quality.bitrate() as u32)
+    }
+
+    /// Sets the target bitrate directly, in bits per second.
+    ///
+    /// Separate from [`VoiceEncoder::set_quality`] because a server's bandwidth
+    /// allowance is an arbitrary number rather than one of three presets, and
+    /// rounding it up to the nearest preset is how a client ends up inaudible —
+    /// see [`crate::audio::bandwidth`].
+    pub fn set_bitrate_bps(&mut self, bps: u32) -> Result<()> {
         self.enc
-            .set_bitrate(opus::Bitrate::Bits(quality.bitrate()))
+            .set_bitrate(opus::Bitrate::Bits(bps as i32))
             .map_err(|e| CoreError::Codec(format!("setting bitrate: {e}")))
     }
 

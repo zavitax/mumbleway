@@ -715,6 +715,14 @@ pub struct AudioShared {
     /// Counter values at the last loss measurement, so a rate can be taken
     /// from totals that only ever climb.
     loss_mark: Mutex<(u64, u64)>,
+    /// Tightest bandwidth allowance among the servers this rider is on, in bits
+    /// per second; 0 when none of them said. Written by the session layer, read
+    /// by the capture worker. See [`super::bandwidth`].
+    bandwidth_cap_bps: AtomicU32,
+    /// What the encoder is actually set to, published for the interface: a
+    /// rider whose quality has been reduced by a server should be able to see
+    /// that rather than wonder.
+    encoder_bitrate_bps: AtomicU32,
     /// Whether incoming speakers are levelled towards a common loudness.
     normalise_levels: AtomicBool,
     /// Whether a short room tail is added to incoming voices.
@@ -1146,6 +1154,8 @@ impl AudioShared {
             decoded_frames: AtomicU64::new(0),
             inbound_loss_pct: AtomicU32::new(0),
             loss_mark: Mutex::new((0, 0)),
+            bandwidth_cap_bps: AtomicU32::new(0),
+            encoder_bitrate_bps: AtomicU32::new(super::bandwidth::preferred_bps()),
             underrun_samples: AtomicU64::new(0),
             capture_dropped_samples: AtomicU64::new(0),
             active_speakers: AtomicU32::new(0),
@@ -1300,6 +1310,37 @@ impl AudioShared {
     /// Loss the receive side is currently seeing, in percent.
     pub fn inbound_loss_percent(&self) -> u8 {
         self.inbound_loss_pct.load(Ordering::Relaxed).min(100) as u8
+    }
+
+    /// Sets the tightest bandwidth allowance to fit inside, 0 for none.
+    ///
+    /// One encoder feeds every connection, so this is the *smallest* allowance
+    /// among the servers the rider is on — being generous to the looser one
+    /// would have the server with the tighter budget dropping their voice.
+    pub fn set_bandwidth_cap(&self, bps: u32) {
+        self.bandwidth_cap_bps.store(bps, Ordering::Relaxed);
+    }
+
+    /// The allowance currently being fitted into, if any.
+    pub fn bandwidth_cap_bps(&self) -> Option<u32> {
+        match self.bandwidth_cap_bps.load(Ordering::Relaxed) {
+            0 => None,
+            bps => Some(bps),
+        }
+    }
+
+    /// What the encoder should be set to right now, and why.
+    pub fn bitrate_budget(&self) -> super::bandwidth::Budget {
+        super::bandwidth::fit(self.bandwidth_cap_bps(), super::bandwidth::preferred_bps())
+    }
+
+    /// What the encoder is set to, as the worker last applied it.
+    pub fn encoder_bitrate_bps(&self) -> u32 {
+        self.encoder_bitrate_bps.load(Ordering::Relaxed)
+    }
+
+    fn note_encoder_bitrate(&self, bps: u32) {
+        self.encoder_bitrate_bps.store(bps, Ordering::Relaxed);
     }
 
     /// How much loss the encoder should be spending bits to protect against.
@@ -2860,6 +2901,11 @@ where
     // through if the link has already said something different.
     let mut protection: u8 = 10;
 
+    // What the encoder was last told to aim for. Starts where `VoiceEncoder`
+    // put it, so the first poll only calls through if a server has said
+    // something tighter.
+    let mut bitrate: u32 = config.quality.bitrate() as u32;
+
     // Owned by the worker and published as a snapshot once per block. Keeping
     // the running totals here rather than behind the shared lock means one
     // lock per block instead of one per stage, and the accumulator is never
@@ -3639,6 +3685,17 @@ where
                 let want = shared.protection_percent();
                 if want != protection && encoder.set_packet_loss_perc(want).is_ok() {
                     protection = want;
+                }
+
+                // And fit inside what the servers allow. A server enforces its
+                // bandwidth limit by dropping voice packets and saying nothing
+                // — see `bandwidth` — so this is not a quality preference but
+                // the difference between being heard and not.
+                let want_bps = shared.bitrate_budget().bitrate_bps;
+                if want_bps != bitrate && encoder.set_bitrate_bps(want_bps).is_ok() {
+                    bitrate = want_bps;
+                    shared.note_encoder_bitrate(want_bps);
+                    tracing::info!("encoder bitrate now {want_bps} bit/s");
                 }
                 if allowed {
                     if let Ok(packet) = encoder.encode(&frame[..FRAME_SAMPLES]) {

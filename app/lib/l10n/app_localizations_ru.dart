@@ -1708,4 +1708,26 @@ class LRu extends L {
   @override
   String get prioritySpeaker =>
       'Приоритетный участник: пока он говорит, остальных приглушают';
+
+  @override
+  String get diagVoiceBitrate => 'Битрейт голоса';
+
+  @override
+  String diagKbps(int kbps) {
+    return '$kbps кбит/с';
+  }
+
+  @override
+  String diagKbpsCapped(int kbps, int cap) {
+    return '$kbps кбит/с (сервер разрешает $cap)';
+  }
+
+  @override
+  String serverCapsBitrate(int kbps) {
+    return 'Сервер ограничивает полосу, поэтому голос идёт на $kbps кбит/с';
+  }
+
+  @override
+  String get serverCapTooLow =>
+      'Ограничение полосы на сервере слишком низкое для голоса. Часть сказанного не дойдёт.';
 }

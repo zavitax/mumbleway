@@ -675,6 +675,27 @@ sealed class AppEvent with _$AppEvent {
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
 
+  /// A server's bandwidth allowance, and what the encoder is doing about it.
+  ///
+  /// The bitrate is the app's, not this server's: one encoder feeds every
+  /// connection, so the tightest allowance among them decides.
+  const factory AppEvent.bandwidth({
+    required String serverId,
+
+    /// What this server allows each client, in bits per second.
+    required int capBps,
+
+    /// What the encoder is now aiming for.
+    required int bitrateBps,
+
+    /// Whether an allowance, rather than this app's own choice, decided it.
+    required bool capped,
+
+    /// Whether even the lowest usable bitrate does not fit — voice will be
+    /// dropped by the server, and nothing here can prevent it.
+    required bool belowFloor,
+  }) = AppEvent_Bandwidth;
+
   /// The menu entries this server has registered, whenever the set changes.
   const factory AppEvent.contextActions({
     required String serverId,
@@ -1504,6 +1525,20 @@ class UiDiagnostics {
 
   /// Speakers the mixer is currently tracking.
   final int speakers;
+
+  /// What the voice encoder is aiming for, in bits per second.
+  final int voiceBitrateBps;
+
+  /// The tightest bandwidth allowance among the connected servers, or 0 if
+  /// none of them set one. A server enforces this by dropping voice.
+  final int bandwidthCapBps;
+
+  /// Whether that allowance, rather than this app's own choice, is deciding
+  /// the bitrate.
+  final bool bitrateCapped;
+
+  /// Whether the allowance is too low for usable voice at all.
+  final bool bitrateBelowFloor;
   final BigInt bytesIn;
   final BigInt bytesOut;
   final BigInt voicePacketsIn;
@@ -1539,6 +1574,10 @@ class UiDiagnostics {
     required this.lostPackets,
     required this.jitterBufferMs,
     required this.speakers,
+    required this.voiceBitrateBps,
+    required this.bandwidthCapBps,
+    required this.bitrateCapped,
+    required this.bitrateBelowFloor,
     required this.bytesIn,
     required this.bytesOut,
     required this.voicePacketsIn,
@@ -1557,6 +1596,10 @@ class UiDiagnostics {
       lostPackets.hashCode ^
       jitterBufferMs.hashCode ^
       speakers.hashCode ^
+      voiceBitrateBps.hashCode ^
+      bandwidthCapBps.hashCode ^
+      bitrateCapped.hashCode ^
+      bitrateBelowFloor.hashCode ^
       bytesIn.hashCode ^
       bytesOut.hashCode ^
       voicePacketsIn.hashCode ^
@@ -1577,6 +1620,10 @@ class UiDiagnostics {
           lostPackets == other.lostPackets &&
           jitterBufferMs == other.jitterBufferMs &&
           speakers == other.speakers &&
+          voiceBitrateBps == other.voiceBitrateBps &&
+          bandwidthCapBps == other.bandwidthCapBps &&
+          bitrateCapped == other.bitrateCapped &&
+          bitrateBelowFloor == other.bitrateBelowFloor &&
           bytesIn == other.bytesIn &&
           bytesOut == other.bytesOut &&
           voicePacketsIn == other.voicePacketsIn &&

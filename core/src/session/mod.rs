@@ -105,6 +105,15 @@ struct LiveState {
     /// Menu entries this server has registered. Per connection: they are the
     /// server's, and a different server has its own.
     context_actions: context_actions::ContextActions,
+    /// The bandwidth allowance this server gave, in bits per second.
+    max_bandwidth: Option<u32>,
+    /// Whether this server says Mumble's recording feature is allowed.
+    ///
+    /// Recorded rather than enforced: this app's diagnostic recording is its
+    /// own feature and not the protocol's, and what to do about a server that
+    /// says no is a decision, not a default. Carried so that decision can be
+    /// made from a fact instead of a guess.
+    recording_allowed: Option<bool>,
 }
 
 impl LiveState {
@@ -130,6 +139,8 @@ impl LiveState {
             pending_decrypt_iv: None,
             blobs: notes::Blobs::default(),
             context_actions: context_actions::ContextActions::default(),
+            max_bandwidth: None,
+            recording_allowed: None,
         }
     }
 
@@ -243,6 +254,20 @@ impl Session {
     async fn emit(&self, e: SessionEvent) {
         // A full or closed event channel must never stall the network loop.
         let _ = self.events.try_send(e);
+    }
+
+    /// Records a bandwidth allowance and reports it upward when it changes.
+    ///
+    /// Reported rather than acted on here: this session knows its own server's
+    /// figure, and the encoder is shared by all of them, so the *smallest*
+    /// allowance is the one that decides — which only the layer holding every
+    /// session can work out. See `audio::bandwidth::tightest`.
+    async fn note_bandwidth(&self, state: &mut LiveState, bps: u32) {
+        if state.max_bandwidth == Some(bps) {
+            return;
+        }
+        state.max_bandwidth = Some(bps);
+        self.emit(SessionEvent::BandwidthCap(bps)).await;
     }
 
     /// Reports what the rider may do, when it has changed.
@@ -916,8 +941,35 @@ impl Session {
                     _ => {}
                 }
             }
+            MessageType::ServerConfig => {
+                let m = mumble::ServerConfig::decode(payload)?;
+                // The allowance can change mid-session: an admin edits it and
+                // the server says so again, with no other warning.
+                if let Some(bps) = m.max_bandwidth {
+                    self.note_bandwidth(state, bps).await;
+                }
+                if let Some(allowed) = m.recording_allowed {
+                    if state.recording_allowed != Some(allowed) {
+                        state.recording_allowed = Some(allowed);
+                        // Logged and nothing more, for now. This app's
+                        // diagnostic recorder is its own feature rather than
+                        // Mumble's, so what to do about a server that says no
+                        // is a decision to take deliberately — but it should be
+                        // taken from a fact, and this is where the fact lands.
+                        tracing::info!(
+                            "server says recording is {}allowed",
+                            if allowed { "" } else { "not " }
+                        );
+                    }
+                }
+            }
             MessageType::ServerSync => {
                 let m = mumble::ServerSync::decode(payload)?;
+                // The first place the allowance arrives, at the end of the
+                // handshake — before a single packet has been sent.
+                if let Some(bps) = m.max_bandwidth {
+                    self.note_bandwidth(state, bps).await;
+                }
                 if let Some(s) = m.session {
                     state.self_session = Some(s);
                     self.emit(SessionEvent::SelfSession(s)).await;

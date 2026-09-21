@@ -976,5 +976,35 @@
     }
   },
   "moveNowhere": "There is nowhere else to move them.",
-  "prioritySpeaker": "Priority speaker: others are quietened while they talk"
+  "prioritySpeaker": "Priority speaker: others are quietened while they talk",
+  "diagVoiceBitrate": "Voice bitrate",
+  "diagKbps": "{kbps} kbit/s",
+  "@diagKbps": {
+    "placeholders": {
+      "kbps": {
+        "type": "int"
+      }
+    }
+  },
+  "diagKbpsCapped": "{kbps} kbit/s (server allows {cap})",
+  "@diagKbpsCapped": {
+    "placeholders": {
+      "kbps": {
+        "type": "int"
+      },
+      "cap": {
+        "type": "int"
+      }
+    },
+    "description": "Diagnostics row: the encoder's rate, and the server limit that decided it."
+  },
+  "serverCapsBitrate": "This server limits bandwidth, so voice is now sent at {kbps} kbit/s",
+  "@serverCapsBitrate": {
+    "placeholders": {
+      "kbps": {
+        "type": "int"
+      }
+    }
+  },
+  "serverCapTooLow": "This server's bandwidth limit is too low for voice. Some of what you say will not get through."
 }

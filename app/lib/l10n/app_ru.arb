@@ -716,5 +716,34 @@
     }
   },
   "moveNowhere": "Больше некуда переводить.",
-  "prioritySpeaker": "Приоритетный участник: пока он говорит, остальных приглушают"
+  "prioritySpeaker": "Приоритетный участник: пока он говорит, остальных приглушают",
+  "diagVoiceBitrate": "Битрейт голоса",
+  "diagKbps": "{kbps} кбит/с",
+  "@diagKbps": {
+    "placeholders": {
+      "kbps": {
+        "type": "int"
+      }
+    }
+  },
+  "diagKbpsCapped": "{kbps} кбит/с (сервер разрешает {cap})",
+  "@diagKbpsCapped": {
+    "placeholders": {
+      "kbps": {
+        "type": "int"
+      },
+      "cap": {
+        "type": "int"
+      }
+    }
+  },
+  "serverCapsBitrate": "Сервер ограничивает полосу, поэтому голос идёт на {kbps} кбит/с",
+  "@serverCapsBitrate": {
+    "placeholders": {
+      "kbps": {
+        "type": "int"
+      }
+    }
+  },
+  "serverCapTooLow": "Ограничение полосы на сервере слишком низкое для голоса. Часть сказанного не дойдёт."
 }

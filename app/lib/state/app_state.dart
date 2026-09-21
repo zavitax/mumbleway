@@ -216,6 +216,10 @@ class ServerRuntime {
   List<UiUser> users = const [];
   List<UiChannel> channels = const [];
 
+  /// What this server allows each client, in bits per second; 0 if it has not
+  /// said. Enforced by the server, not advice — see `audio::bandwidth`.
+  int bandwidthCapBps = 0;
+
   /// Menu entries this server has registered — see `trigger_context_action`.
   ///
   /// Usually empty: they come from bots and server plugins, and most servers
@@ -2541,6 +2545,22 @@ class AppState extends ChangeNotifier {
   /// on the output volume, which nothing here knows.
   bool voiceCommunication = true;
 
+  /// What the voice encoder is aiming for, in bits per second; 0 until the
+  /// engine has said.
+  ///
+  /// One encoder feeds every connection, so this is one figure for the app and
+  /// not one per server: the tightest allowance among the servers decides it.
+  int audioBitrateBps = 0;
+
+  /// Whether a server's bandwidth allowance, rather than this app's own
+  /// choice, is deciding [audioBitrateBps].
+  bool audioCapped = false;
+
+  /// Whether the allowance is too low for usable voice at all, in which case
+  /// the server will drop some of what the rider says and nothing here can
+  /// prevent it.
+  bool audioBelowFloor = false;
+
   /// Whether another MumbleWay rider may turn our microphone back on.
   ///
   /// On by default, and only unmuting is governed by it: being muted by
@@ -3791,6 +3811,25 @@ class AppState extends ChangeNotifier {
         runtimeFor(serverId).bans = bans;
       case AppEvent_ContextActions(:final serverId, :final actions):
         runtimeFor(serverId).contextActions = actions;
+      case AppEvent_Bandwidth(
+        :final serverId,
+        :final capBps,
+        :final bitrateBps,
+        :final capped,
+        :final belowFloor,
+      ):
+        runtimeFor(serverId).bandwidthCapBps = capBps;
+        audioBitrateBps = bitrateBps;
+        audioCapped = capped;
+        audioBelowFloor = belowFloor;
+        // Told once per server: a rider whose quality has been reduced by
+        // somebody else's setting should know, and a rider whose allowance
+        // cannot carry voice at all needs to know. An allowance we fit inside
+        // is not news and says nothing.
+        if (capped) {
+          final kind = belowFloor ? 'bitrate-floor' : 'bitrate';
+          if (_suggestedAlready.add('$serverId/$kind')) _suggestions.add(kind);
+        }
       case AppEvent_Avatar(:final serverId, :final session, :final image):
         final rt = runtimeFor(serverId);
         if (image.isEmpty) {

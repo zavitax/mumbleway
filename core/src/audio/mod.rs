@@ -2,6 +2,7 @@
 
 pub mod aec;
 pub mod aec3;
+pub mod bandwidth;
 pub mod clipguard;
 pub mod codec;
 pub mod coupling;

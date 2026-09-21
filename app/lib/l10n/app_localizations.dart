@@ -3132,6 +3132,36 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Priority speaker: others are quietened while they talk'**
   String get prioritySpeaker;
+
+  /// No description provided for @diagVoiceBitrate.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice bitrate'**
+  String get diagVoiceBitrate;
+
+  /// No description provided for @diagKbps.
+  ///
+  /// In en, this message translates to:
+  /// **'{kbps} kbit/s'**
+  String diagKbps(int kbps);
+
+  /// Diagnostics row: the encoder's rate, and the server limit that decided it.
+  ///
+  /// In en, this message translates to:
+  /// **'{kbps} kbit/s (server allows {cap})'**
+  String diagKbpsCapped(int kbps, int cap);
+
+  /// No description provided for @serverCapsBitrate.
+  ///
+  /// In en, this message translates to:
+  /// **'This server limits bandwidth, so voice is now sent at {kbps} kbit/s'**
+  String serverCapsBitrate(int kbps);
+
+  /// No description provided for @serverCapTooLow.
+  ///
+  /// In en, this message translates to:
+  /// **'This server\'s bandwidth limit is too low for voice. Some of what you say will not get through.'**
+  String get serverCapTooLow;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

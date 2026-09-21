@@ -1719,4 +1719,26 @@ class LEn extends L {
   @override
   String get prioritySpeaker =>
       'Priority speaker: others are quietened while they talk';
+
+  @override
+  String get diagVoiceBitrate => 'Voice bitrate';
+
+  @override
+  String diagKbps(int kbps) {
+    return '$kbps kbit/s';
+  }
+
+  @override
+  String diagKbpsCapped(int kbps, int cap) {
+    return '$kbps kbit/s (server allows $cap)';
+  }
+
+  @override
+  String serverCapsBitrate(int kbps) {
+    return 'This server limits bandwidth, so voice is now sent at $kbps kbit/s';
+  }
+
+  @override
+  String get serverCapTooLow =>
+      'This server\'s bandwidth limit is too low for voice. Some of what you say will not get through.';
 }

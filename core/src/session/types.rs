@@ -244,6 +244,12 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// The bandwidth this server allows each client, in bits per second.
+    ///
+    /// **Not advice.** A server enforces it by dropping voice packets without
+    /// telling anybody, so a client that ignores it goes inaudible with every
+    /// indicator healthy. See `audio::bandwidth`.
+    BandwidthCap(u32),
     /// Menu entries this server has registered, whenever the set changes.
     ///
     /// The whole set rather than the one that changed: it is small, and a menu

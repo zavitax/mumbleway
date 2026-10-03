@@ -87,6 +87,7 @@ class ChannelTree extends StatelessWidget {
   ) {
     final state = AppStateScope.of(context);
     final isCurrent = channel.id == currentChannelId;
+    final listening = state.runtimeFor(serverId).listening.contains(channel.id);
     final isDefault =
         defaultChannelName != null &&
         defaultChannelName!.toLowerCase() == channel.name.toLowerCase();
@@ -144,6 +145,31 @@ class ChannelTree extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
               ],
+              // Hearing a channel without going to it. Offered on every
+              // channel but the one the rider is in — being in it is already
+              // hearing it — and the icon follows the server's answer rather
+              // than the tap, since a listen can be refused.
+              if (!isCurrent)
+                IconButton(
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  tooltip: listening
+                      ? L.of(context).stopListening
+                      : L.of(context).listenHere,
+                  icon: Icon(
+                    listening ? Icons.headset : Icons.headset_outlined,
+                    color: listening ? StatusColors.talking : null,
+                  ),
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final error = await state.toggleListening(
+                      serverId,
+                      channel.id,
+                    );
+                    if (error != null) showError(messenger, error);
+                  },
+                ),
               IconButton(
                 iconSize: 18,
                 visualDensity: VisualDensity.compact,

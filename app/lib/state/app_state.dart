@@ -40,6 +40,7 @@ class SavedServer {
     this.certFingerprint,
     this.defaultChannel,
     this.lastChannel,
+    this.accessTokens = const [],
     this.note = '',
     String? localId,
     this.updatedAt = 0,
@@ -54,6 +55,17 @@ class SavedServer {
 
   /// Channel joined automatically on every connect, if the rider set one.
   final String? defaultChannel;
+
+  /// Access tokens to present to this server.
+  ///
+  /// **A token is a password spelled as a group name.** A Mumble channel has
+  /// no password of its own — it has a rule granting entry to a group, written
+  /// `#name`, and anybody presenting a token `name` counts as a member. So the
+  /// thing a rider is handed as "the password for the clubhouse" goes here.
+  ///
+  /// Kept with the server because that is the only way it is any use: a token
+  /// typed afresh at every connect is one a rider does not have at a junction.
+  final List<String> accessTokens;
 
   /// The channel this rider was last in on this server.
   ///
@@ -110,6 +122,7 @@ class SavedServer {
   /// A renamed server does not need its connection torn down and rebuilt; a
   /// re-hosted one does.
   bool sameConnection(SavedServer o) =>
+      listEquals(accessTokens, o.accessTokens) &&
       host == o.host &&
       port == o.port &&
       username == o.username &&
@@ -123,6 +136,7 @@ class SavedServer {
     String? certFingerprint,
     String? defaultChannel,
     String? lastChannel,
+    List<String>? accessTokens,
     String? note,
     String? localId,
     int? updatedAt,
@@ -139,6 +153,7 @@ class SavedServer {
         ? null
         : (defaultChannel ?? this.defaultChannel),
     lastChannel: lastChannel ?? this.lastChannel,
+    accessTokens: accessTokens ?? this.accessTokens,
     // An empty note is a real value — it is how a rider clears one — so this
     // takes whatever it is given rather than treating empty as "unchanged".
     note: note ?? this.note,
@@ -155,6 +170,7 @@ class SavedServer {
     'certFingerprint': certFingerprint,
     'defaultChannel': defaultChannel,
     'lastChannel': lastChannel,
+    'accessTokens': accessTokens,
     'note': note,
     'updatedAt': updatedAt,
   };
@@ -171,11 +187,16 @@ class SavedServer {
     certFingerprint: j['certFingerprint'] as String?,
     defaultChannel: j['defaultChannel'] as String?,
     lastChannel: j['lastChannel'] as String?,
+    accessTokens: [
+      for (final t in (j['accessTokens'] as List<dynamic>? ?? const []))
+        if (t is String && t.isNotEmpty) t,
+    ],
     note: j['note'] as String? ?? '',
     updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
   );
 
   ServerConfig toConfig() => ServerConfig(
+    accessTokens: accessTokens,
     id: id,
     name: name,
     host: host,
@@ -256,6 +277,13 @@ class ServerRuntime {
   /// Usually empty: they come from bots and server plugins, and most servers
   /// run neither.
   List<UiContextAction> contextActions = const [];
+
+  /// Channels this rider is hearing without having joined them.
+  ///
+  /// The server's word rather than this app's intention: a listen it refused
+  /// never appears here, which is what keeps the headphone in the channel list
+  /// from claiming something that did not happen.
+  List<int> listening = const [];
 
   /// Access lists, by channel, as the server last stated them.
   ///
@@ -2594,6 +2622,49 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Replaces this server's access tokens, and tells the session at once.
+  ///
+  /// Saved first: the tokens have to be there for the *next* handshake too, or
+  /// a reconnect puts the rider back outside the channel they were let into.
+  Future<String?> setAccessTokensFor(String id, List<String> tokens) async {
+    final cleaned = [
+      for (final t in tokens.map((t) => t.trim()))
+        if (t.isNotEmpty) t,
+    ];
+    final i = servers.indexWhere((s) => s.id == id);
+    if (i >= 0) {
+      servers[i] = servers[i].copyWith(accessTokens: cleaned).stamped();
+      await _persist();
+      notifyListeners();
+    }
+    if (!runtimeFor(id).isLive) return null;
+    try {
+      await setAccessTokens(serverId: id, tokens: cleaned);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Starts or stops hearing a channel without joining it.
+  ///
+  /// Nothing is assumed: the headphone follows the server's answer, which
+  /// arrives as an event, because a listen can be refused for want of the
+  /// Listen permission or because a limit has been reached.
+  Future<String?> toggleListening(String id, int channelId) async {
+    final listening = runtimeFor(id).listening.contains(channelId);
+    try {
+      await setListening(
+        serverId: id,
+        add: listening ? Uint32List(0) : Uint32List.fromList([channelId]),
+        remove: listening ? Uint32List.fromList([channelId]) : Uint32List(0),
+      );
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   /// Asks for one channel's access list.
   Future<String?> loadAcl(String id, int channelId) async {
     try {
@@ -4133,6 +4204,8 @@ class AppState extends ChangeNotifier {
         for (final u in users) {
           rt.userNames[u.userId] = u.name;
         }
+      case AppEvent_Listening(:final serverId, :final channels):
+        runtimeFor(serverId).listening = channels;
       case AppEvent_Acl(:final serverId, :final acl):
         final rt = runtimeFor(serverId);
         rt.acls[acl.channelId] = acl;

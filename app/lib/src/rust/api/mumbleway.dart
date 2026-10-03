@@ -113,6 +113,38 @@ Future<void> removeChannel({
   channelId: channelId,
 );
 
+/// Replaces the access tokens for this server, taking effect at once.
+///
+/// **A token is a password spelled as a group name.** A Mumble channel has no
+/// password of its own: it has an ACL granting entry to a group, and a server
+/// writes that group as `#name` so that anybody presenting a token `name` is
+/// treated as a member. The server re-reads the tokens on a second
+/// `Authenticate` and re-evaluates every channel against them, so a channel
+/// that was shut can open without reconnecting.
+Future<void> setAccessTokens({
+  required String serverId,
+  required List<String> tokens,
+}) => RustLib.instance.api.crateApiMumblewaySetAccessTokens(
+  serverId: serverId,
+  tokens: tokens,
+);
+
+/// Starts or stops hearing channels without joining them.
+///
+/// The rider stays where they are and their voice still goes to their own
+/// channel. Needs the Listen permission on each one, and a server may cap how
+/// many listeners a channel takes or how many channels one rider may hear —
+/// both come back as refusals.
+Future<void> setListening({
+  required String serverId,
+  required List<int> add,
+  required List<int> remove,
+}) => RustLib.instance.api.crateApiMumblewaySetListening(
+  serverId: serverId,
+  add: add,
+  remove: remove,
+);
+
 /// Asks for one channel's access list. Needs Write on that channel.
 Future<void> requestAcl({required String serverId, required int channelId}) =>
     RustLib.instance.api.crateApiMumblewayRequestAcl(
@@ -816,6 +848,12 @@ sealed class AppEvent with _$AppEvent {
     required bool suppressed,
   }) = AppEvent_Suppressed;
 
+  /// The channels this rider is hearing without having joined them.
+  const factory AppEvent.listening({
+    required String serverId,
+    required Uint32List channels,
+  }) = AppEvent_Listening;
+
   /// What this server will accept: longest text, and largest picture, in
   /// bytes. Zero means it set no limit.
   const factory AppEvent.limits({
@@ -1040,6 +1078,13 @@ class ServerConfig {
   /// and left them to find the conversation themselves.
   final String? defaultChannel;
 
+  /// Access tokens to present at the handshake.
+  ///
+  /// Carried with the server rather than typed each time: a token is how a
+  /// shut channel opens, and a rider who has to retype one at a junction
+  /// does not have it.
+  final List<String> accessTokens;
+
   const ServerConfig({
     required this.id,
     required this.name,
@@ -1049,6 +1094,7 @@ class ServerConfig {
     this.password,
     this.certFingerprint,
     this.defaultChannel,
+    required this.accessTokens,
   });
 
   @override
@@ -1060,7 +1106,8 @@ class ServerConfig {
       username.hashCode ^
       password.hashCode ^
       certFingerprint.hashCode ^
-      defaultChannel.hashCode;
+      defaultChannel.hashCode ^
+      accessTokens.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1074,7 +1121,8 @@ class ServerConfig {
           username == other.username &&
           password == other.password &&
           certFingerprint == other.certFingerprint &&
-          defaultChannel == other.defaultChannel;
+          defaultChannel == other.defaultChannel &&
+          accessTokens == other.accessTokens;
 }
 
 /// How a stage of the chain is doing.

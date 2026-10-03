@@ -103,6 +103,8 @@ struct LiveState {
     /// Which comments and pictures we hold, and which still have to be asked
     /// for. See [`notes`].
     blobs: notes::Blobs,
+    /// Channels this client is listening to without having joined them.
+    listening: Vec<u32>,
     /// Menu entries this server has registered. Per connection: they are the
     /// server's, and a different server has its own.
     context_actions: context_actions::ContextActions,
@@ -166,6 +168,7 @@ impl LiveState {
             rights_sent: None,
             pending_decrypt_iv: None,
             blobs: notes::Blobs::default(),
+            listening: Vec::new(),
             context_actions: context_actions::ContextActions::default(),
             max_bandwidth: None,
             tcp_ping: pings::PingStats::default(),
@@ -541,7 +544,9 @@ impl Session {
         let auth = mumble::Authenticate {
             username: Some(self.config.profile.username.clone()),
             password: self.config.profile.password.clone(),
-            tokens: Vec::new(),
+            // Presented at the handshake, which is the only moment they can
+            // open a channel this client is set to join automatically.
+            tokens: self.config.profile.access_tokens.clone(),
             // Empty CELT list plus opus=true advertises an Opus-only client.
             celt_versions: Vec::new(),
             opus: Some(true),
@@ -1133,6 +1138,11 @@ impl Session {
                 let m = mumble::ChannelRemove::decode(payload)?;
                 state.channels.remove(&m.channel_id);
                 state.blobs.forget_channel(m.channel_id);
+                if state.listening.contains(&m.channel_id) {
+                    state.listening.retain(|c| *c != m.channel_id);
+                    self.emit(SessionEvent::Listening(state.listening.clone()))
+                        .await;
+                }
                 self.emit(SessionEvent::Channels(state.channel_list()))
                     .await;
             }
@@ -1208,6 +1218,25 @@ impl Session {
                     }
                     if let Some(v) = m.suppress {
                         e.suppress = v;
+                    }
+                    // Listening is reported as two lists of changes rather
+                    // than as a state, so the set is kept here and the server's
+                    // word is what it holds — a refused listen simply never
+                    // arrives, and the set stays as it was.
+                    if Some(s) == state.self_session
+                        && !(m.listening_channel_add.is_empty()
+                            && m.listening_channel_remove.is_empty())
+                    {
+                        for c in &m.listening_channel_add {
+                            if !state.listening.contains(c) {
+                                state.listening.push(*c);
+                            }
+                        }
+                        state
+                            .listening
+                            .retain(|c| !m.listening_channel_remove.contains(c));
+                        self.emit(SessionEvent::Listening(state.listening.clone()))
+                            .await;
                     }
                     // A comment arrives whole when it is short and as a hash
                     // when it is not; the body is then asked for once per hash.
@@ -1637,6 +1666,33 @@ impl Session {
                     let m = mumble::UserState {
                         session: Some(me),
                         self_mute: Some(v),
+                        ..Default::default()
+                    };
+                    writer.send(MessageType::UserState, &m).await?;
+                }
+            }
+            SessionCommand::SetAccessTokens(tokens) => {
+                // Remembered for the next handshake as well as sent now: a
+                // reconnect must present the same set, or a rider comes back
+                // to a channel they can no longer enter.
+                self.config.profile.access_tokens = tokens.clone();
+                let m = mumble::Authenticate {
+                    tokens,
+                    // Username and password are left out deliberately. The
+                    // server reads the tokens out of this message and nothing
+                    // else once a session is authenticated, and resending
+                    // credentials it is not asking for is how a client ends up
+                    // re-authenticating by accident.
+                    ..Default::default()
+                };
+                writer.send(MessageType::Authenticate, &m).await?;
+            }
+            SessionCommand::SetListening { add, remove } => {
+                if let Some(me) = state.self_session {
+                    let m = mumble::UserState {
+                        session: Some(me),
+                        listening_channel_add: add,
+                        listening_channel_remove: remove,
                         ..Default::default()
                     };
                     writer.send(MessageType::UserState, &m).await?;

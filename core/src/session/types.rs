@@ -66,6 +66,18 @@ pub struct ServerProfile {
     pub cert_fingerprint: Option<String>,
     /// Channel to join automatically once connected.
     pub auto_join_channel: Option<String>,
+    /// Access tokens to present at the handshake.
+    ///
+    /// **A token is a password that is spelled as a group name.** A server
+    /// grants permissions to a group, and anybody who presents a token with
+    /// that group's name is treated as a member of it — which is how a
+    /// password-protected channel works in Mumble, there being no such thing
+    /// as a channel password.
+    ///
+    /// Kept with the server rather than typed each time, because a rider who
+    /// has to retype one at a junction does not have it.
+    #[serde(default)]
+    pub access_tokens: Vec<String>,
 }
 
 impl ServerProfile {
@@ -87,6 +99,7 @@ impl ServerProfile {
             password: None,
             cert_fingerprint: None,
             auto_join_channel: None,
+            access_tokens: Vec::new(),
         }
     }
 }
@@ -387,6 +400,8 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// The channels this client is listening to without having joined them.
+    Listening(Vec<u32>),
     /// What this server will accept, in bytes: see [`ServerLimits`].
     Limits(ServerLimits),
     /// The bandwidth this server allows each client, in bits per second.
@@ -617,6 +632,24 @@ pub enum SessionCommand {
     /// strips it on the way in, so writing markup back would be the one place
     /// the app produced something it will not display.
     SetComment(String),
+    /// Replaces the access tokens, taking effect at once.
+    ///
+    /// The server re-reads them on an `Authenticate` sent after the handshake —
+    /// it handles that case before the check that would otherwise refuse a
+    /// second one — and it re-evaluates every channel's permissions against
+    /// the new set, so a channel that was closed can open without reconnecting.
+    SetAccessTokens(Vec<String>),
+    /// Starts and stops listening to channels without joining them.
+    ///
+    /// **Hearing a channel is not being in it.** A rider stays where they are,
+    /// and their voice still goes to their own channel; what changes is what
+    /// reaches their ears. Needs the Listen permission on each channel, and a
+    /// server may cap how many listeners a channel takes or how many channels
+    /// one rider may listen to — both arrive as refusals.
+    SetListening {
+        add: Vec<u32>,
+        remove: Vec<u32>,
+    },
     /// Sets the picture shown beside our own name, or clears it with an empty
     /// one.
     ///

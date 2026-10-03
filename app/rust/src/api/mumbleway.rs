@@ -58,6 +58,12 @@ pub struct ServerConfig {
     /// so following a link that named a channel landed the guest in the root
     /// and left them to find the conversation themselves.
     pub default_channel: Option<String>,
+    /// Access tokens to present at the handshake.
+    ///
+    /// Carried with the server rather than typed each time: a token is how a
+    /// shut channel opens, and a rider who has to retype one at a junction
+    /// does not have it.
+    pub access_tokens: Vec<String>,
 }
 
 /// Connection status, flattened for easy rendering.
@@ -352,6 +358,11 @@ pub enum AppEvent {
     Suppressed {
         server_id: String,
         suppressed: bool,
+    },
+    /// The channels this rider is hearing without having joined them.
+    Listening {
+        server_id: String,
+        channels: Vec<u32>,
     },
     /// What this server will accept: longest text, and largest picture, in
     /// bytes. Zero means it set no limit.
@@ -997,6 +1008,10 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         suppressed,
                     });
                 }
+                SessionEvent::Listening(channels) => emit(AppEvent::Listening {
+                    server_id,
+                    channels,
+                }),
                 SessionEvent::Limits(l) => emit(AppEvent::Limits {
                     server_id,
                     message_length: l.message_length,
@@ -1566,6 +1581,28 @@ pub fn edit_channel(
 /// Removes a channel and everything under it. Needs Write on it.
 pub fn remove_channel(server_id: String, channel_id: u32) -> anyhow::Result<()> {
     send_command(server_id, SessionCommand::RemoveChannel(channel_id))
+}
+
+/// Replaces the access tokens for this server, taking effect at once.
+///
+/// **A token is a password spelled as a group name.** A Mumble channel has no
+/// password of its own: it has an ACL granting entry to a group, and a server
+/// writes that group as `#name` so that anybody presenting a token `name` is
+/// treated as a member. The server re-reads the tokens on a second
+/// `Authenticate` and re-evaluates every channel against them, so a channel
+/// that was shut can open without reconnecting.
+pub fn set_access_tokens(server_id: String, tokens: Vec<String>) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::SetAccessTokens(tokens))
+}
+
+/// Starts or stops hearing channels without joining them.
+///
+/// The rider stays where they are and their voice still goes to their own
+/// channel. Needs the Listen permission on each one, and a server may cap how
+/// many listeners a channel takes or how many channels one rider may hear —
+/// both come back as refusals.
+pub fn set_listening(server_id: String, add: Vec<u32>, remove: Vec<u32>) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::SetListening { add, remove })
 }
 
 /// Asks for one channel's access list. Needs Write on that channel.
@@ -3269,6 +3306,7 @@ fn config_to_profile(c: ServerConfig) -> ServerProfile {
     p.password = c.password;
     p.cert_fingerprint = c.cert_fingerprint;
     p.auto_join_channel = c.default_channel;
+    p.access_tokens = c.access_tokens;
     if !c.id.trim().is_empty() {
         p.id = c.id;
     }
@@ -3300,6 +3338,10 @@ pub fn import_servers(
             password: p.password,
             cert_fingerprint: p.cert_fingerprint,
             default_channel: p.auto_join_channel,
+            // An imported profile carries none: a token is a secret the
+            // sharer did not put in the link, and inventing one would be
+            // claiming an invitation said something it did not.
+            access_tokens: Vec::new(),
         })
         .collect())
 }

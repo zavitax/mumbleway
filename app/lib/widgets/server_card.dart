@@ -8,6 +8,7 @@ import '../screens/add_server_screen.dart';
 import '../screens/server_qr_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'access_tokens_dialog.dart';
 import 'ban_list_dialog.dart';
 import 'registered_users_dialog.dart';
 import 'channel_panel.dart';
@@ -246,6 +247,12 @@ class ServerCard extends StatelessWidget {
                                 _share(context, state, rt, asFile: true);
                               case 'register':
                                 _register(context, state);
+                              case 'tokens':
+                                showDialog<void>(
+                                  context: context,
+                                  builder: (_) =>
+                                      AccessTokensDialog(server: server),
+                                );
                               case 'note':
                                 _setNote(context, state);
                               case final v when v.startsWith('server:'):
@@ -361,6 +368,25 @@ class ServerCard extends StatelessWidget {
                                 ),
                               );
                             }(),
+                            // Like the note, this belongs to the entry rather
+                            // than to the session: a token has to be there for
+                            // the next handshake as much as for this one.
+                            PopupMenuItem(
+                              value: 'tokens',
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.key_outlined),
+                                title: Text(l.accessTokens),
+                                subtitle: server.accessTokens.isEmpty
+                                    ? null
+                                    : Text(
+                                        l.accessTokensHeld(
+                                          server.accessTokens.length,
+                                        ),
+                                      ),
+                              ),
+                            ),
                             // Unlike registering, this works disconnected: the
                             // note is kept with the entry and put back on the
                             // session whenever there is one.

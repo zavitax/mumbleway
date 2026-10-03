@@ -1144,5 +1144,21 @@
     }
   },
   "aclPermissions": "Permissions",
-  "aclTapHint": "Tap a permission to cycle it: not mentioned, granted, denied."
+  "aclTapHint": "Tap a permission to cycle it: not mentioned, granted, denied.",
+  "listenHere": "Listen to this channel",
+  "stopListening": "Stop listening",
+  "accessTokens": "Access tokens",
+  "accessTokensBody": "A Mumble channel has no password of its own: it lets in a named group, and a token is the word that puts you in one. Whoever runs the server gives you the word. Kept here and presented every time you connect.",
+  "accessTokenHint": "The word you were given",
+  "accessTokenAdd": "Add",
+  "accessTokenRemove": "Remove this token",
+  "accessTokensNone": "No tokens for this server.",
+  "accessTokensHeld": "{count} held",
+  "@accessTokensHeld": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

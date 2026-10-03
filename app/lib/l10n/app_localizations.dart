@@ -3612,6 +3612,60 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Tap a permission to cycle it: not mentioned, granted, denied.'**
   String get aclTapHint;
+
+  /// No description provided for @listenHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen to this channel'**
+  String get listenHere;
+
+  /// No description provided for @stopListening.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop listening'**
+  String get stopListening;
+
+  /// No description provided for @accessTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Access tokens'**
+  String get accessTokens;
+
+  /// No description provided for @accessTokensBody.
+  ///
+  /// In en, this message translates to:
+  /// **'A Mumble channel has no password of its own: it lets in a named group, and a token is the word that puts you in one. Whoever runs the server gives you the word. Kept here and presented every time you connect.'**
+  String get accessTokensBody;
+
+  /// No description provided for @accessTokenHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The word you were given'**
+  String get accessTokenHint;
+
+  /// No description provided for @accessTokenAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get accessTokenAdd;
+
+  /// No description provided for @accessTokenRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this token'**
+  String get accessTokenRemove;
+
+  /// No description provided for @accessTokensNone.
+  ///
+  /// In en, this message translates to:
+  /// **'No tokens for this server.'**
+  String get accessTokensNone;
+
+  /// No description provided for @accessTokensHeld.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} held'**
+  String accessTokensHeld(int count);
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

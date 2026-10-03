@@ -1982,4 +1982,34 @@ class LRu extends L {
   @override
   String get aclTapHint =>
       'Нажимайте на право, чтобы менять: не указано, разрешено, запрещено.';
+
+  @override
+  String get listenHere => 'Слушать этот канал';
+
+  @override
+  String get stopListening => 'Перестать слушать';
+
+  @override
+  String get accessTokens => 'Ключи доступа';
+
+  @override
+  String get accessTokensBody =>
+      'У канала в Mumble нет собственного пароля: он пускает названную группу, а ключ — это слово, которое вас в неё включает. Слово даёт тот, кто ведёт сервер. Хранится здесь и отправляется при каждом подключении.';
+
+  @override
+  String get accessTokenHint => 'Слово, которое вам дали';
+
+  @override
+  String get accessTokenAdd => 'Добавить';
+
+  @override
+  String get accessTokenRemove => 'Убрать этот ключ';
+
+  @override
+  String get accessTokensNone => 'Для этого сервера ключей нет.';
+
+  @override
+  String accessTokensHeld(int count) {
+    return 'ключей: $count';
+  }
 }

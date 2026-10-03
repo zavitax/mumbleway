@@ -1990,4 +1990,34 @@ class LEn extends L {
   @override
   String get aclTapHint =>
       'Tap a permission to cycle it: not mentioned, granted, denied.';
+
+  @override
+  String get listenHere => 'Listen to this channel';
+
+  @override
+  String get stopListening => 'Stop listening';
+
+  @override
+  String get accessTokens => 'Access tokens';
+
+  @override
+  String get accessTokensBody =>
+      'A Mumble channel has no password of its own: it lets in a named group, and a token is the word that puts you in one. Whoever runs the server gives you the word. Kept here and presented every time you connect.';
+
+  @override
+  String get accessTokenHint => 'The word you were given';
+
+  @override
+  String get accessTokenAdd => 'Add';
+
+  @override
+  String get accessTokenRemove => 'Remove this token';
+
+  @override
+  String get accessTokensNone => 'No tokens for this server.';
+
+  @override
+  String accessTokensHeld(int count) {
+    return '$count held';
+  }
 }

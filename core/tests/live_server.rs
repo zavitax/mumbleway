@@ -325,6 +325,242 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// A channel that only a token opens, opened with one.
+///
+/// **A Mumble channel has no password.** What it has is an ACL that grants
+/// entry to a group, and a token is a string that puts the rider in a group of
+/// that name — so "the password for the clubhouse" is a token spelled
+/// `clubhouse`. `MW_LIVE_TOKEN_CHANNEL` names such a channel and
+/// `MW_LIVE_TOKEN` the token that opens it; set both up with
+///
+/// ```text
+/// insert into acl (...) values (1, 2, 1, null, 'all', 1, 1, 0, 4);   -- deny Enter
+/// insert into acl (...) values (1, 2, 2, null, 'vip', 1, 1, 4, 0);   -- grant @vip
+/// ```
+///
+/// What is checked is both halves: refused without the token, and in with it.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_token_opens_a_channel_that_is_otherwise_shut() {
+    require_server!();
+    let (Ok(channel), Ok(token)) = (
+        std::env::var("MW_LIVE_TOKEN_CHANNEL"),
+        std::env::var("MW_LIVE_TOKEN"),
+    ) else {
+        eprintln!("MW_LIVE_TOKEN_CHANNEL / MW_LIVE_TOKEN are not set; skipping");
+        return;
+    };
+
+    /// Connects with these tokens and reports whether the channel let us in.
+    async fn try_entering(
+        host: &str,
+        port: u16,
+        channel: &str,
+        tokens: Vec<String>,
+    ) -> (bool, Vec<String>) {
+        let (tx, mut rx) = mpsc::channel(4096);
+        let identity = Identity::generate("MumbleWay live token").expect("identity");
+        let mut manager =
+            SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+        let mut profile = ServerProfile::new("live", host, port, "token-holder");
+        profile.id = "token".into();
+        profile.access_tokens = tokens;
+        let id = manager.add(profile, silent_bridge()).expect("added");
+        manager
+            .send(&id, mumbleway_core::session::SessionCommand::Connect)
+            .await
+            .expect("connect");
+
+        let mut me = None;
+        let mut channels: Vec<(u32, String)> = Vec::new();
+        let mut asked = false;
+        let mut inside = false;
+        let mut refusals = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(12);
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+                break;
+            };
+            match &event.event {
+                SessionEvent::SelfSession(s) => me = Some(*s),
+                SessionEvent::Channels(list) => {
+                    channels = list.iter().map(|c| (c.id, c.name.clone())).collect();
+                }
+                SessionEvent::Refused { reason, kind } => {
+                    refusals.push(format!("kind {kind}: {reason}"));
+                }
+                SessionEvent::Users(users) => {
+                    let Some(me) = me else { continue };
+                    let target = channels
+                        .iter()
+                        .find(|(_, n)| n == channel)
+                        .map(|(id, _)| *id);
+                    if let (false, Some(to)) = (asked, target) {
+                        asked = true;
+                        manager
+                            .send(
+                                &id,
+                                mumbleway_core::session::SessionCommand::JoinChannel(to),
+                            )
+                            .await
+                            .expect("join");
+                    }
+                    if let (Some(to), Some(u)) = (target, users.iter().find(|u| u.session == me)) {
+                        if u.channel_id == to {
+                            inside = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        manager.shutdown_all().await;
+        (inside, refusals)
+    }
+
+    let (host, port) = live_address().expect("MW_LIVE");
+
+    let (without, refusals) = try_entering(&host, port, &channel, Vec::new()).await;
+    println!("without a token: inside={without}, refusals={refusals:?}");
+    assert!(
+        !without,
+        "the channel let us in without the token, so this proves nothing"
+    );
+    assert!(
+        !refusals.is_empty(),
+        "the server refused silently, which would hide the reason from a rider"
+    );
+
+    let (with, refusals) = try_entering(&host, port, &channel, vec![token]).await;
+    println!("with the token: inside={with}, refusals={refusals:?}");
+    assert!(with, "the token did not open the channel");
+}
+
+/// Hearing a channel without joining it.
+///
+/// A rider stays where they are and their voice still goes to their own
+/// channel; what changes is what reaches their ears. `MW_LIVE_CHANNEL` names
+/// the channel to listen to.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_rider_can_listen_to_a_channel_without_joining_it() {
+    require_server!();
+    let Ok(channel) = std::env::var("MW_LIVE_CHANNEL") else {
+        eprintln!("MW_LIVE_CHANNEL is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live listen").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+    let mut profile = ServerProfile::new("live", host, port, "listener");
+    profile.id = "listener".into();
+    let id = manager.add(profile, silent_bridge()).expect("added");
+    manager
+        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    use mumbleway_core::session::SessionCommand as C;
+
+    let mut me = None;
+    // Filled from the first channel listing; never read before then, which is
+    // why it starts empty rather than as a value nobody uses.
+    let mut channels: Vec<(u32, String)>;
+    let mut target = None;
+    let mut asked = false;
+    let mut stopped = false;
+    let mut listening_states: Vec<Vec<u32>> = Vec::new();
+    let mut own_channel = None;
+    let mut refusals = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(18);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(s) => me = Some(*s),
+            SessionEvent::Channels(list) => {
+                channels = list.iter().map(|c| (c.id, c.name.clone())).collect();
+                target = channels
+                    .iter()
+                    .find(|(_, n)| *n == channel)
+                    .map(|(id, _)| *id);
+            }
+            SessionEvent::Refused { reason, kind } => {
+                refusals.push(format!("kind {kind}: {reason}"));
+            }
+            SessionEvent::Users(users) => {
+                if let (Some(me), Some(u)) = (me, users.iter().find(|u| Some(u.session) == me)) {
+                    own_channel = Some(u.channel_id);
+                    let _ = me;
+                }
+                if let (false, Some(to)) = (asked, target) {
+                    asked = true;
+                    manager
+                        .send(
+                            &id,
+                            C::SetListening {
+                                add: vec![to],
+                                remove: Vec::new(),
+                            },
+                        )
+                        .await
+                        .expect("listen");
+                }
+            }
+            SessionEvent::Listening(now) => {
+                println!("listening to: {now:?}");
+                listening_states.push(now.clone());
+                // Having started, stop again — the half that is easy to get
+                // wrong, since the server reports changes rather than a state.
+                if !stopped && !now.is_empty() {
+                    stopped = true;
+                    manager
+                        .send(
+                            &id,
+                            C::SetListening {
+                                add: Vec::new(),
+                                remove: now.clone(),
+                            },
+                        )
+                        .await
+                        .expect("stop listening");
+                }
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    println!("refusals: {refusals:?}");
+    println!("own channel throughout: {own_channel:?}");
+    let listened = target.expect("the channel to listen to was not on the server");
+    assert!(
+        listening_states.iter().any(|s| s.contains(&listened)),
+        "the server never confirmed the listen: {listening_states:?}"
+    );
+    assert!(
+        listening_states.last().is_some_and(|s| s.is_empty()),
+        "stopping did not take: {listening_states:?}"
+    );
+    assert_ne!(
+        own_channel,
+        Some(listened),
+        "listening moved the rider, which is the one thing it must not do"
+    );
+}
+
 /// What a rider does in an ordinary session, against a real server.
 ///
 /// Notes, text messages, muting themselves, deafening themselves, and moving

@@ -153,7 +153,10 @@ class ChannelTree extends StatelessWidget {
                 IconButton(
                   iconSize: 18,
                   visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                  constraints: const BoxConstraints(
+                    minWidth: 34,
+                    minHeight: 34,
+                  ),
                   tooltip: listening
                       ? L.of(context).stopListening
                       : L.of(context).listenHere,
@@ -313,9 +316,13 @@ class _UserRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // The picture, when they have one, with the status icon tucked into
-          // its corner. The status is what the row is *for* — who is talking,
-          // who is muted — so it is never given up for decoration.
+          // The picture where the person icon would be, when they have one.
+          //
+          // The status icon is tucked into its corner **only when it says
+          // something**: who is talking and who is muted is what the row is
+          // for, and that is never given up for decoration — but the idle
+          // glyph is a drawing of a person, and a drawing of a person in the
+          // corner of a photograph of one says nothing at all.
           switch (state.runtimeFor(serverId).avatars[user.session]) {
             final Uint8List image? => SizedBox(
               width: 18,
@@ -332,14 +339,16 @@ class _UserRow extends StatelessWidget {
                       gaplessPlayback: true,
                       // A picture from a stranger's server that will not
                       // decode is not a reason to lose the row.
-                      errorBuilder: (_, _, _) => Icon(icon, size: 18, color: color),
+                      errorBuilder: (_, _, _) =>
+                          Icon(icon, size: 18, color: color),
                     ),
                   ),
-                  Positioned(
-                    right: -3,
-                    bottom: -3,
-                    child: Icon(icon, size: 11, color: color),
-                  ),
+                  if (icon != Icons.person_outline)
+                    Positioned(
+                      right: -3,
+                      bottom: -3,
+                      child: Icon(icon, size: 11, color: color),
+                    ),
                 ],
               ),
             ),
@@ -350,61 +359,65 @@ class _UserRow extends StatelessWidget {
             // The badge rides directly after the name rather than at the end
             // of the row, so it reads as something about this person. The name
             // is Flexible so a long one still truncates with the badge visible.
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  child: Text(
-                    user.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: speaking ? FontWeight.w700 : FontWeight.w400,
-                      color: speaking ? StatusColors.talking : null,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        user.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: speaking
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                          color: speaking ? StatusColors.talking : null,
+                        ),
+                      ),
                     ),
-                  ),
+                    if (user.mumblewayVersion case final version?) ...[
+                      const SizedBox(width: 6),
+                      MumblewayBadge(version: version),
+                    ],
+                    // Why the channel goes quiet when this one person starts
+                    // talking. Nothing else in the roster would say so.
+                    if (user.prioritySpeaker) ...[
+                      const SizedBox(width: 6),
+                      Tooltip(
+                        message: l.prioritySpeaker,
+                        triggerMode: TooltipTriggerMode.tap,
+                        child: const Icon(
+                          Icons.campaign_outlined,
+                          size: 14,
+                          color: StatusColors.talking,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                if (user.mumblewayVersion case final version?) ...[
-                  const SizedBox(width: 6),
-                  MumblewayBadge(version: version),
-                ],
-                // Why the channel goes quiet when this one person starts
-                // talking. Nothing else in the roster would say so.
-                if (user.prioritySpeaker) ...[
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: l.prioritySpeaker,
-                    triggerMode: TooltipTriggerMode.tap,
-                    child: const Icon(
-                      Icons.campaign_outlined,
-                      size: 14,
-                      color: StatusColors.talking,
+                // Their own note, under the name and in full.
+                //
+                // It was an icon holding a tooltip, which is a thing to
+                // discover rather than a thing to read — and what riders put
+                // there is where they are and when they are leaving, which is
+                // the sort of thing the next rider wants without asking for
+                // it. The server caps a comment at 512 characters and the
+                // client strips its markup, so "in full" is a line or two.
+                if (user.comment.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(
+                      user.comment,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.25,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ],
-                // Beside the name, like the badge, because it is something
-                // about this person rather than about the row: the rider who
-                // keeps breaking up is the one worth finding.
-                if (user.quality case final quality?) ...[
-                  const SizedBox(width: 6),
-                  ConnectionQualityBars(quality: quality),
-                ],
-                // Their own note. An icon rather than the text itself: the row
-                // has a name, two badges, a meter and two controls in it
-                // already, and a note saying where somebody is can be a
-                // sentence. Held to read it, or hovered on a desktop.
-                if (user.comment.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: user.comment,
-                    triggerMode: TooltipTriggerMode.tap,
-                    showDuration: const Duration(seconds: 8),
-                    child: Icon(
-                      Icons.sticky_note_2_outlined,
-                      size: 14,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -450,6 +463,16 @@ class _UserRow extends StatelessWidget {
             ),
             onPressed: () => state.toggleUserLocalMute(serverId, user),
           ),
+          // How this rider's connection is doing, between the control that
+          // silences them and the menu that does everything else, at the size
+          // of both: the rider who keeps breaking up and the rider you are
+          // about to mute are the same row, and this is the half that says
+          // which of the two is happening.
+          if (user.quality case final quality?) ...[
+            const SizedBox(width: 2),
+            ConnectionQualityBars(quality: quality, size: 20),
+            const SizedBox(width: 2),
+          ],
           PopupMenuButton<String>(
             tooltip: 'Moderation',
             icon: const Icon(Icons.more_vert, size: 18),
@@ -464,11 +487,7 @@ class _UserRow extends StatelessWidget {
                 case 'register':
                   _registerThem(context, state);
                 case 'priority':
-                  state.setPriority(
-                    serverId,
-                    user,
-                    on: !user.prioritySpeaker,
-                  );
+                  state.setPriority(serverId, user, on: !user.prioritySpeaker);
                 case 'reset':
                   state.clearUserContent(serverId, user);
                 case 'details':
@@ -531,9 +550,7 @@ class _UserRow extends StatelessWidget {
                   value: 'priority',
                   enabled: unanswered || rights.muteDeafen,
                   child: Text(
-                    user.prioritySpeaker
-                        ? l.priorityRevoke
-                        : l.priorityGrant,
+                    user.prioritySpeaker ? l.priorityRevoke : l.priorityGrant,
                   ),
                 ),
                 PopupMenuItem(
@@ -574,10 +591,11 @@ class _UserRow extends StatelessWidget {
                 // Below a divider, and last: these come from a bot or a server
                 // plugin, this app has no idea what they do, and they must not
                 // sit where a rider expects the actions that are always there.
-                for (final action in state
-                    .runtimeFor(serverId)
-                    .contextActions
-                    .where((a) => a.forUser)) ...[
+                for (final action
+                    in state
+                        .runtimeFor(serverId)
+                        .contextActions
+                        .where((a) => a.forUser)) ...[
                   const PopupMenuDivider(),
                   PopupMenuItem(
                     value: 'server:${action.action}',
@@ -673,17 +691,17 @@ class _UserRow extends StatelessWidget {
                   ),
                 if (d.release.isEmpty && d.address.isEmpty) ...[
                   const SizedBox(height: 8),
-                  Text(l.userDetailsWithheld, style: const TextStyle(fontSize: 12)),
+                  Text(
+                    l.userDetailsWithheld,
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ],
               ],
             );
           },
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text(l.close),
-          ),
+          TextButton(onPressed: () => Navigator.pop(c), child: Text(l.close)),
         ],
       ),
     );
@@ -865,7 +883,6 @@ class _UserRow extends StatelessWidget {
   }
 }
 
-
 /// Making, renaming, describing and removing a channel.
 ///
 /// Each entry is offered only where the server says it is allowed, and the two
@@ -900,10 +917,8 @@ class _ChannelMenu extends StatelessWidget {
           case 'permissions':
             Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => ChannelAclScreen(
-                  serverId: serverId,
-                  channel: channel,
-                ),
+                builder: (_) =>
+                    ChannelAclScreen(serverId: serverId, channel: channel),
               ),
             );
           case 'remove':

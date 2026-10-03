@@ -11,7 +11,7 @@ import 'package:mumbleway/widgets/channel_panel.dart';
 /// A rider's own note and picture, as they reach the roster.
 ///
 /// The markup stripping is the core's job and is tested there; what is pinned
-/// here is that a note shows up at all without eating the row, and that a
+/// here is that a note shows up at all, written out under the name, and that a
 /// picture arriving and being removed both land — the removal being the half
 /// that is easy to forget, since an empty image is how the server says "gone".
 UiUser rider({String comment = '', int session = 7}) => UiUser(
@@ -50,27 +50,29 @@ void main() {
     ),
   );
 
-  testWidgets('a note is offered to be read, not spread across the row', (
+  testWidgets('a note is written under the name, not hidden behind an icon', (
     tester,
   ) async {
     final state = AppState();
     addTearDown(state.dispose);
     state.runtimes['srv'] = ServerRuntime()..status = ConnStatus.connected;
 
-    await tester.pumpWidget(host(state, rider(comment: 'On the A9 heading north')));
+    await tester.pumpWidget(
+      host(state, rider(comment: 'On the A9 heading north')),
+    );
     await tester.pump(const Duration(milliseconds: 50));
 
-    // The icon is there; the sentence is not competing with the name for room.
-    expect(find.byIcon(Icons.sticky_note_2_outlined), findsOneWidget);
-    expect(find.text('On the A9 heading north'), findsNothing);
-
-    // And it is readable on demand, which on a phone means a tap.
-    await tester.tap(find.byIcon(Icons.sticky_note_2_outlined));
-    await tester.pump(const Duration(milliseconds: 100));
+    // **It used to be an icon holding a tooltip**, which is a thing to
+    // discover rather than a thing to read. What riders put in a note is where
+    // they are and when they are leaving, and the next rider wants that
+    // without being told there is something to tap.
     expect(find.text('On the A9 heading north'), findsOneWidget);
+    expect(find.byIcon(Icons.sticky_note_2_outlined), findsNothing);
   });
 
-  testWidgets('a rider with no note has no icon', (tester) async {
+  testWidgets('a rider with no note has nothing under their name', (
+    tester,
+  ) async {
     final state = AppState();
     addTearDown(state.dispose);
     state.runtimes['srv'] = ServerRuntime()..status = ConnStatus.connected;
@@ -79,6 +81,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.byIcon(Icons.sticky_note_2_outlined), findsNothing);
+    expect(find.text('Anna'), findsOneWidget);
   });
 
   testWidgets('a picture is drawn, and taking it away takes it off the row', (

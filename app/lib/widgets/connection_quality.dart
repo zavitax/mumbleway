@@ -47,9 +47,17 @@ LinkGrade gradeFor(UiQuality q) {
 /// channel where everybody is fine has no colour in it and the one rider who is
 /// struggling is the only thing the eye finds.
 class ConnectionQualityBars extends StatelessWidget {
-  const ConnectionQualityBars({super.key, required this.quality});
+  const ConnectionQualityBars({
+    super.key,
+    required this.quality,
+    this.size = 14,
+  });
 
   final UiQuality quality;
+
+  /// Drawn at the size of whatever it stands beside, so it reads as one of the
+  /// row's controls rather than as a mark on the name.
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -68,8 +76,10 @@ class ConnectionQualityBars extends StatelessWidget {
       message: describeQuality(l, quality),
       child: Icon(
         icon,
-        size: 14,
-        color: grade == LinkGrade.good ? colour.withValues(alpha: 0.35) : colour,
+        size: size,
+        color: grade == LinkGrade.good
+            ? colour.withValues(alpha: 0.35)
+            : colour,
       ),
     );
   }

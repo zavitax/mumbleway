@@ -561,6 +561,89 @@ async fn a_rider_can_listen_to_a_channel_without_joining_it() {
     );
 }
 
+/// Asking about another rider answers, even when the server withholds the half
+/// that only an admin may see.
+///
+/// A server tells only an administrator the client version, the address and the
+/// certificate. This client used to report the answer *only* when one of those
+/// was in it, so an ordinary rider asking about somebody got a reply the client
+/// threw away and a dialog that said "Asking the server…" for ever. What is
+/// pinned here is that the answer arrives at all; what is in it is the server's
+/// business.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn asking_about_a_rider_answers_even_when_the_server_withholds_it() {
+    require_server!();
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live details").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut ids = Vec::new();
+    for name in ["asker", "asked-about"] {
+        let mut profile = ServerProfile::new("live", host.clone(), port, name);
+        profile.id = name.to_string();
+        let id = manager.add(profile, silent_bridge()).expect("added");
+        manager
+            .send(&id, mumbleway_core::session::SessionCommand::Connect)
+            .await
+            .expect("connect");
+        ids.push(id);
+    }
+
+    use mumbleway_core::session::SessionCommand as C;
+
+    let mut target = None;
+    let mut asked = false;
+    let mut answer = None;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        // Only what the asker sees; the other session is here to be asked about.
+        if event.server_id != "asker" {
+            continue;
+        }
+        match &event.event {
+            SessionEvent::Users(users) => {
+                target = users
+                    .iter()
+                    .find(|u| u.name == "asked-about")
+                    .map(|u| u.session);
+            }
+            SessionEvent::UserDetails(d) => {
+                println!(
+                    "details for {}: client {:?}, address {:?}, online {}s",
+                    d.session, d.release, d.address, d.online_secs
+                );
+                answer = Some(d.clone());
+                break;
+            }
+            _ => {}
+        }
+
+        if let (false, Some(who)) = (asked, target) {
+            asked = true;
+            manager
+                .send(&ids[0], C::RequestUserDetails(who))
+                .await
+                .expect("ask");
+        }
+    }
+    manager.shutdown_all().await;
+
+    let who = target.expect("the other rider never appeared in the roster");
+    let answer = answer.expect("no answer at all — the dialog would still be waiting");
+    assert_eq!(answer.session, who, "the answer was about somebody else");
+}
+
 /// The count beside a channel follows the rider into it.
 ///
 /// Occupancy is not sent by the server: it is counted from the roster, so it is

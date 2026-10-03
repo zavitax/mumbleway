@@ -15,7 +15,7 @@ pub mod types;
 pub use reconnect::{BackoffPolicy, ReconnectState};
 pub use types::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -121,6 +121,16 @@ struct LiveState {
     /// The last suppression state reported upward, so the announcement is
     /// made on a change rather than on every roster update.
     suppress_announced: Option<bool>,
+    /// Riders somebody has asked to see the details of.
+    ///
+    /// **Stats replies are not labelled.** The quality poll and an explicit
+    /// request come back as the same `UserStats` message, and a server tells
+    /// only an admin the client version, the address and the certificate — so
+    /// a reply to an ordinary rider's question carries none of the fields that
+    /// used to be the signal to report it. The question therefore has to be
+    /// remembered: without this, the dialog asked, the answer arrived, and it
+    /// sat on "Asking the server…" for ever.
+    details_wanted: HashSet<u32>,
     /// A channel whose access list should be read again, and whether the ban
     /// list should be.
     ///
@@ -180,6 +190,7 @@ impl LiveState {
             reread_bans: false,
             limits: ServerLimits::default(),
             suppress_announced: None,
+            details_wanted: HashSet::new(),
         }
     }
 
@@ -1474,7 +1485,10 @@ impl Session {
                     // `RequestUserDetails` rather than to the quality poll.
                     // Reported separately: the poll runs every few seconds and
                     // this is a thing somebody asked to see.
-                    if m.version.is_some() || m.address.is_some() {
+                    if state.details_wanted.remove(&session)
+                        || m.version.is_some()
+                        || m.address.is_some()
+                    {
                         let v = m.version.clone().unwrap_or_default();
                         self.emit(SessionEvent::UserDetails(UserDetails {
                             session,
@@ -2024,6 +2038,11 @@ impl Session {
                 // Without `stats_only`, so the server includes the client
                 // version, the address and the certificate — if it is willing
                 // to tell this rider, which it is only for an admin.
+                //
+                // Noted as asked, so the reply is reported even when it says
+                // none of those things: "the server did not say" is an answer
+                // and a spinner is not.
+                state.details_wanted.insert(session);
                 let m = mumble::UserStats {
                     session: Some(session),
                     stats_only: Some(false),

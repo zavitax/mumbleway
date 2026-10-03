@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/diagnostics_panel.dart';
 import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
+import '../widgets/my_avatar.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/review_request.dart';
 import '../widgets/server_card.dart';
@@ -130,6 +131,16 @@ class HomeScreen extends StatelessWidget {
             onSelected: (v) async {
               final messenger = ScaffoldMessenger.of(context);
               switch (v) {
+                case 'avatar':
+                  final e = await state.pickAvatar();
+                  if (e != null) {
+                    showError(
+                      messenger,
+                      e == 'unreadable' ? l.avatarUnreadable : e,
+                    );
+                  }
+                case 'avatarRemove':
+                  await state.clearAvatar();
                 case 'export':
                   final e = await state.exportServersToFile();
                   if (e != null) {
@@ -155,6 +166,40 @@ class HomeScreen extends StatelessWidget {
               }
             },
             itemBuilder: (_) => [
+              // The rider's own picture, and the way to change it: one tap on
+              // the picture itself, which is the thing being changed.
+              //
+              // It lives here rather than in settings because it belongs to the
+              // rider rather than to any one server or any one setting, and
+              // because a picture is something to *see*: a row of prose about
+              // it on a page of sliders was both easy to miss and the one row
+              // there whose control was a picture rather than a value.
+              PopupMenuItem(
+                value: 'avatar',
+                child: Tooltip(
+                  message: l.avatarBody,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: MyAvatar(image: state.myAvatar),
+                    title: Text(l.avatar),
+                  ),
+                ),
+              ),
+              // Only when there is one to take down. Without a picture the mark
+              // stands in for it, and offering to remove the mark would be
+              // offering to remove nothing.
+              if (state.myAvatar != null)
+                PopupMenuItem(
+                  value: 'avatarRemove',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.hide_image_outlined),
+                    title: Text(l.avatarRemove),
+                  ),
+                ),
+              const PopupMenuDivider(),
               PopupMenuItem(
                 value: 'export',
                 child: ListTile(

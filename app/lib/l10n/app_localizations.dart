@@ -3193,12 +3193,6 @@ abstract class L {
   /// **'Shown beside your name to everyone on every server you join. Kept on this device and sent to each server as it connects; it is scaled down before it goes anywhere.'**
   String get avatarBody;
 
-  /// No description provided for @avatarChoose.
-  ///
-  /// In en, this message translates to:
-  /// **'Choose'**
-  String get avatarChoose;
-
   /// No description provided for @avatarRemove.
   ///
   /// In en, this message translates to:

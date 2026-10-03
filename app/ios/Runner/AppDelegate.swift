@@ -104,6 +104,16 @@ import UIKit
           call.arguments as? [String: String] ?? [:])
         result(true)
 
+      case "avatars":
+        // The riders' pictures, by key. Sent whole whenever the set changes —
+        // somebody joins, leaves or picks a new picture — rather than with
+        // every frame, which would put kilobytes through the channel ten times
+        // a second.
+        let pictures = (call.arguments as? [String: FlutterStandardTypedData] ?? [:])
+          .mapValues { $0.data }
+        (self.pip as? PipController)?.setAvatars(pictures)
+        result(true)
+
       case "update":
         guard let arguments = call.arguments as? [String: Any] else {
           result(false)
@@ -113,7 +123,9 @@ import UIKit
         snapshot.speakers = (arguments["speakers"] as? [[String: Any]] ?? []).map {
           Speaker(
             name: $0["name"] as? String ?? "",
-            level: $0["level"] as? Double ?? 0)
+            level: $0["level"] as? Double ?? 0,
+            note: $0["note"] as? String ?? "",
+            avatar: $0["avatar"] as? String ?? "")
         }
         snapshot.transmitting = arguments["transmitting"] as? Bool ?? false
         snapshot.connected = arguments["connected"] as? Bool ?? false

@@ -12,6 +12,12 @@ struct Speaker {
   /// Already normalised to 0...1 by the Dart side, on the same scale as every
   /// other meter in the app.
   var level: Double
+  /// What they wrote about themselves — usually where they are and when they
+  /// are leaving, which is what a rider glancing at this window wants.
+  var note: String = ""
+  /// A key into the pictures handed over separately, not a picture: an update
+  /// runs ten times a second and a picture is kilobytes.
+  var avatar: String = ""
 }
 
 struct CallSnapshot {
@@ -105,6 +111,19 @@ final class PipController: NSObject {
 
   func setPhrases(_ next: [String: String]) {
     phrases = next
+    render()
+  }
+
+  /// The riders' pictures, by the key their speaker entry names.
+  ///
+  /// Decoded once here rather than per frame: this window redraws ten times a
+  /// second. The whole set arrives at once and replaces what was held, so what
+  /// is kept is exactly what is in earshot and there is no pruning rule on this
+  /// side to get wrong.
+  private var avatars: [String: UIImage] = [:]
+
+  func setAvatars(_ pictures: [String: Data]) {
+    avatars = pictures.compactMapValues { UIImage(data: $0) }
     render()
   }
 
@@ -979,18 +998,40 @@ final class PipController: NSObject {
     let visible = snapshot.speakers.prefix(4)
     let meterWidth = (inset.width * 0.25).rounded()
     let gap: CGFloat = 10
-    let nameWidth = inset.width - meterWidth - gap
+    // A column for the face, kept whether or not there is one to draw, so the
+    // names line up down the list rather than stepping in and out as riders
+    // with and without a picture take turns to speak.
+    let faceSize: CGFloat = 22
+    let faceGap: CGFloat = 8
+    let textLeft = inset.minX + faceSize + faceGap
+    let nameWidth = inset.maxX - textLeft - meterWidth - gap
     let size: CGFloat = 15
     let font = UIFont.systemFont(ofSize: size, weight: .semibold)
 
     var y: CGFloat = 60
     for speaker in visible {
+      drawFace(
+        speaker,
+        in: CGRect(
+          x: inset.minX, y: y + (font.lineHeight - faceSize) / 2,
+          width: faceSize, height: faceSize))
       drawText(
         speaker.name,
-        in: CGRect(x: inset.minX, y: y, width: nameWidth, height: font.lineHeight),
+        in: CGRect(x: textLeft, y: y, width: nameWidth, height: font.lineHeight),
         size: size, weight: .semibold,
         colour: UIColor(red: 0.55, green: 0.83, blue: 1.0, alpha: 1),
         alignment: .left)
+      // Under the name and in the quieter ink: who is talking first, where
+      // they are second.
+      if !speaker.note.isEmpty {
+        drawText(
+          speaker.note,
+          in: CGRect(
+            x: textLeft, y: y + font.lineHeight - 1,
+            width: inset.maxX - textLeft, height: 14),
+          size: 11, weight: .regular, colour: UIColor(white: 1, alpha: 0.55),
+          alignment: .left)
+      }
 
       let height: CGFloat = 8
       let track = CGRect(
@@ -1019,7 +1060,9 @@ final class PipController: NSObject {
           cornerRadius: height / 2
         ).fill()
       }
-      y += 34
+      // Taller when there is a note under the name, so the next rider's row
+      // does not sit on it.
+      y += speaker.note.isEmpty ? 34 : 48
     }
 
     if snapshot.speakers.count > visible.count {
@@ -1028,6 +1071,42 @@ final class PipController: NSObject {
         in: CGRect(x: inset.minX, y: y + 2, width: inset.width, height: 16),
         size: 11, weight: .medium, colour: UIColor(white: 1, alpha: 0.45),
         alignment: .left)
+    }
+  }
+
+  /// The rider's picture, round, where a person icon would be.
+  ///
+  /// Without one, their initial on a dim disc: an empty gap would let the eye
+  /// lose which name belongs to which row, and a drawing of a person says no
+  /// more than the name already beside it.
+  private func drawFace(_ speaker: Speaker, in rect: CGRect) {
+    guard let context = UIGraphicsGetCurrentContext() else { return }
+    let circle = UIBezierPath(ovalIn: rect)
+    if let picture = avatars[speaker.avatar] {
+      context.saveGState()
+      circle.addClip()
+      // Filled rather than fitted, so a picture that is not square is cropped
+      // to the circle instead of being squashed into it.
+      let scale = max(rect.width / picture.size.width, rect.height / picture.size.height)
+      let drawn = CGSize(
+        width: picture.size.width * scale, height: picture.size.height * scale)
+      picture.draw(
+        in: CGRect(
+          x: rect.midX - drawn.width / 2, y: rect.midY - drawn.height / 2,
+          width: drawn.width, height: drawn.height))
+      context.restoreGState()
+      return
+    }
+    UIColor(white: 1, alpha: 0.15).setFill()
+    circle.fill()
+    let initial = String(speaker.name.trimmingCharacters(in: .whitespaces).prefix(1))
+      .uppercased()
+    if !initial.isEmpty {
+      drawText(
+        initial,
+        in: CGRect(x: rect.minX, y: rect.midY - 8, width: rect.width, height: 16),
+        size: 12, weight: .semibold, colour: UIColor(white: 1, alpha: 0.6),
+        alignment: .center)
     }
   }
 

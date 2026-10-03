@@ -180,6 +180,22 @@ class OverlayBridge {
     }
   }
 
+  /// Hands the window the pictures it will draw, by key.
+  ///
+  /// **Separate from [update] because they are large and still.** An update
+  /// runs ten times a second and a picture is a few kilobytes; sending them
+  /// together would put a megabyte a minute through a channel built for a
+  /// handful of numbers. The platform side keeps them by key and the speakers
+  /// in each update name the key they want, so a picture crosses once.
+  Future<void> setAvatars(Map<String, Uint8List> pictures) async {
+    if (!isSupported) return;
+    try {
+      await _channel.invokeMethod<void>('avatars', pictures);
+    } catch (_) {
+      // An older platform side, or one that draws no pictures.
+    }
+  }
+
   Future<void> hide() async {
     if (!isSupported) return;
     try {
@@ -204,7 +220,8 @@ class OverlayBridge {
   /// the caller knows when something actually changed.
   Future<void> update({
     required List<String> names,
-    required List<({String name, double levelDb})> speakers,
+    required List<({String name, double levelDb, String note, String avatar})>
+    speakers,
     required bool transmitting,
     required int micMode,
     required bool live,
@@ -236,7 +253,16 @@ class OverlayBridge {
         // helmet has gone quiet.
         'speakers': [
           for (final s in speakers)
-            {'name': s.name, 'level': meterFraction(s.levelDb)},
+            {
+              'name': s.name,
+              'level': meterFraction(s.levelDb),
+              // What they wrote about themselves, which on this screen is
+              // usually where they are and when they are leaving — the thing a
+              // rider wants without taking their eyes anywhere else.
+              'note': s.note,
+              // A key, not the picture: see [setAvatars].
+              'avatar': s.avatar,
+            },
         ],
         'transmitting': transmitting,
         'micMode': micMode,

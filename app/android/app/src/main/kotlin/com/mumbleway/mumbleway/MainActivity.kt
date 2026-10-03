@@ -344,6 +344,17 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
 
+                // The riders' pictures, by key. Sent whole whenever the set
+                // changes — somebody joins, leaves or picks a new picture —
+                // rather than with every update, which runs ten times a second
+                // and would put kilobytes through the channel each time.
+                "avatars" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val map = call.arguments as? Map<String, ByteArray> ?: emptyMap()
+                    OverlayService.setAvatars(map)
+                    result.success(null)
+                }
+
                 "update" -> {
                     // Speakers arrive with their levels already on the app's
                     // shared 0..1 scale, so the window cannot draw a different
@@ -353,6 +364,8 @@ class MainActivity : FlutterActivity() {
                         OverlaySpeaker(
                             name = it["name"] as? String ?: "",
                             level = ((it["level"] as? Double) ?: 0.0).toFloat(),
+                            note = it["note"] as? String ?: "",
+                            avatar = it["avatar"] as? String ?: "",
                         )
                     }
                     OverlayService.updateState(

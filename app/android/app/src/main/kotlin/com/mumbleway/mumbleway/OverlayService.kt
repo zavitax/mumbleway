@@ -32,10 +32,27 @@ import android.widget.TextView
 import android.graphics.Typeface
 import kotlin.math.PI
 import kotlin.math.abs
+import android.graphics.Matrix
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.Shader
 import kotlin.math.cos
 
-/** Somebody currently being heard, with their level on the shared 0..1 scale. */
-data class OverlaySpeaker(val name: String, val level: Float)
+/**
+ * Somebody currently being heard, with their level on the shared 0..1 scale.
+ *
+ * [note] is what they wrote about themselves, which on this screen is usually
+ * where they are and when they are leaving. [avatar] is a key into the pictures
+ * the Dart side has handed over, not a picture: an update runs ten times a
+ * second and a picture is kilobytes.
+ */
+data class OverlaySpeaker(
+    val name: String,
+    val level: Float,
+    val note: String = "",
+    val avatar: String = "",
+)
 
 /**
  * Everything the window draws, in one piece.
@@ -215,6 +232,32 @@ class OverlayService : Service() {
             instance?.callView?.postInvalidate()
             instance?.onAirView?.postInvalidate()
         }
+
+        /**
+         * The riders' pictures, by the key their speaker entry names.
+         *
+         * Decoded once here rather than per frame: this window redraws ten
+         * times a second, and decoding a PNG that often would cost more than
+         * everything else it draws put together. The whole set arrives at once
+         * and replaces what was held, so what is kept is exactly what is in
+         * earshot — no pruning rule on this side to get wrong.
+         */
+        @Volatile
+        private var avatars: Map<String, Bitmap> = emptyMap()
+
+        fun setAvatars(pictures: Map<String, ByteArray>) {
+            avatars = pictures.mapNotNull { (key, bytes) ->
+                val bitmap = try {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } catch (_: Throwable) {
+                    null
+                }
+                if (bitmap == null) null else key to bitmap
+            }.toMap()
+            instance?.callView?.postInvalidate()
+        }
+
+        fun avatar(key: String): Bitmap? = if (key.isEmpty()) null else avatars[key]
 
         /** Mixes two opaque colours. Channel-wise and in sRGB, which is what
          *  the eye reads off a small glowing disc. */
@@ -788,6 +831,10 @@ class OverlayService : Service() {
         var state = OverlayState()
 
         protected val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        /** Kept rather than made per frame: this redraws ten times a second. */
+        protected val facePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        protected val faceMatrix = Matrix()
         protected val text = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
 
         protected fun typeface(bold: Boolean) =
@@ -1108,17 +1155,35 @@ class OverlayService : Service() {
             val shown = minOf(state.speakers.size, 4)
             val meterWidth = (right - left) * 0.25f
             val gap = dp(8).toFloat()
-            val nameWidth = right - left - meterWidth - gap
+            // A column for the face, kept whether or not there is one to draw,
+            // so names line up down the list rather than stepping in and out
+            // as riders with and without a picture take turns to speak.
+            val faceSize = dp(18).toFloat()
+            val faceGap = dp(7).toFloat()
+            val textLeft = left + faceSize + faceGap
+            val nameWidth = right - textLeft - meterWidth - gap
 
             var y = dp(42).toFloat()
             for (i in 0 until shown) {
                 val speaker = state.speakers[i]
                 text.textSize = dp(12).toFloat()
                 text.typeface = typeface(true)
+                drawFace(canvas, speaker, left, y, faceSize)
                 label(
-                    canvas, ellipsise(speaker.name, nameWidth), left, y, 12,
+                    canvas, ellipsise(speaker.name, nameWidth), textLeft, y, 12,
                     Color.argb(255, 140, 212, 255), bold = true,
                 )
+                // What they wrote about themselves, under their name and in the
+                // quieter ink: a rider glancing at this window wants who is
+                // talking first and where they are second.
+                if (speaker.note.isNotEmpty()) {
+                    text.textSize = dp(9).toFloat()
+                    text.typeface = typeface(false)
+                    label(
+                        canvas, ellipsise(speaker.note, right - textLeft),
+                        textLeft, y + dp(11), 9, Color.argb(140, 255, 255, 255),
+                    )
+                }
 
                 val barHeight = dp(6).toFloat()
                 // `y` is the baseline, not the top: Canvas.drawText measures
@@ -1149,13 +1214,66 @@ class OverlayService : Service() {
                     )
                     canvas.drawRoundRect(rect, r, r, paint)
                 }
-                y += dp(24)
+                // Taller when there is a note under the name, so the next
+                // rider's row does not sit on it.
+                y += if (speaker.note.isEmpty()) dp(24) else dp(34)
             }
 
             if (state.speakers.size > shown && state.moreSpeakers.isNotEmpty()) {
                 label(
                     canvas, state.moreSpeakers, left, y, 10,
                     Color.argb(115, 255, 255, 255),
+                )
+            }
+        }
+
+        /**
+         * The rider's picture, round, where a person icon would be.
+         *
+         * Without one, their initial on a dim disc: an empty gap would let the
+         * eye lose which name belongs to which row, and a drawing of a person
+         * says no more than the name beside it already does.
+         */
+        private fun drawFace(
+            canvas: Canvas,
+            speaker: OverlaySpeaker,
+            left: Float,
+            baseline: Float,
+            size: Float,
+        ) {
+            // Centred on the name's own middle rather than on its baseline,
+            // which Canvas measures text from and which sits below the glyphs.
+            text.textSize = dp(12).toFloat()
+            val centreY = baseline + (text.ascent() + text.descent()) / 2f
+            val radius = size / 2f
+            val cx = left + radius
+            val bitmap = avatar(speaker.avatar)
+            if (bitmap != null) {
+                val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                // Scaled to the circle and centred, so a picture that is not
+                // square is cropped rather than squashed.
+                val scale = size / minOf(bitmap.width, bitmap.height).toFloat()
+                faceMatrix.reset()
+                faceMatrix.setScale(scale, scale)
+                faceMatrix.postTranslate(
+                    cx - bitmap.width * scale / 2f,
+                    centreY - bitmap.height * scale / 2f,
+                )
+                shader.setLocalMatrix(faceMatrix)
+                facePaint.shader = shader
+                canvas.drawCircle(cx, centreY, radius, facePaint)
+                facePaint.shader = null
+                return
+            }
+            paint.color = Color.argb(38, 255, 255, 255)
+            canvas.drawCircle(cx, centreY, radius, paint)
+            val initial = speaker.name.trim().take(1).uppercase()
+            if (initial.isNotEmpty()) {
+                label(
+                    canvas, initial, cx,
+                    centreY - (text.ascent() + text.descent()) / 2f,
+                    10, Color.argb(150, 255, 255, 255), bold = true,
+                    align = Paint.Align.CENTER,
                 )
             }
         }

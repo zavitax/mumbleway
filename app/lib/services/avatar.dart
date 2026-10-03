@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
@@ -72,6 +73,32 @@ class Avatar {
   static Future<File> _file() async {
     final dir = await getApplicationSupportDirectory();
     return File('${dir.path}/avatar.png');
+  }
+
+  /// The app's own mark, at the size a picture is sent in.
+  ///
+  /// **What a rider with no picture of their own is published as.** Mumble has
+  /// no notion of a default, so a rider who sets nothing has no texture at all
+  /// and every other client — including ones that are not this app — draws
+  /// whatever it draws for nobody. Sending the mark means they appear as
+  /// *somebody using MumbleWay*, which is true and is the thing worth saying.
+  ///
+  /// Prepared once and kept: the asset is a 1024-pixel launcher icon and this
+  /// is the same squaring and scaling any chosen picture gets, so it costs one
+  /// decode per run rather than one per connection.
+  static Uint8List? _mark;
+
+  static Future<Uint8List?> mark() async {
+    if (_mark != null) return _mark;
+    try {
+      final data = await rootBundle.load('assets/icon/mumbleway.png');
+      _mark = prepare(data.buffer.asUint8List());
+    } catch (_) {
+      // Nothing is sent rather than something broken; a picture is not worth
+      // failing a connection over.
+      _mark = null;
+    }
+    return _mark;
   }
 
   /// The rider's picture, or null if they have none.

@@ -48,6 +48,26 @@ void main() {
     expect(Avatar.prepare(Uint8List(0)), isNull);
   });
 
+  testWidgets("a rider with no picture is published as the app's mark", (
+    t,
+  ) async {
+    // **Mumble has no notion of a default.** A rider who sets nothing has no
+    // texture at all, and every other client — including ones that are not
+    // this app — draws whatever it draws for nobody. The mark says "somebody
+    // using MumbleWay", which is true and is worth saying.
+    final mark = await Avatar.mark();
+    expect(mark, isNotNull);
+
+    final decoded = img.decodeImage(mark!)!;
+    expect(decoded.width, Avatar.maxEdge, reason: "sent at a picture's size");
+    expect(decoded.height, Avatar.maxEdge);
+    expect(mark.length, lessThan(64 * 1024));
+
+    // Prepared once: the asset is a 1024-pixel launcher icon and this is the
+    // same squaring and scaling a chosen picture gets.
+    expect(identical(await Avatar.mark(), mark), isTrue);
+  });
+
   test('an enormous file is refused before it is decoded', () {
     // Decoding a 50 MB raw photograph on a phone to then throw away 99% of it
     // is a stall the rider did not ask for.

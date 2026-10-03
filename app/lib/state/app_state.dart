@@ -2444,11 +2444,24 @@ class AppState extends ChangeNotifier {
   /// limit, or no permission — must not produce an error a rider did not ask
   /// for while they are riding.
   void _restoreAvatar(String id) {
-    final image = myAvatar;
+    unawaited(_publishAvatar(id));
+  }
+
+  /// Sends what this rider should appear as on one server.
+  ///
+  /// Their own picture when they have chosen one, and the app's mark when they
+  /// have not: Mumble has no default, so the alternative is no texture at all
+  /// and a rider who looks like nobody in every client that draws one.
+  Future<void> _publishAvatar(String id) async {
+    final image = myAvatar ?? await Avatar.mark();
     if (image == null || image.isEmpty) return;
     try {
-      unawaited(setAvatar(serverId: id, image: image).catchError((_) {}));
-    } catch (_) {}
+      await setAvatar(serverId: id, image: image);
+    } catch (_) {
+      // Silent and best-effort: a server that refuses the picture — too large
+      // for its limit, or no permission — must not produce an error a rider
+      // did not ask for while they are riding.
+    }
   }
 
   /// Chooses a new picture for the rider, from a file on this device.
@@ -2480,18 +2493,61 @@ class AppState extends ChangeNotifier {
   }
 
   /// Takes the rider's picture down, here and on every server they are on.
+  ///
+  /// "Down" means back to the app's mark rather than to nothing: that is what
+  /// a rider without a picture of their own is published as, so removing one
+  /// has to leave the same thing behind as never having set one.
   Future<void> clearAvatar() async {
     await Avatar.save(Uint8List(0));
     myAvatar = null;
-    for (final entry in runtimes.entries) {
-      if (!entry.value.isLive) continue;
-      try {
-        unawaited(
-          setAvatar(serverId: entry.key, image: Uint8List(0)).catchError((_) {}),
-        );
-      } catch (_) {}
-    }
+    _pushAvatarEverywhere();
     notifyListeners();
+  }
+
+  /// Pictures already handed to the floating window, by key.
+  ///
+  /// Keyed by content, so a rider changing their picture makes a new key and
+  /// the window is told again; an entry is dropped once nobody in earshot
+  /// wants it, because a window holding every picture of everybody who has
+  /// spoken on a long ride is a leak.
+  final Map<String, Uint8List> _overlayAvatars = {};
+
+  /// The key the floating window should draw for this rider, or '' for none.
+  String _overlayAvatarKey(ServerRuntime rt, int session) {
+    final image = rt.avatars[session];
+    if (image == null || image.isEmpty) return '';
+    // Length and a sample rather than a digest: this runs for every speaker
+    // ten times a second, and all it has to do is change when the bytes do.
+    var sum = image.length;
+    for (var i = 0; i < image.length; i += 37) {
+      sum = (sum * 31 + image[i]) & 0x7FFFFFFF;
+    }
+    return '$session-${image.length}-$sum';
+  }
+
+  /// Hands the window any picture it has not been given yet.
+  void _sendOverlayAvatars() {
+    final wanted = <String, Uint8List>{};
+    for (final rt in runtimes.values) {
+      if (!rt.isLive) continue;
+      for (final u in rt.channelPeers) {
+        final image = rt.avatars[u.session];
+        if (image == null || image.isEmpty) continue;
+        wanted[_overlayAvatarKey(rt, u.session)] = image;
+      }
+    }
+    // The whole set when it changes, rather than the new ones alone: the
+    // window then holds exactly what is in earshot and nothing else, with no
+    // pruning rule of its own to get wrong. It changes when somebody joins,
+    // leaves or picks a new picture — not ten times a second.
+    if (wanted.length == _overlayAvatars.length &&
+        wanted.keys.every(_overlayAvatars.containsKey)) {
+      return;
+    }
+    _overlayAvatars
+      ..clear()
+      ..addAll(wanted);
+    unawaited(overlay.setAvatars(wanted));
   }
 
   void _pushAvatarEverywhere() {
@@ -3761,8 +3817,14 @@ class AppState extends ChangeNotifier {
         if (rt.isLive)
           for (final u in rt.channelPeers)
             if (rt.speakerLevels[u.session] case final db?)
-              (name: u.name, levelDb: db),
+              (
+                name: u.name,
+                levelDb: db,
+                note: u.comment,
+                avatar: _overlayAvatarKey(rt, u.session),
+              ),
     ];
+    _sendOverlayAvatars();
     final connectedCount = runtimes.values.where((r) => r.isLive).length;
     final reconnectingCount = runtimes.values
         .where((r) => r.status == ConnStatus.reconnecting || r.isBusy)
@@ -3832,7 +3894,7 @@ class AppState extends ChangeNotifier {
     // rounded to whole decibels before being compared. Without that the
     // signature always differs and the check stops filtering anything.
     final signature =
-        '${speakers.map((s) => '${s.name}:${s.levelDb.round()}').join(',')}'
+        '${speakers.map((s) => '${s.name}:${s.levelDb.round()}:${s.note}:${s.avatar}').join(',')}'
         '|$connectionText|$othersOnline|$_transmitting|$live|$micModeCode|$connectedCount|$reconnectingCount|$failedCount|$_muted'
         '|$_deafened|$_speaking|${_inputLevelDb.round()}'
         '|${_thresholdDb.round()}|${_noiseFloorDb.round()}';

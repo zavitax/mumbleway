@@ -120,6 +120,30 @@ void main() {
     expect(written.top, greaterThanOrEqualTo(name.bottom - 1));
   });
 
+  testWidgets('a long note is cut at two lines and offered in full', (
+    t,
+  ) async {
+    // A server caps a note at 512 characters, and a rider who writes all of
+    // them would otherwise own the roster — every other row pushed off a phone
+    // screen by one person's paragraph.
+    final long = List.filled(40, 'Петля на М4 до вечера').join(', ');
+    final state = connected();
+    await t.pumpWidget(host(state, rider(comment: long)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    final written = t.widget<Text>(find.text(long));
+    expect(written.maxLines, 2);
+    expect(written.overflow, TextOverflow.ellipsis);
+
+    // And the whole of it behind a press, which is what a phone has instead of
+    // a hover.
+    final tip = t.widget<Tooltip>(
+      find.ancestor(of: find.text(long), matching: find.byType(Tooltip)),
+    );
+    expect(tip.message, long);
+    expect(tip.triggerMode, TooltipTriggerMode.tap);
+  });
+
   testWidgets('the connection sits between the speaker and the menu', (
     t,
   ) async {

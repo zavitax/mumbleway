@@ -409,12 +409,24 @@ class _UserRow extends StatelessWidget {
                 if (user.comment.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 1),
-                    child: Text(
-                      user.comment,
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.25,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    // Two lines, then an ellipsis — and the whole of it behind
+                    // a press. A note is capped at 512 characters by the
+                    // server, and a rider who writes all of them would
+                    // otherwise own the roster: every other row would be
+                    // pushed off a phone screen by one person's paragraph.
+                    child: Tooltip(
+                      message: user.comment,
+                      triggerMode: TooltipTriggerMode.tap,
+                      showDuration: const Duration(seconds: 8),
+                      child: Text(
+                        user.comment,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.25,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),

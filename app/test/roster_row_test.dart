@@ -88,16 +88,35 @@ void main() {
     expect(find.byIcon(Icons.person_outline), findsNothing);
   });
 
-  testWidgets('but the status still rides on it when it says something', (
+  testWidgets('the state is beside the name, not hidden on the picture', (
     t,
   ) async {
+    // **It used to ride in the corner of the picture.** At eleven pixels
+    // behind a face it was something to find rather than something to see,
+    // which is the opposite of what a roster is for.
     final state = connected(avatar: picture());
     await t.pumpWidget(host(state, rider(muted: true)));
     await t.pump(const Duration(milliseconds: 50));
 
     expect(find.byType(Image), findsOneWidget);
-    // Who is muted is what the row is for, and that is never given up.
     expect(find.byIcon(Icons.mic_off), findsOneWidget);
+
+    final name = t.getRect(find.text('Anna'));
+    final glyph = t.getRect(find.byIcon(Icons.mic_off));
+    expect(glyph.left, greaterThan(name.right));
+  });
+
+  testWidgets('a rider with nothing to say about them carries no glyph', (
+    t,
+  ) async {
+    // A mark against every quiet rider is a mark nobody reads.
+    final state = connected();
+    await t.pumpWidget(host(state, rider()));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.mic_off), findsNothing);
+    expect(find.byIcon(Icons.volume_off), findsNothing);
+    expect(find.byIcon(Icons.headset_off), findsNothing);
   });
 
   testWidgets('without a picture the person icon is the row', (t) async {

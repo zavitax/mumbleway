@@ -138,10 +138,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.byIcon(Icons.voice_over_off), findsOneWidget);
-    expect(
-      find.byIcon(Icons.person_outline),
-      findsNothing,
-      reason: 'that is the glyph for somebody who simply is not talking',
-    );
+    // **Beside the name, not in place of the rider.** The leading glyph is who
+    // this is — their picture, or the person mark when they have none — and
+    // the state rides after the name where the eye already is. It used to
+    // replace the person mark, which is why this once asserted the opposite.
+    expect(find.byIcon(Icons.person_outline), findsOneWidget);
+    final name = tester.getRect(find.text('Anna'));
+    final glyph = tester.getRect(find.byIcon(Icons.voice_over_off));
+    expect(glyph.left, greaterThan(name.right));
   });
 }

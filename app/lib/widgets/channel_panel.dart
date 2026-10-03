@@ -332,57 +332,42 @@ class _UserRow extends StatelessWidget {
 
   Widget _row(BuildContext context, L l, AppState state) {
     final speaking = state.runtimeFor(serverId).isSpeaking(user.session);
-    final (icon, color) = _statusVisual(user, speaking: speaking);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Held to read, on the glyph that raises the question: the row says
-          // somebody cannot be heard, and this says who decided that.
-          _StatusTooltip(
-            message: statusWords(l, user),
-            child:
-                // The picture where the person icon would be, when they have one.
-                //
-                // The status icon is tucked into its corner **only when it says
-                // something**: who is talking and who is muted is what the row is
-                // for, and that is never given up for decoration — but the idle
-                // glyph is a drawing of a person, and a drawing of a person in the
-                // corner of a photograph of one says nothing at all.
-                switch (state.runtimeFor(serverId).avatars[user.session]) {
-                  final Uint8List image? => SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        ClipOval(
-                          child: Image.memory(
-                            image,
-                            width: 18,
-                            height: 18,
-                            fit: BoxFit.cover,
-                            gaplessPlayback: true,
-                            // A picture from a stranger's server that will not
-                            // decode is not a reason to lose the row.
-                            errorBuilder: (_, _, _) =>
-                                Icon(icon, size: 18, color: color),
-                          ),
-                        ),
-                        if (icon != Icons.person_outline)
-                          Positioned(
-                            right: -3,
-                            bottom: -3,
-                            child: Icon(icon, size: 11, color: color),
-                          ),
-                      ],
-                    ),
-                  ),
-                  _ => Icon(icon, size: 18, color: color),
-                },
-          ),
+          // Who this is, and nothing else.
+          //
+          // **The state used to ride in the corner of this.** At eleven pixels
+          // behind a face it was something to find rather than something to
+          // see, which is the opposite of what a roster is for; it is beside
+          // the name now, where the eye already is. Their picture when they
+          // have one, and the plain person glyph when they have not.
+          switch (state.runtimeFor(serverId).avatars[user.session]) {
+            final Uint8List image? => ClipOval(
+              child: Image.memory(
+                image,
+                width: 18,
+                height: 18,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                // A picture from a stranger's server that will not decode is
+                // not a reason to lose the row.
+                errorBuilder: (_, _, _) => const Icon(
+                  Icons.person_outline,
+                  size: 18,
+                  color: StatusColors.idle,
+                ),
+              ),
+            ),
+            _ => const Icon(
+              Icons.person_outline,
+              size: 18,
+              color: StatusColors.idle,
+            ),
+          },
           const SizedBox(width: 10),
           Expanded(
             // The badge rides directly after the name rather than at the end
@@ -410,6 +395,19 @@ class _UserRow extends StatelessWidget {
                     if (user.mumblewayVersion case final version?) ...[
                       const SizedBox(width: 6),
                       MumblewayBadge(version: version),
+                    ],
+                    // Why this rider cannot be heard, or cannot hear — after
+                    // their name and their badge, at the size of both, and
+                    // held to read for who decided it. Nothing at all when
+                    // there is nothing to say: a glyph on every row is a glyph
+                    // nobody reads.
+                    if (_statusGlyph(user)
+                        case (final glyph, final colour)?) ...[
+                      const SizedBox(width: 6),
+                      _StatusTooltip(
+                        message: statusWords(l, user),
+                        child: Icon(glyph, size: 15, color: colour),
+                      ),
                     ],
                     // Why the channel goes quiet when this one person starts
                     // talking. Nothing else in the roster would say so.
@@ -925,28 +923,33 @@ class _UserRow extends StatelessWidget {
     return '';
   }
 
-  static (IconData, Color) _statusVisual(UiUser u, {required bool speaking}) {
-    // The same glyph the toolbar uses for the same state. Two icons for one
-    // condition is how a roster ends up meaning something different from the
-    // button that caused it.
-    //
-    // **A rider who turned their own sound off gets a glyph of their own.** It
-    // is the one state here that is about *them* hearing rather than about
-    // being heard, and talking to somebody who cannot hear you is the mistake
-    // this row can save a rider from. The colour stays red: that means no
-    // audio is crossing, whoever decided it, and this vocabulary is read at a
-    // glance through a visor.
+  /// The glyph for a rider who cannot be heard or cannot hear, or null.
+  ///
+  /// The same glyph the toolbar uses for the same state: two icons for one
+  /// condition is how a roster ends up meaning something different from the
+  /// button that caused it. **A rider who turned their own sound off gets one
+  /// of their own** — it is the only state here about *them* hearing rather
+  /// than being heard, and talking to somebody who cannot hear a word of it is
+  /// the mistake this row can save a rider from. Suppression is separate again,
+  /// having a separate cause and a separate cure: that one is fixed by moving,
+  /// not by a button.
+  ///
+  /// The colour is the same red throughout: it means no audio is crossing,
+  /// whoever decided it, and that vocabulary is read at a glance through a
+  /// visor. Which of them decided it is in [statusWords].
+  ///
+  /// Silence and speech are not in it: the name itself turns and thickens when
+  /// somebody talks, and a mark against every quiet rider would be a mark
+  /// nobody reads.
+  static (IconData, Color)? _statusGlyph(UiUser u) {
     if (u.selfDeafened) return (Icons.headset_off, StatusColors.failed);
     if (u.deafened) return (Icons.volume_off, StatusColors.failed);
     if (u.localMute) return (Icons.volume_off, StatusColors.failed);
     if (u.muted) return (Icons.mic_off, StatusColors.failed);
-    // Silenced by the channel rather than by anybody's decision. A separate
-    // glyph because it has a separate cause and a separate cure: this one is
-    // fixed by moving, not by a button.
     if (u.suppressed) return (Icons.voice_over_off, StatusColors.failed);
-    if (speaking) return (Icons.volume_up, StatusColors.talking);
-    return (Icons.person_outline, StatusColors.idle);
+    return null;
   }
+
 }
 
 /// Making, renaming, describing and removing a channel.

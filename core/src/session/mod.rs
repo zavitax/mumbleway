@@ -1082,6 +1082,13 @@ impl Session {
                 if let Some(bps) = m.max_bandwidth {
                     self.note_bandwidth(state, bps).await;
                 }
+                if let Some(s) = m.session {
+                    state.self_session = Some(s);
+                    self.emit(SessionEvent::SelfSession(s)).await;
+                    // Now that we know which rider is us, the flags that
+                    // arrived before this can be read.
+                    self.note_suppress(state).await;
+                }
                 // **The root permissions are in this message too.** Kicking,
                 // banning and registration are all read from the root mask, and
                 // this arrives before any query could be answered — so the
@@ -1089,15 +1096,16 @@ impl Session {
                 // rather than a round trip later. The query still goes out: a
                 // server that omits this field leaves us with nothing, and one
                 // that changes an ACL later sends the update unprompted.
+                //
+                // **Reported here, not merely stored.** It was being put in the
+                // map and left there: nothing emitted until the query came
+                // back, so the round trip this field exists to save was still
+                // being waited on. After the session id, because what a rider
+                // may do *here* is read from the channel they are standing in,
+                // and that is only known once we know which rider is us.
                 if let Some(perms) = m.permissions {
                     state.perms.insert(permissions::ROOT_CHANNEL, perms as u32);
-                }
-                if let Some(s) = m.session {
-                    state.self_session = Some(s);
-                    self.emit(SessionEvent::SelfSession(s)).await;
-                    // Now that we know which rider is us, the flags that
-                    // arrived before this can be read.
-                    self.note_suppress(state).await;
+                    self.push_rights(state).await;
                 }
                 if let Some(w) = m.welcome_text {
                     if !w.trim().is_empty() {

@@ -161,6 +161,21 @@ async fn a_real_server_answers_what_this_rider_may_do() {
         .collect();
 
     println!("rights reported: {rights:?}");
+    // **Two of them, and the first is the handshake's.** `ServerSync` carries
+    // the root mask, which this client used to store and not report: the round
+    // trip that field exists to save was waited on anyway. The first answer now
+    // arrives with the handshake and says what a rider may do on the server;
+    // the `PermissionQuery` reply follows and adds what they may do *here*,
+    // which is why the first one does not yet have Speak in it.
+    assert!(
+        rights.len() >= 2,
+        "only one answer arrived — the handshake's own mask is being dropped: {rights:?}"
+    );
+    assert!(
+        rights[0].known,
+        "the handshake's answer reads as 'not asked yet'"
+    );
+
     let last = rights.last().expect("no PermissionQuery answer arrived");
     assert!(last.known, "an answer arrived but reads as 'not asked yet'");
     // What a default Murmur grants an ordinary unregistered user.
@@ -652,6 +667,13 @@ async fn asking_about_a_rider_answers_even_when_the_server_withholds_it() {
 /// apart. Pinned live because every link in it is the server's: this client
 /// sends `UserState.self_mute`, the server relays it to everybody else, and the
 /// other client reads it off their roster entry.
+///
+/// **Deafening carries muting with it, and that is the server's doing.**
+/// Sending `self_deaf` alone and watching from the other side, Murmur reports
+/// back `self_mute` as well — measured here against 1.5.915, not read off a
+/// document. So a rider who turns their sound off is muted whether or not
+/// anybody asked for that, which is why the app mutes itself at the same time
+/// rather than showing an open microphone the server has already closed.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs a live Mumble server; see the file header"]
 async fn a_rider_muting_themselves_is_told_apart_from_one_an_admin_muted() {

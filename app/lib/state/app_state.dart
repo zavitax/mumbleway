@@ -4036,9 +4036,28 @@ class AppState extends ChangeNotifier {
     for (final entry in runtimes.entries) {
       if (entry.value.isLive) _mirrorSelfDeaf(entry.key, deafened);
     }
+    // **Deafening mutes, because the server does it anyway.** Sending only
+    // `self_deaf` and watching from another client, Murmur reports the rider
+    // back as `self_mute` too — measured against 1.5.915 rather than read off
+    // a document. Leaving our own microphone open on screen would be showing a
+    // rider a microphone the server has already closed, and the first they
+    // would hear of it is nobody answering.
+    //
+    // Their own mute is remembered and handed back when they listen again, so
+    // deafening for a minute does not quietly unmute somebody who was muted
+    // before it.
+    if (deafened) {
+      _muteBeforeDeafen = _muted;
+      if (!_muted) _applyMute(true);
+    } else if (!_muteBeforeDeafen && _muted) {
+      _applyMute(false);
+    }
     _pushOverlay();
     notifyListeners();
   }
+
+  /// Whether the microphone was already closed when hearing was turned off.
+  bool _muteBeforeDeafen = false;
 
   /// Best-effort, like the mute: the server is being told, not asked.
   void _mirrorSelfDeaf(String serverId, bool deafened) {

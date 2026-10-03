@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../l10n/app_localizations.dart';
 import '../services/store_links.dart';
 import '../state/app_state.dart';
+import '../theme.dart';
 import 'error_snack.dart';
 import 'watch.dart';
 
@@ -36,10 +37,13 @@ class ReviewRequest extends StatelessWidget {
     return Watch<bool>((state) => state.shouldAskForReview, (context, state) {
       if (!state.shouldAskForReview) return const SizedBox.shrink();
       return Card(
-        margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+        // The theme's margin, which is what every server card above it uses.
+        // Its own tighter one left the card wider than the list it had joined
+        // and flush against the card above, so the two read as one thing with
+        // a line through it.
         color: scheme.surfaceContainerHighest,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -58,26 +62,57 @@ class ReviewRequest extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 10),
               Text(
                 l.reviewBody,
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 16),
               // Wrapped rather than in a row: the card sits in the server
               // list, which is a column of its own on a wide window and
               // narrower than the screen — and two buttons side by side
               // overflow it by ten pixels in English and more in Russian.
+              //
+              // Centred across, because the two are not the same height: this
+              // theme gives a filled button 52 pixels and leaves a text button
+              // at its own, so aligned to the top the words sit on different
+              // lines.
               Wrap(
                 alignment: WrapAlignment.end,
-                spacing: 4,
-                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      textStyle: const TextStyle(fontSize: 14),
+                    ),
                     onPressed: state.dismissReviewRequest,
                     child: Text(l.reviewNotNow),
                   ),
                   FilledButton(
+                    // The app's own blue rather than the scheme's tonal one,
+                    // which on this card is a pale blue on a pale grey and
+                    // asks to be read twice. This is the one thing on the card
+                    // worth pressing.
+                    //
+                    // Smaller than the theme's button, which is sized for a
+                    // gloved thumb on a talk control: at that size the pair
+                    // does not fit the master column in either language and
+                    // the `Wrap` puts them on two lines, one under the other.
+                    // This is a card asking a favour in a car park, not a
+                    // control used at speed.
+                    style: FilledButton.styleFrom(
+                      backgroundColor: StatusColors.talking,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      textStyle: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     onPressed: () => _open(context, state),
                     child: Text(l.reviewRate),
                   ),

@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/screens/home_screen.dart';
 import 'package:mumbleway/state/app_state.dart';
+import 'package:mumbleway/theme.dart';
 import 'package:mumbleway/widgets/review_request.dart';
+import 'package:mumbleway/widgets/server_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Where the review card is drawn.
@@ -90,6 +92,53 @@ void main() {
       card.right,
       lessThanOrEqualTo(list.right + 1),
       reason: 'the card is $card and the list it belongs to is $list',
+    );
+  });
+
+  testWidgets('it is shaped like the cards it sits under', (t) async {
+    final state = await askingForReview();
+    await pumpAt(t, const Size(1280, 720), state);
+
+    // The same margins as a server card, which is what gives it a gap above it
+    // and the same edges as the list it has joined. Its own, tighter, left it
+    // wider than the cards above and flush against the last of them, so the
+    // two read as one card with a line through it.
+    final card = t.widget<Card>(
+      find.descendant(of: find.byType(ReviewRequest), matching: find.byType(Card)),
+    );
+    expect(
+      card.margin,
+      isNull,
+      reason: "the theme's margin is what every other card on this screen uses",
+    );
+    final server = t.getRect(find.byType(ServerCard).first);
+    final review = t.getRect(find.byType(ReviewRequest));
+    expect(review.left, moreOrLessEquals(server.left, epsilon: 0.5));
+    expect(review.right, moreOrLessEquals(server.right, epsilon: 0.5));
+
+    // The two buttons centred on each other rather than hung from the top.
+    // They are not the same height — this theme sizes a filled button for a
+    // gloved thumb and leaves a text button at its own — so aligned to the top
+    // the two labels sit on visibly different lines.
+    //
+    // **Asserted as the property, not as two rectangles.** A widget test draws
+    // in a font whose every glyph is a square of the font size, so "Leave a
+    // review" measures 196 pixels here and about half that on a screen: a
+    // geometric assertion would be about the test font, and the first draft of
+    // this one failed on exactly that.
+    final wrap = t.widget<Wrap>(
+      find.descendant(of: find.byType(ReviewRequest), matching: find.byType(Wrap)),
+    );
+    expect(wrap.crossAxisAlignment, WrapCrossAlignment.center);
+
+    // And the one worth pressing is coloured, not tonal: on this card the
+    // scheme's own filled button is a pale blue on a pale grey.
+    final rate = t.widget<FilledButton>(
+      find.descendant(of: find.byType(ReviewRequest), matching: find.byType(FilledButton)),
+    );
+    expect(
+      rate.style?.backgroundColor?.resolve({}),
+      StatusColors.talking,
     );
   });
 

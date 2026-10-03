@@ -54,3 +54,6 @@ __pycache__/
 # CLAUDE.local.md names a particular machine and how to reach it. This
 # repository is public; that belongs on the machine, not in it.
 CLAUDE.local.md
+
+# The live rig writes the throwaway server its SuperUser password here.
+tools/live-rig/.rig.env

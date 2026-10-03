@@ -260,14 +260,6 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: Stack(
           children: [
-            // Asked here rather than inside either body: one place, above the
-            // sliding diagnostics panel and below everything a rider came for.
-            // It renders to nothing unless `shouldAskForReview` says otherwise,
-            // which it never does while a call is up.
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: SafeArea(child: ReviewRequest()),
-            ),
             LayoutBuilder(
               builder: (context, constraints) {
                 // Above the breakpoint the extra width goes to a detail pane
@@ -422,6 +414,20 @@ class _ServerList extends StatelessWidget {
               ),
             ),
           ),
+        // Last in the list rather than floating over the screen.
+        //
+        // **It used to be the bottom layer of the body's stack**, which on a
+        // phone put it in the space below the cards and on anything wider put
+        // it *behind* the layout: the detail pane paints over it, so what a
+        // rider saw was half a sentence showing through the gap beside the
+        // server list and two buttons stranded in an empty pane.
+        //
+        // Here it takes room instead of borrowing it. It scrolls away with the
+        // list, it cannot reach the talk panel — which is the one thing on this
+        // screen that must never be covered — and it renders to nothing unless
+        // `shouldAskForReview` says otherwise, which it never does while a call
+        // is up.
+        const ReviewRequest(),
       ],
     );
   }

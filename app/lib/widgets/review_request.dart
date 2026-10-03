@@ -64,14 +64,19 @@ class ReviewRequest extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
               const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+              // Wrapped rather than in a row: the card sits in the server
+              // list, which is a column of its own on a wide window and
+              // narrower than the screen — and two buttons side by side
+              // overflow it by ten pixels in English and more in Russian.
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 4,
+                runSpacing: 4,
                 children: [
                   TextButton(
                     onPressed: state.dismissReviewRequest,
                     child: Text(l.reviewNotNow),
                   ),
-                  const SizedBox(width: 4),
                   FilledButton(
                     onPressed: () => _open(context, state),
                     child: Text(l.reviewRate),

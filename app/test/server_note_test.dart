@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -58,6 +59,8 @@ void main() {
     });
   });
 
+  _lastChannelTests();
+
   group('setting one', () {
     test('is remembered against that server, and stamped as an edit', () async {
       final state = AppState();
@@ -113,6 +116,120 @@ void main() {
         '',
         reason: '"back in ten" is true on this ride, not on the club server',
       );
+    });
+  });
+}
+
+/// Where a rider was, so a reconnect puts them back.
+///
+/// A dropped link on a bike is ordinary; coming back into the root channel
+/// while the group carries on talking in theirs is the same as still being
+/// dropped, only quieter.
+void _lastChannelTests() {
+  group('the last channel used', () {
+    test('survives storage', () {
+      final saved = SavedServer.fromJson(
+        jsonDecode(jsonEncode(server().copyWith(lastChannel: 'Garage').toJson()))
+            as Map<String, dynamic>,
+      );
+      expect(saved.lastChannel, 'Garage');
+    });
+
+    test('an entry from before this existed simply has none', () {
+      expect(SavedServer.fromJson({'localId': 'srv'}).lastChannel, isNull);
+    });
+
+    test('is not part of how the session is built', () {
+      // Moving channel must not tear the connection down and rebuild it.
+      final before = server();
+      expect(
+        before.sameConnection(before.copyWith(lastChannel: 'Garage')),
+        isTrue,
+      );
+    });
+
+    test('is remembered when the roster says we moved', () {
+      final state = AppState();
+      addTearDown(state.dispose);
+      state.servers.add(server());
+      final rt = state.runtimeFor('srv')
+        ..selfSession = 7
+        ..channels = const [
+          UiChannel(
+            id: 3,
+            name: 'Garage',
+            description: '',
+            userCount: 1,
+            maxUsers: 0,
+          ),
+        ];
+
+      state.onEvent(
+        AppEvent.users(
+          serverId: 'srv',
+          users: [
+            UiUser(
+              session: 7,
+              name: 'rider',
+              channelId: 3,
+              talking: false,
+              muted: false,
+              deafened: false,
+              localMute: false,
+              status: 'silent',
+              comment: '',
+              prioritySpeaker: false,
+              suppressed: false,
+            ),
+          ],
+        ),
+      );
+
+      expect(rt.currentChannel?.name, 'Garage');
+      expect(state.servers.single.lastChannel, 'Garage');
+    });
+
+    test('moving channel is not an edit that wins a sync contest', () {
+      // `updatedAt` decides which device's copy of an entry survives. A rider
+      // hopping channels has not changed the server, and stamping it would
+      // have this device win conflicts it took no part in.
+      final state = AppState();
+      addTearDown(state.dispose);
+      state.servers.add(server());
+      final before = state.servers.single.updatedAt;
+      final rt = state.runtimeFor('srv')
+        ..selfSession = 7
+        ..channels = const [
+          UiChannel(
+            id: 3,
+            name: 'Garage',
+            description: '',
+            userCount: 1,
+            maxUsers: 0,
+          ),
+        ];
+      state.onEvent(
+        AppEvent.users(
+          serverId: 'srv',
+          users: [
+            UiUser(
+              session: 7,
+              name: 'rider',
+              channelId: 3,
+              talking: false,
+              muted: false,
+              deafened: false,
+              localMute: false,
+              status: 'silent',
+              comment: '',
+              prioritySpeaker: false,
+              suppressed: false,
+            ),
+          ],
+        ),
+      );
+      expect(rt.currentChannel?.name, 'Garage');
+      expect(state.servers.single.updatedAt, before);
     });
   });
 }

@@ -325,6 +325,127 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// Coming back to the channel the rider was in, not to the root.
+///
+/// Needs a channel to move to: `MW_LIVE_CHANNEL` names one that exists on the
+/// server. Create one with
+///
+/// ```text
+/// insert into channels (server_id, channel_id, parent_id, name, inheritacl)
+/// values (1, 1, 0, 'Garage', 1);
+/// ```
+///
+/// What is checked is the whole round trip the rider experiences: join a
+/// channel, lose the session, come back, and be where they were — which is the
+/// core's own auto-join doing it, without the app having to notice the drop.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_reconnect_returns_to_the_channel_the_rider_was_in() {
+    require_server!();
+    let Ok(channel) = std::env::var("MW_LIVE_CHANNEL") else {
+        eprintln!("MW_LIVE_CHANNEL is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live test").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut profile = ServerProfile::new("live", host, port, "wanderer");
+    profile.id = "wanderer".into();
+    let id = manager.add(profile, silent_bridge()).expect("added");
+    manager
+        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    let mut me = None;
+    let mut channels: Vec<(u32, String)> = Vec::new();
+    let mut moved = false;
+    let mut dropped = false;
+    let mut where_after_reconnect = None;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(40);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(s) => me = Some(*s),
+            SessionEvent::Channels(list) => {
+                channels = list.iter().map(|c| (c.id, c.name.clone())).collect();
+            }
+            SessionEvent::Users(users) => {
+                let Some(me) = me else { continue };
+                let Some(here) = users.iter().find(|u| u.session == me) else {
+                    continue;
+                };
+                let name = channels
+                    .iter()
+                    .find(|(id, _)| *id == here.channel_id)
+                    .map(|(_, n)| n.clone())
+                    .unwrap_or_default();
+
+                if !moved {
+                    // Move, the way the app does, and tell the session to
+                    // treat it as the channel to come back to.
+                    if let Some((target, _)) = channels.iter().find(|(_, n)| *n == channel) {
+                        moved = true;
+                        manager
+                            .send(
+                                &id,
+                                mumbleway_core::session::SessionCommand::JoinChannel(*target),
+                            )
+                            .await
+                            .expect("join");
+                        manager
+                            .send(
+                                &id,
+                                mumbleway_core::session::SessionCommand::SetDefaultChannel(Some(
+                                    channel.clone(),
+                                )),
+                            )
+                            .await
+                            .expect("remember");
+                    }
+                } else if !dropped && name == channel {
+                    // There now. Pull the session down and let it come back:
+                    // Disconnect then Connect is what a dropped link looks
+                    // like from the session's point of view.
+                    dropped = true;
+                    println!("in {name}; dropping the session");
+                    manager
+                        .send(&id, mumbleway_core::session::SessionCommand::Disconnect)
+                        .await
+                        .expect("disconnect");
+                    manager
+                        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+                        .await
+                        .expect("reconnect");
+                } else if dropped && !name.is_empty() {
+                    where_after_reconnect = Some(name);
+                }
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    println!("after reconnecting, the rider is in: {where_after_reconnect:?}");
+    assert!(moved, "the named channel was not on the server");
+    assert!(dropped, "never reached the channel to drop from");
+    assert_eq!(
+        where_after_reconnect.as_deref(),
+        Some(channel.as_str()),
+        "a reconnect left the rider somewhere other than where they were"
+    );
+}
+
 /// Being silenced by the channel itself, which is the one way of going
 /// inaudible that nothing else on a rider's screen knows about.
 ///

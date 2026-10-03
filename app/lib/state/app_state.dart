@@ -38,6 +38,7 @@ class SavedServer {
     this.password,
     this.certFingerprint,
     this.defaultChannel,
+    this.lastChannel,
     this.note = '',
     String? localId,
     this.updatedAt = 0,
@@ -50,8 +51,20 @@ class SavedServer {
   final String? password;
   final String? certFingerprint;
 
-  /// Channel joined automatically on every connect.
+  /// Channel joined automatically on every connect, if the rider set one.
   final String? defaultChannel;
+
+  /// The channel this rider was last in on this server.
+  ///
+  /// **Remembered so a reconnect puts them back.** A dropped link on a bike is
+  /// ordinary — a tunnel, a bridge, a dead spot — and coming back into the root
+  /// channel while the group carries on talking in theirs is the same as being
+  /// dropped, only quieter. Matched by name on the way back in, because a
+  /// server may renumber its channels between connections.
+  ///
+  /// Beaten by [defaultChannel] only before the rider has gone anywhere: once
+  /// they move, where they are is what they meant.
+  final String? lastChannel;
 
   /// The note to show beside our own name on this server.
   ///
@@ -108,6 +121,7 @@ class SavedServer {
     String? username,
     String? certFingerprint,
     String? defaultChannel,
+    String? lastChannel,
     String? note,
     String? localId,
     int? updatedAt,
@@ -123,6 +137,7 @@ class SavedServer {
     defaultChannel: clearDefaultChannel
         ? null
         : (defaultChannel ?? this.defaultChannel),
+    lastChannel: lastChannel ?? this.lastChannel,
     // An empty note is a real value — it is how a rider clears one — so this
     // takes whatever it is given rather than treating empty as "unchanged".
     note: note ?? this.note,
@@ -138,6 +153,7 @@ class SavedServer {
     'password': password,
     'certFingerprint': certFingerprint,
     'defaultChannel': defaultChannel,
+    'lastChannel': lastChannel,
     'note': note,
     'updatedAt': updatedAt,
   };
@@ -153,6 +169,7 @@ class SavedServer {
     password: j['password'] as String?,
     certFingerprint: j['certFingerprint'] as String?,
     defaultChannel: j['defaultChannel'] as String?,
+    lastChannel: j['lastChannel'] as String?,
     note: j['note'] as String? ?? '',
     updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
   );
@@ -1050,8 +1067,11 @@ class AppState extends ChangeNotifier {
       await addServer(config: s.toConfig());
       _registered.add(s.id);
       runtimeFor(s.id);
-      if (s.defaultChannel != null) {
-        await setDefaultChannel(serverId: s.id, channel: s.defaultChannel);
+      // Where to land: where they were, or the channel they chose as a
+      // starting point before they had been anywhere.
+      final target = s.lastChannel ?? s.defaultChannel;
+      if (target != null) {
+        await setDefaultChannel(serverId: s.id, channel: target);
       }
     } catch (e) {
       runtimeFor(s.id)
@@ -2290,6 +2310,35 @@ class AppState extends ChangeNotifier {
       await setDefaultChannel(serverId: id, channel: channelName);
     } catch (_) {}
     notifyListeners();
+  }
+
+  /// Remembers where this rider is, so a reconnect puts them back there.
+  ///
+  /// **By name, not by id.** A server may renumber its channels between
+  /// connections, and the core matches the remembered channel by name for the
+  /// same reason.
+  ///
+  /// Pushed into the session as well as saved: the core rejoins it after every
+  /// reconnect of its own, without the app having to notice the drop — which it
+  /// may not, if the drop and the recovery both happen while the phone is in a
+  /// pocket.
+  void _rememberChannel(String id, ServerRuntime rt) {
+    final name = rt.currentChannel?.name;
+    if (name == null || name.isEmpty) return;
+    final i = servers.indexWhere((s) => s.id == id);
+    if (i < 0 || servers[i].lastChannel == name) return;
+
+    // Not stamped: moving channel is not an edit to the server entry, and
+    // stamping it would have this device win sync conflicts it took no part
+    // in. See `stamped`.
+    servers[i] = servers[i].copyWith(lastChannel: name);
+    // Saved locally without scheduling a sync: a rider hopping between
+    // channels would otherwise push the whole server list to the cloud every
+    // time they moved. It rides along with the next real change.
+    unawaited(_persist(publish: false));
+    try {
+      unawaited(setDefaultChannel(serverId: id, channel: name));
+    } catch (_) {}
   }
 
   /// Sets the note shown beside our own name on this server, or clears it.
@@ -3863,8 +3912,14 @@ class AppState extends ChangeNotifier {
         final rt = runtimeFor(serverId);
         rt.users = users;
         _announceChannelChanges(rt);
+        _rememberChannel(serverId, rt);
       case AppEvent_Channels(:final serverId, :final channels):
-        runtimeFor(serverId).channels = channels;
+        final rt = runtimeFor(serverId);
+        rt.channels = channels;
+        // The roster may have said which channel we are in before the channel
+        // list arrived to give it a name, and a name is what survives a
+        // reconnect.
+        _rememberChannel(serverId, rt);
       case AppEvent_SelfSession(:final serverId, :final session):
         runtimeFor(serverId).selfSession = session;
       case AppEvent_Text(:final serverId, :final from, :final message):

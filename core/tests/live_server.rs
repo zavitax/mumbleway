@@ -644,6 +644,105 @@ async fn asking_about_a_rider_answers_even_when_the_server_withholds_it() {
     assert_eq!(answer.session, who, "the answer was about somebody else");
 }
 
+/// A rider closing their own microphone reaches the other riders as
+/// `self_mute`, not as a mute somebody imposed.
+///
+/// The roster draws those differently — one is somebody choosing not to talk,
+/// the other is somebody who has been stopped — so the two flags have to arrive
+/// apart. Pinned live because every link in it is the server's: this client
+/// sends `UserState.self_mute`, the server relays it to everybody else, and the
+/// other client reads it off their roster entry.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_rider_muting_themselves_is_told_apart_from_one_an_admin_muted() {
+    require_server!();
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live self-mute").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut ids = Vec::new();
+    for name in ["quiet-one", "watcher"] {
+        let mut profile = ServerProfile::new("live", host.clone(), port, name);
+        profile.id = name.to_string();
+        let id = manager.add(profile, silent_bridge()).expect("added");
+        manager
+            .send(&id, mumbleway_core::session::SessionCommand::Connect)
+            .await
+            .expect("connect");
+        ids.push(id);
+    }
+
+    use mumbleway_core::session::SessionCommand as C;
+
+    let mut asked = false;
+    let mut seen_them = false;
+    let mut muted_themselves = false;
+    let mut muted_by_somebody = false;
+    let mut deafened_themselves = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        // Only what the watcher sees: the other session is the one muting
+        // itself, and its own roster entry would prove nothing about the wire.
+        if event.server_id != "watcher" {
+            continue;
+        }
+        if let SessionEvent::Users(users) = &event.event {
+            if let Some(them) = users.iter().find(|u| u.name == "quiet-one") {
+                seen_them = true;
+                if them.self_mute {
+                    muted_themselves = true;
+                    muted_by_somebody = them.mute;
+                }
+                if them.self_deaf {
+                    deafened_themselves = true;
+                }
+                if muted_themselves && deafened_themselves {
+                    break;
+                }
+            }
+        }
+        if !asked && seen_them {
+            asked = true;
+            manager
+                .send(&ids[0], C::SetSelfMute(true))
+                .await
+                .expect("mute themselves");
+            // And their hearing, which travels the same way and used to travel
+            // nowhere at all: deafening is local, so without telling anybody a
+            // channel keeps talking to somebody who cannot hear it.
+            manager
+                .send(&ids[0], C::SetSelfDeaf(true))
+                .await
+                .expect("deafen themselves");
+        }
+    }
+    manager.shutdown_all().await;
+
+    assert!(seen_them, "the other rider never appeared in the roster");
+    assert!(
+        muted_themselves,
+        "closing their own microphone never reached the other rider"
+    );
+    assert!(
+        !muted_by_somebody,
+        "it arrived as a mute somebody imposed, which is a different thing"
+    );
+    assert!(
+        deafened_themselves,
+        "turning their own sound off never reached the other rider"
+    );
+}
+
 /// The count beside a channel follows the rider into it.
 ///
 /// Occupancy is not sent by the server: it is counted from the roster, so it is

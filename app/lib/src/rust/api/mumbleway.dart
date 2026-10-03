@@ -287,6 +287,18 @@ Future<void> setSelfMute({required String serverId, required bool muted}) =>
       muted: muted,
     );
 
+/// Tells a server this rider has turned their own sound off.
+///
+/// **The other riders have no other way to know.** Deafening is local — the
+/// decoder simply stops — so without this the channel keeps talking to
+/// somebody who cannot hear a word of it, which is the one thing worth saying
+/// about a rider who is not listening.
+Future<void> setSelfDeaf({required String serverId, required bool deaf}) =>
+    RustLib.instance.api.crateApiMumblewaySetSelfDeaf(
+      serverId: serverId,
+      deaf: deaf,
+    );
+
 /// Removes a server and stops its session.
 Future<void> removeServer({required String serverId}) =>
     RustLib.instance.api.crateApiMumblewayRemoveServer(serverId: serverId);

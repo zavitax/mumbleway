@@ -1774,6 +1774,16 @@ pub fn set_self_mute(server_id: String, muted: bool) -> anyhow::Result<()> {
     send_command(server_id, SessionCommand::SetSelfMute(muted))
 }
 
+/// Tells a server this rider has turned their own sound off.
+///
+/// **The other riders have no other way to know.** Deafening is local — the
+/// decoder simply stops — so without this the channel keeps talking to
+/// somebody who cannot hear a word of it, which is the one thing worth saying
+/// about a rider who is not listening.
+pub fn set_self_deaf(server_id: String, deaf: bool) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::SetSelfDeaf(deaf))
+}
+
 /// Removes a server and stops its session.
 pub fn remove_server(server_id: String) -> anyhow::Result<()> {
     let app = app()?;

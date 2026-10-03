@@ -4019,11 +4019,34 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  void toggleDeafen() {
-    _deafened = !_deafened;
-    setDeafened(deafened: _deafened);
+  void toggleDeafen() => _applyDeafen(!_deafened);
+
+  /// The one way hearing is turned off, whoever asked.
+  ///
+  /// **Also told to every server, as Mumble's `self_deaf`.** Deafening is
+  /// local — the decoder stops and the speaker goes quiet — so without telling
+  /// anybody, the channel carries on talking to somebody who cannot hear a
+  /// word of it. That is the one thing worth saying about a rider who is not
+  /// listening, and the roster has a glyph for it.
+  void _applyDeafen(bool deafened) {
+    _deafened = deafened;
+    try {
+      setDeafened(deafened: deafened);
+    } catch (_) {}
+    for (final entry in runtimes.entries) {
+      if (entry.value.isLive) _mirrorSelfDeaf(entry.key, deafened);
+    }
     _pushOverlay();
     notifyListeners();
+  }
+
+  /// Best-effort, like the mute: the server is being told, not asked.
+  void _mirrorSelfDeaf(String serverId, bool deafened) {
+    try {
+      unawaited(
+        setSelfDeaf(serverId: serverId, deaf: deafened).catchError((_) {}),
+      );
+    } catch (_) {}
   }
 
   Future<void> updateNoise(NoiseSetting v) async {
@@ -4237,6 +4260,7 @@ class AppState extends ChangeNotifier {
         // muted case needs saying; unmuted is what a new session already is.
         if (!wasLive && rt.isLive) {
           if (_muted) _mirrorSelfMute(field0.serverId, true);
+          if (_deafened) _mirrorSelfDeaf(field0.serverId, true);
           _restoreNote(field0.serverId);
           _restoreAvatar(field0.serverId);
         }

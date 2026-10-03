@@ -6,6 +6,7 @@ pub mod manager;
 pub mod notes;
 pub mod peers;
 pub mod permissions;
+pub mod pings;
 pub mod profile;
 pub mod quality;
 pub mod reconnect;
@@ -107,6 +108,14 @@ struct LiveState {
     context_actions: context_actions::ContextActions,
     /// The bandwidth allowance this server gave, in bits per second.
     max_bandwidth: Option<u32>,
+    /// Round trips this client has measured, which the server stores and hands
+    /// to anybody asking about this rider. See [`pings`].
+    tcp_ping: pings::PingStats,
+    udp_ping: pings::PingStats,
+    /// Voice packets received, by the route they arrived on. Reported for the
+    /// same reason and in the same message.
+    udp_packets: u32,
+    tcp_packets: u32,
     /// Whether this server says Mumble's recording feature is allowed.
     ///
     /// Recorded rather than enforced: this app's diagnostic recording is its
@@ -140,6 +149,10 @@ impl LiveState {
             blobs: notes::Blobs::default(),
             context_actions: context_actions::ContextActions::default(),
             max_bandwidth: None,
+            tcp_ping: pings::PingStats::default(),
+            udp_ping: pings::PingStats::default(),
+            udp_packets: 0,
+            tcp_packets: 0,
             recording_allowed: None,
         }
     }
@@ -639,10 +652,12 @@ impl Session {
                 ev = udp_recv => {
                     match ev {
                         Ok(Some(UdpEvent::Voice(p))) => {
+                            state.udp_packets = state.udp_packets.saturating_add(1);
                             self.on_voice(p, state).await;
                         }
                         Ok(Some(UdpEvent::Pong { rtt })) => {
                             state.stats.udp_ping_ms = rtt.as_secs_f32() * 1000.0;
+                            state.udp_ping.record(state.stats.udp_ping_ms);
                             if state.transport != Transport::Udp {
                                 state.transport = Transport::Udp;
                                 tracing::info!("voice now direct over UDP");
@@ -708,13 +723,24 @@ impl Session {
                 // --- keepalive ---------------------------------------------
                 _ = ping_timer.tick() => {
                     let stats = udp.as_ref().map(|s| s.crypt_stats()).unwrap_or_default();
+                    // Everything the protocol asks for, not only the crypt
+                    // counters. **The server does not measure a client's ping;
+                    // it copies these fields** and hands them to whoever asks
+                    // about this rider, so leaving them out made every
+                    // MumbleWay rider read as 0 ms to everybody — in this
+                    // app's own roster and in the official client alike.
                     let ping = mumble::Ping {
                         timestamp: Some(now_millis()),
                         good: Some(stats.good),
                         late: Some(stats.late),
                         lost: Some(stats.lost),
                         resync: Some(stats.resync),
-                        ..Default::default()
+                        udp_packets: Some(state.udp_packets),
+                        tcp_packets: Some(state.tcp_packets),
+                        udp_ping_avg: Some(state.udp_ping.mean()),
+                        udp_ping_var: Some(state.udp_ping.variance()),
+                        tcp_ping_avg: Some(state.tcp_ping.mean()),
+                        tcp_ping_var: Some(state.tcp_ping.variance()),
                     };
                     writer.send(MessageType::Ping, &ping).await?;
                     if let Some(s) = udp.as_mut() {
@@ -1271,11 +1297,13 @@ impl Session {
                 if let Some(ts) = m.timestamp {
                     let rtt = now_millis().saturating_sub(ts);
                     state.stats.tcp_ping_ms = rtt as f32;
+                    state.tcp_ping.record(rtt as f32);
                 }
             }
             MessageType::UdpTunnel => {
                 // Voice arriving over TLS because UDP is unavailable.
                 if let Ok(p) = VoicePacket::decode_incoming(payload) {
+                    state.tcp_packets = state.tcp_packets.saturating_add(1);
                     self.on_voice(p, state).await;
                 }
             }

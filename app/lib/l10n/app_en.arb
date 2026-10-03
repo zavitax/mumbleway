@@ -870,7 +870,7 @@
   "reviewTitle": "Getting on with MumbleWay?",
   "reviewBody": "A word in the store helps other riders find it. It takes a minute and there is nothing else we ask for.",
   "reviewNotNow": "Not now",
-  "reviewRate": "Leave a review",
+  "reviewRate": "Leave feedback",
   "remoteMutedYou": "{name} muted your microphone",
   "@remoteMutedYou": {
     "placeholders": {

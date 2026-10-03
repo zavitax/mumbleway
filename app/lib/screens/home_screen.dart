@@ -387,6 +387,22 @@ class _ServerList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(top: 8, bottom: 12),
       children: [
+        // First in the list rather than floating over the screen.
+        //
+        // **It used to be the bottom layer of the body's stack**, which on a
+        // phone put it in the space below the cards and on anything wider put
+        // it *behind* the layout: the detail pane paints over it, so what a
+        // rider saw was half a sentence showing through the gap beside the
+        // server list and two buttons stranded in an empty pane. Last in the
+        // list it was honest but easy to miss — on a window the height of a
+        // laptop's it sat below the fold.
+        //
+        // Here it takes room instead of borrowing it. It scrolls away with the
+        // list, it cannot reach the talk panel — which is the one thing on this
+        // screen that must never be covered — and it renders to nothing unless
+        // `shouldAskForReview` says otherwise, which it never does while a call
+        // is up, so it is not in a rider's way on the road.
+        const ReviewRequest(),
         for (final s in state.servers)
           ServerCard(
             server: s,
@@ -414,20 +430,6 @@ class _ServerList extends StatelessWidget {
               ),
             ),
           ),
-        // Last in the list rather than floating over the screen.
-        //
-        // **It used to be the bottom layer of the body's stack**, which on a
-        // phone put it in the space below the cards and on anything wider put
-        // it *behind* the layout: the detail pane paints over it, so what a
-        // rider saw was half a sentence showing through the gap beside the
-        // server list and two buttons stranded in an empty pane.
-        //
-        // Here it takes room instead of borrowing it. It scrolls away with the
-        // list, it cannot reach the talk panel — which is the one thing on this
-        // screen that must never be covered — and it renders to nothing unless
-        // `shouldAskForReview` says otherwise, which it never does while a call
-        // is up.
-        const ReviewRequest(),
       ],
     );
   }

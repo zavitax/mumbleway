@@ -2938,7 +2938,7 @@ abstract class L {
   /// No description provided for @reviewRate.
   ///
   /// In en, this message translates to:
-  /// **'Leave a review'**
+  /// **'Leave feedback'**
   String get reviewRate;
 
   /// Shown when another MumbleWay rider turned this rider's microphone off, and it has already happened.

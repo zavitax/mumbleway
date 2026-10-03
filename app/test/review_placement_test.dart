@@ -115,6 +115,10 @@ void main() {
     final review = t.getRect(find.byType(ReviewRequest));
     expect(review.left, moreOrLessEquals(server.left, epsilon: 0.5));
     expect(review.right, moreOrLessEquals(server.right, epsilon: 0.5));
+    // First in the list. Last, it was honest and easy to miss: on a window the
+    // height of a laptop's it sat below the fold with nothing to say it was
+    // there.
+    expect(review.top, lessThan(server.top));
 
     // The two buttons centred on each other rather than hung from the top.
     // They are not the same height — this theme sizes a filled button for a
@@ -130,6 +134,8 @@ void main() {
       find.descendant(of: find.byType(ReviewRequest), matching: find.byType(Wrap)),
     );
     expect(wrap.crossAxisAlignment, WrapCrossAlignment.center);
+    // And centred in the card rather than pushed to its right edge.
+    expect(wrap.alignment, WrapAlignment.center);
 
     // And the one worth pressing is coloured, not tonal: on this card the
     // scheme's own filled button is a pale blue on a pale grey.

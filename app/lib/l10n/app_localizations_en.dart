@@ -1594,7 +1594,7 @@ class LEn extends L {
   String get reviewNotNow => 'Not now';
 
   @override
-  String get reviewRate => 'Leave a review';
+  String get reviewRate => 'Leave feedback';
 
   @override
   String remoteMutedYou(String name) {

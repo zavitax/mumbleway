@@ -78,13 +78,16 @@ class ReviewRequest extends StatelessWidget {
               // at its own, so aligned to the top the words sit on different
               // lines.
               Wrap(
-                alignment: WrapAlignment.end,
+                alignment: WrapAlignment.center,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   TextButton(
+                    // Quieter than the other one on purpose: it is the way out,
+                    // not the thing being asked for.
                     style: TextButton.styleFrom(
+                      foregroundColor: scheme.onSurfaceVariant,
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       textStyle: const TextStyle(fontSize: 14),
                     ),
@@ -106,11 +109,12 @@ class ReviewRequest extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       backgroundColor: StatusColors.talking,
                       foregroundColor: Colors.white,
-                      minimumSize: const Size(0, 44),
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      elevation: 2,
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 26),
                       textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     onPressed: () => _open(context, state),

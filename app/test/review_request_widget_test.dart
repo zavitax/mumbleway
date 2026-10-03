@@ -49,7 +49,7 @@ void main() {
     await t.pumpWidget(host(state));
     expect(find.text('Getting on with MumbleWay?'), findsOneWidget);
     expect(find.text('Not now'), findsOneWidget);
-    expect(find.text('Leave a review'), findsOneWidget);
+    expect(find.text('Leave feedback'), findsOneWidget);
   });
 
   testWidgets('"Not now" takes the card away without asking again', (t) async {
@@ -81,7 +81,7 @@ void main() {
   testWidgets('goes away for good once they have gone to the store', (t) async {
     final state = await ready(calls: 3);
     await t.pumpWidget(host(state));
-    expect(find.text('Leave a review'), findsOneWidget);
+    expect(find.text('Leave feedback'), findsOneWidget);
 
     // Not tapping the button: that reaches `url_launcher`, which has no
     // platform behind it in a test. The state change it causes is the part

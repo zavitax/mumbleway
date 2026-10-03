@@ -3180,6 +3180,36 @@ abstract class L {
   /// In en, this message translates to:
   /// **'You can be heard here again'**
   String get suppressedLifted;
+
+  /// No description provided for @avatar.
+  ///
+  /// In en, this message translates to:
+  /// **'Your picture'**
+  String get avatar;
+
+  /// No description provided for @avatarBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Shown beside your name to everyone on every server you join. Kept on this device and sent to each server as it connects; it is scaled down before it goes anywhere.'**
+  String get avatarBody;
+
+  /// No description provided for @avatarChoose.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose'**
+  String get avatarChoose;
+
+  /// No description provided for @avatarRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove picture'**
+  String get avatarRemove;
+
+  /// No description provided for @avatarUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'That file is not an image this app can read'**
+  String get avatarUnreadable;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

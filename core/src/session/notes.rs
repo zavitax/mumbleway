@@ -153,6 +153,10 @@ pub struct Blobs {
     want_comment: HashSet<u32>,
     /// Sessions whose picture body we still need.
     want_texture: HashSet<u32>,
+    /// The hash of the description we hold for a channel.
+    channel_hash: HashMap<u32, Vec<u8>>,
+    /// Channels whose description body we still need.
+    want_channel: HashSet<u32>,
 }
 
 impl Blobs {
@@ -190,6 +194,32 @@ impl Blobs {
         true
     }
 
+    /// As [`Blobs::note_comment_hash`], for a channel's description.
+    pub fn note_channel_hash(&mut self, channel: u32, hash: &[u8]) -> bool {
+        if hash.is_empty() {
+            self.channel_hash.remove(&channel);
+            self.want_channel.remove(&channel);
+            return false;
+        }
+        if self.channel_hash.get(&channel).is_some_and(|h| h == hash) {
+            return false;
+        }
+        self.channel_hash.insert(channel, hash.to_vec());
+        self.want_channel.insert(channel);
+        true
+    }
+
+    /// Notes that a channel's description arrived.
+    pub fn got_channel(&mut self, channel: u32) {
+        self.want_channel.remove(&channel);
+    }
+
+    /// Forgets a channel that has been removed.
+    pub fn forget_channel(&mut self, channel: u32) {
+        self.channel_hash.remove(&channel);
+        self.want_channel.remove(&channel);
+    }
+
     /// Notes that a body arrived, so it is not asked for again.
     pub fn got_comment(&mut self, session: u32) {
         self.want_comment.remove(&session);
@@ -200,22 +230,27 @@ impl Blobs {
         self.want_texture.remove(&session);
     }
 
-    /// The next batch to ask for: comments first, then pictures.
+    /// The next batch to ask for: words first, pictures last.
     ///
-    /// **Comments before pictures, deliberately.** A comment is a line of text
-    /// that might say where somebody is; a picture is decoration. On a link bad
-    /// enough that only some of this arrives, the text is the half worth having.
-    pub fn next_request(&self) -> (Vec<u32>, Vec<u32>) {
-        let mut comments: Vec<u32> = self.want_comment.iter().copied().collect();
-        comments.sort_unstable();
-        comments.truncate(BLOB_BATCH);
+    /// **Text before decoration, deliberately.** A comment is a line that might
+    /// say where somebody is, and a channel description is what a rider reads
+    /// to decide whether to join; a picture is decoration. On a link bad enough
+    /// that only some of this arrives, the words are the half worth having.
+    pub fn next_request(&self) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+        let take = |set: &HashSet<u32>, room: usize| {
+            let mut v: Vec<u32> = set.iter().copied().collect();
+            v.sort_unstable();
+            v.truncate(room);
+            v
+        };
 
-        let left = BLOB_BATCH.saturating_sub(comments.len());
-        let mut textures: Vec<u32> = self.want_texture.iter().copied().collect();
-        textures.sort_unstable();
-        textures.truncate(left);
+        let comments = take(&self.want_comment, BLOB_BATCH);
+        let mut room = BLOB_BATCH.saturating_sub(comments.len());
+        let channels = take(&self.want_channel, room);
+        room = room.saturating_sub(channels.len());
+        let textures = take(&self.want_texture, room);
 
-        (comments, textures)
+        (comments, textures, channels)
     }
 
     /// Forgets a session that has left. The number goes back to the server and
@@ -339,7 +374,7 @@ mod tests {
             b.note_comment_hash(s, b"c");
             b.note_texture_hash(s, b"t");
         }
-        let (comments, textures) = b.next_request();
+        let (comments, textures, _channels) = b.next_request();
         assert_eq!(comments.len(), BLOB_BATCH);
         assert!(
             textures.is_empty(),
@@ -354,7 +389,7 @@ mod tests {
         for s in 5..=9 {
             b.note_texture_hash(s, b"t");
         }
-        let (comments, textures) = b.next_request();
+        let (comments, textures, _channels) = b.next_request();
         assert_eq!(comments, vec![1]);
         assert_eq!(textures, vec![5, 6, 7, 8, 9], "everything that fits");
     }
@@ -368,5 +403,59 @@ mod tests {
         // The number is the server's to hand out again, so the same hash from
         // the next holder of it is news.
         assert!(b.note_comment_hash(3, b"abc"));
+    }
+}
+
+#[cfg(test)]
+mod channel_description_tests {
+    use super::*;
+
+    #[test]
+    fn a_long_channel_description_is_asked_for_once_per_hash() {
+        let mut b = Blobs::default();
+        assert!(b.note_channel_hash(7, b"abc"));
+        assert_eq!(b.next_request().2, vec![7]);
+        assert!(!b.note_channel_hash(7, b"abc"), "the server re-sends these");
+        b.got_channel(7);
+        assert!(b.next_request().2.is_empty());
+        assert!(b.note_channel_hash(7, b"def"), "somebody edited it");
+    }
+
+    #[test]
+    fn a_description_that_was_cleared_is_not_fetched() {
+        let mut b = Blobs::default();
+        b.note_channel_hash(7, b"abc");
+        assert!(!b.note_channel_hash(7, b""));
+        assert!(b.next_request().2.is_empty());
+    }
+
+    #[test]
+    fn words_come_before_decoration() {
+        // One batch, and the pictures take what is left: a rider reads a
+        // channel description to decide whether to join it, and looks at an
+        // avatar never.
+        let mut b = Blobs::default();
+        for i in 1..=6 {
+            b.note_comment_hash(i, b"c");
+        }
+        for i in 1..=6 {
+            b.note_channel_hash(i, b"d");
+        }
+        for i in 1..=6 {
+            b.note_texture_hash(i, b"t");
+        }
+        let (comments, textures, channels) = b.next_request();
+        assert_eq!(comments.len(), 6);
+        assert_eq!(channels.len(), 2, "what is left of the batch");
+        assert!(textures.is_empty(), "and pictures wait for the next round");
+    }
+
+    #[test]
+    fn a_removed_channel_takes_its_hash_with_it() {
+        let mut b = Blobs::default();
+        b.note_channel_hash(7, b"abc");
+        b.forget_channel(7);
+        assert!(b.next_request().2.is_empty());
+        assert!(b.note_channel_hash(7, b"abc"), "the id may be reused");
     }
 }

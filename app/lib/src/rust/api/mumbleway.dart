@@ -113,6 +113,17 @@ Future<void> setBans({required String serverId, required List<String> bans}) =>
       bans: bans,
     );
 
+/// Sets the picture shown beside our own name on this server; empty clears it.
+///
+/// One picture per rider, kept on the device, and sent to each server as it
+/// connects — Mumble has no identity that spans servers, so every one of them
+/// stores its own copy.
+Future<void> setAvatar({required String serverId, required List<int> image}) =>
+    RustLib.instance.api.crateApiMumblewaySetAvatar(
+      serverId: serverId,
+      image: image,
+    );
+
 /// Sets the note shown beside our own name on this server, or clears it.
 Future<void> setComment({required String serverId, required String text}) =>
     RustLib.instance.api.crateApiMumblewaySetComment(
@@ -686,6 +697,14 @@ sealed class AppEvent with _$AppEvent {
     required String serverId,
     required bool suppressed,
   }) = AppEvent_Suppressed;
+
+  /// What this server will accept: longest text, and largest picture, in
+  /// bytes. Zero means it set no limit.
+  const factory AppEvent.limits({
+    required String serverId,
+    required int messageLength,
+    required int imageMessageLength,
+  }) = AppEvent_Limits;
 
   /// A server's bandwidth allowance, and what the encoder is doing about it.
   ///

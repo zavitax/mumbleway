@@ -97,6 +97,47 @@ impl Default for ServerProfile {
     }
 }
 
+/// What this server will take, in bytes. Zero means it set no limit.
+///
+/// Both are enforced by refusal rather than by truncation: a comment or a
+/// message over the limit comes back as `TextTooLong` and nothing changes, so
+/// a client that does not know the limit looks to its rider like a client that
+/// ignored them. A picture over `image_message_length` is refused with the
+/// same code, which is the server's own confusion and not this client's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerLimits {
+    pub message_length: u32,
+    pub image_message_length: u32,
+}
+
+impl ServerLimits {
+    /// Cuts text to what this server accepts, by characters rather than bytes.
+    ///
+    /// **The limit is in bytes and the cut is in characters**, which is the
+    /// conservative direction: a Russian note cut to the byte would split a
+    /// character and arrive as mojibake, so this takes whole characters until
+    /// the bytes fit.
+    pub fn fit_text(&self, text: &str) -> String {
+        let max = self.message_length as usize;
+        if max == 0 || text.len() <= max {
+            return text.to_string();
+        }
+        let mut out = String::with_capacity(max);
+        for c in text.chars() {
+            if out.len() + c.len_utf8() > max {
+                break;
+            }
+            out.push(c);
+        }
+        out
+    }
+
+    /// Whether an image of `bytes` fits.
+    pub fn image_fits(&self, bytes: usize) -> bool {
+        self.image_message_length == 0 || bytes <= self.image_message_length as usize
+    }
+}
+
 /// A channel on the server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelInfo {
@@ -258,6 +299,8 @@ pub enum SessionEvent {
         mute: bool,
         by: String,
     },
+    /// What this server will accept, in bytes: see [`ServerLimits`].
+    Limits(ServerLimits),
     /// The bandwidth this server allows each client, in bits per second.
     ///
     /// **Not advice.** A server enforces it by dropping voice packets without
@@ -414,6 +457,14 @@ pub enum SessionCommand {
     /// strips it on the way in, so writing markup back would be the one place
     /// the app produced something it will not display.
     SetComment(String),
+    /// Sets the picture shown beside our own name, or clears it with an empty
+    /// one.
+    ///
+    /// **One picture for the rider, not one per server.** It is kept on the
+    /// device and sent to each server as it connects, because Mumble has no
+    /// notion of an identity that spans servers — every one of them stores its
+    /// own copy against its own account.
+    SetAvatar(Vec<u8>),
     /// Channel to join automatically on every future connect. `None` clears it.
     SetDefaultChannel(Option<String>),
     /// Push-to-talk / voice-activation gate.
@@ -484,5 +535,50 @@ mod tests {
         u.suppress = true;
         u.self_deaf = true;
         assert_eq!(u.status_label(), "deafened");
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+
+    #[test]
+    fn no_limit_means_no_cut() {
+        let l = ServerLimits::default();
+        assert_eq!(l.fit_text("anything at all"), "anything at all");
+        assert!(l.image_fits(10_000_000));
+    }
+
+    #[test]
+    fn text_is_cut_to_what_the_server_takes() {
+        let l = ServerLimits {
+            message_length: 5,
+            image_message_length: 0,
+        };
+        assert_eq!(l.fit_text("abcdefgh"), "abcde");
+        assert_eq!(l.fit_text("abc"), "abc");
+    }
+
+    #[test]
+    fn a_cut_never_splits_a_character() {
+        // The server counts bytes; a Russian note cut to the byte would arrive
+        // as mojibake, so whole characters go until the bytes fit.
+        let l = ServerLimits {
+            message_length: 5,
+            image_message_length: 0,
+        };
+        let cut = l.fit_text("ямба");
+        assert!(cut.len() <= 5);
+        assert_eq!(cut, "ям", "and not two and a half characters");
+    }
+
+    #[test]
+    fn an_image_the_server_will_refuse_is_known_before_sending() {
+        let l = ServerLimits {
+            message_length: 0,
+            image_message_length: 128,
+        };
+        assert!(l.image_fits(128));
+        assert!(!l.image_fits(129));
     }
 }

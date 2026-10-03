@@ -1751,4 +1751,20 @@ class LEn extends L {
 
   @override
   String get suppressedLifted => 'You can be heard here again';
+
+  @override
+  String get avatar => 'Your picture';
+
+  @override
+  String get avatarBody =>
+      'Shown beside your name to everyone on every server you join. Kept on this device and sent to each server as it connects; it is scaled down before it goes anywhere.';
+
+  @override
+  String get avatarChoose => 'Choose';
+
+  @override
+  String get avatarRemove => 'Remove picture';
+
+  @override
+  String get avatarUnreadable => 'That file is not an image this app can read';
 }

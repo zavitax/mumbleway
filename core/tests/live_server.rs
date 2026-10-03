@@ -325,6 +325,140 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// A rider's picture, there and back.
+///
+/// The server stores the bytes against the account and broadcasts them to
+/// everybody, so what this checks is the whole loop: sent as a `UserState`
+/// texture, stored, returned — possibly as a hash that has to be fetched — and
+/// turned back into the same bytes.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_picture_set_on_a_server_comes_back() {
+    require_server!();
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live test").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut profile = ServerProfile::new("live", host, port, "face");
+    profile.id = "face".into();
+    let id = manager.add(profile, silent_bridge()).expect("added");
+    manager
+        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    // A one-pixel PNG: the smallest thing that is really an image.
+    let png: Vec<u8> = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    let mut sent = false;
+    let mut back: Option<Vec<u8>> = None;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(16);
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(_) if !sent => {
+                sent = true;
+                manager
+                    .send(
+                        &id,
+                        mumbleway_core::session::SessionCommand::SetAvatar(png.clone()),
+                    )
+                    .await
+                    .expect("set avatar");
+            }
+            SessionEvent::Avatar { image, .. } if !image.is_empty() => {
+                back = Some(image.clone());
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    println!(
+        "picture came back as {:?} bytes",
+        back.as_ref().map(|b| b.len())
+    );
+    assert!(sent, "never got far enough to send one");
+    assert_eq!(
+        back.as_deref(),
+        Some(png.as_slice()),
+        "what came back is not what was sent"
+    );
+}
+
+/// The things a server tells a client about itself, and the two blobs it only
+/// hands over when asked.
+///
+/// `MW_LIVE_DESCRIBED_CHANNEL` names a channel whose description is long
+/// enough to travel as a hash — over 128 bytes — which is the case this is
+/// really about: a short one arrives whole in the `ChannelState` and proves
+/// nothing about `RequestBlob`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_server_states_its_limits_and_hands_over_what_is_asked_for() {
+    require_server!();
+    let events = gather(&["reader"], 14).await;
+
+    let limits: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e.event {
+            SessionEvent::Limits(l) => Some(l),
+            _ => None,
+        })
+        .collect();
+    println!("limits reported: {limits:?}");
+    let limits = limits.last().expect("ServerConfig was never read");
+    assert!(
+        limits.message_length > 0 && limits.image_message_length > 0,
+        "a default server states both; reading neither means ServerConfig is ignored"
+    );
+    // The arithmetic those figures drive, against real numbers.
+    assert!(
+        limits.image_fits(1_024),
+        "a scaled avatar is a few kilobytes"
+    );
+    assert!(!limits.image_fits(limits.image_message_length as usize + 1));
+    let long = "x".repeat(limits.message_length as usize + 50);
+    assert_eq!(limits.fit_text(&long).len(), limits.message_length as usize);
+
+    if let Ok(name) = std::env::var("MW_LIVE_DESCRIBED_CHANNEL") {
+        // A description over 128 bytes arrives as a hash and has to be
+        // fetched; what is checked is that it ends up as readable text.
+        let described = events
+            .iter()
+            .filter_map(|e| match &e.event {
+                SessionEvent::Channels(list) => list.iter().find(|c| c.name == name).cloned(),
+                _ => None,
+            })
+            .rfind(|c| !c.description.is_empty());
+        let described =
+            described.unwrap_or_else(|| panic!("channel {name} never arrived with a description"));
+        println!(
+            "description of {name}: {} chars, starts {:?}",
+            described.description.chars().count(),
+            described.description.chars().take(40).collect::<String>()
+        );
+        assert!(
+            described.description.len() > 128,
+            "the long description was never fetched, so only short ones work"
+        );
+    }
+}
+
 /// Coming back to the channel the rider was in, not to the root.
 ///
 /// Needs a channel to move to: `MW_LIVE_CHANNEL` names one that exists on the

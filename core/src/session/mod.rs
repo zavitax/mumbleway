@@ -119,6 +119,11 @@ struct LiveState {
     /// The last suppression state reported upward, so the announcement is
     /// made on a change rather than on every roster update.
     suppress_announced: Option<bool>,
+    /// Longest text message and longest image this server will take, in
+    /// bytes; `0` from the server means "no limit". Exceeding either is
+    /// refused with `TextTooLong` — for a picture too, which is the server's
+    /// own confusion and not this client's.
+    limits: ServerLimits,
     /// Whether this server says Mumble's recording feature is allowed.
     ///
     /// Recorded rather than enforced: this app's diagnostic recording is its
@@ -157,6 +162,7 @@ impl LiveState {
             udp_packets: 0,
             tcp_packets: 0,
             recording_allowed: None,
+            limits: ServerLimits::default(),
             suppress_announced: None,
         }
     }
@@ -831,12 +837,12 @@ impl Session {
                     // for. Here rather than on arrival of each hash, because a
                     // channel filling after a server restart would otherwise be
                     // one request per rider in the same instant.
-                    let (comments, textures) = state.blobs.next_request();
-                    if !comments.is_empty() || !textures.is_empty() {
+                    let (comments, textures, channels) = state.blobs.next_request();
+                    if !comments.is_empty() || !textures.is_empty() || !channels.is_empty() {
                         let m = mumble::RequestBlob {
                             session_comment: comments,
                             session_texture: textures,
-                            channel_description: Vec::new(),
+                            channel_description: channels,
                         };
                         writer.send(MessageType::RequestBlob, &m).await?;
                     }
@@ -1000,6 +1006,14 @@ impl Session {
                 if let Some(bps) = m.max_bandwidth {
                     self.note_bandwidth(state, bps).await;
                 }
+                let limits = ServerLimits {
+                    message_length: m.message_length.unwrap_or(0),
+                    image_message_length: m.image_message_length.unwrap_or(0),
+                };
+                if limits != state.limits {
+                    state.limits = limits;
+                    self.emit(SessionEvent::Limits(limits)).await;
+                }
                 if let Some(allowed) = m.recording_allowed {
                     if state.recording_allowed != Some(allowed) {
                         state.recording_allowed = Some(allowed);
@@ -1021,6 +1035,16 @@ impl Session {
                 // handshake — before a single packet has been sent.
                 if let Some(bps) = m.max_bandwidth {
                     self.note_bandwidth(state, bps).await;
+                }
+                // **The root permissions are in this message too.** Kicking,
+                // banning and registration are all read from the root mask, and
+                // this arrives before any query could be answered — so the
+                // interface knows what it may offer from the first moment
+                // rather than a round trip later. The query still goes out: a
+                // server that omits this field leaves us with nothing, and one
+                // that changes an ACL later sends the update unprompted.
+                if let Some(perms) = m.permissions {
+                    state.perms.insert(permissions::ROOT_CHANNEL, perms as u32);
                 }
                 if let Some(s) = m.session {
                     state.self_session = Some(s);
@@ -1054,7 +1078,16 @@ impl Session {
                         e.name = n;
                     }
                     if let Some(d) = m.description {
-                        e.description = d;
+                        e.description = notes::strip_html(&d);
+                        state.blobs.got_channel(id);
+                    }
+                    // Long ones arrive as a hash, exactly like a rider's
+                    // comment, and are fetched the same way.
+                    if let Some(h) = m.description_hash.as_ref() {
+                        if h.is_empty() {
+                            e.description.clear();
+                        }
+                        state.blobs.note_channel_hash(id, h);
                     }
                     if let Some(p) = m.position {
                         e.position = p;
@@ -1069,6 +1102,7 @@ impl Session {
             MessageType::ChannelRemove => {
                 let m = mumble::ChannelRemove::decode(payload)?;
                 state.channels.remove(&m.channel_id);
+                state.blobs.forget_channel(m.channel_id);
                 self.emit(SessionEvent::Channels(state.channel_list()))
                     .await;
             }
@@ -1249,6 +1283,18 @@ impl Session {
                         positional: m.positional,
                     })
                     .await;
+                }
+            }
+            MessageType::CodecVersion => {
+                let m = mumble::CodecVersion::decode(payload)?;
+                // This client speaks Opus and nothing else — the handshake
+                // advertises an empty CELT list. A server that says it cannot
+                // carry Opus is one nobody here can be heard on, and that is
+                // worth a line in the log rather than silence and a mystery.
+                if m.opus == Some(false) {
+                    tracing::warn!(
+                        "server does not advertise Opus; this client speaks nothing else"
+                    );
                 }
             }
             MessageType::PermissionQuery => {
@@ -1460,7 +1506,7 @@ impl Session {
                     session: Vec::new(),
                     channel_id: channel_id.into_iter().collect(),
                     tree_id: Vec::new(),
-                    message,
+                    message: state.limits.fit_text(&message),
                 };
                 writer.send(MessageType::TextMessage, &m).await?;
             }
@@ -1474,8 +1520,38 @@ impl Session {
                     writer.send(MessageType::UserState, &m).await?;
                 }
             }
+            SessionCommand::SetAvatar(image) => {
+                if let Some(me) = state.self_session {
+                    // Refused whole by the server when it is too big — with
+                    // `TextTooLong`, for a picture — so a rider would see
+                    // nothing happen and no reason why. Better to say the
+                    // server will not take it than to send it and hope.
+                    if !state.limits.image_fits(image.len()) {
+                        self.emit(SessionEvent::Text {
+                            from: "MumbleWay".into(),
+                            message: format!(
+                                "This server takes pictures up to {} bytes; yours is {}.",
+                                state.limits.image_message_length,
+                                image.len()
+                            ),
+                        })
+                        .await;
+                        return Ok(());
+                    }
+                    let m = mumble::UserState {
+                        session: Some(me),
+                        texture: Some(image.into()),
+                        ..Default::default()
+                    };
+                    writer.send(MessageType::UserState, &m).await?;
+                }
+            }
             SessionCommand::SetComment(text) => {
                 if let Some(me) = state.self_session {
+                    // Cut to what this server takes. Over the limit it answers
+                    // `TextTooLong` and keeps the old note, which reads as the
+                    // app having quietly ignored the rider.
+                    let text = state.limits.fit_text(&text);
                     let m = mumble::UserState {
                         session: Some(me),
                         comment: Some(text),

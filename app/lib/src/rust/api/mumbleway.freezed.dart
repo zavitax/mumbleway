@@ -55,7 +55,7 @@ extension AppEventPatterns on AppEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult Function( AppEvent_Suppressed value)?  suppressed,TResult Function( AppEvent_Bandwidth value)?  bandwidth,TResult Function( AppEvent_ContextActions value)?  contextActions,TResult Function( AppEvent_Bans value)?  bans,TResult Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult Function( AppEvent_Avatar value)?  avatar,TResult Function( AppEvent_Rights value)?  rights,TResult Function( AppEvent_Moderated value)?  moderated,TResult Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Refused value)?  refused,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,TResult Function( AppEvent_Log value)?  log,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( AppEvent_Status value)?  status,TResult Function( AppEvent_Users value)?  users,TResult Function( AppEvent_Channels value)?  channels,TResult Function( AppEvent_Text value)?  text,TResult Function( AppEvent_Stats value)?  stats,TResult Function( AppEvent_InputLevel value)?  inputLevel,TResult Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult Function( AppEvent_Suppressed value)?  suppressed,TResult Function( AppEvent_Limits value)?  limits,TResult Function( AppEvent_Bandwidth value)?  bandwidth,TResult Function( AppEvent_ContextActions value)?  contextActions,TResult Function( AppEvent_Bans value)?  bans,TResult Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult Function( AppEvent_Avatar value)?  avatar,TResult Function( AppEvent_Rights value)?  rights,TResult Function( AppEvent_Moderated value)?  moderated,TResult Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult Function( AppEvent_Certificate value)?  certificate,TResult Function( AppEvent_Refused value)?  refused,TResult Function( AppEvent_Welcome value)?  welcome,TResult Function( AppEvent_SelfSession value)?  selfSession,TResult Function( AppEvent_Log value)?  log,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -66,7 +66,8 @@ return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that);case AppEvent_SpeakerLevels() when speakerLevels != null:
 return speakerLevels(_that);case AppEvent_Suppressed() when suppressed != null:
-return suppressed(_that);case AppEvent_Bandwidth() when bandwidth != null:
+return suppressed(_that);case AppEvent_Limits() when limits != null:
+return limits(_that);case AppEvent_Bandwidth() when bandwidth != null:
 return bandwidth(_that);case AppEvent_ContextActions() when contextActions != null:
 return contextActions(_that);case AppEvent_Bans() when bans != null:
 return bans(_that);case AppEvent_ServerSuggests() when serverSuggests != null:
@@ -97,7 +98,7 @@ return log(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_SpeakerLevels value)  speakerLevels,required TResult Function( AppEvent_Suppressed value)  suppressed,required TResult Function( AppEvent_Bandwidth value)  bandwidth,required TResult Function( AppEvent_ContextActions value)  contextActions,required TResult Function( AppEvent_Bans value)  bans,required TResult Function( AppEvent_ServerSuggests value)  serverSuggests,required TResult Function( AppEvent_Avatar value)  avatar,required TResult Function( AppEvent_Rights value)  rights,required TResult Function( AppEvent_Moderated value)  moderated,required TResult Function( AppEvent_RemoteMuted value)  remoteMuted,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Refused value)  refused,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,required TResult Function( AppEvent_Log value)  log,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( AppEvent_Status value)  status,required TResult Function( AppEvent_Users value)  users,required TResult Function( AppEvent_Channels value)  channels,required TResult Function( AppEvent_Text value)  text,required TResult Function( AppEvent_Stats value)  stats,required TResult Function( AppEvent_InputLevel value)  inputLevel,required TResult Function( AppEvent_SpeakerLevels value)  speakerLevels,required TResult Function( AppEvent_Suppressed value)  suppressed,required TResult Function( AppEvent_Limits value)  limits,required TResult Function( AppEvent_Bandwidth value)  bandwidth,required TResult Function( AppEvent_ContextActions value)  contextActions,required TResult Function( AppEvent_Bans value)  bans,required TResult Function( AppEvent_ServerSuggests value)  serverSuggests,required TResult Function( AppEvent_Avatar value)  avatar,required TResult Function( AppEvent_Rights value)  rights,required TResult Function( AppEvent_Moderated value)  moderated,required TResult Function( AppEvent_RemoteMuted value)  remoteMuted,required TResult Function( AppEvent_Certificate value)  certificate,required TResult Function( AppEvent_Refused value)  refused,required TResult Function( AppEvent_Welcome value)  welcome,required TResult Function( AppEvent_SelfSession value)  selfSession,required TResult Function( AppEvent_Log value)  log,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status():
@@ -108,7 +109,8 @@ return text(_that);case AppEvent_Stats():
 return stats(_that);case AppEvent_InputLevel():
 return inputLevel(_that);case AppEvent_SpeakerLevels():
 return speakerLevels(_that);case AppEvent_Suppressed():
-return suppressed(_that);case AppEvent_Bandwidth():
+return suppressed(_that);case AppEvent_Limits():
+return limits(_that);case AppEvent_Bandwidth():
 return bandwidth(_that);case AppEvent_ContextActions():
 return contextActions(_that);case AppEvent_Bans():
 return bans(_that);case AppEvent_ServerSuggests():
@@ -135,7 +137,7 @@ return log(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult? Function( AppEvent_Suppressed value)?  suppressed,TResult? Function( AppEvent_Bandwidth value)?  bandwidth,TResult? Function( AppEvent_ContextActions value)?  contextActions,TResult? Function( AppEvent_Bans value)?  bans,TResult? Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult? Function( AppEvent_Avatar value)?  avatar,TResult? Function( AppEvent_Rights value)?  rights,TResult? Function( AppEvent_Moderated value)?  moderated,TResult? Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Refused value)?  refused,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,TResult? Function( AppEvent_Log value)?  log,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( AppEvent_Status value)?  status,TResult? Function( AppEvent_Users value)?  users,TResult? Function( AppEvent_Channels value)?  channels,TResult? Function( AppEvent_Text value)?  text,TResult? Function( AppEvent_Stats value)?  stats,TResult? Function( AppEvent_InputLevel value)?  inputLevel,TResult? Function( AppEvent_SpeakerLevels value)?  speakerLevels,TResult? Function( AppEvent_Suppressed value)?  suppressed,TResult? Function( AppEvent_Limits value)?  limits,TResult? Function( AppEvent_Bandwidth value)?  bandwidth,TResult? Function( AppEvent_ContextActions value)?  contextActions,TResult? Function( AppEvent_Bans value)?  bans,TResult? Function( AppEvent_ServerSuggests value)?  serverSuggests,TResult? Function( AppEvent_Avatar value)?  avatar,TResult? Function( AppEvent_Rights value)?  rights,TResult? Function( AppEvent_Moderated value)?  moderated,TResult? Function( AppEvent_RemoteMuted value)?  remoteMuted,TResult? Function( AppEvent_Certificate value)?  certificate,TResult? Function( AppEvent_Refused value)?  refused,TResult? Function( AppEvent_Welcome value)?  welcome,TResult? Function( AppEvent_SelfSession value)?  selfSession,TResult? Function( AppEvent_Log value)?  log,}){
 final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
@@ -146,7 +148,8 @@ return text(_that);case AppEvent_Stats() when stats != null:
 return stats(_that);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that);case AppEvent_SpeakerLevels() when speakerLevels != null:
 return speakerLevels(_that);case AppEvent_Suppressed() when suppressed != null:
-return suppressed(_that);case AppEvent_Bandwidth() when bandwidth != null:
+return suppressed(_that);case AppEvent_Limits() when limits != null:
+return limits(_that);case AppEvent_Bandwidth() when bandwidth != null:
 return bandwidth(_that);case AppEvent_ContextActions() when contextActions != null:
 return contextActions(_that);case AppEvent_Bans() when bans != null:
 return bans(_that);case AppEvent_ServerSuggests() when serverSuggests != null:
@@ -176,7 +179,7 @@ return log(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult Function( String serverId,  bool suppressed)?  suppressed,TResult Function( String serverId,  int capBps,  int bitrateBps,  bool capped,  bool belowFloor)?  bandwidth,TResult Function( String serverId,  List<UiContextAction> actions)?  contextActions,TResult Function( String serverId,  List<UiBan> bans)?  bans,TResult Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult Function( String serverId,  int session,  Uint8List image)?  avatar,TResult Function( String serverId,  UiRights rights)?  rights,TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String reason,  int kind)?  refused,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,TResult Function( List<UiLogEntry> entries)?  log,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( StatusUpdate field0)?  status,TResult Function( String serverId,  List<UiUser> users)?  users,TResult Function( String serverId,  List<UiChannel> channels)?  channels,TResult Function( String serverId,  String from,  String message)?  text,TResult Function( UiStats field0)?  stats,TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult Function( String serverId,  bool suppressed)?  suppressed,TResult Function( String serverId,  int messageLength,  int imageMessageLength)?  limits,TResult Function( String serverId,  int capBps,  int bitrateBps,  bool capped,  bool belowFloor)?  bandwidth,TResult Function( String serverId,  List<UiContextAction> actions)?  contextActions,TResult Function( String serverId,  List<UiBan> bans)?  bans,TResult Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult Function( String serverId,  int session,  Uint8List image)?  avatar,TResult Function( String serverId,  UiRights rights)?  rights,TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult Function( String serverId,  String reason,  int kind)?  refused,TResult Function( String serverId,  String text)?  welcome,TResult Function( String serverId,  int session)?  selfSession,TResult Function( List<UiLogEntry> entries)?  log,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -186,7 +189,8 @@ return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when 
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels() when speakerLevels != null:
 return speakerLevels(_that.levels);case AppEvent_Suppressed() when suppressed != null:
-return suppressed(_that.serverId,_that.suppressed);case AppEvent_Bandwidth() when bandwidth != null:
+return suppressed(_that.serverId,_that.suppressed);case AppEvent_Limits() when limits != null:
+return limits(_that.serverId,_that.messageLength,_that.imageMessageLength);case AppEvent_Bandwidth() when bandwidth != null:
 return bandwidth(_that.serverId,_that.capBps,_that.bitrateBps,_that.capped,_that.belowFloor);case AppEvent_ContextActions() when contextActions != null:
 return contextActions(_that.serverId,_that.actions);case AppEvent_Bans() when bans != null:
 return bans(_that.serverId,_that.bans);case AppEvent_ServerSuggests() when serverSuggests != null:
@@ -217,7 +221,7 @@ return log(_that.entries);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)  inputLevel,required TResult Function( List<UiSpeakerLevel> levels)  speakerLevels,required TResult Function( String serverId,  bool suppressed)  suppressed,required TResult Function( String serverId,  int capBps,  int bitrateBps,  bool capped,  bool belowFloor)  bandwidth,required TResult Function( String serverId,  List<UiContextAction> actions)  contextActions,required TResult Function( String serverId,  List<UiBan> bans)  bans,required TResult Function( String serverId,  bool? pushToTalk,  bool? positional)  serverSuggests,required TResult Function( String serverId,  int session,  Uint8List image)  avatar,required TResult Function( String serverId,  UiRights rights)  rights,required TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)  moderated,required TResult Function( String serverId,  bool muted,  String by)  remoteMuted,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String reason,  int kind)  refused,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,required TResult Function( List<UiLogEntry> entries)  log,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( StatusUpdate field0)  status,required TResult Function( String serverId,  List<UiUser> users)  users,required TResult Function( String serverId,  List<UiChannel> channels)  channels,required TResult Function( String serverId,  String from,  String message)  text,required TResult Function( UiStats field0)  stats,required TResult Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)  inputLevel,required TResult Function( List<UiSpeakerLevel> levels)  speakerLevels,required TResult Function( String serverId,  bool suppressed)  suppressed,required TResult Function( String serverId,  int messageLength,  int imageMessageLength)  limits,required TResult Function( String serverId,  int capBps,  int bitrateBps,  bool capped,  bool belowFloor)  bandwidth,required TResult Function( String serverId,  List<UiContextAction> actions)  contextActions,required TResult Function( String serverId,  List<UiBan> bans)  bans,required TResult Function( String serverId,  bool? pushToTalk,  bool? positional)  serverSuggests,required TResult Function( String serverId,  int session,  Uint8List image)  avatar,required TResult Function( String serverId,  UiRights rights)  rights,required TResult Function( String serverId,  bool? muted,  bool? deafened,  String by)  moderated,required TResult Function( String serverId,  bool muted,  String by)  remoteMuted,required TResult Function( String serverId,  String fingerprint,  bool changed)  certificate,required TResult Function( String serverId,  String reason,  int kind)  refused,required TResult Function( String serverId,  String text)  welcome,required TResult Function( String serverId,  int session)  selfSession,required TResult Function( List<UiLogEntry> entries)  log,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status():
 return status(_that.field0);case AppEvent_Users():
@@ -227,7 +231,8 @@ return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats():
 return stats(_that.field0);case AppEvent_InputLevel():
 return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels():
 return speakerLevels(_that.levels);case AppEvent_Suppressed():
-return suppressed(_that.serverId,_that.suppressed);case AppEvent_Bandwidth():
+return suppressed(_that.serverId,_that.suppressed);case AppEvent_Limits():
+return limits(_that.serverId,_that.messageLength,_that.imageMessageLength);case AppEvent_Bandwidth():
 return bandwidth(_that.serverId,_that.capBps,_that.bitrateBps,_that.capped,_that.belowFloor);case AppEvent_ContextActions():
 return contextActions(_that.serverId,_that.actions);case AppEvent_Bans():
 return bans(_that.serverId,_that.bans);case AppEvent_ServerSuggests():
@@ -254,7 +259,7 @@ return log(_that.entries);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult? Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult? Function( String serverId,  bool suppressed)?  suppressed,TResult? Function( String serverId,  int capBps,  int bitrateBps,  bool capped,  bool belowFloor)?  bandwidth,TResult? Function( String serverId,  List<UiContextAction> actions)?  contextActions,TResult? Function( String serverId,  List<UiBan> bans)?  bans,TResult? Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult? Function( String serverId,  int session,  Uint8List image)?  avatar,TResult? Function( String serverId,  UiRights rights)?  rights,TResult? Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult? Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String reason,  int kind)?  refused,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,TResult? Function( List<UiLogEntry> entries)?  log,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( StatusUpdate field0)?  status,TResult? Function( String serverId,  List<UiUser> users)?  users,TResult? Function( String serverId,  List<UiChannel> channels)?  channels,TResult? Function( String serverId,  String from,  String message)?  text,TResult? Function( UiStats field0)?  stats,TResult? Function( double levelDb,  bool speaking,  double thresholdDb,  double noiseFloorDb)?  inputLevel,TResult? Function( List<UiSpeakerLevel> levels)?  speakerLevels,TResult? Function( String serverId,  bool suppressed)?  suppressed,TResult? Function( String serverId,  int messageLength,  int imageMessageLength)?  limits,TResult? Function( String serverId,  int capBps,  int bitrateBps,  bool capped,  bool belowFloor)?  bandwidth,TResult? Function( String serverId,  List<UiContextAction> actions)?  contextActions,TResult? Function( String serverId,  List<UiBan> bans)?  bans,TResult? Function( String serverId,  bool? pushToTalk,  bool? positional)?  serverSuggests,TResult? Function( String serverId,  int session,  Uint8List image)?  avatar,TResult? Function( String serverId,  UiRights rights)?  rights,TResult? Function( String serverId,  bool? muted,  bool? deafened,  String by)?  moderated,TResult? Function( String serverId,  bool muted,  String by)?  remoteMuted,TResult? Function( String serverId,  String fingerprint,  bool changed)?  certificate,TResult? Function( String serverId,  String reason,  int kind)?  refused,TResult? Function( String serverId,  String text)?  welcome,TResult? Function( String serverId,  int session)?  selfSession,TResult? Function( List<UiLogEntry> entries)?  log,}) {final _that = this;
 switch (_that) {
 case AppEvent_Status() when status != null:
 return status(_that.field0);case AppEvent_Users() when users != null:
@@ -264,7 +269,8 @@ return text(_that.serverId,_that.from,_that.message);case AppEvent_Stats() when 
 return stats(_that.field0);case AppEvent_InputLevel() when inputLevel != null:
 return inputLevel(_that.levelDb,_that.speaking,_that.thresholdDb,_that.noiseFloorDb);case AppEvent_SpeakerLevels() when speakerLevels != null:
 return speakerLevels(_that.levels);case AppEvent_Suppressed() when suppressed != null:
-return suppressed(_that.serverId,_that.suppressed);case AppEvent_Bandwidth() when bandwidth != null:
+return suppressed(_that.serverId,_that.suppressed);case AppEvent_Limits() when limits != null:
+return limits(_that.serverId,_that.messageLength,_that.imageMessageLength);case AppEvent_Bandwidth() when bandwidth != null:
 return bandwidth(_that.serverId,_that.capBps,_that.bitrateBps,_that.capped,_that.belowFloor);case AppEvent_ContextActions() when contextActions != null:
 return contextActions(_that.serverId,_that.actions);case AppEvent_Bans() when bans != null:
 return bans(_that.serverId,_that.bans);case AppEvent_ServerSuggests() when serverSuggests != null:
@@ -845,6 +851,76 @@ class _$AppEvent_SuppressedCopyWithImpl<$Res>
 serverId: null == serverId ? _self.serverId : serverId // ignore: cast_nullable_to_non_nullable
 as String,suppressed: null == suppressed ? _self.suppressed : suppressed // ignore: cast_nullable_to_non_nullable
 as bool,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class AppEvent_Limits extends AppEvent {
+  const AppEvent_Limits({required this.serverId, required this.messageLength, required this.imageMessageLength}): super._();
+  
+
+ final  String serverId;
+ final  int messageLength;
+ final  int imageMessageLength;
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$AppEvent_LimitsCopyWith<AppEvent_Limits> get copyWith => _$AppEvent_LimitsCopyWithImpl<AppEvent_Limits>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppEvent_Limits&&(identical(other.serverId, serverId) || other.serverId == serverId)&&(identical(other.messageLength, messageLength) || other.messageLength == messageLength)&&(identical(other.imageMessageLength, imageMessageLength) || other.imageMessageLength == imageMessageLength));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,serverId,messageLength,imageMessageLength);
+
+@override
+String toString() {
+  return 'AppEvent.limits(serverId: $serverId, messageLength: $messageLength, imageMessageLength: $imageMessageLength)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $AppEvent_LimitsCopyWith<$Res> implements $AppEventCopyWith<$Res> {
+  factory $AppEvent_LimitsCopyWith(AppEvent_Limits value, $Res Function(AppEvent_Limits) _then) = _$AppEvent_LimitsCopyWithImpl;
+@useResult
+$Res call({
+ String serverId, int messageLength, int imageMessageLength
+});
+
+
+
+
+}
+/// @nodoc
+class _$AppEvent_LimitsCopyWithImpl<$Res>
+    implements $AppEvent_LimitsCopyWith<$Res> {
+  _$AppEvent_LimitsCopyWithImpl(this._self, this._then);
+
+  final AppEvent_Limits _self;
+  final $Res Function(AppEvent_Limits) _then;
+
+/// Create a copy of AppEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? serverId = null,Object? messageLength = null,Object? imageMessageLength = null,}) {
+  return _then(AppEvent_Limits(
+serverId: null == serverId ? _self.serverId : serverId // ignore: cast_nullable_to_non_nullable
+as String,messageLength: null == messageLength ? _self.messageLength : messageLength // ignore: cast_nullable_to_non_nullable
+as int,imageMessageLength: null == imageMessageLength ? _self.imageMessageLength : imageMessageLength // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

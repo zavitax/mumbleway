@@ -282,6 +282,13 @@ pub enum AppEvent {
         server_id: String,
         suppressed: bool,
     },
+    /// What this server will accept: longest text, and largest picture, in
+    /// bytes. Zero means it set no limit.
+    Limits {
+        server_id: String,
+        message_length: u32,
+        image_message_length: u32,
+    },
     /// A server's bandwidth allowance, and what the encoder is doing about it.
     ///
     /// The bitrate is the app's, not this server's: one encoder feeds every
@@ -899,6 +906,11 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         suppressed,
                     });
                 }
+                SessionEvent::Limits(l) => emit(AppEvent::Limits {
+                    server_id,
+                    message_length: l.message_length,
+                    image_message_length: l.image_message_length,
+                }),
                 SessionEvent::BandwidthCap(bps) => {
                     let tightest = {
                         let mut caps = bandwidth_caps.lock();
@@ -1397,6 +1409,15 @@ pub fn set_bans(server_id: String, bans: Vec<String>) -> anyhow::Result<()> {
         }
     }
     send_command(server_id, SessionCommand::SetBans(list))
+}
+
+/// Sets the picture shown beside our own name on this server; empty clears it.
+///
+/// One picture per rider, kept on the device, and sent to each server as it
+/// connects — Mumble has no identity that spans servers, so every one of them
+/// stores its own copy.
+pub fn set_avatar(server_id: String, image: Vec<u8>) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::SetAvatar(image))
 }
 
 /// Sets the note shown beside our own name on this server, or clears it.

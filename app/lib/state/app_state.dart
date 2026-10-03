@@ -16,6 +16,7 @@ import '../l10n/app_localizations.dart';
 import '../services/server_refusal.dart';
 import '../services/remote_mute_notice.dart';
 import '../services/audio_session.dart';
+import '../services/avatar.dart';
 import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/device_identity.dart';
@@ -236,6 +237,11 @@ class ServerRuntime {
   /// What this server allows each client, in bits per second; 0 if it has not
   /// said. Enforced by the server, not advice — see `audio::bandwidth`.
   int bandwidthCapBps = 0;
+
+  /// Longest text and largest picture this server takes, in bytes; 0 means it
+  /// set no limit.
+  int messageLengthLimit = 0;
+  int imageLengthLimit = 0;
 
   /// Whether this server is discarding our voice because we lack Speak
   /// permission in the channel we are in.
@@ -911,6 +917,17 @@ class AppState extends ChangeNotifier {
     voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? true;
     allowRemoteUnmute = prefs.getBool(_prefsAllowRemoteUnmute) ?? true;
     _loadReviewCounters(prefs);
+    // The rider's own picture, from this device. Read off the disk rather
+    // than out of preferences, so this settles a moment later and does not
+    // hold up a startup behind a file read; it is sent to each server as that
+    // server connects, which is later still.
+    unawaited(
+      Avatar.load().then((image) {
+        if (image == null) return;
+        myAvatar = image;
+        notifyListeners();
+      }),
+    );
     simpleModel = prefs.getBool(_prefsSimpleModel) ?? false;
     // Into the core immediately, and before the probe: it decides which model
     // every enhancer built afterwards loads, and the probe has to time the
@@ -2373,6 +2390,69 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Puts the rider's picture on a session that has just come up.
+  ///
+  /// Every server keeps its own copy, so every connection needs telling. Silent
+  /// and best-effort: a server that refuses the picture — too large for its
+  /// limit, or no permission — must not produce an error a rider did not ask
+  /// for while they are riding.
+  void _restoreAvatar(String id) {
+    final image = myAvatar;
+    if (image == null || image.isEmpty) return;
+    try {
+      unawaited(setAvatar(serverId: id, image: image).catchError((_) {}));
+    } catch (_) {}
+  }
+
+  /// Chooses a new picture for the rider, from a file on this device.
+  ///
+  /// Returns what went wrong, or null. The file is squared and scaled before
+  /// it goes anywhere — see [Avatar] — so what reaches a server is a few
+  /// kilobytes whatever was picked.
+  Future<String?> pickAvatar() async {
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: const [
+          XTypeGroup(
+            label: 'Images',
+            extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+          ),
+        ],
+      );
+      if (file == null) return null;
+      final prepared = Avatar.prepare(await file.readAsBytes());
+      if (prepared == null) return 'unreadable';
+      await Avatar.save(prepared);
+      myAvatar = prepared;
+      _pushAvatarEverywhere();
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Takes the rider's picture down, here and on every server they are on.
+  Future<void> clearAvatar() async {
+    await Avatar.save(Uint8List(0));
+    myAvatar = null;
+    for (final entry in runtimes.entries) {
+      if (!entry.value.isLive) continue;
+      try {
+        unawaited(
+          setAvatar(serverId: entry.key, image: Uint8List(0)).catchError((_) {}),
+        );
+      } catch (_) {}
+    }
+    notifyListeners();
+  }
+
+  void _pushAvatarEverywhere() {
+    for (final entry in runtimes.entries) {
+      if (entry.value.isLive) _restoreAvatar(entry.key);
+    }
+  }
+
   /// Puts this server's saved note back on the session that has just come up.
   ///
   /// Best-effort and silent: the rider did not ask for anything here, so a
@@ -2609,6 +2689,13 @@ class AppState extends ChangeNotifier {
   /// **Read it as a comparison, not against a threshold** — the figure depends
   /// on the output volume, which nothing here knows.
   bool voiceCommunication = true;
+
+  /// The rider's own picture, kept on this device and sent to every server
+  /// they connect to. Null when they have none.
+  ///
+  /// One for the rider rather than one per server: Mumble stores it per
+  /// account, but a rider has one face.
+  Uint8List? myAvatar;
 
   /// What the voice encoder is aiming for, in bits per second; 0 until the
   /// engine has said.
@@ -3854,6 +3941,7 @@ class AppState extends ChangeNotifier {
         if (!wasLive && rt.isLive) {
           if (_muted) _mirrorSelfMute(field0.serverId, true);
           _restoreNote(field0.serverId);
+          _restoreAvatar(field0.serverId);
         }
       case AppEvent_Rights(:final serverId, :final rights):
         runtimeFor(serverId).rights = rights;
@@ -3876,6 +3964,14 @@ class AppState extends ChangeNotifier {
         runtimeFor(serverId).bans = bans;
       case AppEvent_ContextActions(:final serverId, :final actions):
         runtimeFor(serverId).contextActions = actions;
+      case AppEvent_Limits(
+        :final serverId,
+        :final messageLength,
+        :final imageMessageLength,
+      ):
+        runtimeFor(serverId)
+          ..messageLengthLimit = messageLength
+          ..imageLengthLimit = imageMessageLength;
       case AppEvent_Suppressed(:final serverId, :final suppressed):
         runtimeFor(serverId).suppressed = suppressed;
         // Said out loud as well as shown: the cue has played, and this is the

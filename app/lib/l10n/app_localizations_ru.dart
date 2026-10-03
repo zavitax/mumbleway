@@ -1740,4 +1740,21 @@ class LRu extends L {
 
   @override
   String get suppressedLifted => 'Здесь вас снова слышно';
+
+  @override
+  String get avatar => 'Ваша картинка';
+
+  @override
+  String get avatarBody =>
+      'Её видят рядом с вашим именем на всех серверах, куда вы заходите. Хранится на этом устройстве и отправляется на каждый сервер при подключении; перед отправкой уменьшается.';
+
+  @override
+  String get avatarChoose => 'Выбрать';
+
+  @override
+  String get avatarRemove => 'Убрать картинку';
+
+  @override
+  String get avatarUnreadable =>
+      'Этот файл — не картинка, которую приложение может прочитать';
 }

@@ -243,6 +243,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 32),
           _SectionHeader(l.identity),
           _Explainer(l.identityBody),
+          // One picture for the rider, kept on this device and sent to each
+          // server as it connects — which is why it sits here with the
+          // certificate rather than on any one server's card.
+          const _AvatarTile(),
           const _FingerprintTile(),
           const SizedBox(height: 28),
           const _VersionFooter(),
@@ -573,6 +577,64 @@ class _VoiceCommunicationTile extends StatelessWidget {
         isThreeLine: true,
         value: state.voiceCommunication,
         onChanged: (v) => state.setVoiceCommunicationEnabled(value: v),
+      );
+    });
+  }
+}
+
+/// The rider's own picture, with what it is for and how to take it down.
+class _AvatarTile extends StatelessWidget {
+  const _AvatarTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Watch<Uint8List?>((state) => state.myAvatar, (context, state) {
+      final l = L.of(context);
+      final image = state.myAvatar;
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: SizedBox(
+          width: 40,
+          height: 40,
+          child: image == null
+              ? const Icon(Icons.account_circle_outlined, size: 36)
+              : ClipOval(
+                  child: Image.memory(
+                    image,
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  ),
+                ),
+        ),
+        title: Text(l.avatar),
+        subtitle: Text(l.avatarBody),
+        isThreeLine: true,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (image != null)
+              IconButton(
+                tooltip: l.avatarRemove,
+                icon: const Icon(Icons.delete_outline),
+                onPressed: state.clearAvatar,
+              ),
+            TextButton(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final error = await state.pickAvatar();
+                if (error != null) {
+                  showError(
+                    messenger,
+                    error == 'unreadable' ? l.avatarUnreadable : error,
+                  );
+                }
+              },
+              child: Text(l.avatarChoose),
+            ),
+          ],
+        ),
       );
     });
   }

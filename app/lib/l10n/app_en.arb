@@ -1009,5 +1009,10 @@
   "serverCapTooLow": "This server's bandwidth limit is too low for voice. Some of what you say will not get through.",
   "suppressedTitle": "This channel will not carry your voice.",
   "suppressedBody": "The server is discarding what you say, because you may not speak here. Move to another channel, or ask whoever runs the server.",
-  "suppressedLifted": "You can be heard here again"
+  "suppressedLifted": "You can be heard here again",
+  "avatar": "Your picture",
+  "avatarBody": "Shown beside your name to everyone on every server you join. Kept on this device and sent to each server as it connects; it is scaled down before it goes anywhere.",
+  "avatarChoose": "Choose",
+  "avatarRemove": "Remove picture",
+  "avatarUnreadable": "That file is not an image this app can read"
 }

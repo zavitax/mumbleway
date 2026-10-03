@@ -112,6 +112,24 @@ class LRu extends L {
       'MumbleWay нужен микрофон. Проверьте, что он подключён и разрешение выдано, затем перезапустите приложение.';
 
   @override
+  String get statusTheirMicOff => 'У них выключен микрофон';
+
+  @override
+  String get statusMutedByAdmin => 'Заглушён администратором';
+
+  @override
+  String get statusTheyHearNothing => 'У них выключен звук — они вас не слышат';
+
+  @override
+  String get statusDeafenedByAdmin => 'Лишён звука администратором';
+
+  @override
+  String get statusMutedForYou => 'Заглушён только у вас';
+
+  @override
+  String get statusSuppressedHere => 'Этот канал не передаёт их голос';
+
+  @override
   String get statusConnected => 'Подключено';
 
   @override

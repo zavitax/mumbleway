@@ -277,6 +277,42 @@ abstract class L {
   /// **'MumbleWay needs a microphone. Check that one is connected and that permission is granted, then restart the app.'**
   String get audioFailedBody;
 
+  /// No description provided for @statusTheirMicOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Their microphone is off'**
+  String get statusTheirMicOff;
+
+  /// No description provided for @statusMutedByAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted by an admin'**
+  String get statusMutedByAdmin;
+
+  /// No description provided for @statusTheyHearNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Their sound is off — they cannot hear you'**
+  String get statusTheyHearNothing;
+
+  /// No description provided for @statusDeafenedByAdmin.
+  ///
+  /// In en, this message translates to:
+  /// **'Deafened by an admin'**
+  String get statusDeafenedByAdmin;
+
+  /// No description provided for @statusMutedForYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted for you only'**
+  String get statusMutedForYou;
+
+  /// No description provided for @statusSuppressedHere.
+  ///
+  /// In en, this message translates to:
+  /// **'This channel will not carry their voice'**
+  String get statusSuppressedHere;
+
   /// No description provided for @statusConnected.
   ///
   /// In en, this message translates to:

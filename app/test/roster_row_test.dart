@@ -18,6 +18,9 @@ import 'package:mumbleway/widgets/connection_quality.dart';
 /// silences them rather than tucked against their name.
 UiUser rider({
   bool muted = false,
+  bool selfMuted = false,
+  bool deafened = false,
+  bool selfDeafened = false,
   String comment = '',
   UiQuality? quality,
 }) => UiUser(
@@ -25,9 +28,11 @@ UiUser rider({
   name: 'Anna',
   channelId: 0,
   talking: false,
-  muted: muted,
-  deafened: false,
+  muted: muted || selfMuted,
+  deafened: deafened || selfDeafened,
   localMute: false,
+  selfMuted: selfMuted,
+  selfDeafened: selfDeafened,
   status: 'silent',
   comment: comment,
   prioritySpeaker: false,
@@ -142,6 +147,52 @@ void main() {
     );
     expect(tip.message, long);
     expect(tip.triggerMode, TooltipTriggerMode.tap);
+  });
+
+  testWidgets('a rider who turned their own sound off is marked apart', (
+    t,
+  ) async {
+    // The one state in this row that is about *them* hearing rather than about
+    // being heard, and the mistake worth saving a rider from: talking to
+    // somebody who cannot hear a word of it.
+    final state = connected();
+    await t.pumpWidget(host(state, rider(selfDeafened: true)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.headset_off), findsOneWidget);
+    expect(find.byIcon(Icons.volume_off), findsNothing);
+  });
+
+  testWidgets('and an admin deafening somebody looks different', (t) async {
+    final state = connected();
+    await t.pumpWidget(host(state, rider(deafened: true)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.volume_off), findsOneWidget);
+    expect(find.byIcon(Icons.headset_off), findsNothing);
+  });
+
+  testWidgets('a closed microphone says whose decision it was', (t) async {
+    // The glyph is the same either way — it has to be, it is the same state —
+    // so the words are what tell a rider whether somebody chose not to talk or
+    // was stopped from talking.
+    final l = await L.delegate.load(const Locale('en'));
+
+    final theirs = connected();
+    await t.pumpWidget(host(theirs, rider(selfMuted: true)));
+    await t.pump(const Duration(milliseconds: 50));
+    expect(find.byIcon(Icons.mic_off), findsOneWidget);
+    await t.tap(find.byIcon(Icons.mic_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusTheirMicOff), findsOneWidget);
+
+    await t.pumpWidget(const SizedBox.shrink());
+    final admins = connected();
+    await t.pumpWidget(host(admins, rider(muted: true)));
+    await t.pump(const Duration(milliseconds: 50));
+    await t.tap(find.byIcon(Icons.mic_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusMutedByAdmin), findsOneWidget);
   });
 
   testWidgets('the connection sits between the speaker and the menu', (

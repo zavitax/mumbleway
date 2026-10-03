@@ -252,6 +252,29 @@ class ChannelUserList extends StatelessWidget {
 /// relay the handshake nobody can say anything. For the same reason the core
 /// badges our own row only where the handshake runs, so that everybody else's
 /// badges mean something.
+/// A tooltip that gets out of the way when it has nothing to say.
+///
+/// The roster's status glyph carries an explanation only in the states that
+/// need one; wrapping it unconditionally would put an empty box under every
+/// silent rider's icon.
+class _StatusTooltip extends StatelessWidget {
+  const _StatusTooltip({required this.message, required this.child});
+
+  final String message;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (message.isEmpty) return child;
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 6),
+      child: child,
+    );
+  }
+}
+
 class MumblewayBadge extends StatelessWidget {
   const MumblewayBadge({super.key, required this.version});
 
@@ -316,44 +339,50 @@ class _UserRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // The picture where the person icon would be, when they have one.
-          //
-          // The status icon is tucked into its corner **only when it says
-          // something**: who is talking and who is muted is what the row is
-          // for, and that is never given up for decoration — but the idle
-          // glyph is a drawing of a person, and a drawing of a person in the
-          // corner of a photograph of one says nothing at all.
-          switch (state.runtimeFor(serverId).avatars[user.session]) {
-            final Uint8List image? => SizedBox(
-              width: 18,
-              height: 18,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ClipOval(
-                    child: Image.memory(
-                      image,
-                      width: 18,
-                      height: 18,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      // A picture from a stranger's server that will not
-                      // decode is not a reason to lose the row.
-                      errorBuilder: (_, _, _) =>
-                          Icon(icon, size: 18, color: color),
+          // Held to read, on the glyph that raises the question: the row says
+          // somebody cannot be heard, and this says who decided that.
+          _StatusTooltip(
+            message: statusWords(l, user),
+            child:
+                // The picture where the person icon would be, when they have one.
+                //
+                // The status icon is tucked into its corner **only when it says
+                // something**: who is talking and who is muted is what the row is
+                // for, and that is never given up for decoration — but the idle
+                // glyph is a drawing of a person, and a drawing of a person in the
+                // corner of a photograph of one says nothing at all.
+                switch (state.runtimeFor(serverId).avatars[user.session]) {
+                  final Uint8List image? => SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipOval(
+                          child: Image.memory(
+                            image,
+                            width: 18,
+                            height: 18,
+                            fit: BoxFit.cover,
+                            gaplessPlayback: true,
+                            // A picture from a stranger's server that will not
+                            // decode is not a reason to lose the row.
+                            errorBuilder: (_, _, _) =>
+                                Icon(icon, size: 18, color: color),
+                          ),
+                        ),
+                        if (icon != Icons.person_outline)
+                          Positioned(
+                            right: -3,
+                            bottom: -3,
+                            child: Icon(icon, size: 11, color: color),
+                          ),
+                      ],
                     ),
                   ),
-                  if (icon != Icons.person_outline)
-                    Positioned(
-                      right: -3,
-                      bottom: -3,
-                      child: Icon(icon, size: 11, color: color),
-                    ),
-                ],
-              ),
-            ),
-            _ => Icon(icon, size: 18, color: color),
-          },
+                  _ => Icon(icon, size: 18, color: color),
+                },
+          ),
           const SizedBox(width: 10),
           Expanded(
             // The badge rides directly after the name rather than at the end
@@ -879,10 +908,35 @@ class _UserRow extends StatelessWidget {
   /// `speaking` comes from the audio, not the roster: the server never says
   /// who is talking, so `UiUser.talking` only ever changes when the server
   /// happens to send an unrelated roster update.
+  /// What the status glyph means, in words.
+  ///
+  /// **Whose decision it was, which a glyph cannot say.** A closed microphone
+  /// looks the same whether the rider closed it or an admin did, and the two
+  /// call for different responses: one is somebody choosing not to talk, the
+  /// other is somebody who has been stopped.
+  static String statusWords(L l, UiUser u) {
+    if (u.selfDeafened) return l.statusTheyHearNothing;
+    if (u.deafened) return l.statusDeafenedByAdmin;
+    if (u.localMute) return l.statusMutedForYou;
+    if (u.muted) {
+      return u.selfMuted ? l.statusTheirMicOff : l.statusMutedByAdmin;
+    }
+    if (u.suppressed) return l.statusSuppressedHere;
+    return '';
+  }
+
   static (IconData, Color) _statusVisual(UiUser u, {required bool speaking}) {
     // The same glyph the toolbar uses for the same state. Two icons for one
     // condition is how a roster ends up meaning something different from the
     // button that caused it.
+    //
+    // **A rider who turned their own sound off gets a glyph of their own.** It
+    // is the one state here that is about *them* hearing rather than about
+    // being heard, and talking to somebody who cannot hear you is the mistake
+    // this row can save a rider from. The colour stays red: that means no
+    // audio is crossing, whoever decided it, and this vocabulary is read at a
+    // glance through a visor.
+    if (u.selfDeafened) return (Icons.headset_off, StatusColors.failed);
     if (u.deafened) return (Icons.volume_off, StatusColors.failed);
     if (u.localMute) return (Icons.volume_off, StatusColors.failed);
     if (u.muted) return (Icons.mic_off, StatusColors.failed);

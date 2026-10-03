@@ -4249,8 +4249,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiUser dco_decode_ui_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 13)
-      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
     return UiUser(
       session: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -4258,13 +4258,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       talking: dco_decode_bool(arr[3]),
       muted: dco_decode_bool(arr[4]),
       deafened: dco_decode_bool(arr[5]),
-      localMute: dco_decode_bool(arr[6]),
-      status: dco_decode_String(arr[7]),
-      mumblewayVersion: dco_decode_opt_String(arr[8]),
-      prioritySpeaker: dco_decode_bool(arr[9]),
-      suppressed: dco_decode_bool(arr[10]),
-      comment: dco_decode_String(arr[11]),
-      quality: dco_decode_opt_box_autoadd_ui_quality(arr[12]),
+      selfMuted: dco_decode_bool(arr[6]),
+      selfDeafened: dco_decode_bool(arr[7]),
+      localMute: dco_decode_bool(arr[8]),
+      status: dco_decode_String(arr[9]),
+      mumblewayVersion: dco_decode_opt_String(arr[10]),
+      prioritySpeaker: dco_decode_bool(arr[11]),
+      suppressed: dco_decode_bool(arr[12]),
+      comment: dco_decode_String(arr[13]),
+      quality: dco_decode_opt_box_autoadd_ui_quality(arr[14]),
     );
   }
 
@@ -5572,6 +5574,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_talking = sse_decode_bool(deserializer);
     var var_muted = sse_decode_bool(deserializer);
     var var_deafened = sse_decode_bool(deserializer);
+    var var_selfMuted = sse_decode_bool(deserializer);
+    var var_selfDeafened = sse_decode_bool(deserializer);
     var var_localMute = sse_decode_bool(deserializer);
     var var_status = sse_decode_String(deserializer);
     var var_mumblewayVersion = sse_decode_opt_String(deserializer);
@@ -5586,6 +5590,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       talking: var_talking,
       muted: var_muted,
       deafened: var_deafened,
+      selfMuted: var_selfMuted,
+      selfDeafened: var_selfDeafened,
       localMute: var_localMute,
       status: var_status,
       mumblewayVersion: var_mumblewayVersion,
@@ -6708,6 +6714,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.talking, serializer);
     sse_encode_bool(self.muted, serializer);
     sse_encode_bool(self.deafened, serializer);
+    sse_encode_bool(self.selfMuted, serializer);
+    sse_encode_bool(self.selfDeafened, serializer);
     sse_encode_bool(self.localMute, serializer);
     sse_encode_String(self.status, serializer);
     sse_encode_opt_String(self.mumblewayVersion, serializer);

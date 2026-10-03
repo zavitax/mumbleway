@@ -2585,6 +2585,17 @@ class UiUser {
   final bool muted;
   final bool deafened;
 
+  /// Which of the two it was.
+  ///
+  /// **The roster says different things about them.** A rider who closed
+  /// their own microphone has made a decision; one an admin closed has had
+  /// one made for them, and a rider who turned their own sound off cannot
+  /// hear anybody — which is worth knowing before talking to them. The
+  /// combined flags above stay as they are, because "can they be heard" is
+  /// the question most of this app asks.
+  final bool selfMuted;
+  final bool selfDeafened;
+
   /// Silenced by us alone. Needs no permission and is invisible to others.
   final bool localMute;
 
@@ -2628,6 +2639,8 @@ class UiUser {
     required this.talking,
     required this.muted,
     required this.deafened,
+    required this.selfMuted,
+    required this.selfDeafened,
     required this.localMute,
     required this.status,
     this.mumblewayVersion,
@@ -2645,6 +2658,8 @@ class UiUser {
       talking.hashCode ^
       muted.hashCode ^
       deafened.hashCode ^
+      selfMuted.hashCode ^
+      selfDeafened.hashCode ^
       localMute.hashCode ^
       status.hashCode ^
       mumblewayVersion.hashCode ^
@@ -2664,6 +2679,8 @@ class UiUser {
           talking == other.talking &&
           muted == other.muted &&
           deafened == other.deafened &&
+          selfMuted == other.selfMuted &&
+          selfDeafened == other.selfDeafened &&
           localMute == other.localMute &&
           status == other.status &&
           mumblewayVersion == other.mumblewayVersion &&

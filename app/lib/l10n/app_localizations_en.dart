@@ -112,6 +112,25 @@ class LEn extends L {
       'MumbleWay needs a microphone. Check that one is connected and that permission is granted, then restart the app.';
 
   @override
+  String get statusTheirMicOff => 'Their microphone is off';
+
+  @override
+  String get statusMutedByAdmin => 'Muted by an admin';
+
+  @override
+  String get statusTheyHearNothing =>
+      'Their sound is off — they cannot hear you';
+
+  @override
+  String get statusDeafenedByAdmin => 'Deafened by an admin';
+
+  @override
+  String get statusMutedForYou => 'Muted for you only';
+
+  @override
+  String get statusSuppressedHere => 'This channel will not carry their voice';
+
+  @override
   String get statusConnected => 'Connected';
 
   @override

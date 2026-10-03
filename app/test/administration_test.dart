@@ -43,6 +43,8 @@ UiUser rider({bool priority = false}) => UiUser(
   muted: false,
   deafened: false,
   localMute: false,
+  selfMuted: false,
+  selfDeafened: false,
   status: 'silent',
   comment: '',
   prioritySpeaker: priority,

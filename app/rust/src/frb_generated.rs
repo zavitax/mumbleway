@@ -4876,6 +4876,8 @@ impl SseDecode for crate::api::mumbleway::UiUser {
         let mut var_talking = <bool>::sse_decode(deserializer);
         let mut var_muted = <bool>::sse_decode(deserializer);
         let mut var_deafened = <bool>::sse_decode(deserializer);
+        let mut var_selfMuted = <bool>::sse_decode(deserializer);
+        let mut var_selfDeafened = <bool>::sse_decode(deserializer);
         let mut var_localMute = <bool>::sse_decode(deserializer);
         let mut var_status = <String>::sse_decode(deserializer);
         let mut var_mumblewayVersion = <Option<String>>::sse_decode(deserializer);
@@ -4890,6 +4892,8 @@ impl SseDecode for crate::api::mumbleway::UiUser {
             talking: var_talking,
             muted: var_muted,
             deafened: var_deafened,
+            self_muted: var_selfMuted,
+            self_deafened: var_selfDeafened,
             local_mute: var_localMute,
             status: var_status,
             mumbleway_version: var_mumblewayVersion,
@@ -6206,6 +6210,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiUser {
             self.talking.into_into_dart().into_dart(),
             self.muted.into_into_dart().into_dart(),
             self.deafened.into_into_dart().into_dart(),
+            self.self_muted.into_into_dart().into_dart(),
+            self.self_deafened.into_into_dart().into_dart(),
             self.local_mute.into_into_dart().into_dart(),
             self.status.into_into_dart().into_dart(),
             self.mumbleway_version.into_into_dart().into_dart(),
@@ -7288,6 +7294,8 @@ impl SseEncode for crate::api::mumbleway::UiUser {
         <bool>::sse_encode(self.talking, serializer);
         <bool>::sse_encode(self.muted, serializer);
         <bool>::sse_encode(self.deafened, serializer);
+        <bool>::sse_encode(self.self_muted, serializer);
+        <bool>::sse_encode(self.self_deafened, serializer);
         <bool>::sse_encode(self.local_mute, serializer);
         <String>::sse_encode(self.status, serializer);
         <Option<String>>::sse_encode(self.mumbleway_version, serializer);

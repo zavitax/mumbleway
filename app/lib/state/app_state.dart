@@ -5,7 +5,7 @@ import 'dart:io' show File, Platform;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, listEquals, visibleForTesting;
-import 'dart:typed_data' show Uint8List;
+import 'dart:typed_data' show Uint8List, Uint32List;
 import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -256,6 +256,17 @@ class ServerRuntime {
   /// Usually empty: they come from bots and server plugins, and most servers
   /// run neither.
   List<UiContextAction> contextActions = const [];
+
+  /// Access lists, by channel, as the server last stated them.
+  ///
+  /// Kept rather than fetched per screen: the editor reads one back after
+  /// every write, and what it shows must be what the server kept rather than
+  /// what was sent.
+  final Map<int, UiChannelAcl> acls = {};
+
+  /// Names behind registered user ids, which is what an access list names
+  /// people by.
+  final Map<int, String> userNames = {};
 
   /// Everybody this server has an account for, once an admin has asked.
   List<UiRegisteredUser> registered = const [];
@@ -2583,6 +2594,29 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Asks for one channel's access list.
+  Future<String?> loadAcl(String id, int channelId) async {
+    try {
+      await requestAcl(serverId: id, channelId: channelId);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Writes a channel's access list back, whole.
+  ///
+  /// The core re-reads it afterwards, so the screen ends up showing what the
+  /// server kept rather than what this app sent.
+  Future<String?> saveAcl(String id, UiChannelAcl acl) async {
+    try {
+      await setAcl(serverId: id, acl: acl);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   /// Asks for the registered users; the answer arrives as an event.
   Future<String?> loadRegistered(String id) async {
     try {
@@ -4093,7 +4127,37 @@ class AppState extends ChangeNotifier {
       case AppEvent_Bans(:final serverId, :final bans):
         runtimeFor(serverId).bans = bans;
       case AppEvent_Registered(:final serverId, :final users):
-        runtimeFor(serverId).registered = users;
+        final rt = runtimeFor(serverId);
+        rt.registered = users;
+        // The names arrive here as well, and an access list needs them.
+        for (final u in users) {
+          rt.userNames[u.userId] = u.name;
+        }
+      case AppEvent_Acl(:final serverId, :final acl):
+        final rt = runtimeFor(serverId);
+        rt.acls[acl.channelId] = acl;
+        // Rules name people by number. Ask who they are, once per batch of
+        // numbers nobody has a name for yet.
+        final unknown = <int>{
+          for (final r in acl.rules)
+            if (r.userId case final id?)
+              if (!rt.userNames.containsKey(id)) id,
+        };
+        if (unknown.isNotEmpty) {
+          try {
+            unawaited(
+              queryUserNames(
+                serverId: serverId,
+                ids: Uint32List.fromList(unknown.toList()),
+              ).catchError((_) {}),
+            );
+          } catch (_) {}
+        }
+      case AppEvent_UserNames(:final serverId, :final names):
+        final rt = runtimeFor(serverId);
+        for (final n in names) {
+          rt.userNames[n.userId] = n.name;
+        }
       case AppEvent_UserDetails(:final serverId, :final details):
         runtimeFor(serverId).userDetails[details.session] = details;
       case AppEvent_ContextActions(:final serverId, :final actions):

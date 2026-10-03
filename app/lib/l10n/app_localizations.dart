@@ -3408,6 +3408,210 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Last seen {when}'**
   String registeredLastSeen(String when);
+
+  /// No description provided for @permWrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit channel'**
+  String get permWrite;
+
+  /// No description provided for @permTraverse.
+  ///
+  /// In en, this message translates to:
+  /// **'See through'**
+  String get permTraverse;
+
+  /// No description provided for @permEnter.
+  ///
+  /// In en, this message translates to:
+  /// **'Join'**
+  String get permEnter;
+
+  /// No description provided for @permSpeak.
+  ///
+  /// In en, this message translates to:
+  /// **'Speak'**
+  String get permSpeak;
+
+  /// No description provided for @permMuteDeafen.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute and deafen'**
+  String get permMuteDeafen;
+
+  /// No description provided for @permMove.
+  ///
+  /// In en, this message translates to:
+  /// **'Move others'**
+  String get permMove;
+
+  /// No description provided for @permMakeChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Make channels'**
+  String get permMakeChannel;
+
+  /// No description provided for @permLinkChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Link channels'**
+  String get permLinkChannel;
+
+  /// No description provided for @permWhisper.
+  ///
+  /// In en, this message translates to:
+  /// **'Whisper'**
+  String get permWhisper;
+
+  /// No description provided for @permTextMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Write messages'**
+  String get permTextMessage;
+
+  /// No description provided for @permMakeTempChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Make temporary channels'**
+  String get permMakeTempChannel;
+
+  /// No description provided for @permListen.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen without joining'**
+  String get permListen;
+
+  /// No description provided for @aclGrants.
+  ///
+  /// In en, this message translates to:
+  /// **'grants {what}'**
+  String aclGrants(String what);
+
+  /// No description provided for @aclDenies.
+  ///
+  /// In en, this message translates to:
+  /// **'denies {what}'**
+  String aclDenies(String what);
+
+  /// No description provided for @aclSaysNothing.
+  ///
+  /// In en, this message translates to:
+  /// **'says nothing'**
+  String get aclSaysNothing;
+
+  /// No description provided for @aclTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions in {channel}'**
+  String aclTitle(String channel);
+
+  /// No description provided for @aclInherit.
+  ///
+  /// In en, this message translates to:
+  /// **'Also use the parent channel\'s rules'**
+  String get aclInherit;
+
+  /// No description provided for @aclInherited.
+  ///
+  /// In en, this message translates to:
+  /// **'from the parent channel'**
+  String get aclInherited;
+
+  /// No description provided for @aclRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Rules'**
+  String get aclRules;
+
+  /// No description provided for @aclGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups'**
+  String get aclGroups;
+
+  /// No description provided for @aclAddRule.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a rule'**
+  String get aclAddRule;
+
+  /// No description provided for @aclRemoveRule.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this rule'**
+  String get aclRemoveRule;
+
+  /// No description provided for @aclApplyHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Here'**
+  String get aclApplyHere;
+
+  /// No description provided for @aclApplySubs.
+  ///
+  /// In en, this message translates to:
+  /// **'And below'**
+  String get aclApplySubs;
+
+  /// No description provided for @aclFor.
+  ///
+  /// In en, this message translates to:
+  /// **'For'**
+  String get aclFor;
+
+  /// No description provided for @aclGroupNamed.
+  ///
+  /// In en, this message translates to:
+  /// **'Group: {name}'**
+  String aclGroupNamed(String name);
+
+  /// No description provided for @aclUserNamed.
+  ///
+  /// In en, this message translates to:
+  /// **'User: {name}'**
+  String aclUserNamed(String name);
+
+  /// No description provided for @aclSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save permissions'**
+  String get aclSave;
+
+  /// No description provided for @aclSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent. The server decides what it keeps.'**
+  String get aclSaved;
+
+  /// No description provided for @aclEverybody.
+  ///
+  /// In en, this message translates to:
+  /// **'everybody'**
+  String get aclEverybody;
+
+  /// No description provided for @aclRegistered.
+  ///
+  /// In en, this message translates to:
+  /// **'registered users'**
+  String get aclRegistered;
+
+  /// No description provided for @aclGroupMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} members'**
+  String aclGroupMembers(int count);
+
+  /// No description provided for @aclPermissions.
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions'**
+  String get aclPermissions;
+
+  /// No description provided for @aclTapHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap a permission to cycle it: not mentioned, granted, denied.'**
+  String get aclTapHint;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

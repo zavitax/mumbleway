@@ -140,6 +140,52 @@ pub struct UiContextAction {
     pub for_server: bool,
 }
 
+/// One rule in a channel's access list.
+///
+/// `grant` and `deny` are bitmasks of Mumble's channel permissions; the names
+/// for them live in `services/channel_permissions.dart`.
+#[derive(Debug, Clone)]
+pub struct UiAclRule {
+    pub apply_here: bool,
+    pub apply_subs: bool,
+    /// From a parent channel. Shown, never edited: the server drops inherited
+    /// rules from anything written back, and the rule belongs to the channel
+    /// that defines it.
+    pub inherited: bool,
+    pub user_id: Option<u32>,
+    pub group: Option<String>,
+    pub grant: u32,
+    pub deny: u32,
+}
+
+/// A named group on a channel.
+#[derive(Debug, Clone)]
+pub struct UiAclGroup {
+    pub name: String,
+    pub inherited: bool,
+    pub inherit: bool,
+    pub inheritable: bool,
+    pub add: Vec<u32>,
+    pub remove: Vec<u32>,
+    pub inherited_members: Vec<u32>,
+}
+
+/// A channel's whole access list.
+#[derive(Debug, Clone)]
+pub struct UiChannelAcl {
+    pub channel_id: u32,
+    pub inherit_acls: bool,
+    pub groups: Vec<UiAclGroup>,
+    pub rules: Vec<UiAclRule>,
+}
+
+/// One registered user's id and name.
+#[derive(Debug, Clone)]
+pub struct UiUserName {
+    pub user_id: u32,
+    pub name: String,
+}
+
 /// Somebody the server has an account for.
 #[derive(Debug, Clone)]
 pub struct UiRegisteredUser {
@@ -334,6 +380,16 @@ pub enum AppEvent {
     ContextActions {
         server_id: String,
         actions: Vec<UiContextAction>,
+    },
+    /// One channel's access list, in answer to asking for it.
+    Acl {
+        server_id: String,
+        acl: UiChannelAcl,
+    },
+    /// Names for registered user ids, in answer to asking.
+    UserNames {
+        server_id: String,
+        names: Vec<UiUserName>,
     },
     /// Everybody this server has an account for.
     Registered {
@@ -981,6 +1037,46 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         })
                         .collect(),
                 }),
+                SessionEvent::Acl(acl) => emit(AppEvent::Acl {
+                    server_id,
+                    acl: UiChannelAcl {
+                        channel_id: acl.channel_id,
+                        inherit_acls: acl.inherit_acls,
+                        groups: acl
+                            .groups
+                            .into_iter()
+                            .map(|g| UiAclGroup {
+                                name: g.name,
+                                inherited: g.inherited,
+                                inherit: g.inherit,
+                                inheritable: g.inheritable,
+                                add: g.add,
+                                remove: g.remove,
+                                inherited_members: g.inherited_members,
+                            })
+                            .collect(),
+                        rules: acl
+                            .rules
+                            .into_iter()
+                            .map(|r| UiAclRule {
+                                apply_here: r.apply_here,
+                                apply_subs: r.apply_subs,
+                                inherited: r.inherited,
+                                user_id: r.user_id,
+                                group: r.group,
+                                grant: r.grant,
+                                deny: r.deny,
+                            })
+                            .collect(),
+                    },
+                }),
+                SessionEvent::UserNames(pairs) => emit(AppEvent::UserNames {
+                    server_id,
+                    names: pairs
+                        .into_iter()
+                        .map(|(user_id, name)| UiUserName { user_id, name })
+                        .collect(),
+                }),
                 SessionEvent::Registered(list) => emit(AppEvent::Registered {
                     server_id,
                     users: list
@@ -1470,6 +1566,58 @@ pub fn edit_channel(
 /// Removes a channel and everything under it. Needs Write on it.
 pub fn remove_channel(server_id: String, channel_id: u32) -> anyhow::Result<()> {
     send_command(server_id, SessionCommand::RemoveChannel(channel_id))
+}
+
+/// Asks for one channel's access list. Needs Write on that channel.
+pub fn request_acl(server_id: String, channel_id: u32) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::RequestAcl(channel_id))
+}
+
+/// Replaces a channel's access list.
+///
+/// **Written whole**, because the protocol cannot change one rule. Inherited
+/// rules are dropped on the way out: the server does not store them again, and
+/// leaving them out is not a deletion.
+pub fn set_acl(server_id: String, acl: UiChannelAcl) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::SetAcl(mumbleway_core::session::ChannelAcl {
+            channel_id: acl.channel_id,
+            inherit_acls: acl.inherit_acls,
+            groups: acl
+                .groups
+                .into_iter()
+                .map(|g| mumbleway_core::session::AclGroup {
+                    name: g.name,
+                    inherited: g.inherited,
+                    inherit: g.inherit,
+                    inheritable: g.inheritable,
+                    add: g.add,
+                    remove: g.remove,
+                    inherited_members: g.inherited_members,
+                })
+                .collect(),
+            rules: acl
+                .rules
+                .into_iter()
+                .map(|r| mumbleway_core::session::AclRule {
+                    apply_here: r.apply_here,
+                    apply_subs: r.apply_subs,
+                    inherited: r.inherited,
+                    user_id: r.user_id,
+                    group: r.group,
+                    grant: r.grant,
+                    deny: r.deny,
+                })
+                .collect(),
+        }),
+    )
+}
+
+/// Asks what the names are behind registered user ids, since an access list
+/// names people by number.
+pub fn query_user_names(server_id: String, ids: Vec<u32>) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::QueryUserNames(ids))
 }
 
 /// Asks for the registered users; they arrive as `AppEvent::Registered`.

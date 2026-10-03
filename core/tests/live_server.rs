@@ -325,6 +325,139 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// A channel's access list: read it, change it, read it back.
+///
+/// The riskiest write in the client, for the same reason as the ban list — the
+/// protocol has no way to change one rule, so the list is replaced whole and a
+/// rule dropped on the way through would be a permission silently revoked.
+/// This adds one, confirms the server kept it, removes it again, and confirms
+/// the list is back where it started.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server AND MW_LIVE_SUPERUSER set to its password"]
+async fn an_acl_survives_a_round_trip() {
+    require_server!();
+    let Ok(password) = std::env::var("MW_LIVE_SUPERUSER") else {
+        eprintln!("MW_LIVE_SUPERUSER is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live acl").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut admin = ServerProfile::new("live", host, port, "SuperUser");
+    admin.id = "admin".into();
+    admin.password = Some(password);
+    let id = manager.add(admin, silent_bridge()).expect("added");
+    manager
+        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    use mumbleway_core::session::permissions;
+    use mumbleway_core::session::{AclRule, SessionCommand as C};
+
+    let mut seen: Vec<usize> = Vec::new();
+    let mut groups_seen: Vec<String> = Vec::new();
+    let mut step = 0;
+    let mut added_was_there = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(_) if step == 0 => {
+                step = 1;
+                manager.send(&id, C::RequestAcl(0)).await.expect("read acl");
+            }
+            SessionEvent::Acl(acl) => {
+                let own: Vec<&AclRule> = acl.rules.iter().filter(|r| !r.inherited).collect();
+                println!(
+                    "acl of channel {}: {} rules ({} of them this channel's), {} groups, inherit={}",
+                    acl.channel_id,
+                    acl.rules.len(),
+                    own.len(),
+                    acl.groups.len(),
+                    acl.inherit_acls
+                );
+                if step == 1 {
+                    step = 2;
+                    seen.push(own.len());
+                    groups_seen = acl.groups.iter().map(|g| g.name.clone()).collect();
+
+                    // Add a rule nobody else would write: deny Whisper to the
+                    // "all" group. Harmless, and unmistakable on the way back.
+                    let mut next = acl.clone();
+                    next.rules.push(AclRule {
+                        apply_here: true,
+                        apply_subs: false,
+                        inherited: false,
+                        user_id: None,
+                        group: Some("all".into()),
+                        grant: 0,
+                        deny: permissions::WHISPER,
+                    });
+                    manager.send(&id, C::SetAcl(next)).await.expect("write acl");
+                } else if step == 2 {
+                    step = 3;
+                    seen.push(own.len());
+                    added_was_there = acl.rules.iter().any(|r| {
+                        !r.inherited
+                            && r.group.as_deref() == Some("all")
+                            && r.deny == permissions::WHISPER
+                    });
+                    // And take it away again, leaving the server as found.
+                    let mut next = acl.clone();
+                    next.rules.retain(|r| {
+                        !(r.group.as_deref() == Some("all") && r.deny == permissions::WHISPER)
+                    });
+                    manager
+                        .send(&id, C::SetAcl(next))
+                        .await
+                        .expect("restore acl");
+                } else if step == 3 {
+                    step = 4;
+                    seen.push(own.len());
+                }
+            }
+            SessionEvent::Refused { reason, kind } => {
+                println!("server refused something: kind={kind} reason={reason:?}");
+            }
+            SessionEvent::Text { from, message } => {
+                println!("text from {from}: {message}");
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    println!("rule counts seen: {seen:?}");
+    println!("groups: {groups_seen:?}");
+    assert!(
+        seen.len() >= 3,
+        "the list was not read three times: {seen:?}"
+    );
+    assert!(
+        added_was_there,
+        "the rule that was written did not come back"
+    );
+    assert_eq!(
+        seen[2], seen[0],
+        "the server was not left as it was found: {seen:?}"
+    );
+    assert!(
+        groups_seen.iter().any(|g| g == "admin"),
+        "a default server defines an admin group: {groups_seen:?}"
+    );
+}
+
 /// Everything an admin can now do, in one round trip on a real server.
 ///
 /// Channel management, the registered-user list, registering and unregistering

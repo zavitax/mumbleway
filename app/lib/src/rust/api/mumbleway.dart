@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -111,6 +111,31 @@ Future<void> removeChannel({
 }) => RustLib.instance.api.crateApiMumblewayRemoveChannel(
   serverId: serverId,
   channelId: channelId,
+);
+
+/// Asks for one channel's access list. Needs Write on that channel.
+Future<void> requestAcl({required String serverId, required int channelId}) =>
+    RustLib.instance.api.crateApiMumblewayRequestAcl(
+      serverId: serverId,
+      channelId: channelId,
+    );
+
+/// Replaces a channel's access list.
+///
+/// **Written whole**, because the protocol cannot change one rule. Inherited
+/// rules are dropped on the way out: the server does not store them again, and
+/// leaving them out is not a deletion.
+Future<void> setAcl({required String serverId, required UiChannelAcl acl}) =>
+    RustLib.instance.api.crateApiMumblewaySetAcl(serverId: serverId, acl: acl);
+
+/// Asks what the names are behind registered user ids, since an access list
+/// names people by number.
+Future<void> queryUserNames({
+  required String serverId,
+  required List<int> ids,
+}) => RustLib.instance.api.crateApiMumblewayQueryUserNames(
+  serverId: serverId,
+  ids: ids,
 );
 
 /// Asks for the registered users; they arrive as `AppEvent::Registered`.
@@ -826,6 +851,18 @@ sealed class AppEvent with _$AppEvent {
     required List<UiContextAction> actions,
   }) = AppEvent_ContextActions;
 
+  /// One channel's access list, in answer to asking for it.
+  const factory AppEvent.acl({
+    required String serverId,
+    required UiChannelAcl acl,
+  }) = AppEvent_Acl;
+
+  /// Names for registered user ids, in answer to asking.
+  const factory AppEvent.userNames({
+    required String serverId,
+    required List<UiUserName> names,
+  }) = AppEvent_UserNames;
+
   /// Everybody this server has an account for.
   const factory AppEvent.registered({
     required String serverId,
@@ -1134,6 +1171,101 @@ class StatusUpdate {
           detail == other.detail &&
           attempt == other.attempt &&
           retryInMs == other.retryInMs;
+}
+
+/// A named group on a channel.
+class UiAclGroup {
+  final String name;
+  final bool inherited;
+  final bool inherit;
+  final bool inheritable;
+  final Uint32List add;
+  final Uint32List remove;
+  final Uint32List inheritedMembers;
+
+  const UiAclGroup({
+    required this.name,
+    required this.inherited,
+    required this.inherit,
+    required this.inheritable,
+    required this.add,
+    required this.remove,
+    required this.inheritedMembers,
+  });
+
+  @override
+  int get hashCode =>
+      name.hashCode ^
+      inherited.hashCode ^
+      inherit.hashCode ^
+      inheritable.hashCode ^
+      add.hashCode ^
+      remove.hashCode ^
+      inheritedMembers.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiAclGroup &&
+          runtimeType == other.runtimeType &&
+          name == other.name &&
+          inherited == other.inherited &&
+          inherit == other.inherit &&
+          inheritable == other.inheritable &&
+          add == other.add &&
+          remove == other.remove &&
+          inheritedMembers == other.inheritedMembers;
+}
+
+/// One rule in a channel's access list.
+///
+/// `grant` and `deny` are bitmasks of Mumble's channel permissions; the names
+/// for them live in `services/channel_permissions.dart`.
+class UiAclRule {
+  final bool applyHere;
+  final bool applySubs;
+
+  /// From a parent channel. Shown, never edited: the server drops inherited
+  /// rules from anything written back, and the rule belongs to the channel
+  /// that defines it.
+  final bool inherited;
+  final int? userId;
+  final String? group;
+  final int grant;
+  final int deny;
+
+  const UiAclRule({
+    required this.applyHere,
+    required this.applySubs,
+    required this.inherited,
+    this.userId,
+    this.group,
+    required this.grant,
+    required this.deny,
+  });
+
+  @override
+  int get hashCode =>
+      applyHere.hashCode ^
+      applySubs.hashCode ^
+      inherited.hashCode ^
+      userId.hashCode ^
+      group.hashCode ^
+      grant.hashCode ^
+      deny.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiAclRule &&
+          runtimeType == other.runtimeType &&
+          applyHere == other.applyHere &&
+          applySubs == other.applySubs &&
+          inherited == other.inherited &&
+          userId == other.userId &&
+          group == other.group &&
+          grant == other.grant &&
+          deny == other.deny;
 }
 
 /// One entry of the server's ban list.
@@ -1590,6 +1722,38 @@ class UiChannel {
           description == other.description &&
           userCount == other.userCount &&
           maxUsers == other.maxUsers;
+}
+
+/// A channel's whole access list.
+class UiChannelAcl {
+  final int channelId;
+  final bool inheritAcls;
+  final List<UiAclGroup> groups;
+  final List<UiAclRule> rules;
+
+  const UiChannelAcl({
+    required this.channelId,
+    required this.inheritAcls,
+    required this.groups,
+    required this.rules,
+  });
+
+  @override
+  int get hashCode =>
+      channelId.hashCode ^
+      inheritAcls.hashCode ^
+      groups.hashCode ^
+      rules.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiChannelAcl &&
+          runtimeType == other.runtimeType &&
+          channelId == other.channelId &&
+          inheritAcls == other.inheritAcls &&
+          groups == other.groups &&
+          rules == other.rules;
 }
 
 /// A menu entry this server registered.
@@ -2512,6 +2676,25 @@ class UiUserDetails {
           strongCertificate == other.strongCertificate &&
           onlineSecs == other.onlineSecs &&
           idleSecs == other.idleSecs;
+}
+
+/// One registered user's id and name.
+class UiUserName {
+  final int userId;
+  final String name;
+
+  const UiUserName({required this.userId, required this.name});
+
+  @override
+  int get hashCode => userId.hashCode ^ name.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiUserName &&
+          runtimeType == other.runtimeType &&
+          userId == other.userId &&
+          name == other.name;
 }
 
 /// A window of raw microphone audio for the background classifier.

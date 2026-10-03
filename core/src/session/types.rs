@@ -161,6 +161,56 @@ pub struct UserDetails {
     pub idle_secs: u32,
 }
 
+/// One rule in a channel's access list.
+///
+/// A rule names either a registered user or a group, and carries two bitmasks:
+/// what it grants and what it denies. The bits are `permissions::*`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AclRule {
+    /// Whether it applies to this channel.
+    pub apply_here: bool,
+    /// Whether it applies to channels under it.
+    pub apply_subs: bool,
+    /// Whether it came from a parent channel. **Inherited rules cannot be
+    /// edited here**: they belong to the channel that defines them, and a
+    /// server drops them from any list written back.
+    pub inherited: bool,
+    /// The registered user it names, if it names one.
+    pub user_id: Option<u32>,
+    /// The group it names, if it names one.
+    pub group: Option<String>,
+    pub grant: u32,
+    pub deny: u32,
+}
+
+/// A named group of users on a channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AclGroup {
+    pub name: String,
+    /// Whether the group itself came from a parent channel.
+    pub inherited: bool,
+    /// Whether it takes its members from the parent as well.
+    pub inherit: bool,
+    /// Whether channels under this one may inherit it.
+    pub inheritable: bool,
+    /// Members added here, by registered user id.
+    pub add: Vec<u32>,
+    /// Members removed here, when the group is inherited.
+    pub remove: Vec<u32>,
+    /// Members that came from the parent.
+    pub inherited_members: Vec<u32>,
+}
+
+/// A channel's whole access list, as the server states it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelAcl {
+    pub channel_id: u32,
+    /// Whether this channel takes its parent's rules as well as its own.
+    pub inherit_acls: bool,
+    pub groups: Vec<AclGroup>,
+    pub rules: Vec<AclRule>,
+}
+
 /// Somebody the server has an account for, whether or not they are here.
 ///
 /// Registration is what makes a name belong to a person: an unregistered name
@@ -355,6 +405,10 @@ pub enum SessionEvent {
     Bans(Vec<crate::session::bans::BanEntry>),
     /// Everybody the server has an account for.
     Registered(Vec<RegisteredUser>),
+    /// One channel's access list, in answer to asking for it.
+    Acl(ChannelAcl),
+    /// Names for registered user ids, in answer to asking.
+    UserNames(Vec<(u32, String)>),
     /// Everything the server will say about one user, for an admin.
     UserDetails(UserDetails),
     /// What the server's administrator asks riders to do here.
@@ -493,6 +547,20 @@ pub enum SessionCommand {
     },
     /// Removes a channel and everything under it. Requires Write on it.
     RemoveChannel(u32),
+    /// Asks for one channel's access list. Requires Write on that channel.
+    RequestAcl(u32),
+    /// Replaces a channel's access list.
+    ///
+    /// **Written whole, like the ban list**, and for the same reason: the
+    /// protocol has no way to change one rule. Inherited rules are dropped by
+    /// the server rather than stored again, so sending them back is harmless
+    /// and leaving them out is not a deletion.
+    SetAcl(ChannelAcl),
+    /// Asks the server for the names behind registered user ids.
+    ///
+    /// An access list names users by id, and an id is not something to show
+    /// anybody. This is how the names are found.
+    QueryUserNames(Vec<u32>),
     /// Asks for the list of registered users. Requires Register on the root
     /// channel.
     RequestRegistered,

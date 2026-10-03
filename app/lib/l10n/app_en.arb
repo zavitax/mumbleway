@@ -1068,5 +1068,81 @@
         "type": "String"
       }
     }
-  }
+  },
+  "permWrite": "Edit channel",
+  "permTraverse": "See through",
+  "permEnter": "Join",
+  "permSpeak": "Speak",
+  "permMuteDeafen": "Mute and deafen",
+  "permMove": "Move others",
+  "permMakeChannel": "Make channels",
+  "permLinkChannel": "Link channels",
+  "permWhisper": "Whisper",
+  "permTextMessage": "Write messages",
+  "permMakeTempChannel": "Make temporary channels",
+  "permListen": "Listen without joining",
+  "aclGrants": "grants {what}",
+  "@aclGrants": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "aclDenies": "denies {what}",
+  "@aclDenies": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "aclSaysNothing": "says nothing",
+  "aclTitle": "Permissions in {channel}",
+  "@aclTitle": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "aclInherit": "Also use the parent channel's rules",
+  "aclInherited": "from the parent channel",
+  "aclRules": "Rules",
+  "aclGroups": "Groups",
+  "aclAddRule": "Add a rule",
+  "aclRemoveRule": "Remove this rule",
+  "aclApplyHere": "Here",
+  "aclApplySubs": "And below",
+  "aclFor": "For",
+  "aclGroupNamed": "Group: {name}",
+  "@aclGroupNamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aclUserNamed": "User: {name}",
+  "@aclUserNamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aclSave": "Save permissions",
+  "aclSaved": "Sent. The server decides what it keeps.",
+  "aclEverybody": "everybody",
+  "aclRegistered": "registered users",
+  "aclGroupMembers": "{count} members",
+  "@aclGroupMembers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aclPermissions": "Permissions",
+  "aclTapHint": "Tap a permission to cycle it: not mentioned, granted, denied."
 }

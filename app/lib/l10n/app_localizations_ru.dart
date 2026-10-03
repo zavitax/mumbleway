@@ -1867,4 +1867,119 @@ class LRu extends L {
   String registeredLastSeen(String when) {
     return 'Последний раз: $when';
   }
+
+  @override
+  String get permWrite => 'Изменять канал';
+
+  @override
+  String get permTraverse => 'Видеть сквозь';
+
+  @override
+  String get permEnter => 'Входить';
+
+  @override
+  String get permSpeak => 'Говорить';
+
+  @override
+  String get permMuteDeafen => 'Заглушать и лишать слуха';
+
+  @override
+  String get permMove => 'Перемещать других';
+
+  @override
+  String get permMakeChannel => 'Создавать каналы';
+
+  @override
+  String get permLinkChannel => 'Связывать каналы';
+
+  @override
+  String get permWhisper => 'Шептать';
+
+  @override
+  String get permTextMessage => 'Писать сообщения';
+
+  @override
+  String get permMakeTempChannel => 'Создавать временные каналы';
+
+  @override
+  String get permListen => 'Слушать, не заходя';
+
+  @override
+  String aclGrants(String what) {
+    return 'разрешает: $what';
+  }
+
+  @override
+  String aclDenies(String what) {
+    return 'запрещает: $what';
+  }
+
+  @override
+  String get aclSaysNothing => 'ничего не меняет';
+
+  @override
+  String aclTitle(String channel) {
+    return 'Права в канале «$channel»';
+  }
+
+  @override
+  String get aclInherit => 'Применять ещё и правила родительского канала';
+
+  @override
+  String get aclInherited => 'от родительского канала';
+
+  @override
+  String get aclRules => 'Правила';
+
+  @override
+  String get aclGroups => 'Группы';
+
+  @override
+  String get aclAddRule => 'Добавить правило';
+
+  @override
+  String get aclRemoveRule => 'Убрать это правило';
+
+  @override
+  String get aclApplyHere => 'Здесь';
+
+  @override
+  String get aclApplySubs => 'И ниже';
+
+  @override
+  String get aclFor => 'Кому';
+
+  @override
+  String aclGroupNamed(String name) {
+    return 'Группа: $name';
+  }
+
+  @override
+  String aclUserNamed(String name) {
+    return 'Участник: $name';
+  }
+
+  @override
+  String get aclSave => 'Сохранить права';
+
+  @override
+  String get aclSaved => 'Отправлено. Что оставить, решает сервер.';
+
+  @override
+  String get aclEverybody => 'все';
+
+  @override
+  String get aclRegistered => 'зарегистрированные';
+
+  @override
+  String aclGroupMembers(int count) {
+    return 'участников: $count';
+  }
+
+  @override
+  String get aclPermissions => 'Права';
+
+  @override
+  String get aclTapHint =>
+      'Нажимайте на право, чтобы менять: не указано, разрешено, запрещено.';
 }

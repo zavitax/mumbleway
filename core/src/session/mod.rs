@@ -1253,6 +1253,50 @@ impl Session {
                         .await;
                 }
             }
+            MessageType::Acl => {
+                let m = mumble::Acl::decode(payload)?;
+                self.emit(SessionEvent::Acl(ChannelAcl {
+                    channel_id: m.channel_id,
+                    inherit_acls: m.inherit_acls.unwrap_or(true),
+                    groups: m
+                        .groups
+                        .into_iter()
+                        .map(|g| AclGroup {
+                            name: g.name,
+                            inherited: g.inherited.unwrap_or(true),
+                            inherit: g.inherit.unwrap_or(true),
+                            inheritable: g.inheritable.unwrap_or(true),
+                            add: g.add,
+                            remove: g.remove,
+                            inherited_members: g.inherited_members,
+                        })
+                        .collect(),
+                    rules: m
+                        .acls
+                        .into_iter()
+                        .map(|r| AclRule {
+                            apply_here: r.apply_here.unwrap_or(true),
+                            apply_subs: r.apply_subs.unwrap_or(true),
+                            inherited: r.inherited.unwrap_or(true),
+                            user_id: r.user_id,
+                            group: r.group,
+                            grant: r.grant.unwrap_or(0),
+                            deny: r.deny.unwrap_or(0),
+                        })
+                        .collect(),
+                }))
+                .await;
+            }
+            MessageType::QueryUsers => {
+                let m = mumble::QueryUsers::decode(payload)?;
+                // Ids and names arrive as two lists in the same order; a
+                // mismatched pair is a server being odd, and zipping them
+                // keeps the shorter one rather than inventing a name.
+                self.emit(SessionEvent::UserNames(
+                    m.ids.into_iter().zip(m.names).collect(),
+                ))
+                .await;
+            }
             MessageType::UserList => {
                 let m = mumble::UserList::decode(payload)?;
                 self.emit(SessionEvent::Registered(
@@ -1746,6 +1790,67 @@ impl Session {
             SessionCommand::RemoveChannel(channel_id) => {
                 let m = mumble::ChannelRemove { channel_id };
                 writer.send(MessageType::ChannelRemove, &m).await?;
+            }
+            SessionCommand::RequestAcl(channel_id) => {
+                let m = mumble::Acl {
+                    channel_id,
+                    query: Some(true),
+                    ..Default::default()
+                };
+                writer.send(MessageType::Acl, &m).await?;
+            }
+            SessionCommand::SetAcl(acl) => {
+                let m = mumble::Acl {
+                    channel_id: acl.channel_id,
+                    inherit_acls: Some(acl.inherit_acls),
+                    query: Some(false),
+                    groups: acl
+                        .groups
+                        .into_iter()
+                        .map(|g| mumble::acl::ChanGroup {
+                            name: g.name,
+                            inherited: Some(g.inherited),
+                            inherit: Some(g.inherit),
+                            inheritable: Some(g.inheritable),
+                            add: g.add,
+                            remove: g.remove,
+                            inherited_members: g.inherited_members,
+                        })
+                        .collect(),
+                    acls: acl
+                        .rules
+                        .into_iter()
+                        // Inherited rules belong to the channel that defines
+                        // them. The server drops them from anything written
+                        // back, so sending them would be noise.
+                        .filter(|r| !r.inherited)
+                        .map(|r| mumble::acl::ChanAcl {
+                            apply_here: Some(r.apply_here),
+                            apply_subs: Some(r.apply_subs),
+                            inherited: Some(false),
+                            user_id: r.user_id,
+                            group: r.group,
+                            grant: Some(r.grant),
+                            deny: Some(r.deny),
+                        })
+                        .collect(),
+                };
+                writer.send(MessageType::Acl, &m).await?;
+                // Read back rather than trusting the write, as with the bans:
+                // the server decides what it kept.
+                let q = mumble::Acl {
+                    channel_id: acl.channel_id,
+                    query: Some(true),
+                    ..Default::default()
+                };
+                writer.send(MessageType::Acl, &q).await?;
+            }
+            SessionCommand::QueryUserNames(ids) => {
+                let m = mumble::QueryUsers {
+                    ids,
+                    names: Vec::new(),
+                };
+                writer.send(MessageType::QueryUsers, &m).await?;
             }
             SessionCommand::RequestRegistered => {
                 // An empty list is the request; the server answers with the

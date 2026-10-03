@@ -1875,4 +1875,119 @@ class LEn extends L {
   String registeredLastSeen(String when) {
     return 'Last seen $when';
   }
+
+  @override
+  String get permWrite => 'Edit channel';
+
+  @override
+  String get permTraverse => 'See through';
+
+  @override
+  String get permEnter => 'Join';
+
+  @override
+  String get permSpeak => 'Speak';
+
+  @override
+  String get permMuteDeafen => 'Mute and deafen';
+
+  @override
+  String get permMove => 'Move others';
+
+  @override
+  String get permMakeChannel => 'Make channels';
+
+  @override
+  String get permLinkChannel => 'Link channels';
+
+  @override
+  String get permWhisper => 'Whisper';
+
+  @override
+  String get permTextMessage => 'Write messages';
+
+  @override
+  String get permMakeTempChannel => 'Make temporary channels';
+
+  @override
+  String get permListen => 'Listen without joining';
+
+  @override
+  String aclGrants(String what) {
+    return 'grants $what';
+  }
+
+  @override
+  String aclDenies(String what) {
+    return 'denies $what';
+  }
+
+  @override
+  String get aclSaysNothing => 'says nothing';
+
+  @override
+  String aclTitle(String channel) {
+    return 'Permissions in $channel';
+  }
+
+  @override
+  String get aclInherit => 'Also use the parent channel\'s rules';
+
+  @override
+  String get aclInherited => 'from the parent channel';
+
+  @override
+  String get aclRules => 'Rules';
+
+  @override
+  String get aclGroups => 'Groups';
+
+  @override
+  String get aclAddRule => 'Add a rule';
+
+  @override
+  String get aclRemoveRule => 'Remove this rule';
+
+  @override
+  String get aclApplyHere => 'Here';
+
+  @override
+  String get aclApplySubs => 'And below';
+
+  @override
+  String get aclFor => 'For';
+
+  @override
+  String aclGroupNamed(String name) {
+    return 'Group: $name';
+  }
+
+  @override
+  String aclUserNamed(String name) {
+    return 'User: $name';
+  }
+
+  @override
+  String get aclSave => 'Save permissions';
+
+  @override
+  String get aclSaved => 'Sent. The server decides what it keeps.';
+
+  @override
+  String get aclEverybody => 'everybody';
+
+  @override
+  String get aclRegistered => 'registered users';
+
+  @override
+  String aclGroupMembers(int count) {
+    return '$count members';
+  }
+
+  @override
+  String get aclPermissions => 'Permissions';
+
+  @override
+  String get aclTapHint =>
+      'Tap a permission to cycle it: not mentioned, granted, denied.';
 }

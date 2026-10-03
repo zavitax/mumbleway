@@ -3,6 +3,8 @@ import 'dart:typed_data' show Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../screens/channel_acl_screen.dart';
+
 import '../src/rust/api/mumbleway.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
@@ -869,6 +871,15 @@ class _ChannelMenu extends StatelessWidget {
             _rename(context, state);
           case 'describe':
             _describe(context, state);
+          case 'permissions':
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ChannelAclScreen(
+                  serverId: serverId,
+                  channel: channel,
+                ),
+              ),
+            );
           case 'remove':
             _confirmRemove(context, state);
         }
@@ -888,6 +899,11 @@ class _ChannelMenu extends StatelessWidget {
           value: 'describe',
           enabled: unanswered || rights.write,
           child: Text(l.channelDescribe),
+        ),
+        PopupMenuItem(
+          value: 'permissions',
+          enabled: unanswered || rights.write,
+          child: Text(l.aclPermissions),
         ),
         const PopupMenuDivider(),
         PopupMenuItem(

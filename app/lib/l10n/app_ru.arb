@@ -807,5 +807,81 @@
         "type": "String"
       }
     }
-  }
+  },
+  "permWrite": "Изменять канал",
+  "permTraverse": "Видеть сквозь",
+  "permEnter": "Входить",
+  "permSpeak": "Говорить",
+  "permMuteDeafen": "Заглушать и лишать слуха",
+  "permMove": "Перемещать других",
+  "permMakeChannel": "Создавать каналы",
+  "permLinkChannel": "Связывать каналы",
+  "permWhisper": "Шептать",
+  "permTextMessage": "Писать сообщения",
+  "permMakeTempChannel": "Создавать временные каналы",
+  "permListen": "Слушать, не заходя",
+  "aclGrants": "разрешает: {what}",
+  "@aclGrants": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "aclDenies": "запрещает: {what}",
+  "@aclDenies": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "aclSaysNothing": "ничего не меняет",
+  "aclTitle": "Права в канале «{channel}»",
+  "@aclTitle": {
+    "placeholders": {
+      "channel": {
+        "type": "String"
+      }
+    }
+  },
+  "aclInherit": "Применять ещё и правила родительского канала",
+  "aclInherited": "от родительского канала",
+  "aclRules": "Правила",
+  "aclGroups": "Группы",
+  "aclAddRule": "Добавить правило",
+  "aclRemoveRule": "Убрать это правило",
+  "aclApplyHere": "Здесь",
+  "aclApplySubs": "И ниже",
+  "aclFor": "Кому",
+  "aclGroupNamed": "Группа: {name}",
+  "@aclGroupNamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aclUserNamed": "Участник: {name}",
+  "@aclUserNamed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "aclSave": "Сохранить права",
+  "aclSaved": "Отправлено. Что оставить, решает сервер.",
+  "aclEverybody": "все",
+  "aclRegistered": "зарегистрированные",
+  "aclGroupMembers": "участников: {count}",
+  "@aclGroupMembers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aclPermissions": "Права",
+  "aclTapHint": "Нажимайте на право, чтобы менять: не указано, разрешено, запрещено."
 }

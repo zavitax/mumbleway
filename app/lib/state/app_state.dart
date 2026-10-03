@@ -257,6 +257,14 @@ class ServerRuntime {
   /// run neither.
   List<UiContextAction> contextActions = const [];
 
+  /// Everybody this server has an account for, once an admin has asked.
+  List<UiRegisteredUser> registered = const [];
+
+  /// What the server will say about one rider, keyed by session. Only an
+  /// admin ever fills this: the interesting half is withheld from everybody
+  /// else.
+  final Map<int, UiUserDetails> userDetails = {};
+
   /// The server's ban list, once it has been asked for.
   ///
   /// Only an admin ever sees this: reading the list needs the same permission
@@ -2521,6 +2529,128 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Makes a channel under `parent`.
+  Future<String?> createChannelOn(
+    String id, {
+    required int parent,
+    required String name,
+    required String description,
+    required bool temporary,
+  }) async {
+    try {
+      await createChannel(
+        serverId: id,
+        parent: parent,
+        name: name,
+        description: description,
+        temporary: temporary,
+      );
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Renames a channel, re-describes it, or both.
+  ///
+  /// What is left null is left alone — an empty description is a real value
+  /// and is how a rider clears one.
+  Future<String?> editChannelOn(
+    String id,
+    int channelId, {
+    String? name,
+    String? description,
+  }) async {
+    try {
+      await editChannel(
+        serverId: id,
+        channelId: channelId,
+        name: name,
+        description: description,
+      );
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  Future<String?> removeChannelOn(String id, int channelId) async {
+    try {
+      await removeChannel(serverId: id, channelId: channelId);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Asks for the registered users; the answer arrives as an event.
+  Future<String?> loadRegistered(String id) async {
+    try {
+      await requestRegistered(serverId: id);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Takes somebody's account away, then re-reads the list so the screen shows
+  /// what the server now holds rather than what this app assumed.
+  Future<String?> unregister(String id, int userId) async {
+    try {
+      await unregisterUsers(serverId: id, userIds: [userId]);
+      await requestRegistered(serverId: id);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Gives a connected rider an account on this server.
+  Future<String?> registerRider(String id, UiUser user) async {
+    try {
+      await registerUser(serverId: id, session: user.session);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Grants or withdraws priority speaker.
+  Future<String?> setPriority(String id, UiUser user, {required bool on}) async {
+    try {
+      await setPrioritySpeaker(serverId: id, session: user.session, priority: on);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Clears somebody's note and picture, which an admin may do when what they
+  /// hung there is not fit for the channel.
+  Future<String?> clearUserContent(String id, UiUser user) async {
+    try {
+      await resetUserContent(
+        serverId: id,
+        session: user.session,
+        comment: true,
+        texture: true,
+      );
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
+  /// Asks for everything the server will say about one rider.
+  Future<String?> loadUserDetails(String id, UiUser user) async {
+    try {
+      await requestUserDetails(serverId: id, session: user.session);
+      return null;
+    } catch (e) {
+      return '$e';
+    }
+  }
+
   /// Asks the server for its ban list. The answer arrives as an event.
   Future<String?> loadBans(String id) async {
     try {
@@ -3962,6 +4092,10 @@ class AppState extends ChangeNotifier {
         }
       case AppEvent_Bans(:final serverId, :final bans):
         runtimeFor(serverId).bans = bans;
+      case AppEvent_Registered(:final serverId, :final users):
+        runtimeFor(serverId).registered = users;
+      case AppEvent_UserDetails(:final serverId, :final details):
+        runtimeFor(serverId).userDetails[details.session] = details;
       case AppEvent_ContextActions(:final serverId, :final actions):
         runtimeFor(serverId).contextActions = actions;
       case AppEvent_Limits(

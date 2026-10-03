@@ -1767,4 +1767,112 @@ class LEn extends L {
 
   @override
   String get avatarUnreadable => 'That file is not an image this app can read';
+
+  @override
+  String get channelActions => 'Channel actions';
+
+  @override
+  String get channelAdd => 'New channel here';
+
+  @override
+  String get channelRename => 'Rename';
+
+  @override
+  String get channelDescribe => 'Description';
+
+  @override
+  String get channelRemove => 'Remove channel';
+
+  @override
+  String channelRemoveTitle(String name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String get channelRemoveBody =>
+      'Everything inside it goes too, and anyone in it is moved out. This cannot be undone.';
+
+  @override
+  String get channelName => 'Name';
+
+  @override
+  String get channelDescription => 'Description';
+
+  @override
+  String get channelCreate => 'Create';
+
+  @override
+  String get channelTemporary => 'Temporary';
+
+  @override
+  String get channelTemporaryBody =>
+      'Disappears when the last person leaves it. Right for one ride; wrong for a room your club keeps.';
+
+  @override
+  String get priorityGrant => 'Make priority speaker';
+
+  @override
+  String get priorityRevoke => 'Stop being priority speaker';
+
+  @override
+  String get registerThem => 'Register on this server';
+
+  @override
+  String get registerThemSent =>
+      'Request sent. If nothing happens, you lack the Register permission.';
+
+  @override
+  String get resetContent => 'Clear their note and picture';
+
+  @override
+  String get userDetails => 'Information';
+
+  @override
+  String get userDetailsWaiting => 'Asking the server…';
+
+  @override
+  String get userDetailsClient => 'Client';
+
+  @override
+  String get userDetailsSystem => 'System';
+
+  @override
+  String get userDetailsAddress => 'Address';
+
+  @override
+  String get userDetailsCertificate => 'Certificate';
+
+  @override
+  String get userDetailsCertificateStrong => 'Vouched for by an authority';
+
+  @override
+  String get userDetailsCertificateSelfSigned => 'Made by the client itself';
+
+  @override
+  String get userDetailsOnline => 'Connected';
+
+  @override
+  String get userDetailsIdle => 'Idle';
+
+  @override
+  String get userDetailsWithheld => 'The rest is only shown to a server admin.';
+
+  @override
+  String minutes(int count) {
+    return '$count min';
+  }
+
+  @override
+  String get registeredUsers => 'Registered users';
+
+  @override
+  String get registeredNobody => 'This server has no registered users.';
+
+  @override
+  String get registeredUnregister => 'Remove';
+
+  @override
+  String registeredLastSeen(String when) {
+    return 'Last seen $when';
+  }
 }

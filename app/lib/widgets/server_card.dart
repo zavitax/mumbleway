@@ -9,6 +9,7 @@ import '../screens/server_qr_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'ban_list_dialog.dart';
+import 'registered_users_dialog.dart';
 import 'channel_panel.dart';
 import 'status_badge.dart';
 
@@ -263,6 +264,13 @@ class ServerCard extends StatelessWidget {
                                         : null,
                                   );
                                 }
+                              case 'registered':
+                                showDialog<void>(
+                                  context: context,
+                                  builder: (_) => RegisteredUsersDialog(
+                                    serverId: server.id,
+                                  ),
+                                );
                               case 'bans':
                                 showDialog<void>(
                                   context: context,
@@ -377,6 +385,23 @@ class ServerCard extends StatelessWidget {
                             // Only for somebody who can act on it: reading the
                             // ban list needs the same permission as changing
                             // it, so there is no such thing as a look.
+                            // Reading the registered list needs the same
+                            // permission as changing it, like the ban list.
+                            if (!rt.rights.known || rt.rights.registerOthers)
+                              PopupMenuItem(
+                                value: 'registered',
+                                enabled: rt.isLive,
+                                child: ListTile(
+                                  dense: true,
+                                  enabled: rt.isLive,
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.badge_outlined),
+                                  title: Text(l.registeredUsers),
+                                  subtitle: rt.isLive
+                                      ? null
+                                      : Text(l.connectFirst),
+                                ),
+                              ),
                             if (!rt.rights.known || rt.rights.ban)
                               PopupMenuItem(
                                 value: 'bans',

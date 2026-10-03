@@ -753,5 +753,59 @@
   "avatarBody": "Её видят рядом с вашим именем на всех серверах, куда вы заходите. Хранится на этом устройстве и отправляется на каждый сервер при подключении; перед отправкой уменьшается.",
   "avatarChoose": "Выбрать",
   "avatarRemove": "Убрать картинку",
-  "avatarUnreadable": "Этот файл — не картинка, которую приложение может прочитать"
+  "avatarUnreadable": "Этот файл — не картинка, которую приложение может прочитать",
+  "channelActions": "Действия с каналом",
+  "channelAdd": "Новый канал здесь",
+  "channelRename": "Переименовать",
+  "channelDescribe": "Описание",
+  "channelRemove": "Удалить канал",
+  "channelRemoveTitle": "Удалить «{name}»?",
+  "@channelRemoveTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "channelRemoveBody": "Вместе с ним исчезнет всё, что внутри, а тех, кто в нём, переведут наружу. Отменить это нельзя.",
+  "channelName": "Название",
+  "channelDescription": "Описание",
+  "channelCreate": "Создать",
+  "channelTemporary": "Временный",
+  "channelTemporaryBody": "Исчезнет, когда выйдет последний участник. То, что нужно на одну поездку, и не то, что нужно клубной комнате.",
+  "priorityGrant": "Сделать приоритетным",
+  "priorityRevoke": "Снять приоритет",
+  "registerThem": "Зарегистрировать на сервере",
+  "registerThemSent": "Запрос отправлен. Если ничего не произошло, у вас нет права регистрировать.",
+  "resetContent": "Убрать заметку и картинку",
+  "userDetails": "Сведения",
+  "userDetailsWaiting": "Спрашиваем сервер…",
+  "userDetailsClient": "Приложение",
+  "userDetailsSystem": "Система",
+  "userDetailsAddress": "Адрес",
+  "userDetailsCertificate": "Сертификат",
+  "userDetailsCertificateStrong": "Подтверждён центром сертификации",
+  "userDetailsCertificateSelfSigned": "Выпущен самим приложением",
+  "userDetailsOnline": "На связи",
+  "userDetailsIdle": "Без действий",
+  "userDetailsWithheld": "Остальное сервер показывает только администратору.",
+  "minutes": "{count} мин",
+  "@minutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "registeredUsers": "Зарегистрированные",
+  "registeredNobody": "На этом сервере нет зарегистрированных участников.",
+  "registeredUnregister": "Удалить",
+  "registeredLastSeen": "Последний раз: {when}",
+  "@registeredLastSeen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  }
 }

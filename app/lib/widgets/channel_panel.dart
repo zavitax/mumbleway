@@ -10,6 +10,7 @@ import 'connection_quality.dart';
 import 'voice_meter.dart';
 import '../theme.dart';
 import 'error_snack.dart';
+import 'watch.dart';
 
 /// Channel tree for one connected server.
 ///
@@ -65,6 +66,15 @@ class ChannelTree extends StatelessWidget {
         for (final o in orphans) ..._buildNode(context, o, byParent, 0),
       ],
     );
+  }
+
+  /// Whether this rider may change anything about the channels here.
+  ///
+  /// Before the server has answered, yes: the same rule as the participant
+  /// menu, since a menu that is dead for the first second reads as broken.
+  static bool _mayManage(AppState state, String serverId) {
+    final rights = state.runtimeFor(serverId).rights;
+    return !rights.known || rights.write || rights.makeChannel;
   }
 
   List<Widget> _buildNode(
@@ -148,6 +158,12 @@ class ChannelTree extends StatelessWidget {
                   isDefault ? null : channel.name,
                 ),
               ),
+              // Managing channels at all is unusual on somebody else's
+              // server, so the menu is only drawn where the rider may do
+              // something — an always-present menu of greyed entries is a
+              // worse answer here than no menu.
+              if (_mayManage(state, serverId))
+                _ChannelMenu(serverId: serverId, channel: channel),
             ],
           ),
         ),
@@ -417,6 +433,18 @@ class _UserRow extends StatelessWidget {
                   state.toggleUserServerDeaf(serverId, user);
                 case 'move':
                   _moveElsewhere(context, state);
+                case 'register':
+                  _registerThem(context, state);
+                case 'priority':
+                  state.setPriority(
+                    serverId,
+                    user,
+                    on: !user.prioritySpeaker,
+                  );
+                case 'reset':
+                  state.clearUserContent(serverId, user);
+                case 'details':
+                  _showDetails(context, state);
                 case 'kick':
                   _confirmKick(context, state);
                 case 'ban':
@@ -471,6 +499,30 @@ class _UserRow extends StatelessWidget {
                   enabled: unanswered || rights.moveUsers,
                   child: Text(l.moveToChannel),
                 ),
+                PopupMenuItem(
+                  value: 'priority',
+                  enabled: unanswered || rights.muteDeafen,
+                  child: Text(
+                    user.prioritySpeaker
+                        ? l.priorityRevoke
+                        : l.priorityGrant,
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'register',
+                  enabled: unanswered || rights.registerOthers,
+                  child: Text(l.registerThem),
+                ),
+                PopupMenuItem(
+                  value: 'reset',
+                  // The permission is ResetUserContent on the root channel,
+                  // which this client reads but does not carry separately;
+                  // an admin holding Ban has it on every server that grants
+                  // these together, and a refusal is still shown.
+                  enabled: unanswered || rights.ban,
+                  child: Text(l.resetContent),
+                ),
+                PopupMenuItem(value: 'details', child: Text(l.userDetails)),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'kick',
@@ -506,6 +558,103 @@ class _UserRow extends StatelessWidget {
                 ],
               ];
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Gives this rider an account on the server, which is what makes their
+  /// name theirs and lets an ACL name them.
+  Future<void> _registerThem(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await state.registerRider(serverId, user);
+    if (error != null) {
+      showError(messenger, error);
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(l.registerThemSent)));
+    }
+  }
+
+  /// What the server will say about this rider.
+  ///
+  /// Most of it is withheld from anybody but an admin, so the dialog says that
+  /// rather than showing empty rows: "the server did not say" is information,
+  /// and a blank line is not.
+  Future<void> _showDetails(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    await state.loadUserDetails(serverId, user);
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(user.name),
+        content: Watch<UiUserDetails?>(
+          (s) => s.runtimeFor(serverId).userDetails[user.session],
+          (c, s) {
+            final d = s.runtimeFor(serverId).userDetails[user.session];
+            if (d == null) {
+              return Text(l.userDetailsWaiting);
+            }
+            final rows = <(String, String)>[
+              if (d.release.isNotEmpty) (l.userDetailsClient, d.release),
+              if (d.os.isNotEmpty)
+                (
+                  l.userDetailsSystem,
+                  [d.os, d.osVersion].where((x) => x.isNotEmpty).join(' '),
+                ),
+              if (d.address.isNotEmpty) (l.userDetailsAddress, d.address),
+              (
+                l.userDetailsCertificate,
+                d.strongCertificate
+                    ? l.userDetailsCertificateStrong
+                    : l.userDetailsCertificateSelfSigned,
+              ),
+              (l.userDetailsOnline, l.minutes(d.onlineSecs ~/ 60)),
+              (l.userDetailsIdle, l.minutes(d.idleSecs ~/ 60)),
+            ];
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (label, value) in rows)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 110,
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(c).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            value,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (d.release.isEmpty && d.address.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(l.userDetailsWithheld, style: const TextStyle(fontSize: 12)),
+                ],
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text(l.close),
           ),
         ],
       ),
@@ -685,5 +834,240 @@ class _UserRow extends StatelessWidget {
     if (u.suppressed) return (Icons.voice_over_off, StatusColors.failed);
     if (speaking) return (Icons.volume_up, StatusColors.talking);
     return (Icons.person_outline, StatusColors.idle);
+  }
+}
+
+
+/// Making, renaming, describing and removing a channel.
+///
+/// Each entry is offered only where the server says it is allowed, and the two
+/// permissions are genuinely different: making a channel under this one is
+/// `MakeChannel` *here*, while renaming or removing this one is `Write` on it.
+/// A rider may easily have one and not the other.
+class _ChannelMenu extends StatelessWidget {
+  const _ChannelMenu({required this.serverId, required this.channel});
+
+  final String serverId;
+  final UiChannel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    final rights = state.runtimeFor(serverId).rights;
+    final unanswered = !rights.known;
+
+    return PopupMenuButton<String>(
+      tooltip: l.channelActions,
+      icon: const Icon(Icons.more_horiz, size: 16),
+      iconSize: 16,
+      onSelected: (v) {
+        switch (v) {
+          case 'add':
+            _makeChannel(context, state);
+          case 'rename':
+            _rename(context, state);
+          case 'describe':
+            _describe(context, state);
+          case 'remove':
+            _confirmRemove(context, state);
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'add',
+          enabled: unanswered || rights.makeChannel,
+          child: Text(l.channelAdd),
+        ),
+        PopupMenuItem(
+          value: 'rename',
+          enabled: unanswered || rights.write,
+          child: Text(l.channelRename),
+        ),
+        PopupMenuItem(
+          value: 'describe',
+          enabled: unanswered || rights.write,
+          child: Text(l.channelDescribe),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'remove',
+          enabled: unanswered || rights.write,
+          child: Text(
+            l.channelRemove,
+            style: const TextStyle(color: StatusColors.failed),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A new channel under this one.
+  ///
+  /// Temporary is offered and defaulted *on*, because the common case on a
+  /// ride is a channel for today: one that nobody has to remember to tidy up,
+  /// and that disappears when the last rider leaves it.
+  Future<void> _makeChannel(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final name = TextEditingController();
+    final description = TextEditingController();
+    var temporary = true;
+
+    final made = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setState) => AlertDialog(
+          title: Text(l.channelAdd),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: InputDecoration(labelText: l.channelName),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: description,
+                maxLines: 2,
+                decoration: InputDecoration(labelText: l.channelDescription),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: temporary,
+                onChanged: (v) => setState(() => temporary = v ?? true),
+                title: Text(l.channelTemporary),
+                subtitle: Text(l.channelTemporaryBody),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: Text(l.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: Text(l.channelCreate),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final chosen = name.text.trim();
+    final body = description.text.trim();
+    name.dispose();
+    description.dispose();
+    if (made != true || chosen.isEmpty) return;
+
+    final error = await state.createChannelOn(
+      serverId,
+      parent: channel.id,
+      name: chosen,
+      description: body,
+      temporary: temporary,
+    );
+    if (error != null) showError(messenger, error);
+  }
+
+  Future<void> _rename(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final field = TextEditingController(text: channel.name);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.channelRename),
+        content: TextField(
+          controller: field,
+          autofocus: true,
+          decoration: InputDecoration(labelText: l.channelName),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.save),
+          ),
+        ],
+      ),
+    );
+    final chosen = field.text.trim();
+    field.dispose();
+    if (ok != true || chosen.isEmpty || chosen == channel.name) return;
+    final error = await state.editChannelOn(serverId, channel.id, name: chosen);
+    if (error != null) showError(messenger, error);
+  }
+
+  Future<void> _describe(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final field = TextEditingController(text: channel.description);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.channelDescribe),
+        content: TextField(
+          controller: field,
+          autofocus: true,
+          maxLines: 4,
+          decoration: InputDecoration(labelText: l.channelDescription),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.save),
+          ),
+        ],
+      ),
+    );
+    final text = field.text.trim();
+    field.dispose();
+    if (ok != true) return;
+    final error = await state.editChannelOn(
+      serverId,
+      channel.id,
+      description: text,
+    );
+    if (error != null) showError(messenger, error);
+  }
+
+  /// Removing takes everything under it with it, which is the part worth
+  /// saying out loud before it happens.
+  Future<void> _confirmRemove(BuildContext context, AppState state) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.channelRemoveTitle(channel.name)),
+        content: Text(l.channelRemoveBody),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: StatusColors.failed),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.channelRemove),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final error = await state.removeChannelOn(serverId, channel.id);
+    if (error != null) showError(messenger, error);
   }
 }

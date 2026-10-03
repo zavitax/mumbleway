@@ -1757,4 +1757,114 @@ class LRu extends L {
   @override
   String get avatarUnreadable =>
       'Этот файл — не картинка, которую приложение может прочитать';
+
+  @override
+  String get channelActions => 'Действия с каналом';
+
+  @override
+  String get channelAdd => 'Новый канал здесь';
+
+  @override
+  String get channelRename => 'Переименовать';
+
+  @override
+  String get channelDescribe => 'Описание';
+
+  @override
+  String get channelRemove => 'Удалить канал';
+
+  @override
+  String channelRemoveTitle(String name) {
+    return 'Удалить «$name»?';
+  }
+
+  @override
+  String get channelRemoveBody =>
+      'Вместе с ним исчезнет всё, что внутри, а тех, кто в нём, переведут наружу. Отменить это нельзя.';
+
+  @override
+  String get channelName => 'Название';
+
+  @override
+  String get channelDescription => 'Описание';
+
+  @override
+  String get channelCreate => 'Создать';
+
+  @override
+  String get channelTemporary => 'Временный';
+
+  @override
+  String get channelTemporaryBody =>
+      'Исчезнет, когда выйдет последний участник. То, что нужно на одну поездку, и не то, что нужно клубной комнате.';
+
+  @override
+  String get priorityGrant => 'Сделать приоритетным';
+
+  @override
+  String get priorityRevoke => 'Снять приоритет';
+
+  @override
+  String get registerThem => 'Зарегистрировать на сервере';
+
+  @override
+  String get registerThemSent =>
+      'Запрос отправлен. Если ничего не произошло, у вас нет права регистрировать.';
+
+  @override
+  String get resetContent => 'Убрать заметку и картинку';
+
+  @override
+  String get userDetails => 'Сведения';
+
+  @override
+  String get userDetailsWaiting => 'Спрашиваем сервер…';
+
+  @override
+  String get userDetailsClient => 'Приложение';
+
+  @override
+  String get userDetailsSystem => 'Система';
+
+  @override
+  String get userDetailsAddress => 'Адрес';
+
+  @override
+  String get userDetailsCertificate => 'Сертификат';
+
+  @override
+  String get userDetailsCertificateStrong => 'Подтверждён центром сертификации';
+
+  @override
+  String get userDetailsCertificateSelfSigned => 'Выпущен самим приложением';
+
+  @override
+  String get userDetailsOnline => 'На связи';
+
+  @override
+  String get userDetailsIdle => 'Без действий';
+
+  @override
+  String get userDetailsWithheld =>
+      'Остальное сервер показывает только администратору.';
+
+  @override
+  String minutes(int count) {
+    return '$count мин';
+  }
+
+  @override
+  String get registeredUsers => 'Зарегистрированные';
+
+  @override
+  String get registeredNobody =>
+      'На этом сервере нет зарегистрированных участников.';
+
+  @override
+  String get registeredUnregister => 'Удалить';
+
+  @override
+  String registeredLastSeen(String when) {
+    return 'Последний раз: $when';
+  }
 }

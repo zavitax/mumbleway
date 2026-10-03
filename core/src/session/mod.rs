@@ -1253,6 +1253,21 @@ impl Session {
                         .await;
                 }
             }
+            MessageType::UserList => {
+                let m = mumble::UserList::decode(payload)?;
+                self.emit(SessionEvent::Registered(
+                    m.users
+                        .into_iter()
+                        .map(|u| RegisteredUser {
+                            user_id: u.user_id,
+                            name: u.name.unwrap_or_default(),
+                            last_seen: u.last_seen.unwrap_or_default(),
+                            last_channel: u.last_channel.unwrap_or(0),
+                        })
+                        .collect(),
+                ))
+                .await;
+            }
             MessageType::BanList => {
                 let m = mumble::BanList::decode(payload)?;
                 self.emit(SessionEvent::Bans(
@@ -1338,6 +1353,28 @@ impl Session {
                         .and_then(|r| r.from_server.as_ref())
                         .or(m.from_server.as_ref())
                         .map(counts);
+                    // A reply carrying the privileged half is an answer to
+                    // `RequestUserDetails` rather than to the quality poll.
+                    // Reported separately: the poll runs every few seconds and
+                    // this is a thing somebody asked to see.
+                    if m.version.is_some() || m.address.is_some() {
+                        let v = m.version.clone().unwrap_or_default();
+                        self.emit(SessionEvent::UserDetails(UserDetails {
+                            session,
+                            release: v.release.unwrap_or_default(),
+                            os: v.os.unwrap_or_default(),
+                            os_version: v.os_version.unwrap_or_default(),
+                            address: m
+                                .address
+                                .as_ref()
+                                .map(|a| bans::address_text(a, 128))
+                                .unwrap_or_default(),
+                            strong_certificate: m.strong_certificate.unwrap_or(false),
+                            online_secs: m.onlinesecs.unwrap_or(0),
+                            idle_secs: m.idlesecs.unwrap_or(0),
+                        }))
+                        .await;
+                    }
                     state.quality.insert(
                         session,
                         quality::Quality::from_stats(
@@ -1675,6 +1712,107 @@ impl Session {
                     action,
                 };
                 writer.send(MessageType::ContextAction, &m).await?;
+            }
+            SessionCommand::CreateChannel {
+                parent,
+                name,
+                description,
+                temporary,
+            } => {
+                // No channel_id: that is how the protocol says "make one".
+                let m = mumble::ChannelState {
+                    parent: Some(parent),
+                    name: Some(name),
+                    description: Some(state.limits.fit_text(&description))
+                        .filter(|d| !d.is_empty()),
+                    temporary: Some(temporary),
+                    ..Default::default()
+                };
+                writer.send(MessageType::ChannelState, &m).await?;
+            }
+            SessionCommand::EditChannel {
+                channel_id,
+                name,
+                description,
+            } => {
+                let m = mumble::ChannelState {
+                    channel_id: Some(channel_id),
+                    name,
+                    description: description.map(|d| state.limits.fit_text(&d)),
+                    ..Default::default()
+                };
+                writer.send(MessageType::ChannelState, &m).await?;
+            }
+            SessionCommand::RemoveChannel(channel_id) => {
+                let m = mumble::ChannelRemove { channel_id };
+                writer.send(MessageType::ChannelRemove, &m).await?;
+            }
+            SessionCommand::RequestRegistered => {
+                // An empty list is the request; the server answers with the
+                // real one.
+                let m = mumble::UserList { users: Vec::new() };
+                writer.send(MessageType::UserList, &m).await?;
+            }
+            SessionCommand::UnregisterUsers(ids) => {
+                // A registered user with no name is how the protocol spells
+                // "remove this registration". Names are left out deliberately.
+                let m = mumble::UserList {
+                    users: ids
+                        .into_iter()
+                        .map(|user_id| mumble::user_list::User {
+                            user_id,
+                            name: None,
+                            last_seen: None,
+                            last_channel: None,
+                        })
+                        .collect(),
+                };
+                writer.send(MessageType::UserList, &m).await?;
+            }
+            SessionCommand::RegisterUser(session) => {
+                // `user_id = 0` against somebody else's session asks the server
+                // to give them an account — the same shape as registering
+                // ourselves, pointed at another rider.
+                let m = mumble::UserState {
+                    session: Some(session),
+                    user_id: Some(0),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::SetPrioritySpeaker { session, priority } => {
+                let m = mumble::UserState {
+                    session: Some(session),
+                    priority_speaker: Some(priority),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::ResetUserContent {
+                session,
+                comment,
+                texture,
+            } => {
+                // Clearing is sending an empty one. Both at once is one
+                // message, which is also how the official client does it.
+                let m = mumble::UserState {
+                    session: Some(session),
+                    comment: comment.then(String::new),
+                    texture: texture.then(prost::bytes::Bytes::new),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserState, &m).await?;
+            }
+            SessionCommand::RequestUserDetails(session) => {
+                // Without `stats_only`, so the server includes the client
+                // version, the address and the certificate — if it is willing
+                // to tell this rider, which it is only for an admin.
+                let m = mumble::UserStats {
+                    session: Some(session),
+                    stats_only: Some(false),
+                    ..Default::default()
+                };
+                writer.send(MessageType::UserStats, &m).await?;
             }
             SessionCommand::RequestBans => {
                 let m = mumble::BanList {

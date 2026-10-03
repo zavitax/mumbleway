@@ -64,6 +64,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiStats dco_decode_box_autoadd_ui_stats(dynamic raw);
 
   @protected
+  UiUserDetails dco_decode_box_autoadd_ui_user_details(dynamic raw);
+
+  @protected
   UiWaveform dco_decode_box_autoadd_ui_waveform(dynamic raw);
 
   @protected
@@ -94,6 +97,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Float32List dco_decode_list_prim_f_32_strict(dynamic raw);
 
   @protected
+  List<int> dco_decode_list_prim_u_32_loose(dynamic raw);
+
+  @protected
+  Uint32List dco_decode_list_prim_u_32_strict(dynamic raw);
+
+  @protected
   List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
 
   @protected
@@ -113,6 +122,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<UiLogEntry> dco_decode_list_ui_log_entry(dynamic raw);
+
+  @protected
+  List<UiRegisteredUser> dco_decode_list_ui_registered_user(dynamic raw);
 
   @protected
   List<UiSpeakerLevel> dco_decode_list_ui_speaker_level(dynamic raw);
@@ -211,6 +223,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiRecordingState dco_decode_ui_recording_state(dynamic raw);
 
   @protected
+  UiRegisteredUser dco_decode_ui_registered_user(dynamic raw);
+
+  @protected
   UiRights dco_decode_ui_rights(dynamic raw);
 
   @protected
@@ -236,6 +251,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiUser dco_decode_ui_user(dynamic raw);
+
+  @protected
+  UiUserDetails dco_decode_ui_user_details(dynamic raw);
 
   @protected
   UiWaveform dco_decode_ui_waveform(dynamic raw);
@@ -297,6 +315,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiStats sse_decode_box_autoadd_ui_stats(SseDeserializer deserializer);
 
   @protected
+  UiUserDetails sse_decode_box_autoadd_ui_user_details(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   UiWaveform sse_decode_box_autoadd_ui_waveform(SseDeserializer deserializer);
 
   @protected
@@ -329,6 +352,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer);
 
   @protected
+  List<int> sse_decode_list_prim_u_32_loose(SseDeserializer deserializer);
+
+  @protected
+  Uint32List sse_decode_list_prim_u_32_strict(SseDeserializer deserializer);
+
+  @protected
   List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
 
   @protected
@@ -352,6 +381,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<UiLogEntry> sse_decode_list_ui_log_entry(SseDeserializer deserializer);
+
+  @protected
+  List<UiRegisteredUser> sse_decode_list_ui_registered_user(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<UiSpeakerLevel> sse_decode_list_ui_speaker_level(
@@ -462,6 +496,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiRecordingState sse_decode_ui_recording_state(SseDeserializer deserializer);
 
   @protected
+  UiRegisteredUser sse_decode_ui_registered_user(SseDeserializer deserializer);
+
+  @protected
   UiRights sse_decode_ui_rights(SseDeserializer deserializer);
 
   @protected
@@ -487,6 +524,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiUser sse_decode_ui_user(SseDeserializer deserializer);
+
+  @protected
+  UiUserDetails sse_decode_ui_user_details(SseDeserializer deserializer);
 
   @protected
   UiWaveform sse_decode_ui_waveform(SseDeserializer deserializer);
@@ -564,6 +604,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_box_autoadd_ui_stats(UiStats self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_ui_user_details(
+    UiUserDetails self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_ui_waveform(
     UiWaveform self,
     SseSerializer serializer,
@@ -606,6 +652,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_prim_u_32_loose(
+    List<int> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_prim_u_32_strict(
+    Uint32List self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
@@ -638,6 +696,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_list_ui_log_entry(
     List<UiLogEntry> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_ui_registered_user(
+    List<UiRegisteredUser> self,
     SseSerializer serializer,
   );
 
@@ -768,6 +832,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_ui_registered_user(
+    UiRegisteredUser self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_ui_rights(UiRights self, SseSerializer serializer);
 
   @protected
@@ -799,6 +869,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_user(UiUser self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_user_details(UiUserDetails self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_waveform(UiWaveform self, SseSerializer serializer);

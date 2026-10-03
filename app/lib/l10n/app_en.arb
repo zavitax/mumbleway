@@ -1014,5 +1014,59 @@
   "avatarBody": "Shown beside your name to everyone on every server you join. Kept on this device and sent to each server as it connects; it is scaled down before it goes anywhere.",
   "avatarChoose": "Choose",
   "avatarRemove": "Remove picture",
-  "avatarUnreadable": "That file is not an image this app can read"
+  "avatarUnreadable": "That file is not an image this app can read",
+  "channelActions": "Channel actions",
+  "channelAdd": "New channel here",
+  "channelRename": "Rename",
+  "channelDescribe": "Description",
+  "channelRemove": "Remove channel",
+  "channelRemoveTitle": "Remove {name}?",
+  "@channelRemoveTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "channelRemoveBody": "Everything inside it goes too, and anyone in it is moved out. This cannot be undone.",
+  "channelName": "Name",
+  "channelDescription": "Description",
+  "channelCreate": "Create",
+  "channelTemporary": "Temporary",
+  "channelTemporaryBody": "Disappears when the last person leaves it. Right for one ride; wrong for a room your club keeps.",
+  "priorityGrant": "Make priority speaker",
+  "priorityRevoke": "Stop being priority speaker",
+  "registerThem": "Register on this server",
+  "registerThemSent": "Request sent. If nothing happens, you lack the Register permission.",
+  "resetContent": "Clear their note and picture",
+  "userDetails": "Information",
+  "userDetailsWaiting": "Asking the server…",
+  "userDetailsClient": "Client",
+  "userDetailsSystem": "System",
+  "userDetailsAddress": "Address",
+  "userDetailsCertificate": "Certificate",
+  "userDetailsCertificateStrong": "Vouched for by an authority",
+  "userDetailsCertificateSelfSigned": "Made by the client itself",
+  "userDetailsOnline": "Connected",
+  "userDetailsIdle": "Idle",
+  "userDetailsWithheld": "The rest is only shown to a server admin.",
+  "minutes": "{count} min",
+  "@minutes": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "registeredUsers": "Registered users",
+  "registeredNobody": "This server has no registered users.",
+  "registeredUnregister": "Remove",
+  "registeredLastSeen": "Last seen {when}",
+  "@registeredLastSeen": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  }
 }

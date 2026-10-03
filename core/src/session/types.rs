@@ -138,6 +138,44 @@ impl ServerLimits {
     }
 }
 
+/// What a server will tell an admin about one user.
+///
+/// Every field is optional on the wire and most are withheld from an ordinary
+/// rider — the client version, the address and the certificate are handed over
+/// only to somebody holding Ban on the root channel, or to the user themselves.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserDetails {
+    pub session: u32,
+    /// The client they run, as it describes itself.
+    pub release: String,
+    pub os: String,
+    pub os_version: String,
+    /// Where they connected from. Empty when the server withheld it.
+    pub address: String,
+    /// Whether their certificate is one a certificate authority vouches for,
+    /// rather than the self-signed kind every client makes for itself.
+    pub strong_certificate: bool,
+    /// How long they have been connected, and how long since they did
+    /// anything, in seconds.
+    pub online_secs: u32,
+    pub idle_secs: u32,
+}
+
+/// Somebody the server has an account for, whether or not they are here.
+///
+/// Registration is what makes a name belong to a person: an unregistered name
+/// is free for anybody to take once its holder disconnects, and no ACL can
+/// name them. The list is an admin's view of who the server knows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisteredUser {
+    pub user_id: u32,
+    pub name: String,
+    /// The server's own date string, or empty if it never said.
+    pub last_seen: String,
+    /// The channel they were last in.
+    pub last_channel: u32,
+}
+
 /// A channel on the server.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelInfo {
@@ -315,6 +353,10 @@ pub enum SessionEvent {
     ContextActions(Vec<crate::session::context_actions::ContextAction>),
     /// The server's ban list, in answer to asking for it.
     Bans(Vec<crate::session::bans::BanEntry>),
+    /// Everybody the server has an account for.
+    Registered(Vec<RegisteredUser>),
+    /// Everything the server will say about one user, for an admin.
+    UserDetails(UserDetails),
     /// What the server's administrator asks riders to do here.
     ///
     /// A suggestion and nothing more: the server neither enforces it nor checks
@@ -430,6 +472,56 @@ pub enum SessionCommand {
         session: Option<u32>,
         channel_id: Option<u32>,
     },
+    /// Makes a channel under `parent`. Requires MakeChannel there, or
+    /// MakeTempChannel for a temporary one.
+    ///
+    /// **A temporary channel disappears when the last person leaves it**, which
+    /// is what a group wants for one ride and not what they want for their
+    /// club's room. The two are different permissions on the server for the
+    /// same reason.
+    CreateChannel {
+        parent: u32,
+        name: String,
+        description: String,
+        temporary: bool,
+    },
+    /// Renames a channel or re-describes it. Requires Write on that channel.
+    EditChannel {
+        channel_id: u32,
+        name: Option<String>,
+        description: Option<String>,
+    },
+    /// Removes a channel and everything under it. Requires Write on it.
+    RemoveChannel(u32),
+    /// Asks for the list of registered users. Requires Register on the root
+    /// channel.
+    RequestRegistered,
+    /// Removes registrations by user id. Requires Register on the root channel.
+    ///
+    /// **The protocol has no "unregister" message.** Removing somebody is a
+    /// `UserList` containing them with no name, which is the same shape as the
+    /// ban list: a field left out is a decision rather than an omission.
+    UnregisterUsers(Vec<u32>),
+    /// Registers somebody else who is connected. Requires Register on the root
+    /// channel; `RegisterSelf` is the one that needs only SelfRegister.
+    RegisterUser(u32),
+    /// Grants or takes away priority speaker. Requires Write on the root
+    /// channel — the server treats it as an administrative change to the user.
+    SetPrioritySpeaker {
+        session: u32,
+        priority: bool,
+    },
+    /// Clears somebody's comment and picture. Requires ResetUserContent on the
+    /// root channel.
+    ResetUserContent {
+        session: u32,
+        comment: bool,
+        texture: bool,
+    },
+    /// Asks for everything the server will say about one user, including the
+    /// client they run and the address they came from — which it hands over
+    /// only to an admin, and only when the request does not say `stats_only`.
+    RequestUserDetails(u32),
     /// Ask for the server's ban list. Requires Ban on the root channel.
     RequestBans,
     /// Replace the server's ban list with this one.

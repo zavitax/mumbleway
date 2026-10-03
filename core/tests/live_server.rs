@@ -325,6 +325,217 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// Everything an admin can now do, in one round trip on a real server.
+///
+/// Channel management, the registered-user list, registering and unregistering
+/// somebody, priority speaker, and the privileged half of `UserStats`.
+///
+/// **The admin acts on a second rider, not on itself.** Murmur refuses any flag
+/// change whose target is the SuperUser —
+/// `if (pDstServerUser->iId == 0) { PERM_DENIED_TYPE(SuperUser); return; }` —
+/// so an earlier version of this test granted priority speaker to SuperUser and
+/// read the server's refusal as the client's failure.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server AND MW_LIVE_SUPERUSER set to its password"]
+async fn an_admin_can_run_the_server() {
+    require_server!();
+    let Ok(password) = std::env::var("MW_LIVE_SUPERUSER") else {
+        eprintln!("MW_LIVE_SUPERUSER is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live admin").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut admin = ServerProfile::new("live", host.clone(), port, "SuperUser");
+    admin.id = "admin".into();
+    admin.password = Some(password);
+    let admin_id = manager.add(admin, silent_bridge()).expect("added");
+    manager
+        .send(&admin_id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    let mut ordinary = ServerProfile::new("live", host, port, "ordinary-rider");
+    ordinary.id = "ordinary".into();
+    let ordinary_id = manager.add(ordinary, silent_bridge()).expect("added");
+    manager
+        .send(
+            &ordinary_id,
+            mumbleway_core::session::SessionCommand::Connect,
+        )
+        .await
+        .expect("connect");
+
+    use mumbleway_core::session::SessionCommand as C;
+    const MADE: &str = "Live Test Channel";
+    const RENAMED: &str = "Live Test Channel (renamed)";
+
+    let mut step = 0;
+    let mut saw_made = false;
+    let mut saw_renamed = false;
+    let mut saw_removed = false;
+    let mut registered_counts: Vec<usize> = Vec::new();
+    let mut registered_names: Vec<String> = Vec::new();
+    let mut details = None;
+    let mut priority_seen = false;
+    let mut target: Option<u32> = None;
+    let mut acted_on_target = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(40);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        let from_admin = event.server_id == "admin";
+        match &event.event {
+            SessionEvent::SelfSession(_) if from_admin && step == 0 => {
+                step = 1;
+                manager
+                    .send(
+                        &admin_id,
+                        C::CreateChannel {
+                            parent: 0,
+                            name: MADE.into(),
+                            description: "made by the live test".into(),
+                            temporary: false,
+                        },
+                    )
+                    .await
+                    .expect("create");
+            }
+            SessionEvent::Channels(list) if from_admin => {
+                let made = list.iter().find(|c| c.name == MADE);
+                let renamed = list.iter().find(|c| c.name == RENAMED);
+                if let (1, Some(c)) = (step, made) {
+                    saw_made = true;
+                    step = 2;
+                    println!("created channel {} ({})", c.name, c.id);
+                    manager
+                        .send(
+                            &admin_id,
+                            C::EditChannel {
+                                channel_id: c.id,
+                                name: Some(RENAMED.into()),
+                                description: None,
+                            },
+                        )
+                        .await
+                        .expect("edit");
+                } else if let (2, Some(c)) = (step, renamed) {
+                    saw_renamed = true;
+                    step = 3;
+                    println!("renamed to {}", c.name);
+                    manager
+                        .send(&admin_id, C::RemoveChannel(c.id))
+                        .await
+                        .expect("remove");
+                } else if step == 3 && made.is_none() && renamed.is_none() {
+                    saw_removed = true;
+                    println!("and removed again");
+                }
+            }
+            SessionEvent::Users(users) if from_admin => {
+                if let Some(them) = users.iter().find(|u| u.name == "ordinary-rider") {
+                    target = Some(them.session);
+                    if them.priority_speaker {
+                        priority_seen = true;
+                    }
+                }
+                if let (Some(them), false) = (target, acted_on_target) {
+                    acted_on_target = true;
+                    manager
+                        .send(&admin_id, C::RequestUserDetails(them))
+                        .await
+                        .expect("details");
+                    manager
+                        .send(
+                            &admin_id,
+                            C::SetPrioritySpeaker {
+                                session: them,
+                                priority: true,
+                            },
+                        )
+                        .await
+                        .expect("priority");
+                    manager
+                        .send(&admin_id, C::RegisterUser(them))
+                        .await
+                        .expect("register");
+                    manager
+                        .send(&admin_id, C::RequestRegistered)
+                        .await
+                        .expect("list");
+                }
+            }
+            SessionEvent::Registered(list) => {
+                println!(
+                    "registered users: {:?}",
+                    list.iter().map(|u| u.name.clone()).collect::<Vec<_>>()
+                );
+                registered_counts.push(list.len());
+                for u in list {
+                    registered_names.push(u.name.clone());
+                }
+                // Having seen them registered, take it away and look again —
+                // removal is the half with no message of its own.
+                if registered_counts.len() == 1 {
+                    if let Some(them) = list.iter().find(|u| u.name == "ordinary-rider") {
+                        manager
+                            .send(&admin_id, C::UnregisterUsers(vec![them.user_id]))
+                            .await
+                            .expect("unregister");
+                        manager
+                            .send(&admin_id, C::RequestRegistered)
+                            .await
+                            .expect("list again");
+                    }
+                }
+            }
+            SessionEvent::UserDetails(d) => {
+                println!(
+                    "details: release={:?} os={:?} address={:?} strong_cert={}",
+                    d.release, d.os, d.address, d.strong_certificate
+                );
+                details = Some(d.clone());
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    assert!(saw_made, "the channel was never created");
+    assert!(saw_renamed, "the rename never took");
+    assert!(saw_removed, "the channel was not removed");
+    assert!(priority_seen, "priority speaker never took effect");
+
+    let details = details.expect("no user details came back");
+    assert!(
+        !details.release.is_empty(),
+        "an admin asking about a client was told nothing about it"
+    );
+    assert!(
+        !details.address.is_empty(),
+        "the address is the privileged half; without it stats_only is still on"
+    );
+
+    println!("registered list sizes seen: {registered_counts:?}");
+    assert!(
+        registered_names.iter().any(|n| n == "ordinary-rider"),
+        "registering somebody did not put them in the list: {registered_names:?}"
+    );
+    assert!(
+        registered_counts.len() >= 2 && registered_counts.last() < registered_counts.first(),
+        "unregistering did not take: {registered_counts:?}"
+    );
+}
+
 /// A rider's picture, there and back.
 ///
 /// The server stores the bytes against the account and broadcasts them to

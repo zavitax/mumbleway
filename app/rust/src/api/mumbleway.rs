@@ -140,6 +140,31 @@ pub struct UiContextAction {
     pub for_server: bool,
 }
 
+/// Somebody the server has an account for.
+#[derive(Debug, Clone)]
+pub struct UiRegisteredUser {
+    pub user_id: u32,
+    pub name: String,
+    /// The server's own date string; empty when it did not say.
+    pub last_seen: String,
+}
+
+/// What a server will tell an admin about one connected rider.
+#[derive(Debug, Clone)]
+pub struct UiUserDetails {
+    pub session: u32,
+    /// The client they run, as it describes itself — "MumbleWay 1.0.1", or
+    /// whichever Mumble build.
+    pub release: String,
+    pub os: String,
+    pub os_version: String,
+    /// Where they connected from; empty when the server withheld it.
+    pub address: String,
+    pub strong_certificate: bool,
+    pub online_secs: u32,
+    pub idle_secs: u32,
+}
+
 /// One entry of the server's ban list.
 ///
 /// Carries every field the protocol defines, including the ones nothing
@@ -309,6 +334,16 @@ pub enum AppEvent {
     ContextActions {
         server_id: String,
         actions: Vec<UiContextAction>,
+    },
+    /// Everybody this server has an account for.
+    Registered {
+        server_id: String,
+        users: Vec<UiRegisteredUser>,
+    },
+    /// Everything the server will say about one rider, for an admin who asked.
+    UserDetails {
+        server_id: String,
+        details: UiUserDetails,
     },
     /// The server's ban list, in answer to asking for it.
     Bans {
@@ -946,6 +981,30 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         })
                         .collect(),
                 }),
+                SessionEvent::Registered(list) => emit(AppEvent::Registered {
+                    server_id,
+                    users: list
+                        .into_iter()
+                        .map(|u| UiRegisteredUser {
+                            user_id: u.user_id,
+                            name: u.name,
+                            last_seen: u.last_seen,
+                        })
+                        .collect(),
+                }),
+                SessionEvent::UserDetails(d) => emit(AppEvent::UserDetails {
+                    server_id,
+                    details: UiUserDetails {
+                        session: d.session,
+                        release: d.release,
+                        os: d.os,
+                        os_version: d.os_version,
+                        address: d.address,
+                        strong_certificate: d.strong_certificate,
+                        online_secs: d.online_secs,
+                        idle_secs: d.idle_secs,
+                    },
+                }),
                 SessionEvent::Bans(list) => emit(AppEvent::Bans {
                     server_id,
                     bans: list
@@ -1369,6 +1428,95 @@ pub fn trigger_context_action(
             channel_id,
         },
     )
+}
+
+/// Makes a channel under `parent`. Needs MakeChannel there, or
+/// MakeTempChannel when `temporary`.
+pub fn create_channel(
+    server_id: String,
+    parent: u32,
+    name: String,
+    description: String,
+    temporary: bool,
+) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::CreateChannel {
+            parent,
+            name,
+            description,
+            temporary,
+        },
+    )
+}
+
+/// Renames a channel or re-describes it. Needs Write on it.
+pub fn edit_channel(
+    server_id: String,
+    channel_id: u32,
+    name: Option<String>,
+    description: Option<String>,
+) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::EditChannel {
+            channel_id,
+            name,
+            description,
+        },
+    )
+}
+
+/// Removes a channel and everything under it. Needs Write on it.
+pub fn remove_channel(server_id: String, channel_id: u32) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::RemoveChannel(channel_id))
+}
+
+/// Asks for the registered users; they arrive as `AppEvent::Registered`.
+pub fn request_registered(server_id: String) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::RequestRegistered)
+}
+
+/// Removes registrations by user id. Needs Register on the root channel.
+pub fn unregister_users(server_id: String, user_ids: Vec<u32>) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::UnregisterUsers(user_ids))
+}
+
+/// Gives a connected rider an account on this server.
+pub fn register_user(server_id: String, session: u32) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::RegisterUser(session))
+}
+
+/// Grants or withdraws priority speaker, which ducks everybody else while that
+/// rider talks.
+pub fn set_priority_speaker(server_id: String, session: u32, priority: bool) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::SetPrioritySpeaker { session, priority },
+    )
+}
+
+/// Clears somebody's note, picture, or both.
+pub fn reset_user_content(
+    server_id: String,
+    session: u32,
+    comment: bool,
+    texture: bool,
+) -> anyhow::Result<()> {
+    send_command(
+        server_id,
+        SessionCommand::ResetUserContent {
+            session,
+            comment,
+            texture,
+        },
+    )
+}
+
+/// Asks for everything the server will say about one rider. The privileged
+/// half — client, address, certificate — arrives only for an admin.
+pub fn request_user_details(server_id: String, session: u32) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::RequestUserDetails(session))
 }
 
 /// Removes a rider and bars them from returning. Needs Ban on the root channel.

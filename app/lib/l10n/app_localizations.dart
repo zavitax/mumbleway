@@ -3210,6 +3210,204 @@ abstract class L {
   /// In en, this message translates to:
   /// **'That file is not an image this app can read'**
   String get avatarUnreadable;
+
+  /// No description provided for @channelActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel actions'**
+  String get channelActions;
+
+  /// No description provided for @channelAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'New channel here'**
+  String get channelAdd;
+
+  /// No description provided for @channelRename.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get channelRename;
+
+  /// No description provided for @channelDescribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get channelDescribe;
+
+  /// No description provided for @channelRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove channel'**
+  String get channelRemove;
+
+  /// No description provided for @channelRemoveTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String channelRemoveTitle(String name);
+
+  /// No description provided for @channelRemoveBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything inside it goes too, and anyone in it is moved out. This cannot be undone.'**
+  String get channelRemoveBody;
+
+  /// No description provided for @channelName.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get channelName;
+
+  /// No description provided for @channelDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get channelDescription;
+
+  /// No description provided for @channelCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get channelCreate;
+
+  /// No description provided for @channelTemporary.
+  ///
+  /// In en, this message translates to:
+  /// **'Temporary'**
+  String get channelTemporary;
+
+  /// No description provided for @channelTemporaryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Disappears when the last person leaves it. Right for one ride; wrong for a room your club keeps.'**
+  String get channelTemporaryBody;
+
+  /// No description provided for @priorityGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'Make priority speaker'**
+  String get priorityGrant;
+
+  /// No description provided for @priorityRevoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop being priority speaker'**
+  String get priorityRevoke;
+
+  /// No description provided for @registerThem.
+  ///
+  /// In en, this message translates to:
+  /// **'Register on this server'**
+  String get registerThem;
+
+  /// No description provided for @registerThemSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Request sent. If nothing happens, you lack the Register permission.'**
+  String get registerThemSent;
+
+  /// No description provided for @resetContent.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear their note and picture'**
+  String get resetContent;
+
+  /// No description provided for @userDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Information'**
+  String get userDetails;
+
+  /// No description provided for @userDetailsWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Asking the server…'**
+  String get userDetailsWaiting;
+
+  /// No description provided for @userDetailsClient.
+  ///
+  /// In en, this message translates to:
+  /// **'Client'**
+  String get userDetailsClient;
+
+  /// No description provided for @userDetailsSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get userDetailsSystem;
+
+  /// No description provided for @userDetailsAddress.
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get userDetailsAddress;
+
+  /// No description provided for @userDetailsCertificate.
+  ///
+  /// In en, this message translates to:
+  /// **'Certificate'**
+  String get userDetailsCertificate;
+
+  /// No description provided for @userDetailsCertificateStrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Vouched for by an authority'**
+  String get userDetailsCertificateStrong;
+
+  /// No description provided for @userDetailsCertificateSelfSigned.
+  ///
+  /// In en, this message translates to:
+  /// **'Made by the client itself'**
+  String get userDetailsCertificateSelfSigned;
+
+  /// No description provided for @userDetailsOnline.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get userDetailsOnline;
+
+  /// No description provided for @userDetailsIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get userDetailsIdle;
+
+  /// No description provided for @userDetailsWithheld.
+  ///
+  /// In en, this message translates to:
+  /// **'The rest is only shown to a server admin.'**
+  String get userDetailsWithheld;
+
+  /// No description provided for @minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} min'**
+  String minutes(int count);
+
+  /// No description provided for @registeredUsers.
+  ///
+  /// In en, this message translates to:
+  /// **'Registered users'**
+  String get registeredUsers;
+
+  /// No description provided for @registeredNobody.
+  ///
+  /// In en, this message translates to:
+  /// **'This server has no registered users.'**
+  String get registeredNobody;
+
+  /// No description provided for @registeredUnregister.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get registeredUnregister;
+
+  /// No description provided for @registeredLastSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Last seen {when}'**
+  String registeredLastSeen(String when);
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

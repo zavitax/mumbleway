@@ -10,7 +10,7 @@ part 'mumbleway.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -73,6 +73,99 @@ Future<void> triggerContextAction({
   action: action,
   session: session,
   channelId: channelId,
+);
+
+/// Makes a channel under `parent`. Needs MakeChannel there, or
+/// MakeTempChannel when `temporary`.
+Future<void> createChannel({
+  required String serverId,
+  required int parent,
+  required String name,
+  required String description,
+  required bool temporary,
+}) => RustLib.instance.api.crateApiMumblewayCreateChannel(
+  serverId: serverId,
+  parent: parent,
+  name: name,
+  description: description,
+  temporary: temporary,
+);
+
+/// Renames a channel or re-describes it. Needs Write on it.
+Future<void> editChannel({
+  required String serverId,
+  required int channelId,
+  String? name,
+  String? description,
+}) => RustLib.instance.api.crateApiMumblewayEditChannel(
+  serverId: serverId,
+  channelId: channelId,
+  name: name,
+  description: description,
+);
+
+/// Removes a channel and everything under it. Needs Write on it.
+Future<void> removeChannel({
+  required String serverId,
+  required int channelId,
+}) => RustLib.instance.api.crateApiMumblewayRemoveChannel(
+  serverId: serverId,
+  channelId: channelId,
+);
+
+/// Asks for the registered users; they arrive as `AppEvent::Registered`.
+Future<void> requestRegistered({required String serverId}) =>
+    RustLib.instance.api.crateApiMumblewayRequestRegistered(serverId: serverId);
+
+/// Removes registrations by user id. Needs Register on the root channel.
+Future<void> unregisterUsers({
+  required String serverId,
+  required List<int> userIds,
+}) => RustLib.instance.api.crateApiMumblewayUnregisterUsers(
+  serverId: serverId,
+  userIds: userIds,
+);
+
+/// Gives a connected rider an account on this server.
+Future<void> registerUser({required String serverId, required int session}) =>
+    RustLib.instance.api.crateApiMumblewayRegisterUser(
+      serverId: serverId,
+      session: session,
+    );
+
+/// Grants or withdraws priority speaker, which ducks everybody else while that
+/// rider talks.
+Future<void> setPrioritySpeaker({
+  required String serverId,
+  required int session,
+  required bool priority,
+}) => RustLib.instance.api.crateApiMumblewaySetPrioritySpeaker(
+  serverId: serverId,
+  session: session,
+  priority: priority,
+);
+
+/// Clears somebody's note, picture, or both.
+Future<void> resetUserContent({
+  required String serverId,
+  required int session,
+  required bool comment,
+  required bool texture,
+}) => RustLib.instance.api.crateApiMumblewayResetUserContent(
+  serverId: serverId,
+  session: session,
+  comment: comment,
+  texture: texture,
+);
+
+/// Asks for everything the server will say about one rider. The privileged
+/// half — client, address, certificate — arrives only for an admin.
+Future<void> requestUserDetails({
+  required String serverId,
+  required int session,
+}) => RustLib.instance.api.crateApiMumblewayRequestUserDetails(
+  serverId: serverId,
+  session: session,
 );
 
 /// Removes a rider and bars them from returning. Needs Ban on the root channel.
@@ -732,6 +825,18 @@ sealed class AppEvent with _$AppEvent {
     required String serverId,
     required List<UiContextAction> actions,
   }) = AppEvent_ContextActions;
+
+  /// Everybody this server has an account for.
+  const factory AppEvent.registered({
+    required String serverId,
+    required List<UiRegisteredUser> users,
+  }) = AppEvent_Registered;
+
+  /// Everything the server will say about one rider, for an admin who asked.
+  const factory AppEvent.userDetails({
+    required String serverId,
+    required UiUserDetails details,
+  }) = AppEvent_UserDetails;
 
   /// The server's ban list, in answer to asking for it.
   const factory AppEvent.bans({
@@ -1858,6 +1963,33 @@ class UiRecordingState {
           directory == other.directory;
 }
 
+/// Somebody the server has an account for.
+class UiRegisteredUser {
+  final int userId;
+  final String name;
+
+  /// The server's own date string; empty when it did not say.
+  final String lastSeen;
+
+  const UiRegisteredUser({
+    required this.userId,
+    required this.name,
+    required this.lastSeen,
+  });
+
+  @override
+  int get hashCode => userId.hashCode ^ name.hashCode ^ lastSeen.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiRegisteredUser &&
+          runtimeType == other.runtimeType &&
+          userId == other.userId &&
+          name == other.name &&
+          lastSeen == other.lastSeen;
+}
+
 /// What the server says this rider may do, here and on this server.
 ///
 /// For greying out what would be refused. **Never a substitute for handling the
@@ -2327,6 +2459,59 @@ class UiUser {
           suppressed == other.suppressed &&
           comment == other.comment &&
           quality == other.quality;
+}
+
+/// What a server will tell an admin about one connected rider.
+class UiUserDetails {
+  final int session;
+
+  /// The client they run, as it describes itself — "MumbleWay 1.0.1", or
+  /// whichever Mumble build.
+  final String release;
+  final String os;
+  final String osVersion;
+
+  /// Where they connected from; empty when the server withheld it.
+  final String address;
+  final bool strongCertificate;
+  final int onlineSecs;
+  final int idleSecs;
+
+  const UiUserDetails({
+    required this.session,
+    required this.release,
+    required this.os,
+    required this.osVersion,
+    required this.address,
+    required this.strongCertificate,
+    required this.onlineSecs,
+    required this.idleSecs,
+  });
+
+  @override
+  int get hashCode =>
+      session.hashCode ^
+      release.hashCode ^
+      os.hashCode ^
+      osVersion.hashCode ^
+      address.hashCode ^
+      strongCertificate.hashCode ^
+      onlineSecs.hashCode ^
+      idleSecs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiUserDetails &&
+          runtimeType == other.runtimeType &&
+          session == other.session &&
+          release == other.release &&
+          os == other.os &&
+          osVersion == other.osVersion &&
+          address == other.address &&
+          strongCertificate == other.strongCertificate &&
+          onlineSecs == other.onlineSecs &&
+          idleSecs == other.idleSecs;
 }
 
 /// A window of raw microphone audio for the background classifier.

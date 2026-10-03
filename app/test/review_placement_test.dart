@@ -134,8 +134,19 @@ void main() {
       find.descendant(of: find.byType(ReviewRequest), matching: find.byType(Wrap)),
     );
     expect(wrap.crossAxisAlignment, WrapCrossAlignment.center);
-    // And centred in the card rather than pushed to its right edge.
+    // And centred in the card.
+    //
+    // **Both halves, because the property alone is not the thing.** A `Wrap`
+    // centres its children inside the box it is given, and a `Wrap` in a column
+    // aligned to the start is given exactly the width of its children: the
+    // buttons were centred in a box pressed against the left edge, which is
+    // left-justified by another name, while `alignment == center` was true the
+    // whole time.
     expect(wrap.alignment, WrapAlignment.center);
+    final buttons = t.getRect(
+      find.descendant(of: find.byType(ReviewRequest), matching: find.byType(Wrap)),
+    );
+    expect(buttons.center.dx, moreOrLessEquals(review.center.dx, epsilon: 1));
 
     // And the one worth pressing is coloured, not tonal: on this card the
     // scheme's own filled button is a pale blue on a pale grey.

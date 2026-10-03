@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,8 +17,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///
 /// It used to be a row on the settings page, between a switch and a
 /// fingerprint: the one control there whose value was a picture, and the one a
-/// rider had to go two screens deep to see. It is now in the overflow menu of
-/// the main window, where it is the picture itself and tapping it changes it.
+/// rider had to go two screens deep to see. It is now the overflow menu's first
+/// entry and it is drawn as a picture — large and round — because the picture
+/// is the control and pressing it is how it is changed.
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -50,30 +52,58 @@ void main() {
     return state;
   }
 
-  testWidgets('the three dots offer the picture, and the mark stands in for '
-      'one not chosen', (t) async {
+  Future<void> openMenu(WidgetTester t) async {
+    await t.tap(find.byIcon(Icons.more_vert));
+    await t.pump(const Duration(milliseconds: 400));
+  }
+
+  testWidgets('the menu leads with the picture, three quarters of its width', (
+    t,
+  ) async {
     final state = ready();
     await t.pumpWidget(host(state, const HomeScreen()));
     await t.pump(const Duration(milliseconds: 50));
+    await openMenu(t);
 
-    await t.tap(find.byIcon(Icons.more_vert));
-    await t.pump(const Duration(milliseconds: 400));
+    expect(find.byType(AvatarMenuTile), findsOneWidget);
+    final entry = t.getSize(find.byType(AvatarMenuTile)).width;
+    final face = t.getSize(find.byType(MyAvatar)).width;
+    expect(face, closeTo(entry * 0.75, 1));
 
-    expect(find.text('Your picture'), findsOneWidget);
-    expect(find.byType(MyAvatar), findsOneWidget);
     // Nothing to take down: the mark is not a picture the rider put there.
     expect(find.text('Remove picture'), findsNothing);
+  });
+
+  testWidgets('what pressing it does is said over the picture, on hover', (
+    t,
+  ) async {
+    final state = ready();
+    await t.pumpWidget(host(state, const HomeScreen()));
+    await t.pump(const Duration(milliseconds: 50));
+    await openMenu(t);
+
+    // Nothing beside the picture until a pointer is over it: a label standing
+    // there all the time would make the entry read as a setting with a
+    // thumbnail rather than as the picture itself.
+    expect(find.text('Change your picture'), findsNothing);
+
+    final mouse = await t.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await t.pumpAndSettle();
+    await mouse.moveTo(t.getCenter(find.byType(MyAvatar)));
+    await t.pumpAndSettle();
+
+    expect(find.text('Change your picture'), findsOneWidget);
   });
 
   testWidgets('with a picture, taking it down becomes possible', (t) async {
     final state = ready()..myAvatar = Uint8List.fromList(picture());
     await t.pumpWidget(host(state, const HomeScreen()));
     await t.pump(const Duration(milliseconds: 50));
+    await openMenu(t);
 
-    await t.tap(find.byIcon(Icons.more_vert));
-    await t.pump(const Duration(milliseconds: 400));
-
-    expect(find.text('Your picture'), findsOneWidget);
+    expect(find.byType(AvatarMenuTile), findsOneWidget);
     expect(find.text('Remove picture'), findsOneWidget);
   });
 
@@ -87,7 +117,6 @@ void main() {
     await t.pumpWidget(host(state, const SettingsScreen()));
     await t.pump(const Duration(milliseconds: 50));
 
-    // The identity section is still there; the picture is not.
     expect(find.byType(MyAvatar), findsNothing);
     expect(find.text('Your picture'), findsNothing);
   });

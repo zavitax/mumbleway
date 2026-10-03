@@ -1753,11 +1753,7 @@ class LEn extends L {
   String get suppressedLifted => 'You can be heard here again';
 
   @override
-  String get avatar => 'Your picture';
-
-  @override
-  String get avatarBody =>
-      'Shown beside your name to everyone on every server you join. Kept on this device and sent to each server as it connects; it is scaled down before it goes anywhere.';
+  String get avatarChange => 'Change your picture';
 
   @override
   String get avatarRemove => 'Remove picture';

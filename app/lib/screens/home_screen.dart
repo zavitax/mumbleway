@@ -16,6 +16,13 @@ import '../widgets/wordmark.dart';
 import 'add_server_screen.dart';
 import 'settings_screen.dart';
 
+/// How wide the overflow menu is drawn, in logical pixels.
+///
+/// The default is the widest entry, up to five list-tile heights; this is that
+/// maximum said out loud, because the picture at the top of the menu is sized
+/// from it.
+const double _menuWidth = 280;
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -128,6 +135,14 @@ class HomeScreen extends StatelessWidget {
           PopupMenuButton<String>(
             tooltip: l.more,
             icon: const Icon(Icons.more_vert),
+            // Fixed, where the default is "as wide as the widest entry". The
+            // picture at the top is drawn as a fraction of this, and a width
+            // that came from the entries would then be coming from the picture
+            // that comes from it.
+            constraints: const BoxConstraints(
+              minWidth: _menuWidth,
+              maxWidth: _menuWidth,
+            ),
             onSelected: (v) async {
               final messenger = ScaffoldMessenger.of(context);
               switch (v) {
@@ -176,14 +191,15 @@ class HomeScreen extends StatelessWidget {
               // there whose control was a picture rather than a value.
               PopupMenuItem(
                 value: 'avatar',
-                child: Tooltip(
-                  message: l.avatarBody,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: MyAvatar(image: state.myAvatar),
-                    title: Text(l.avatar),
-                  ),
+                // The picture decides how tall this is: the default height is
+                // one text row, and this entry is a face. The padding goes for
+                // the same reason — the picture is measured against the width
+                // of the menu, not of what is left inside its margins.
+                height: 0,
+                padding: EdgeInsets.zero,
+                child: AvatarMenuTile(
+                  image: state.myAvatar,
+                  width: _menuWidth,
                 ),
               ),
               // Only when there is one to take down. Without a picture the mark

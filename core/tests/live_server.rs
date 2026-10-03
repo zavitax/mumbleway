@@ -325,6 +325,277 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// What a rider does in an ordinary session, against a real server.
+///
+/// Notes, text messages, muting themselves, deafening themselves, and moving
+/// about — each of these is a message this client sends and a flag it reads,
+/// and every one of them was only ever checked against a unit test before.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn two_riders_do_the_ordinary_things() {
+    require_server!();
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live test").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    for name in ["talker", "listener"] {
+        let mut profile = ServerProfile::new("live", host.clone(), port, name);
+        profile.id = name.to_string();
+        let id = manager.add(profile, silent_bridge()).expect("added");
+        manager
+            .send(&id, mumbleway_core::session::SessionCommand::Connect)
+            .await
+            .expect("connect");
+    }
+
+    use mumbleway_core::session::SessionCommand as C;
+    const NOTE: &str = "On the A9 heading north";
+    const SAID: &str = "radio check";
+
+    let mut acted = false;
+    let mut note_seen = false;
+    let mut text_seen = false;
+    let mut self_mute_seen = false;
+    let mut self_deaf_seen = false;
+    let mut suggestions: Vec<(Option<bool>, Option<bool>)> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(25);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(_) if event.server_id == "talker" && !acted => {
+                acted = true;
+                manager
+                    .send("talker", C::SetComment(NOTE.into()))
+                    .await
+                    .ok();
+                manager.send("talker", C::SetSelfMute(true)).await.ok();
+                manager.send("talker", C::SetSelfDeaf(true)).await.ok();
+                manager
+                    .send(
+                        "talker",
+                        C::SendText {
+                            channel_id: None,
+                            message: SAID.into(),
+                        },
+                    )
+                    .await
+                    .ok();
+            }
+            SessionEvent::ServerSuggests {
+                push_to_talk,
+                positional,
+            } => {
+                println!(
+                    "server suggests: push_to_talk={push_to_talk:?} positional={positional:?}"
+                );
+                suggestions.push((*push_to_talk, *positional));
+            }
+            // What the *other* rider sees is the half that matters: a note and
+            // a mute are only worth anything if they reach somebody else.
+            SessionEvent::Users(users) if event.server_id == "listener" => {
+                if let Some(them) = users.iter().find(|u| u.name == "talker") {
+                    println!(
+                        "listener sees talker: comment={:?} self_mute={} self_deaf={}",
+                        them.comment, them.self_mute, them.self_deaf
+                    );
+                    if them.comment == NOTE {
+                        note_seen = true;
+                    }
+                    if them.self_mute {
+                        self_mute_seen = true;
+                    }
+                    if them.self_deaf {
+                        self_deaf_seen = true;
+                    }
+                }
+            }
+            SessionEvent::Text { from, message } if event.server_id == "listener" => {
+                println!("listener heard {from}: {message}");
+                if message == SAID {
+                    text_seen = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    assert!(note_seen, "a rider's note never reached the other rider");
+    assert!(text_seen, "a text message never arrived");
+    assert!(
+        self_mute_seen,
+        "muting themselves was invisible to everybody else"
+    );
+    assert!(self_deaf_seen, "deafening themselves was invisible too");
+    if std::env::var("MW_LIVE_EXPECT_SUGGESTIONS").is_ok() {
+        assert!(
+            suggestions
+                .iter()
+                .any(|(ptt, pos)| *ptt == Some(true) || *pos == Some(true)),
+            "the server was configured to suggest something and said nothing"
+        );
+    }
+}
+
+/// Removing somebody: moved, kicked, banned, and the ban lifted again.
+///
+/// The destructive half of moderation, which has had no live run at all. Each
+/// of these is irreversible from the target's point of view, and a ban is the
+/// one that outlasts the session — so the test puts the server back as it
+/// found it and checks that it did.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server AND MW_LIVE_SUPERUSER set to its password"]
+async fn an_admin_moves_kicks_and_bans_somebody() {
+    require_server!();
+    let Ok(password) = std::env::var("MW_LIVE_SUPERUSER") else {
+        eprintln!("MW_LIVE_SUPERUSER is not set; skipping");
+        return;
+    };
+    let Ok(channel) = std::env::var("MW_LIVE_CHANNEL") else {
+        eprintln!("MW_LIVE_CHANNEL is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live admin").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut admin = ServerProfile::new("live", host.clone(), port, "SuperUser");
+    admin.id = "admin".into();
+    admin.password = Some(password);
+    let admin_id = manager.add(admin, silent_bridge()).expect("added");
+    manager
+        .send(&admin_id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    let mut victim = ServerProfile::new("live", host, port, "tyre-kicker");
+    victim.id = "victim".into();
+    let victim_id = manager.add(victim, silent_bridge()).expect("added");
+    manager
+        .send(&victim_id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    use mumbleway_core::session::SessionCommand as C;
+
+    let mut channels: Vec<(u32, String)> = Vec::new();
+    let mut target: Option<u32> = None;
+    let mut moved_them = false;
+    let mut saw_them_moved = false;
+    let mut banned = false;
+    let mut ban_names: Vec<String> = Vec::new();
+    let mut ban_counts: Vec<usize> = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(35);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        let from_admin = event.server_id == "admin";
+        match &event.event {
+            SessionEvent::Channels(list) if from_admin => {
+                channels = list.iter().map(|c| (c.id, c.name.clone())).collect();
+            }
+            SessionEvent::Users(users) if from_admin => {
+                let Some(them) = users.iter().find(|u| u.name == "tyre-kicker") else {
+                    continue;
+                };
+                target = Some(them.session);
+                let garage = channels
+                    .iter()
+                    .find(|(_, n)| *n == channel)
+                    .map(|(id, _)| *id);
+
+                if let (false, Some(to)) = (moved_them, garage) {
+                    moved_them = true;
+                    println!("moving them to {channel}");
+                    manager
+                        .send(
+                            &admin_id,
+                            C::MoveUser {
+                                session: them.session,
+                                channel_id: to,
+                            },
+                        )
+                        .await
+                        .expect("move");
+                } else if moved_them && !saw_them_moved && Some(them.channel_id) == garage {
+                    saw_them_moved = true;
+                    println!("they are in {channel}; banning them");
+                    banned = true;
+                    manager
+                        .send(
+                            &admin_id,
+                            C::BanUser {
+                                session: them.session,
+                                reason: "live test".into(),
+                            },
+                        )
+                        .await
+                        .expect("ban");
+                    manager.send(&admin_id, C::RequestBans).await.expect("bans");
+                }
+            }
+            SessionEvent::Bans(list) => {
+                println!(
+                    "ban list: {:?}",
+                    list.iter().map(|b| b.name.clone()).collect::<Vec<_>>()
+                );
+                ban_counts.push(list.len());
+                for b in list {
+                    ban_names.push(b.name.clone());
+                }
+                // Lift everything this test put there, so the server is left
+                // as it was found — and read the list once more to prove it.
+                if ban_counts.len() == 1 && !list.is_empty() {
+                    manager
+                        .send(&admin_id, C::SetBans(Vec::new()))
+                        .await
+                        .expect("lift");
+                }
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    assert!(target.is_some(), "the other rider never appeared");
+    assert!(
+        saw_them_moved,
+        "moving somebody between channels did not take"
+    );
+    assert!(banned, "never got as far as banning");
+    assert!(
+        !ban_counts.is_empty(),
+        "the ban list was never answered after a ban"
+    );
+    assert_eq!(
+        ban_counts.first(),
+        Some(&1),
+        "a ban did not appear in the list: {ban_names:?}"
+    );
+    assert_eq!(
+        ban_counts.last(),
+        Some(&0),
+        "the ban was not lifted again, and the server is not as it was found"
+    );
+}
+
 /// A channel's access list: read it, change it, read it back.
 ///
 /// The riskiest write in the client, for the same reason as the ban list — the

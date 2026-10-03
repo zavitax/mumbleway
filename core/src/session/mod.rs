@@ -119,6 +119,17 @@ struct LiveState {
     /// The last suppression state reported upward, so the announcement is
     /// made on a change rather than on every roster update.
     suppress_announced: Option<bool>,
+    /// A channel whose access list should be read again, and whether the ban
+    /// list should be.
+    ///
+    /// **Not read back in the same breath as the write.** A server rate-limits
+    /// these — Murmur's `msgACL` opens its write path with `RATELIMIT` — and a
+    /// write followed immediately by a read puts two messages into a bucket
+    /// that may only have room for one. The read is the one that gets dropped,
+    /// and the screen then shows the state before the change, which reads as
+    /// the change having failed. A tick later there is room.
+    reread_acl: Option<u32>,
+    reread_bans: bool,
     /// Longest text message and longest image this server will take, in
     /// bytes; `0` from the server means "no limit". Exceeding either is
     /// refused with `TextTooLong` — for a picture too, which is the server's
@@ -162,6 +173,8 @@ impl LiveState {
             udp_packets: 0,
             tcp_packets: 0,
             recording_allowed: None,
+            reread_acl: None,
+            reread_bans: false,
             limits: ServerLimits::default(),
             suppress_announced: None,
         }
@@ -831,6 +844,24 @@ impl Session {
                     if state.quality_fresh {
                         state.quality_fresh = false;
                         self.emit(SessionEvent::Users(state.user_list())).await;
+                    }
+
+                    // Anything written a moment ago, read back now that the
+                    // server's rate limiter has had a tick to refill.
+                    if let Some(channel) = state.reread_acl.take() {
+                        let m = mumble::Acl {
+                            channel_id: channel,
+                            query: Some(true),
+                            ..Default::default()
+                        };
+                        writer.send(MessageType::Acl, &m).await?;
+                    }
+                    if std::mem::take(&mut state.reread_bans) {
+                        let m = mumble::BanList {
+                            bans: Vec::new(),
+                            query: Some(true),
+                        };
+                        writer.send(MessageType::BanList, &m).await?;
                     }
 
                     // Ask for the comments and pictures we have only hashes
@@ -1582,10 +1613,21 @@ impl Session {
                 channel_id,
                 message,
             } => {
+                // **A message with no target reaches nobody.** The server
+                // gathers recipients from the session, channel and tree lists
+                // and sends to whoever is in them; all three empty is a
+                // message delivered to zero people, with no error — so "no
+                // channel given" has to mean *the one this rider is in*,
+                // which is what a client with no target picker means by it.
+                let target = channel_id.or_else(|| state.self_channel(state.self_session));
+                let Some(target) = target else {
+                    tracing::warn!("not sending a text message: no channel to send it to");
+                    return Ok(());
+                };
                 let m = mumble::TextMessage {
                     actor: state.self_session,
                     session: Vec::new(),
-                    channel_id: channel_id.into_iter().collect(),
+                    channel_id: vec![target],
                     tree_id: Vec::new(),
                     message: state.limits.fit_text(&message),
                 };
@@ -1835,15 +1877,12 @@ impl Session {
                         })
                         .collect(),
                 };
+                let channel_id = m.channel_id;
                 writer.send(MessageType::Acl, &m).await?;
                 // Read back rather than trusting the write, as with the bans:
-                // the server decides what it kept.
-                let q = mumble::Acl {
-                    channel_id: acl.channel_id,
-                    query: Some(true),
-                    ..Default::default()
-                };
-                writer.send(MessageType::Acl, &q).await?;
+                // the server decides what it kept. On the next tick — see
+                // `reread_acl`.
+                state.reread_acl = Some(channel_id);
             }
             SessionCommand::QueryUserNames(ids) => {
                 let m = mumble::QueryUsers {
@@ -1945,12 +1984,9 @@ impl Session {
                 writer.send(MessageType::BanList, &m).await?;
                 // Read back rather than trusting the write: between the list
                 // being shown and being sent, another admin may have banned
-                // somebody whose entry was never in this copy.
-                let q = mumble::BanList {
-                    bans: Vec::new(),
-                    query: Some(true),
-                };
-                writer.send(MessageType::BanList, &q).await?;
+                // somebody whose entry was never in this copy. On the next
+                // tick, not now — see `reread_bans`.
+                state.reread_bans = true;
             }
             SessionCommand::SetDefaultChannel(name) => {
                 // Remembered for the next connect; the UI persists it too.

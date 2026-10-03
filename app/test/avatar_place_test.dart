@@ -57,18 +57,20 @@ void main() {
     await t.pump(const Duration(milliseconds: 400));
   }
 
-  testWidgets('the menu leads with the picture, three quarters of its width', (
-    t,
-  ) async {
+  testWidgets('the menu leads with the picture, half its width in a quarter of '
+      'air', (t) async {
     final state = ready();
     await t.pumpWidget(host(state, const HomeScreen()));
     await t.pump(const Duration(milliseconds: 50));
     await openMenu(t);
 
     expect(find.byType(AvatarMenuTile), findsOneWidget);
-    final entry = t.getSize(find.byType(AvatarMenuTile)).width;
-    final face = t.getSize(find.byType(MyAvatar)).width;
-    expect(face, closeTo(entry * 0.75, 1));
+    final entry = t.getRect(find.byType(AvatarMenuTile));
+    final face = t.getRect(find.byType(MyAvatar));
+    expect(face.width, closeTo(entry.width / 2, 1));
+    expect(face.left - entry.left, closeTo(entry.width / 4, 1));
+    expect(face.top - entry.top, closeTo(entry.width / 4, 1));
+    expect(entry.bottom - face.bottom, closeTo(entry.width / 4, 1));
 
     // Nothing to take down: the mark is not a picture the rider put there.
     expect(find.text('Remove picture'), findsNothing);

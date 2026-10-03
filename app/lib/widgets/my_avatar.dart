@@ -54,10 +54,12 @@ class MyAvatar extends StatelessWidget {
 /// The picture as it appears in the overflow menu: large, round, and its own
 /// button.
 ///
-/// It is drawn at three quarters of [width], which keeps it a picture rather
-/// than an icon. What pressing it does is said over the picture on hover rather
-/// than beside it: the picture is the control, and a label standing next to it
-/// all the time would make the entry read as a setting with a thumbnail.
+/// It is drawn at half of [width], with a quarter of [width] as the margin
+/// around it, which keeps it a picture rather than an icon and keeps the menu
+/// from being mostly face. What pressing it does is said over the picture on
+/// hover rather than beside it: the picture is the control, and a label
+/// standing next to it all the time would make the entry read as a setting
+/// with a thumbnail.
 ///
 /// There is no hover on a phone, so the same words are the accessibility label,
 /// which is what a screen reader announces.
@@ -87,7 +89,10 @@ class _AvatarMenuTileState extends State<AvatarMenuTile> {
   Widget build(BuildContext context) {
     final l = L.of(context);
 
-    final size = widget.width * 0.75;
+    final size = widget.width / 2;
+    // The margin is a quarter of the width on every side, so the picture sits
+    // in the middle of a square of air rather than in a row.
+    final margin = widget.width / 4;
 
     return Semantics(
       button: true,
@@ -98,7 +103,7 @@ class _AvatarMenuTileState extends State<AvatarMenuTile> {
         child: SizedBox(
           width: widget.width,
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: EdgeInsets.all(margin),
             child: Center(
               child: SizedBox(
                 width: size,

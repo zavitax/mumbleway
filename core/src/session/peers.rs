@@ -141,15 +141,21 @@ pub const CAP_REMOTE_MUTE: &str = "remote-mute";
 /// real, binding mute and one without still gets the request.
 pub const DATA_ID_MUTE: &str = "mumbleway/mute";
 
-/// How long after acting on one remote mute request the next is ignored.
+/// How long after acting on one remote *mute* request the next one is ignored.
 ///
 /// **This is what stops a peer holding someone muted.** Without it, a request
 /// every second would re-mute a rider the moment they unmuted themselves. With
 /// it, whoever is on the receiving end gets half a minute of their own
-/// microphone after every remote change — long enough to notice and undo it,
+/// microphone after every remote mute — long enough to notice and undo it,
 /// short enough that a genuine second request after the noise comes back is
 /// not refused for long. Global across senders and servers, because a new
 /// session is one reconnect away and a per-sender limit is therefore no limit.
+///
+/// **An unmute never waits for it**, and the reason is the sentence above:
+/// this exists so that nobody can hold a rider muted, and refusing to hand the
+/// microphone back is holding them muted. It shipped the other way and was
+/// reported as what it looks like — somebody muted through the app, unmuted a
+/// moment later, and the microphone stayed shut.
 pub const REMOTE_MUTE_COOLDOWN: Duration = Duration::from_secs(30);
 
 /// How long after sending a mute request a matching refusal from the server is
@@ -347,11 +353,14 @@ pub struct RemoteMuteGuard {
 impl RemoteMuteGuard {
     /// Decides, and records the decision if it is to act.
     ///
-    /// **Only a request that is acted on starts the cooldown.** One that is
-    /// ignored — already in that state, or an unmute the rider has refused —
-    /// changes nothing, so it must not spend the half-minute either: otherwise a
-    /// stream of refused unmutes would block the one mute request that was
-    /// genuinely needed.
+    /// **Only a mute that is acted on starts the cooldown, and only a mute
+    /// waits for it.** An unmute hands the microphone back, which is the thing
+    /// the cooldown exists to protect; delaying one would be the cooldown
+    /// causing the fault it was written to prevent. A request that is ignored —
+    /// already in that state, or an unmute the rider has refused — changes
+    /// nothing, so it must not spend the half-minute either: otherwise a stream
+    /// of refused unmutes would block the one mute request that was genuinely
+    /// needed.
     pub fn decide(
         &mut self,
         mute: bool,
@@ -365,13 +374,16 @@ impl RemoteMuteGuard {
         if !mute && !allow_unmute {
             return RemoteMuteDecision::UnmuteNotAllowed;
         }
-        if self
-            .last
-            .is_some_and(|t| now.saturating_duration_since(t) < REMOTE_MUTE_COOLDOWN)
+        if mute
+            && self
+                .last
+                .is_some_and(|t| now.saturating_duration_since(t) < REMOTE_MUTE_COOLDOWN)
         {
             return RemoteMuteDecision::CoolingDown;
         }
-        self.last = Some(now);
+        if mute {
+            self.last = Some(now);
+        }
         RemoteMuteDecision::Apply
     }
 }
@@ -865,6 +877,35 @@ mod tests {
         let later = t0 + REMOTE_MUTE_COOLDOWN;
         assert_eq!(
             g.decide(true, false, true, later),
+            RemoteMuteDecision::Apply
+        );
+    }
+
+    #[test]
+    fn the_microphone_is_handed_back_without_waiting() {
+        // The fault this was reported as: muted through the app, unmuted a
+        // moment later by the same rider, and the microphone stayed shut for
+        // half a minute — the cooldown refusing the one request that undoes
+        // the thing it exists to prevent.
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(g.decide(true, false, true, t0), RemoteMuteDecision::Apply);
+
+        let moment = t0 + Duration::from_secs(2);
+        assert_eq!(
+            g.decide(false, true, true, moment),
+            RemoteMuteDecision::Apply,
+            "an unmute does not wait for the cooldown"
+        );
+
+        // And muting again still does: handing the microphone back is not a
+        // way of buying another mute.
+        assert_eq!(
+            g.decide(true, false, true, t0 + Duration::from_secs(3)),
+            RemoteMuteDecision::CoolingDown
+        );
+        assert_eq!(
+            g.decide(true, false, true, t0 + REMOTE_MUTE_COOLDOWN),
             RemoteMuteDecision::Apply
         );
     }

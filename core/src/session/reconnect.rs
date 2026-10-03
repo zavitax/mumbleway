@@ -3,11 +3,21 @@
 //! Tuned for mobile use: a rider losing signal in a tunnel should be back
 //! within seconds of regaining it.
 //!
-//! **Six attempts ten seconds apart, then every fifteen.** A minute of quick
-//! retries covers what a tunnel, a bridge or a dead spot actually costs, and
-//! after that the gap widens a little rather than growing without end — the
-//! rider most in need of getting back is the one who has been out longest, and
-//! a policy that doubles its way to several minutes punishes exactly them.
+//! **Five attempts ten seconds apart, then every fifteen.** Nothing is tried
+//! immediately: the first attempt is ten seconds after the drop, because a
+//! link that has just gone is rarely back within the second and an instant
+//! retry is a wasted one. Fifty seconds of quick attempts covers what a
+//! tunnel, a bridge or a dead spot actually costs, and after that the gap
+//! widens a little rather than growing without end — the rider most in need of
+//! getting back is the one who has been out longest, and a policy that doubles
+//! its way to several minutes punishes exactly them.
+//!
+//! **The count resets the moment a connection is up**, not after it has proved
+//! itself for a while. A rider who gets back and loses it again a minute later
+//! is in a second outage, not a continuing one, and should get the quick
+//! attempts again. The cost of reading it that way is a server that accepts a
+//! connection and drops it at once — which is answered with ten-second retries
+//! for as long as it keeps doing it, rather than with a widening gap.
 //!
 //! # The server has an opinion about how often you may try
 //!
@@ -49,7 +59,10 @@ use crate::error::DisconnectReason;
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
 /// How many attempts wait [`RETRY_INTERVAL`] before the longer gap starts.
-pub const RETRY_QUICK_ATTEMPTS: u32 = 6;
+///
+/// Counted inclusive of the first: five attempts at ten seconds covers the
+/// first fifty seconds of an outage, which is most tunnels.
+pub const RETRY_QUICK_ATTEMPTS: u32 = 5;
 
 /// Wait between attempts after the quick ones.
 ///
@@ -150,9 +163,6 @@ impl BackoffPolicy {
     }
 }
 
-/// How long a connection must stay healthy before we forgive earlier failures.
-pub const HEALTHY_RESET_AFTER: Duration = Duration::from_secs(30);
-
 /// Tracks retry state across a session's lifetime.
 #[derive(Debug)]
 pub struct ReconnectState {
@@ -169,6 +179,11 @@ impl ReconnectState {
             attempt: 0,
             stopped_by_user: false,
         }
+    }
+
+    /// The policy this state is following.
+    pub fn policy(&self) -> &BackoffPolicy {
+        &self.policy
     }
 
     pub fn attempt(&self) -> u32 {
@@ -190,7 +205,10 @@ impl ReconnectState {
         self.attempt = 0;
     }
 
-    /// Called after a connection has been healthy long enough to count as good.
+    /// Called when a connection is up again.
+    ///
+    /// Immediately, rather than after it has held for a while: see the note at
+    /// the top of this file about what the next outage is.
     pub fn note_healthy(&mut self) {
         self.attempt = 0;
     }
@@ -224,9 +242,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn six_attempts_ten_seconds_apart_then_fifteen() {
-        // The whole rule, written out. A minute of quick retries covers what a
-        // tunnel costs; after that the gap widens a little and stays there.
+    fn five_attempts_ten_seconds_apart_then_fifteen() {
+        // The whole rule, written out. Fifty seconds of quick retries covers
+        // what a tunnel costs; after that the gap widens a little and stays
+        // there.
         let p = BackoffPolicy::default();
         for attempt in 0..RETRY_QUICK_ATTEMPTS {
             assert_eq!(
@@ -260,21 +279,64 @@ mod tests {
 
     #[test]
     fn how_this_stands_against_a_servers_autoban() {
-        // **Pinned rather than asserted to be safe, because it is not.**
-        // Murmur bans an address that connects more than ten times inside two
-        // minutes, counting every attempt; this schedule makes eleven,
-        // including the one that failed and started it. That is a deliberate
-        // trade — see the note at the top of this file — and the number is
-        // here so a future change to the schedule has to look at it.
+        // Murmur bans an address that connects more than ten times inside
+        // two minutes, counting every attempt rather than only the failures.
+        // This schedule makes ten, counting the one that failed and started
+        // it — the limit exactly, and the server's test is `>` rather than
+        // `>=`, so it fits with nothing to spare.
+        //
+        // Pinned rather than left to be rediscovered: a change to the schedule
+        // has to come back and look at this number.
         let p = BackoffPolicy::default();
+        let attempts = p.attempts_within(SERVER_AUTOBAN_WINDOW);
         assert_eq!(
-            p.attempts_within(SERVER_AUTOBAN_WINDOW),
-            11,
+            attempts, 10,
             "the schedule changed; check it against autobanAttempts again"
         );
+        assert!(
+            attempts <= SERVER_AUTOBAN_ATTEMPTS,
+            "{attempts} attempts in {SERVER_AUTOBAN_WINDOW:?} would be banned"
+        );
+    }
+
+    #[test]
+    fn nothing_is_tried_the_instant_a_link_drops() {
+        // A link that has just gone is rarely back within the second, so the
+        // attempt that goes out immediately is the one most likely to be
+        // wasted — and to be counted by a server watching how often this
+        // client knocks.
+        let mut s = ReconnectState::new(BackoffPolicy::default());
+        let delay = s
+            .on_disconnect(&DisconnectReason::TransportLost("tunnel".into()))
+            .expect("a recoverable drop should retry");
+        assert!(
+            delay >= RETRY_INTERVAL - RETRY_JITTER,
+            "the first attempt waits like every other quick one, not less"
+        );
+    }
+
+    #[test]
+    fn getting_back_puts_the_quick_attempts_back() {
+        // A rider who reconnects and loses it again a minute later is in a
+        // second outage, not a continuing one, so the count resets the moment
+        // the link is up rather than after it has proved itself.
+        let mut s = ReconnectState::new(BackoffPolicy::default());
+        for _ in 0..8 {
+            s.on_disconnect(&DisconnectReason::TransportLost("dead spot".into()));
+        }
         assert_eq!(
-            SERVER_AUTOBAN_ATTEMPTS, 10,
-            "the server's default, for scale"
+            s.policy().base_delay(s.attempt()),
+            RETRY_LATER_INTERVAL,
+            "eight attempts in, this should be on the longer gap"
+        );
+
+        s.note_healthy();
+
+        assert_eq!(s.attempt(), 0);
+        assert_eq!(
+            s.policy().base_delay(s.attempt()),
+            RETRY_INTERVAL,
+            "and the next outage starts quick again"
         );
     }
 

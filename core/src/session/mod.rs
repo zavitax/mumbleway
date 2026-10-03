@@ -616,6 +616,10 @@ impl Session {
 
         state.connected_at = Some(Instant::now());
         state.transport = Transport::TcpTunnel; // until a pong proves UDP works
+                                                // Back up: the next outage starts from the quick attempts again,
+                                                // whatever this one cost. Reset here rather than after a spell of
+                                                // health — see `reconnect`.
+        self.reconnect.note_healthy();
         self.set_state(ConnectionState::Connected).await;
         self.emit(SessionEvent::Channels(state.channel_list()))
             .await;
@@ -814,11 +818,6 @@ impl Session {
                         // visible cause.
                         tracing::warn!("UDP went quiet, tunnelling voice over TCP");
                         self.emit(SessionEvent::TransportChanged(Transport::TcpTunnel)).await;
-                    }
-                    if let Some(at) = state.connected_at {
-                        if now.duration_since(at) > reconnect::HEALTHY_RESET_AFTER {
-                            self.reconnect.note_healthy();
-                        }
                     }
                     state.stats.transport = Some(state.transport.into());
                     self.emit(SessionEvent::Stats(state.stats)).await;

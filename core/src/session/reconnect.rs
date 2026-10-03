@@ -3,36 +3,39 @@
 //! Tuned for mobile use: a rider losing signal in a tunnel should be back
 //! within seconds of regaining it.
 //!
-//! # The interval used to be flat, and a real server disproved it
+//! **Six attempts ten seconds apart, then every fifteen.** A minute of quick
+//! retries covers what a tunnel, a bridge or a dead spot actually costs, and
+//! after that the gap widens a little rather than growing without end — the
+//! rider most in need of getting back is the one who has been out longest, and
+//! a policy that doubles its way to several minutes punishes exactly them.
 //!
-//! **This file argued for a fixed ten seconds.** The reasoning was that backoff
-//! exists to spare a struggling server, that this is a voice client for a small
-//! group, and that a rider out of signal is the person a lengthening delay
-//! punishes most — the wait would be longest at the moment coverage returns.
+//! # The server has an opinion about how often you may try
 //!
-//! Every word of that is still true and the conclusion was still wrong, because
-//! it left the server out of it. **Murmur bans an address that connects too
-//! often**, and the defaults are not generous: `autobanAttempts = 10` within
-//! `autobanTimeframe = 120` seconds earns `autobanTime = 300` seconds of
-//! refusal. `Meta::banCheck` counts *every* attempt, not only failed ones.
+//! An earlier version of this file argued for a flat ten seconds for ever, and
+//! a real Murmur disproved the "for ever" half: it bans an address that
+//! connects more than `autobanAttempts` (10) times within `autobanTimeframe`
+//! (120 s), for `autobanTime` (300 s), and `Meta::banCheck` counts every
+//! attempt rather than only the failed ones. The server log says
+//! `Ignoring connection: … (Global ban)` while its ban list is empty, because
+//! an autoban is not a ban.
 //!
-//! Ten-second retries are twelve attempts in two minutes. So a rider in a long
-//! dead spot was earning themselves a five-minute ban from their own server at
-//! the two-minute mark — turning a two-minute outage into a seven-minute one,
-//! and reporting it as a refused connection rather than as anything a rider
-//! could act on. It was found by running this client against a real Murmur:
-//! the server log says `Ignoring connection: … (Global ban)` while its ban list
-//! is empty, because an autoban is not in the ban list.
+//! Where this schedule stands against that rule is worth stating plainly
+//! rather than implying: an attempt at zero and then ten seconds apart to the
+//! minute, fifteen after, is **eleven attempts inside the server's two-minute
+//! window** — one over its default. [`BackoffPolicy::attempts_within`]
+//! computes it and a test pins the number, so a future change to the schedule
+//! has to look at it.
 //!
-//! So the interval grows now, and the shape is chosen against that rule rather
-//! than against a feeling: quick while a tunnel is the likely cause, and well
-//! inside ten attempts per two minutes by the time it could matter.
-//! [`BackoffPolicy::attempts_within`] measures it, and a test holds it there.
+//! That is a deliberate trade and not an oversight, for two reasons. The
+//! attempts a rider makes from a dead spot **never reach the server**, so the
+//! server never counts them — the case this schedule exists for is exactly the
+//! case the rule cannot see. And where every attempt does reach a server that
+//! is up and refusing, five minutes of being told to wait is survivable, while
+//! a rider waiting minutes between attempts at the roadside is not.
 //!
-//! The first attempt is still immediate, the countdown is still honest about
-//! the wait, and the reconnect is still cancelled outright when the OS reports
-//! connectivity is back — so the common case, which is a short gap, is
-//! unaffected by any of this.
+//! The first attempt is immediate, the countdown states the wait honestly, and
+//! the reconnect is cancelled outright when the OS reports connectivity is
+//! back — so the common case, a short gap, waits for none of this.
 //!
 //! A second of jitter is added either side, so a room full of clients that all
 //! dropped together — which is what happens when a server restarts — spread
@@ -42,20 +45,17 @@ use std::time::Duration;
 
 use crate::error::DisconnectReason;
 
-/// Wait before the first reconnection attempt.
-///
-/// Short, because the common reason to be here is a tunnel.
-pub const RETRY_INTERVAL: Duration = Duration::from_secs(5);
+/// Wait between the first few reconnection attempts.
+pub const RETRY_INTERVAL: Duration = Duration::from_secs(10);
 
-/// How much longer each attempt waits than the one before.
-pub const RETRY_MULTIPLIER: f64 = 1.7;
+/// How many attempts wait [`RETRY_INTERVAL`] before the longer gap starts.
+pub const RETRY_QUICK_ATTEMPTS: u32 = 6;
 
-/// The longest this ever waits between attempts.
+/// Wait between attempts after the quick ones.
 ///
-/// A minute is well inside what a rider will tolerate when the alternative is
-/// being refused outright, and the OS telling us connectivity is back skips
-/// the wait entirely.
-pub const RETRY_MAX: Duration = Duration::from_secs(60);
+/// Longer, but not much: the point is to stop hammering a server that is not
+/// answering, not to make a rider wait minutes at the roadside.
+pub const RETRY_LATER_INTERVAL: Duration = Duration::from_secs(15);
 
 /// What a default Murmur allows before it bans an address, and the window it
 /// counts in — `autobanAttempts` and `autobanTimeframe`.
@@ -70,9 +70,12 @@ pub const RETRY_JITTER: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
 pub struct BackoffPolicy {
+    /// What the first [`BackoffPolicy::quick_attempts`] attempts wait.
     pub initial: Duration,
-    pub max: Duration,
-    pub multiplier: f64,
+    /// What every attempt after those waits.
+    pub later: Duration,
+    /// How many attempts use [`BackoffPolicy::initial`].
+    pub quick_attempts: u32,
     /// How far either side of the delay an attempt may land.
     ///
     /// An absolute amount rather than a fraction of the delay: the point is to
@@ -86,8 +89,8 @@ impl Default for BackoffPolicy {
     fn default() -> Self {
         Self {
             initial: RETRY_INTERVAL,
-            max: RETRY_MAX,
-            multiplier: RETRY_MULTIPLIER,
+            later: RETRY_LATER_INTERVAL,
+            quick_attempts: RETRY_QUICK_ATTEMPTS,
             jitter: RETRY_JITTER,
         }
     }
@@ -96,10 +99,11 @@ impl Default for BackoffPolicy {
 impl BackoffPolicy {
     /// Delay before attempt `attempt` (0-based), before jitter.
     pub fn base_delay(&self, attempt: u32) -> Duration {
-        // Saturate the exponent rather than overflowing on a long outage.
-        let factor = self.multiplier.powi(attempt.min(32) as i32);
-        let millis = (self.initial.as_millis() as f64 * factor).min(self.max.as_millis() as f64);
-        Duration::from_millis(millis as u64)
+        if attempt < self.quick_attempts {
+            self.initial
+        } else {
+            self.later
+        }
     }
 
     /// Applies jitter using a caller-supplied sample in `0.0..=1.0`, which keeps
@@ -220,63 +224,72 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_first_retry_is_quick_because_a_tunnel_is_the_likely_reason() {
+    fn six_attempts_ten_seconds_apart_then_fifteen() {
+        // The whole rule, written out. A minute of quick retries covers what a
+        // tunnel costs; after that the gap widens a little and stays there.
         let p = BackoffPolicy::default();
-        assert_eq!(p.base_delay(0), RETRY_INTERVAL);
-        assert!(
-            p.base_delay(0) <= Duration::from_secs(5),
-            "a short gap must not be made long by the policy"
-        );
-    }
-
-    #[test]
-    fn the_wait_grows_and_then_stops_growing() {
-        let p = BackoffPolicy::default();
-        let mut last = p.base_delay(0);
-        for attempt in 1..8 {
-            let d = p.base_delay(attempt);
-            assert!(d >= last, "attempt {attempt} went backwards");
-            last = d;
+        for attempt in 0..RETRY_QUICK_ATTEMPTS {
+            assert_eq!(
+                p.base_delay(attempt),
+                RETRY_INTERVAL,
+                "attempt {attempt} should be one of the quick ones"
+            );
         }
-        assert_eq!(p.base_delay(50), RETRY_MAX, "and it settles at the ceiling");
+        for attempt in [RETRY_QUICK_ATTEMPTS, RETRY_QUICK_ATTEMPTS + 1, 50, 1000] {
+            assert_eq!(
+                p.base_delay(attempt),
+                RETRY_LATER_INTERVAL,
+                "attempt {attempt} should be one of the later ones"
+            );
+        }
     }
 
     #[test]
-    fn the_policy_stays_under_what_a_server_will_ban_for() {
-        // **This is the test the flat ten-second interval failed.** Murmur
-        // bans an address for five minutes after more than ten connection
-        // attempts in two minutes, counting every attempt rather than only
-        // the failures — so a rider in a long dead spot was earning a ban from
-        // their own server at the two-minute mark.
+    fn the_wait_never_grows_without_end() {
+        // The point of the second step is to stop hammering a server, not to
+        // make a rider wait minutes at the roadside. Whatever else changes,
+        // nothing here may exceed the later interval.
         let p = BackoffPolicy::default();
-        let attempts = p.attempts_within(SERVER_AUTOBAN_WINDOW);
-        assert!(
-            attempts < SERVER_AUTOBAN_ATTEMPTS,
-            "{attempts} attempts in {SERVER_AUTOBAN_WINDOW:?} would be banned"
+        for attempt in 0..100 {
+            assert!(
+                p.base_delay(attempt) <= RETRY_LATER_INTERVAL,
+                "attempt {attempt} waits longer than the policy's longest gap"
+            );
+        }
+    }
+
+    #[test]
+    fn how_this_stands_against_a_servers_autoban() {
+        // **Pinned rather than asserted to be safe, because it is not.**
+        // Murmur bans an address that connects more than ten times inside two
+        // minutes, counting every attempt; this schedule makes eleven,
+        // including the one that failed and started it. That is a deliberate
+        // trade — see the note at the top of this file — and the number is
+        // here so a future change to the schedule has to look at it.
+        let p = BackoffPolicy::default();
+        assert_eq!(
+            p.attempts_within(SERVER_AUTOBAN_WINDOW),
+            11,
+            "the schedule changed; check it against autobanAttempts again"
         );
-        // And with room to spare, because the figures are a server's defaults
-        // and an admin may tighten them.
-        assert!(
-            attempts <= SERVER_AUTOBAN_ATTEMPTS / 2 + 2,
-            "{attempts} attempts leaves no margin for a stricter server"
+        assert_eq!(
+            SERVER_AUTOBAN_ATTEMPTS, 10,
+            "the server's default, for scale"
         );
     }
 
     #[test]
-    fn a_flat_ten_second_policy_would_still_be_banned() {
-        // Kept as the counter-example: it is what this file used to do, and
-        // the arithmetic that disproved it should be executable rather than
-        // only written down.
-        let flat = BackoffPolicy {
-            initial: Duration::from_secs(10),
-            max: Duration::from_secs(10),
-            multiplier: 1.0,
+    fn a_policy_can_be_built_that_stays_under_the_rule() {
+        // The mechanism allows it even though the default does not use it, so
+        // the knob is real rather than theoretical: twenty seconds after the
+        // quick ones brings it to ten attempts, which is inside the limit.
+        let gentler = BackoffPolicy {
+            initial: RETRY_INTERVAL,
+            later: Duration::from_secs(20),
+            quick_attempts: RETRY_QUICK_ATTEMPTS,
             jitter: RETRY_JITTER,
         };
-        assert!(
-            flat.attempts_within(SERVER_AUTOBAN_WINDOW) > SERVER_AUTOBAN_ATTEMPTS,
-            "the old policy should trip the rule this one avoids"
-        );
+        assert!(gentler.attempts_within(SERVER_AUTOBAN_WINDOW) <= SERVER_AUTOBAN_ATTEMPTS);
     }
 
     #[test]
@@ -307,31 +320,32 @@ mod tests {
         // value would leave the spread one-sided — every client landing at or
         // below the interval — which is the stampede it exists to break up.
         let p = BackoffPolicy::default();
-        // At the ceiling, where clipping would show.
-        assert_eq!(p.base_delay(50), p.max);
+        // On the longer step, where clipping would show.
+        assert_eq!(p.base_delay(50), p.later);
         assert!(
-            p.delay_with_sample(50, 1.0) > p.max,
+            p.delay_with_sample(50, 1.0) > p.later,
             "upward jitter was clipped away"
         );
     }
 
     #[test]
-    fn a_growing_policy_still_bounds_its_curve() {
-        // The default is flat, but the mechanism is not, and a caller that
-        // configures growth must still plateau rather than grow without bound.
+    fn a_configured_policy_still_bounds_its_waits() {
+        // The default is not the only shape the mechanism allows, and whatever
+        // a caller configures must still plateau rather than grow without
+        // bound — a wait nobody can predict is a wait nobody can be told about.
         let p = BackoffPolicy {
             initial: Duration::from_millis(500),
-            max: Duration::from_secs(8),
-            multiplier: 1.8,
+            later: Duration::from_secs(8),
+            quick_attempts: 3,
             jitter: Duration::from_millis(250),
         };
-        assert!(p.base_delay(1) > p.base_delay(0), "delay must grow");
-        assert_eq!(p.base_delay(50), p.max);
+        assert_eq!(p.base_delay(0), p.initial);
+        assert_eq!(p.base_delay(3), p.later);
         for attempt in 0..40 {
             for sample in [0.0, 0.5, 1.0] {
                 assert!(
-                    p.delay_with_sample(attempt, sample) <= p.max + p.jitter,
-                    "attempt {attempt} at sample {sample} exceeded the ceiling"
+                    p.delay_with_sample(attempt, sample) <= p.later + p.jitter,
+                    "attempt {attempt} at sample {sample} exceeded the longest wait"
                 );
             }
         }

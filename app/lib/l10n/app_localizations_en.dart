@@ -1741,4 +1741,14 @@ class LEn extends L {
   @override
   String get serverCapTooLow =>
       'This server\'s bandwidth limit is too low for voice. Some of what you say will not get through.';
+
+  @override
+  String get suppressedTitle => 'This channel will not carry your voice.';
+
+  @override
+  String get suppressedBody =>
+      'The server is discarding what you say, because you may not speak here. Move to another channel, or ask whoever runs the server.';
+
+  @override
+  String get suppressedLifted => 'You can be heard here again';
 }

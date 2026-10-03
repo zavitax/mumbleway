@@ -35,6 +35,7 @@ UiUser rider() => const UiUser(
   status: 'silent',
   comment: '',
   prioritySpeaker: false,
+  suppressed: false,
 );
 
 void main() {

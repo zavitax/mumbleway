@@ -142,6 +142,16 @@ pub struct UserInfo {
     /// arrives, and for anybody outside our own channel.
     #[serde(default)]
     pub quality: Option<crate::session::quality::Quality>,
+    /// Silenced by the server itself, because this rider lacks Speak
+    /// permission in the channel they are in.
+    ///
+    /// **The third way to be inaudible, and the only one nobody chose.** The
+    /// server sets it from the ACL on entering a channel and then discards
+    /// every voice packet, with no refusal and no disconnection — so a rider
+    /// whose client ignores this flag talks into nothing while their own meter
+    /// moves, because the meter is measured before the wire.
+    #[serde(default)]
+    pub suppress: bool,
     /// Whether the server treats this rider as a priority speaker.
     ///
     /// Everyone else is ducked while they talk, which is worth showing: it
@@ -166,6 +176,10 @@ impl UserInfo {
             "muted for you"
         } else if self.mute || self.self_mute {
             "muted"
+        } else if self.suppress {
+            // After the mute states: those are somebody's decision about this
+            // person, and this is the channel's rule about everybody in it.
+            "suppressed"
         } else if self.talking {
             "talking"
         } else {
@@ -175,7 +189,7 @@ impl UserInfo {
 
     /// Whether we can hear this user at all right now.
     pub fn is_audible(&self) -> bool {
-        !self.local_mute && !self.mute && !self.self_mute
+        !self.local_mute && !self.mute && !self.self_mute && !self.suppress
     }
 }
 
@@ -277,6 +291,14 @@ pub enum SessionEvent {
         session: u32,
         image: Vec<u8>,
     },
+    /// This client's own voice has been silenced by the server, or allowed
+    /// again — because of where it is standing, not because anybody acted.
+    ///
+    /// Reported separately from the roster for the same reason as
+    /// [`SessionEvent::SelfModerated`]: it happens *to* the rider, it is the
+    /// explanation for a silence they cannot otherwise account for, and they
+    /// are not looking at the screen.
+    SelfSuppressed(bool),
     /// What the server says this rider may do, here and on this server.
     ///
     /// Sent when it changes: on connect, on moving channel, and whenever the
@@ -399,4 +421,68 @@ pub enum SessionCommand {
     /// Accept a changed server certificate and re-pin it.
     AcceptCertificate,
     Shutdown,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rider() -> UserInfo {
+        UserInfo {
+            session: 1,
+            name: "Anna".into(),
+            channel_id: 0,
+            mute: false,
+            deaf: false,
+            self_mute: false,
+            self_deaf: false,
+            talking: false,
+            local_mute: false,
+            suppress: false,
+            mumbleway: None,
+            quality: None,
+            comment: String::new(),
+            priority_speaker: false,
+        }
+    }
+
+    #[test]
+    fn a_suppressed_rider_is_not_merely_quiet() {
+        // The fault this guards against is a silent one: a rider the server
+        // has silenced reading as "silent", which is what somebody who simply
+        // is not talking reads as.
+        let mut u = rider();
+        assert_eq!(u.status_label(), "silent");
+        u.suppress = true;
+        assert_eq!(u.status_label(), "suppressed");
+    }
+
+    #[test]
+    fn a_suppressed_rider_cannot_be_heard() {
+        // Anything reasoning about who is audible has to count this, or it
+        // believes a rider whose every packet is discarded can be heard.
+        let mut u = rider();
+        assert!(u.is_audible());
+        u.suppress = true;
+        assert!(!u.is_audible());
+    }
+
+    #[test]
+    fn a_deliberate_mute_is_named_before_the_channels_rule() {
+        // Both can be true at once. "Muted" is somebody's decision about this
+        // person and is the more useful word; suppressed is the rule that
+        // applies to everybody standing here.
+        let mut u = rider();
+        u.suppress = true;
+        u.mute = true;
+        assert_eq!(u.status_label(), "muted");
+    }
+
+    #[test]
+    fn losing_hearing_still_outranks_everything() {
+        let mut u = rider();
+        u.suppress = true;
+        u.self_deaf = true;
+        assert_eq!(u.status_label(), "deafened");
+    }
 }

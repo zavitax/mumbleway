@@ -1730,4 +1730,14 @@ class LRu extends L {
   @override
   String get serverCapTooLow =>
       'Ограничение полосы на сервере слишком низкое для голоса. Часть сказанного не дойдёт.';
+
+  @override
+  String get suppressedTitle => 'Этот канал не передаёт ваш голос.';
+
+  @override
+  String get suppressedBody =>
+      'Сервер отбрасывает всё, что вы говорите: здесь вам нельзя говорить. Перейдите в другой канал или спросите того, кто ведёт сервер.';
+
+  @override
+  String get suppressedLifted => 'Здесь вас снова слышно';
 }

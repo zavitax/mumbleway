@@ -3070,6 +3070,14 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
             }
             7 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
+                let mut var_suppressed = <bool>::sse_decode(deserializer);
+                return crate::api::mumbleway::AppEvent::Suppressed {
+                    server_id: var_serverId,
+                    suppressed: var_suppressed,
+                };
+            }
+            8 => {
+                let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_capBps = <u32>::sse_decode(deserializer);
                 let mut var_bitrateBps = <u32>::sse_decode(deserializer);
                 let mut var_capped = <bool>::sse_decode(deserializer);
@@ -3082,7 +3090,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     below_floor: var_belowFloor,
                 };
             }
-            8 => {
+            9 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_actions =
                     <Vec<crate::api::mumbleway::UiContextAction>>::sse_decode(deserializer);
@@ -3091,7 +3099,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     actions: var_actions,
                 };
             }
-            9 => {
+            10 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_bans = <Vec<crate::api::mumbleway::UiBan>>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Bans {
@@ -3099,7 +3107,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     bans: var_bans,
                 };
             }
-            10 => {
+            11 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_pushToTalk = <Option<bool>>::sse_decode(deserializer);
                 let mut var_positional = <Option<bool>>::sse_decode(deserializer);
@@ -3109,7 +3117,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     positional: var_positional,
                 };
             }
-            11 => {
+            12 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_session = <u32>::sse_decode(deserializer);
                 let mut var_image = <Vec<u8>>::sse_decode(deserializer);
@@ -3119,7 +3127,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     image: var_image,
                 };
             }
-            12 => {
+            13 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_rights = <crate::api::mumbleway::UiRights>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Rights {
@@ -3127,7 +3135,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     rights: var_rights,
                 };
             }
-            13 => {
+            14 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_muted = <Option<bool>>::sse_decode(deserializer);
                 let mut var_deafened = <Option<bool>>::sse_decode(deserializer);
@@ -3139,7 +3147,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     by: var_by,
                 };
             }
-            14 => {
+            15 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_muted = <bool>::sse_decode(deserializer);
                 let mut var_by = <String>::sse_decode(deserializer);
@@ -3149,7 +3157,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     by: var_by,
                 };
             }
-            15 => {
+            16 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_fingerprint = <String>::sse_decode(deserializer);
                 let mut var_changed = <bool>::sse_decode(deserializer);
@@ -3159,7 +3167,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     changed: var_changed,
                 };
             }
-            16 => {
+            17 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_reason = <String>::sse_decode(deserializer);
                 let mut var_kind = <u32>::sse_decode(deserializer);
@@ -3169,7 +3177,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     kind: var_kind,
                 };
             }
-            17 => {
+            18 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_text = <String>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Welcome {
@@ -3177,7 +3185,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     text: var_text,
                 };
             }
-            18 => {
+            19 => {
                 let mut var_serverId = <String>::sse_decode(deserializer);
                 let mut var_session = <u32>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::SelfSession {
@@ -3185,7 +3193,7 @@ impl SseDecode for crate::api::mumbleway::AppEvent {
                     session: var_session,
                 };
             }
-            19 => {
+            20 => {
                 let mut var_entries =
                     <Vec<crate::api::mumbleway::UiLogEntry>>::sse_decode(deserializer);
                 return crate::api::mumbleway::AppEvent::Log {
@@ -4095,6 +4103,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
         let mut var_status = <String>::sse_decode(deserializer);
         let mut var_mumblewayVersion = <Option<String>>::sse_decode(deserializer);
         let mut var_prioritySpeaker = <bool>::sse_decode(deserializer);
+        let mut var_suppressed = <bool>::sse_decode(deserializer);
         let mut var_comment = <String>::sse_decode(deserializer);
         let mut var_quality = <Option<crate::api::mumbleway::UiQuality>>::sse_decode(deserializer);
         return crate::api::mumbleway::UiUser {
@@ -4108,6 +4117,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
             status: var_status,
             mumbleway_version: var_mumblewayVersion,
             priority_speaker: var_prioritySpeaker,
+            suppressed: var_suppressed,
             comment: var_comment,
             quality: var_quality,
         };
@@ -4374,6 +4384,15 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
             crate::api::mumbleway::AppEvent::SpeakerLevels { levels } => {
                 [6.into_dart(), levels.into_into_dart().into_dart()].into_dart()
             }
+            crate::api::mumbleway::AppEvent::Suppressed {
+                server_id,
+                suppressed,
+            } => [
+                7.into_dart(),
+                server_id.into_into_dart().into_dart(),
+                suppressed.into_into_dart().into_dart(),
+            ]
+            .into_dart(),
             crate::api::mumbleway::AppEvent::Bandwidth {
                 server_id,
                 cap_bps,
@@ -4381,7 +4400,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 capped,
                 below_floor,
             } => [
-                7.into_dart(),
+                8.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 cap_bps.into_into_dart().into_dart(),
                 bitrate_bps.into_into_dart().into_dart(),
@@ -4390,13 +4409,13 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::ContextActions { server_id, actions } => [
-                8.into_dart(),
+                9.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 actions.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Bans { server_id, bans } => [
-                9.into_dart(),
+                10.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 bans.into_into_dart().into_dart(),
             ]
@@ -4406,7 +4425,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 push_to_talk,
                 positional,
             } => [
-                10.into_dart(),
+                11.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 push_to_talk.into_into_dart().into_dart(),
                 positional.into_into_dart().into_dart(),
@@ -4417,14 +4436,14 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 session,
                 image,
             } => [
-                11.into_dart(),
+                12.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 session.into_into_dart().into_dart(),
                 image.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Rights { server_id, rights } => [
-                12.into_dart(),
+                13.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 rights.into_into_dart().into_dart(),
             ]
@@ -4435,7 +4454,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 deafened,
                 by,
             } => [
-                13.into_dart(),
+                14.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 muted.into_into_dart().into_dart(),
                 deafened.into_into_dart().into_dart(),
@@ -4447,7 +4466,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 muted,
                 by,
             } => [
-                14.into_dart(),
+                15.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 muted.into_into_dart().into_dart(),
                 by.into_into_dart().into_dart(),
@@ -4458,7 +4477,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 fingerprint,
                 changed,
             } => [
-                15.into_dart(),
+                16.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 fingerprint.into_into_dart().into_dart(),
                 changed.into_into_dart().into_dart(),
@@ -4469,26 +4488,26 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::AppEvent {
                 reason,
                 kind,
             } => [
-                16.into_dart(),
+                17.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 reason.into_into_dart().into_dart(),
                 kind.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Welcome { server_id, text } => [
-                17.into_dart(),
+                18.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 text.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::SelfSession { server_id, session } => [
-                18.into_dart(),
+                19.into_dart(),
                 server_id.into_into_dart().into_dart(),
                 session.into_into_dart().into_dart(),
             ]
             .into_dart(),
             crate::api::mumbleway::AppEvent::Log { entries } => {
-                [19.into_dart(), entries.into_into_dart().into_dart()].into_dart()
+                [20.into_dart(), entries.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -5203,6 +5222,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiUser {
             self.status.into_into_dart().into_dart(),
             self.mumbleway_version.into_into_dart().into_dart(),
             self.priority_speaker.into_into_dart().into_dart(),
+            self.suppressed.into_into_dart().into_dart(),
             self.comment.into_into_dart().into_dart(),
             self.quality.into_into_dart().into_dart(),
         ]
@@ -5313,6 +5333,14 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 <i32>::sse_encode(6, serializer);
                 <Vec<crate::api::mumbleway::UiSpeakerLevel>>::sse_encode(levels, serializer);
             }
+            crate::api::mumbleway::AppEvent::Suppressed {
+                server_id,
+                suppressed,
+            } => {
+                <i32>::sse_encode(7, serializer);
+                <String>::sse_encode(server_id, serializer);
+                <bool>::sse_encode(suppressed, serializer);
+            }
             crate::api::mumbleway::AppEvent::Bandwidth {
                 server_id,
                 cap_bps,
@@ -5320,7 +5348,7 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 capped,
                 below_floor,
             } => {
-                <i32>::sse_encode(7, serializer);
+                <i32>::sse_encode(8, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <u32>::sse_encode(cap_bps, serializer);
                 <u32>::sse_encode(bitrate_bps, serializer);
@@ -5328,12 +5356,12 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 <bool>::sse_encode(below_floor, serializer);
             }
             crate::api::mumbleway::AppEvent::ContextActions { server_id, actions } => {
-                <i32>::sse_encode(8, serializer);
+                <i32>::sse_encode(9, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <Vec<crate::api::mumbleway::UiContextAction>>::sse_encode(actions, serializer);
             }
             crate::api::mumbleway::AppEvent::Bans { server_id, bans } => {
-                <i32>::sse_encode(9, serializer);
+                <i32>::sse_encode(10, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <Vec<crate::api::mumbleway::UiBan>>::sse_encode(bans, serializer);
             }
@@ -5342,7 +5370,7 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 push_to_talk,
                 positional,
             } => {
-                <i32>::sse_encode(10, serializer);
+                <i32>::sse_encode(11, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <Option<bool>>::sse_encode(push_to_talk, serializer);
                 <Option<bool>>::sse_encode(positional, serializer);
@@ -5352,13 +5380,13 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 session,
                 image,
             } => {
-                <i32>::sse_encode(11, serializer);
+                <i32>::sse_encode(12, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <u32>::sse_encode(session, serializer);
                 <Vec<u8>>::sse_encode(image, serializer);
             }
             crate::api::mumbleway::AppEvent::Rights { server_id, rights } => {
-                <i32>::sse_encode(12, serializer);
+                <i32>::sse_encode(13, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <crate::api::mumbleway::UiRights>::sse_encode(rights, serializer);
             }
@@ -5368,7 +5396,7 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 deafened,
                 by,
             } => {
-                <i32>::sse_encode(13, serializer);
+                <i32>::sse_encode(14, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <Option<bool>>::sse_encode(muted, serializer);
                 <Option<bool>>::sse_encode(deafened, serializer);
@@ -5379,7 +5407,7 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 muted,
                 by,
             } => {
-                <i32>::sse_encode(14, serializer);
+                <i32>::sse_encode(15, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <bool>::sse_encode(muted, serializer);
                 <String>::sse_encode(by, serializer);
@@ -5389,7 +5417,7 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 fingerprint,
                 changed,
             } => {
-                <i32>::sse_encode(15, serializer);
+                <i32>::sse_encode(16, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <String>::sse_encode(fingerprint, serializer);
                 <bool>::sse_encode(changed, serializer);
@@ -5399,23 +5427,23 @@ impl SseEncode for crate::api::mumbleway::AppEvent {
                 reason,
                 kind,
             } => {
-                <i32>::sse_encode(16, serializer);
+                <i32>::sse_encode(17, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <String>::sse_encode(reason, serializer);
                 <u32>::sse_encode(kind, serializer);
             }
             crate::api::mumbleway::AppEvent::Welcome { server_id, text } => {
-                <i32>::sse_encode(17, serializer);
+                <i32>::sse_encode(18, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <String>::sse_encode(text, serializer);
             }
             crate::api::mumbleway::AppEvent::SelfSession { server_id, session } => {
-                <i32>::sse_encode(18, serializer);
+                <i32>::sse_encode(19, serializer);
                 <String>::sse_encode(server_id, serializer);
                 <u32>::sse_encode(session, serializer);
             }
             crate::api::mumbleway::AppEvent::Log { entries } => {
-                <i32>::sse_encode(19, serializer);
+                <i32>::sse_encode(20, serializer);
                 <Vec<crate::api::mumbleway::UiLogEntry>>::sse_encode(entries, serializer);
             }
             _ => {
@@ -6094,6 +6122,7 @@ impl SseEncode for crate::api::mumbleway::UiUser {
         <String>::sse_encode(self.status, serializer);
         <Option<String>>::sse_encode(self.mumbleway_version, serializer);
         <bool>::sse_encode(self.priority_speaker, serializer);
+        <bool>::sse_encode(self.suppressed, serializer);
         <String>::sse_encode(self.comment, serializer);
         <Option<crate::api::mumbleway::UiQuality>>::sse_encode(self.quality, serializer);
     }

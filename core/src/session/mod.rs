@@ -116,6 +116,9 @@ struct LiveState {
     /// same reason and in the same message.
     udp_packets: u32,
     tcp_packets: u32,
+    /// The last suppression state reported upward, so the announcement is
+    /// made on a change rather than on every roster update.
+    suppress_announced: Option<bool>,
     /// Whether this server says Mumble's recording feature is allowed.
     ///
     /// Recorded rather than enforced: this app's diagnostic recording is its
@@ -154,6 +157,7 @@ impl LiveState {
             udp_packets: 0,
             tcp_packets: 0,
             recording_allowed: None,
+            suppress_announced: None,
         }
     }
 
@@ -267,6 +271,28 @@ impl Session {
     async fn emit(&self, e: SessionEvent) {
         // A full or closed event channel must never stall the network loop.
         let _ = self.events.try_send(e);
+    }
+
+    /// Announces our own voice being silenced by the channel, or allowed again.
+    ///
+    /// **Read from the roster rather than from the message that changed it.**
+    /// A server sends our own `UserState` *before* the `ServerSync` that says
+    /// which session we are, so a rider who joins straight into a channel they
+    /// may not speak in is suppressed before this client knows who it is —
+    /// which is exactly the case a live server produced, with the roster
+    /// correct and nothing announced.
+    async fn note_suppress(&self, state: &mut LiveState) {
+        let Some(now) = state
+            .self_session
+            .and_then(|s| state.users.get(&s))
+            .map(|u| u.suppress)
+        else {
+            return;
+        };
+        if state.suppress_announced != Some(now) {
+            state.suppress_announced = Some(now);
+            self.emit(SessionEvent::SelfSuppressed(now)).await;
+        }
     }
 
     /// Records a bandwidth allowance and reports it upward when it changes.
@@ -999,6 +1025,9 @@ impl Session {
                 if let Some(s) = m.session {
                     state.self_session = Some(s);
                     self.emit(SessionEvent::SelfSession(s)).await;
+                    // Now that we know which rider is us, the flags that
+                    // arrived before this can be read.
+                    self.note_suppress(state).await;
                 }
                 if let Some(w) = m.welcome_text {
                     if !w.trim().is_empty() {
@@ -1074,6 +1103,7 @@ impl Session {
                         self_deaf: false,
                         talking: false,
                         local_mute: false,
+                        suppress: false,
                         mumbleway: None,
                         // Both of these live outside the roster map and are
                         // filled in by `user_list`; the copy kept here is
@@ -1112,6 +1142,9 @@ impl Session {
                     if let Some(v) = m.priority_speaker {
                         e.priority_speaker = v;
                     }
+                    if let Some(v) = m.suppress {
+                        e.suppress = v;
+                    }
                     // A comment arrives whole when it is short and as a hash
                     // when it is not; the body is then asked for once per hash.
                     if let Some(c) = m.comment {
@@ -1146,6 +1179,10 @@ impl Session {
                         state.blobs.note_texture_hash(s, h);
                     }
                     self.emit(SessionEvent::Users(state.user_list())).await;
+                    // After the roster, so a change to our own entry — moving
+                    // into a channel we may not speak in, or out of one — is
+                    // announced from the state rather than from this message.
+                    self.note_suppress(state).await;
                 }
 
                 if let Some((actor, muted, deafened)) = moderation {

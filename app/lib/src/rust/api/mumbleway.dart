@@ -675,6 +675,18 @@ sealed class AppEvent with _$AppEvent {
   const factory AppEvent.speakerLevels({required List<UiSpeakerLevel> levels}) =
       AppEvent_SpeakerLevels;
 
+  /// This rider's own voice has been silenced by the server, or allowed
+  /// again, because of the channel they are in.
+  ///
+  /// The cue has already played by the time this arrives. Unlike a mute,
+  /// **this one does not go away by itself** — it lasts until they move or
+  /// an admin changes the ACL — so the interface is expected to keep saying
+  /// so rather than show one notice and forget.
+  const factory AppEvent.suppressed({
+    required String serverId,
+    required bool suppressed,
+  }) = AppEvent_Suppressed;
+
   /// A server's bandwidth allowance, and what the encoder is doing about it.
   ///
   /// The bitrate is the app's, not this server's: one encoder feeds every
@@ -2228,6 +2240,12 @@ class UiUser {
   /// Whether the server ducks everybody else while this rider talks.
   final bool prioritySpeaker;
 
+  /// Silenced by the server because they lack Speak permission here.
+  ///
+  /// Not a mute anybody chose, and not visible from anything else: the
+  /// server discards their voice without refusing anything.
+  final bool suppressed;
+
   /// The note this rider hung beside their name, as plain text. Empty when
   /// they have none; the markup Mumble's own client writes is stripped in the
   /// core, so this is safe to put straight on screen.
@@ -2251,6 +2269,7 @@ class UiUser {
     required this.status,
     this.mumblewayVersion,
     required this.prioritySpeaker,
+    required this.suppressed,
     required this.comment,
     this.quality,
   });
@@ -2267,6 +2286,7 @@ class UiUser {
       status.hashCode ^
       mumblewayVersion.hashCode ^
       prioritySpeaker.hashCode ^
+      suppressed.hashCode ^
       comment.hashCode ^
       quality.hashCode;
 
@@ -2285,6 +2305,7 @@ class UiUser {
           status == other.status &&
           mumblewayVersion == other.mumblewayVersion &&
           prioritySpeaker == other.prioritySpeaker &&
+          suppressed == other.suppressed &&
           comment == other.comment &&
           quality == other.quality;
 }

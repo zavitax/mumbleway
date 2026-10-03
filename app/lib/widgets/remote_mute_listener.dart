@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../services/remote_mute_notice.dart';
 import '../src/rust/api/mumbleway.dart' show MicMode;
 import '../state/app_state.dart';
+import 'error_snack.dart';
 
 /// Says who turned the rider's microphone off or on.
 ///
@@ -27,6 +28,7 @@ class RemoteMuteListener extends StatefulWidget {
 class _RemoteMuteListenerState extends State<RemoteMuteListener> {
   StreamSubscription<RemoteMuteNotice>? _sub;
   StreamSubscription<String>? _suggested;
+  StreamSubscription<bool>? _suppressed;
 
   @override
   void didChangeDependencies() {
@@ -37,13 +39,40 @@ class _RemoteMuteListenerState extends State<RemoteMuteListener> {
     // The other thing a rider is told rather than asked, and it shares this
     // widget because it shares everything about how it is shown.
     _suggested = state.serverSuggestions.listen(_showSuggestion);
+    // The third thing a rider is told rather than asked, and the loudest.
+    _suppressed = state.suppressions.listen(_showSuppression);
   }
 
   @override
   void dispose() {
     _sub?.cancel();
     _suggested?.cancel();
+    _suppressed?.cancel();
     super.dispose();
+  }
+
+  /// That this channel is throwing the rider's voice away — or no longer is.
+  ///
+  /// In the failure colours, because it is the explanation for the one fault a
+  /// rider cannot otherwise diagnose: everything else on their screen says
+  /// they are being heard. The card goes on saying it after this notice has
+  /// gone; see the banner there.
+  void _showSuppression(bool suppressed) {
+    if (!mounted) return;
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    messenger.hideCurrentSnackBar();
+    if (suppressed) {
+      showError(messenger, '${l.suppressedTitle} ${l.suppressedBody}');
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(l.suppressedLifted),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
   }
 
   /// What the server's administrator asks of riders here.

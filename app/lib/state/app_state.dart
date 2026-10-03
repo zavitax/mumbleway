@@ -220,6 +220,14 @@ class ServerRuntime {
   /// said. Enforced by the server, not advice — see `audio::bandwidth`.
   int bandwidthCapBps = 0;
 
+  /// Whether this server is discarding our voice because we lack Speak
+  /// permission in the channel we are in.
+  ///
+  /// **Lasts until the rider moves**, unlike every other way of being
+  /// silenced, which is why it is a state here rather than a passing notice:
+  /// the interface has to keep saying so.
+  bool suppressed = false;
+
   /// Menu entries this server has registered — see `trigger_context_action`.
   ///
   /// Usually empty: they come from bots and server plugins, and most servers
@@ -481,6 +489,14 @@ class AppState extends ChangeNotifier {
   Stream<ServerRefusal> get refusals => _refusals.stream;
   final StreamController<ServerRefusal> _refusals =
       StreamController<ServerRefusal>.broadcast();
+
+  /// Our own voice being silenced by a server, or allowed again.
+  ///
+  /// Not deduplicated, unlike the server's suggestions: this is not advice a
+  /// rider can act on once and forget, it is the reason nobody can hear them.
+  Stream<bool> get suppressions => _suppressions.stream;
+  final StreamController<bool> _suppressions =
+      StreamController<bool>.broadcast();
 
   /// What a server's administrator asks riders to do, when it is worth saying.
   ///
@@ -3811,6 +3827,12 @@ class AppState extends ChangeNotifier {
         runtimeFor(serverId).bans = bans;
       case AppEvent_ContextActions(:final serverId, :final actions):
         runtimeFor(serverId).contextActions = actions;
+      case AppEvent_Suppressed(:final serverId, :final suppressed):
+        runtimeFor(serverId).suppressed = suppressed;
+        // Said out loud as well as shown: the cue has played, and this is the
+        // sentence that explains it. Repeated per server rather than once per
+        // run — being unable to speak is not a thing to mention once.
+        _suppressions.add(suppressed);
       case AppEvent_Bandwidth(
         :final serverId,
         :final capBps,
@@ -3961,6 +3983,7 @@ class AppState extends ChangeNotifier {
     _meters.dispose();
     _remoteMutes.close();
     _suggestions.close();
+    _suppressions.close();
     super.dispose();
   }
 }

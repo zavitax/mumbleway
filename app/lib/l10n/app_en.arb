@@ -1006,5 +1006,8 @@
       }
     }
   },
-  "serverCapTooLow": "This server's bandwidth limit is too low for voice. Some of what you say will not get through."
+  "serverCapTooLow": "This server's bandwidth limit is too low for voice. Some of what you say will not get through.",
+  "suppressedTitle": "This channel will not carry your voice.",
+  "suppressedBody": "The server is discarding what you say, because you may not speak here. Move to another channel, or ask whoever runs the server.",
+  "suppressedLifted": "You can be heard here again"
 }

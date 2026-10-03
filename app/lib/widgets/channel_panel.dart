@@ -679,6 +679,10 @@ class _UserRow extends StatelessWidget {
     if (u.deafened) return (Icons.volume_off, StatusColors.failed);
     if (u.localMute) return (Icons.volume_off, StatusColors.failed);
     if (u.muted) return (Icons.mic_off, StatusColors.failed);
+    // Silenced by the channel rather than by anybody's decision. A separate
+    // glyph because it has a separate cause and a separate cure: this one is
+    // fixed by moving, not by a button.
+    if (u.suppressed) return (Icons.voice_over_off, StatusColors.failed);
     if (speaking) return (Icons.volume_up, StatusColors.talking);
     return (Icons.person_outline, StatusColors.idle);
   }

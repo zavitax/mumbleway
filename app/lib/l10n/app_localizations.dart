@@ -3162,6 +3162,24 @@ abstract class L {
   /// In en, this message translates to:
   /// **'This server\'s bandwidth limit is too low for voice. Some of what you say will not get through.'**
   String get serverCapTooLow;
+
+  /// No description provided for @suppressedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This channel will not carry your voice.'**
+  String get suppressedTitle;
+
+  /// No description provided for @suppressedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The server is discarding what you say, because you may not speak here. Move to another channel, or ask whoever runs the server.'**
+  String get suppressedBody;
+
+  /// No description provided for @suppressedLifted.
+  ///
+  /// In en, this message translates to:
+  /// **'You can be heard here again'**
+  String get suppressedLifted;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

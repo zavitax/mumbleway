@@ -325,6 +325,71 @@ async fn one_rider_can_ask_another_to_mute() {
 /// SuperUser may do everything. It is asserted rather than assumed, because the
 /// opposite reading would have greyed out every moderation action for the one
 /// account that can use them.
+/// Being silenced by the channel itself, which is the one way of going
+/// inaudible that nothing else on a rider's screen knows about.
+///
+/// Set `MW_LIVE_EXPECT_SUPPRESSED=1` when the server has been configured to
+/// deny Speak — otherwise this asserts the opposite, which is worth checking
+/// too: an ordinary server must not have riders reading as suppressed.
+///
+/// To make a server do it, deny Speak to `all` on the root channel and restart:
+///
+/// ```text
+/// insert into acl (server_id, channel_id, priority, user_id, group_name,
+///                  apply_here, apply_sub, grantpriv, revokepriv)
+/// values (1, 0, 4, null, 'all', 1, 1, 0, 8);
+/// ```
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn a_channel_that_will_not_carry_a_voice_says_so() {
+    require_server!();
+    let expect_suppressed = std::env::var("MW_LIVE_EXPECT_SUPPRESSED").is_ok();
+    let events = gather(&["rider-one"], 12).await;
+
+    let announcements: Vec<bool> = events
+        .iter()
+        .filter_map(|e| match e.event {
+            SessionEvent::SelfSuppressed(v) => Some(v),
+            _ => None,
+        })
+        .collect();
+
+    // What the roster says about us, which is the other half: a rider the
+    // server has silenced must not read as merely quiet.
+    let mut own_label = None;
+    for event in &events {
+        if let SessionEvent::Users(users) = &event.event {
+            if let Some(me) = users.iter().find(|u| u.name == "rider-one") {
+                own_label = Some((me.suppress, me.status_label(), me.is_audible()));
+            }
+        }
+    }
+
+    println!("suppression announcements: {announcements:?}");
+    println!("our own roster entry: {own_label:?}");
+
+    let (suppressed, label, audible) = own_label.expect("we never appeared in our own roster");
+    if expect_suppressed {
+        assert!(
+            announcements.contains(&true),
+            "the server is denying Speak and nothing was announced"
+        );
+        assert!(suppressed, "the roster does not carry it");
+        assert_eq!(label, "suppressed", "and it must not read as merely silent");
+        assert!(
+            !audible,
+            "a rider whose every packet is discarded is not audible"
+        );
+    } else {
+        assert!(
+            announcements.iter().all(|v| !v),
+            "an ordinary server suppressed nobody, yet something was announced"
+        );
+        assert!(!suppressed);
+        assert!(audible);
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs a live server AND MW_LIVE_SUPERUSER set to its password"]
 async fn an_admin_can_read_the_ban_list_and_is_told_nothing_about_permissions() {

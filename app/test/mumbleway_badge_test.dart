@@ -24,6 +24,7 @@ void main() {
     status: 'silent',
     comment: '',
     prioritySpeaker: false,
+    suppressed: false,
     mumblewayVersion: mumbleway,
   );
 

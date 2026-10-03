@@ -158,6 +158,16 @@ class ServerCard extends StatelessWidget {
                         ],
                       ],
                     ),
+                    // **Above everything, in the failure colours, for as
+                    // long as it lasts.** A rider whose voice the server is
+                    // discarding has nothing else on screen that knows: the
+                    // meter moves, the gate opens, the mute button says they
+                    // are live. A snackbar would be right for a moment and
+                    // gone for the rest of the ride.
+                    if (rt.suppressed) ...[
+                      const SizedBox(height: 8),
+                      _SuppressedBanner(),
+                    ],
                     if (showDetails) ...[
                       const SizedBox(height: 6),
                       _CollapsibleSection(
@@ -511,7 +521,9 @@ class ServerCard extends StatelessWidget {
     if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
   }
 
-  /// Asks the server to register this account, and says the request went.
+  /// Says, for as long as it is true, that this channel is throwing our voice
+
+/// Asks the server to register this account, and says the request went.
   ///
   /// **It deliberately does not claim success.** Registration is granted or
   /// refused by the server, and a refusal comes back as a permission-denied
@@ -863,6 +875,62 @@ class _Banner extends StatelessWidget {
           Icon(icon, size: 18, color: color),
           const SizedBox(width: 10),
           Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+        ],
+      ),
+    );
+  }
+}
+
+/// away.
+///
+/// Deliberately the loudest thing on the card: the error colours, an icon, and
+/// a sentence that names the cure — moving — because the mute button cannot fix
+/// it and a rider will try that first.
+class _SuppressedBanner extends StatelessWidget {
+  const _SuppressedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: StatusColors.errorBackground,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.voice_over_off,
+            size: 18,
+            color: StatusColors.errorForeground,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l.suppressedTitle,
+                  style: const TextStyle(
+                    color: StatusColors.errorForeground,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  l.suppressedBody,
+                  style: const TextStyle(
+                    color: StatusColors.errorForeground,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

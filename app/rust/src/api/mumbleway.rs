@@ -108,6 +108,11 @@ pub struct UiUser {
     pub mumbleway_version: Option<String>,
     /// Whether the server ducks everybody else while this rider talks.
     pub priority_speaker: bool,
+    /// Silenced by the server because they lack Speak permission here.
+    ///
+    /// Not a mute anybody chose, and not visible from anything else: the
+    /// server discards their voice without refusing anything.
+    pub suppressed: bool,
     /// The note this rider hung beside their name, as plain text. Empty when
     /// they have none; the markup Mumble's own client writes is stripped in the
     /// core, so this is safe to put straight on screen.
@@ -265,6 +270,17 @@ pub enum AppEvent {
     /// the audio itself.
     SpeakerLevels {
         levels: Vec<UiSpeakerLevel>,
+    },
+    /// This rider's own voice has been silenced by the server, or allowed
+    /// again, because of the channel they are in.
+    ///
+    /// The cue has already played by the time this arrives. Unlike a mute,
+    /// **this one does not go away by itself** — it lasts until they move or
+    /// an admin changes the ACL — so the interface is expected to keep saying
+    /// so rather than show one notice and forget.
+    Suppressed {
+        server_id: String,
+        suppressed: bool,
     },
     /// A server's bandwidth allowance, and what the encoder is doing about it.
     ///
@@ -790,6 +806,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 status,
                                 mumbleway_version: u.mumbleway,
                                 priority_speaker: u.priority_speaker,
+                                suppressed: u.suppress,
                                 comment: u.comment,
                                 quality: u.quality.map(|q| UiQuality {
                                     ping_ms: q.ping_ms,
@@ -856,6 +873,31 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 SessionEvent::Welcome(text) => emit(AppEvent::Welcome { server_id, text }),
                 SessionEvent::SelfSession(session) => {
                     emit(AppEvent::SelfSession { server_id, session })
+                }
+                SessionEvent::SelfSuppressed(suppressed) => {
+                    // Loudly, and in the core, for the same reason the remote
+                    // mute cue is here: a rider is not looking at the screen,
+                    // and this is the only account they will get of why
+                    // nobody can hear them.
+                    cue_shared.play_cue(if suppressed {
+                        AudioCue::Suppressed
+                    } else {
+                        AudioCue::Unsuppressed
+                    });
+                    diag::record(
+                        LogLevel::Warn,
+                        "suppressed",
+                        if suppressed {
+                            "this channel does not carry our voice: the server is discarding it"
+                                .to_string()
+                        } else {
+                            "our voice is carried again".to_string()
+                        },
+                    );
+                    emit(AppEvent::Suppressed {
+                        server_id,
+                        suppressed,
+                    });
                 }
                 SessionEvent::BandwidthCap(bps) => {
                     let tightest = {

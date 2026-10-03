@@ -899,6 +899,10 @@ pub enum AudioCue {
     DeafenedByOther,
     /// Someone else undeafened us.
     UndeafenedByOther,
+    /// This channel will not carry our voice: the server is suppressing it.
+    Suppressed,
+    /// It will again.
+    Unsuppressed,
     /// Push-to-talk pressed: a short crisp click, like keying a radio.
     TransmitStart,
     /// Push-to-talk released: the "roger beep" and squelch tail a walkie-talkie
@@ -919,8 +923,9 @@ impl AudioCue {
     /// falling means something was taken away, rising means it came back, and
     /// the number of tones tells you how big a deal it is — two for the
     /// microphone, three for hearing, which matters more. A figure said twice
-    /// is urgent: it is used once, for somebody else making your microphone
-    /// live.
+    /// is urgent, and the two things it is used for are the two a rider
+    /// cannot otherwise find out: being put on air by somebody else, and
+    /// talking into a channel that is throwing the words away.
     fn segments(self) -> &'static [(f32, u32)] {
         match self {
             // Falling, so it reads as "something went wrong" without thinking.
@@ -960,6 +965,29 @@ impl AudioCue {
                 (0.0, 30),
                 (659.25, 170),
             ],
+            // **Falling, and said twice.** The server has decided this
+            // rider may not speak here — they lack Speak permission in this
+            // channel, or were moved into one where they do not have it — and
+            // from that moment every word is discarded at the server with no
+            // refusal, no disconnection and nothing on screen that knows.
+            // Their own meter still moves, because the meter is measured
+            // before the wire.
+            //
+            // So it is the urgent form: the one other cue that earns the
+            // doubling is being put on air, and this is its mirror — the rider
+            // believes they are being heard and is not.
+            AudioCue::Suppressed => &[
+                (659.25, 110),
+                (0.0, 30),
+                (440.0, 170),
+                (0.0, 110),
+                (659.25, 110),
+                (0.0, 30),
+                (440.0, 170),
+            ],
+            // Said once: nothing is at risk in this direction, the rider is
+            // simply able to be heard again.
+            AudioCue::Unsuppressed => &[(440.0, 110), (0.0, 30), (659.25, 170)],
             AudioCue::DeafenedByOther => &[
                 (659.25, 100),
                 (0.0, 30),
@@ -4890,7 +4918,7 @@ mod tests {
     }
 
     /// Every cue, so coverage cannot silently miss a newly added one.
-    const ALL_CUES: [AudioCue; 9] = [
+    const ALL_CUES: [AudioCue; 11] = [
         AudioCue::Disconnected,
         AudioCue::Reconnected,
         AudioCue::Dialing,
@@ -4898,6 +4926,8 @@ mod tests {
         AudioCue::UnmutedByOther,
         AudioCue::DeafenedByOther,
         AudioCue::UndeafenedByOther,
+        AudioCue::Suppressed,
+        AudioCue::Unsuppressed,
         AudioCue::TransmitStart,
         AudioCue::TransmitEnd,
     ];

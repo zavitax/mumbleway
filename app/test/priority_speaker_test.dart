@@ -21,6 +21,7 @@ UiUser rider({bool priority = false}) => UiUser(
   status: 'silent',
   comment: '',
   prioritySpeaker: priority,
+  suppressed: false,
 );
 
 void main() {

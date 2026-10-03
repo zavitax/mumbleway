@@ -561,6 +561,111 @@ async fn a_rider_can_listen_to_a_channel_without_joining_it() {
     );
 }
 
+/// The count beside a channel follows the rider into it.
+///
+/// Occupancy is not sent by the server: it is counted from the roster, so it is
+/// only as fresh as the last channel list this client emitted. It used to be
+/// emitted when a *channel* changed and never when a rider moved — so on a
+/// server where nobody creates channels, the numbers beside the channels kept
+/// whatever they said on connect, which is what this pins.
+///
+/// What is asserted is the invariant rather than a particular number: after the
+/// rider has moved, a channel list arrives and its count for that channel
+/// agrees with the roster. Anybody else on the test server may be moving about
+/// at the same time, and a figure pinned by hand would be theirs as much as
+/// ours. `MW_LIVE_CHANNEL` names a channel to move into.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn the_count_beside_a_channel_follows_the_rider() {
+    require_server!();
+    let Ok(channel) = std::env::var("MW_LIVE_CHANNEL") else {
+        eprintln!("MW_LIVE_CHANNEL is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live occupancy").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+    let mut profile = ServerProfile::new("live", host, port, "counter");
+    profile.id = "counter".into();
+    let id = manager.add(profile, silent_bridge()).expect("added");
+    manager
+        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    use mumbleway_core::session::SessionCommand as C;
+
+    let mut me = None;
+    let mut target = None;
+    let mut moved = false;
+    let mut here = None;
+    let mut roster_here = 0;
+    let mut agreed: Option<(u32, u32)> = None;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(s) => me = Some(*s),
+            SessionEvent::Users(users) => {
+                if let Some(mine) = me {
+                    here = users
+                        .iter()
+                        .find(|u| u.session == mine)
+                        .map(|u| u.channel_id);
+                }
+                if let Some(to) = target {
+                    roster_here = users.iter().filter(|u| u.channel_id == to).count() as u32;
+                }
+            }
+            SessionEvent::Channels(list) => {
+                if let Some(c) = list.iter().find(|c| c.name == channel) {
+                    target = Some(c.id);
+                    println!(
+                        "{} holds {} | roster says {} | we are in {:?}",
+                        c.name, c.user_count, roster_here, here
+                    );
+                    // Only once the rider is in it: before the move the list is
+                    // allowed to be about a room they are not standing in.
+                    if moved && here == Some(c.id) {
+                        agreed = Some((c.user_count, roster_here));
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        if let (false, Some(to), true) = (moved, target, here.is_some()) {
+            moved = true;
+            manager.send(&id, C::JoinChannel(to)).await.expect("join");
+        }
+    }
+    manager.shutdown_all().await;
+
+    assert!(target.is_some(), "{channel} is not on this server");
+    let (counted, roster) = agreed.expect(
+        "no channel list arrived after the rider moved — the counts beside the \
+         channels are stale, which is the bug this test exists for",
+    );
+    assert_eq!(
+        counted, roster,
+        "the channel list says {counted} and the roster says {roster}"
+    );
+    assert!(
+        roster >= 1,
+        "the roster does not have us in the channel we joined"
+    );
+}
+
 /// What a rider does in an ordinary session, against a real server.
 ///
 /// Notes, text messages, muting themselves, deafening themselves, and moving

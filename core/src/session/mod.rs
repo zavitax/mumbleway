@@ -1166,6 +1166,16 @@ impl Session {
                         Some((actor, muted, deafened))
                     });
 
+                // Occupancy is derived from the roster rather than sent by the
+                // server, so the channel list has to go out again whenever
+                // somebody arrives or moves. Without this the counts beside the
+                // channels keep whatever they said when a *channel* last
+                // changed, which on a quiet server is for ever.
+                let occupancy_changed = m.session.is_some_and(|s| match state.users.get(&s) {
+                    None => true,
+                    Some(prev) => m.channel_id.is_some_and(|c| prev.channel_id != c),
+                });
+
                 if let Some(s) = m.session {
                     let e = state.users.entry(s).or_insert_with(|| UserInfo {
                         session: s,
@@ -1272,6 +1282,10 @@ impl Session {
                         state.blobs.note_texture_hash(s, h);
                     }
                     self.emit(SessionEvent::Users(state.user_list())).await;
+                    if occupancy_changed {
+                        self.emit(SessionEvent::Channels(state.channel_list()))
+                            .await;
+                    }
                     // After the roster, so a change to our own entry — moving
                     // into a channel we may not speak in, or out of one — is
                     // announced from the state rather than from this message.
@@ -1502,6 +1516,10 @@ impl Session {
                 // somebody who runs something else entirely.
                 state.peers.forget(m.session);
                 self.emit(SessionEvent::Users(state.user_list())).await;
+                // They were standing in a channel, and the count beside it is
+                // ours to keep true.
+                self.emit(SessionEvent::Channels(state.channel_list()))
+                    .await;
             }
             MessageType::TextMessage => {
                 let m = mumble::TextMessage::decode(payload)?;

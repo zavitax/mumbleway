@@ -75,6 +75,7 @@
   "pttVoiceActivated": "ПО ГОЛОСУ",
   "pttOpenMic": "МИКРОФОН ОТКРЫТ",
   "probeChecking": "Проверка…",
+  "probeThroughProxy": "Доступен через прокси",
   "probeNotResponding": "Не отвечает",
   "connect": "Подключиться",
   "disconnect": "Отключиться",

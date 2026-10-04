@@ -75,6 +75,7 @@
   "pttVoiceActivated": "VOICE ACTIVATED",
   "pttOpenMic": "OPEN MIC",
   "probeChecking": "Checking…",
+  "probeThroughProxy": "Reached through a proxy",
   "probeNotResponding": "Not responding",
   "connect": "Connect",
   "disconnect": "Disconnect",

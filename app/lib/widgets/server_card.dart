@@ -96,7 +96,7 @@ class ServerCard extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 10),
-                  _ProbeLine(probe: rt.probe),
+                  _ProbeLine(probe: rt.probe, skipped: rt.probeSkipped),
 
                   if (rt.status == ConnStatus.reconnecting) ...[
                     const SizedBox(height: 12),
@@ -710,14 +710,34 @@ class ServerCard extends StatelessWidget {
 /// whether or not we are connected, so the user can see a server is up before
 /// bothering to join it.
 class _ProbeLine extends StatelessWidget {
-  const _ProbeLine({required this.probe});
+  const _ProbeLine({required this.probe, this.skipped = false});
 
   final UiServerStatus? probe;
+
+  /// True when this server's voice goes through a proxy, so the probe — a
+  /// bare UDP datagram — was never sent.
+  final bool skipped;
 
   @override
   Widget build(BuildContext context) {
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final p = probe;
+
+    if (skipped) {
+      // Saying "not responding" here would be a false negative about a server
+      // that connects perfectly well; saying nothing would look like a missing
+      // reading. This says which it is.
+      return Row(
+        children: [
+          Icon(Icons.swap_horiz, size: 14, color: muted),
+          const SizedBox(width: 6),
+          Text(
+            L.of(context).probeThroughProxy,
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+        ],
+      );
+    }
 
     if (p == null) {
       return Row(

@@ -421,6 +421,12 @@ abstract class L {
   /// **'Checking…'**
   String get probeChecking;
 
+  /// No description provided for @probeThroughProxy.
+  ///
+  /// In en, this message translates to:
+  /// **'Reached through a proxy'**
+  String get probeThroughProxy;
+
   /// No description provided for @probeNotResponding.
   ///
   /// In en, this message translates to:

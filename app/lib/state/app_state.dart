@@ -410,6 +410,10 @@ class ServerRuntime {
   /// Result of the most recent unauthenticated status probe.
   UiServerStatus? probe;
 
+  /// Set when the probe was not even attempted, because it could not have
+  /// worked: it is a bare UDP datagram, and no proxy here carries one.
+  bool probeSkipped = false;
+
   bool get isLive => status == ConnStatus.connected;
   bool get isBusy =>
       status == ConnStatus.connecting ||
@@ -2464,6 +2468,20 @@ class AppState extends ChangeNotifier {
     final snapshot = List<SavedServer>.from(servers);
     await Future.wait(
       snapshot.map((s) async {
+        // **The probe follows the voice path.** It is a bare UDP datagram, so
+        // a server whose *voice* goes through a proxy cannot be probed at all,
+        // and probing it anyway puts the server's name and a packet on a
+        // network the rider is deliberately proxying — then reads "not
+        // responding" beside a card that connects perfectly. Where voice goes
+        // direct, the probe goes with it, and a failure is informative: UDP
+        // voice would have failed too.
+        final chain = ServerProxies.instance.chainFor(
+          mode: s.proxyMode,
+          own: s.proxy,
+        );
+        final tunnelled = chain.any((p) => p.tunnelVoice);
+        runtimeFor(s.id).probeSkipped = tunnelled;
+        if (tunnelled) return;
         try {
           final status = await pingServer(
             serverId: s.id,

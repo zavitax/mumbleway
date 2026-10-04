@@ -184,6 +184,9 @@ class LRu extends L {
   String get probeChecking => 'Проверка…';
 
   @override
+  String get probeThroughProxy => 'Доступен через прокси';
+
+  @override
   String get probeNotResponding => 'Не отвечает';
 
   @override

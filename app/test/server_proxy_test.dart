@@ -182,6 +182,44 @@ void main() {
     });
   });
 
+  group('the probe', () {
+    test('is skipped exactly when voice goes through the proxy', () async {
+      // It is a bare UDP datagram, so where voice cannot go, it cannot go —
+      // and sending it anyway reads as "not responding" beside a card that
+      // connects perfectly.
+      final tunnelled = ServerProxy(
+        scheme: ProxyScheme.httpConnect,
+        host: 'proxy.example',
+        port: 8000,
+        username: null,
+        password: null,
+        tunnelVoice: true,
+      );
+      final direct = ServerProxy(
+        scheme: ProxyScheme.httpConnect,
+        host: 'proxy.example',
+        port: 8000,
+        username: null,
+        password: null,
+        tunnelVoice: false,
+      );
+
+      expect(
+        ServerProxies.instance
+            .chainFor(mode: ServerProxyMode.custom, own: tunnelled)
+            .any((p) => p.tunnelVoice),
+        isTrue,
+      );
+      expect(
+        ServerProxies.instance
+            .chainFor(mode: ServerProxyMode.custom, own: direct)
+            .any((p) => p.tunnelVoice),
+        isFalse,
+        reason: 'voice still goes direct, so the probe tells the truth',
+      );
+    });
+  });
+
   group('a saved entry', () {
     SavedServer entry({
       ServerProxyMode mode = ServerProxyMode.useDefault,

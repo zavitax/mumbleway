@@ -185,6 +185,9 @@ class LEn extends L {
   String get probeChecking => 'Checking…';
 
   @override
+  String get probeThroughProxy => 'Reached through a proxy';
+
+  @override
   String get probeNotResponding => 'Not responding';
 
   @override

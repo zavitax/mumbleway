@@ -10,6 +10,16 @@ class StatusColors {
   static const idle = Color(0xFF7F8C8D);
   static const talking = Color(0xFF3498DB);
 
+  /// Your own doing, and nobody else can see it: the rider you turned down for
+  /// yourself alone.
+  ///
+  /// A fourth colour because the other three are spoken for — grey is "nothing
+  /// is wrong", red is the rider's own hand, amber is somebody else's — and
+  /// this is none of them. It is also the only one of the four that is not a
+  /// state of the *other* rider at all, which is worth a colour nobody can
+  /// mistake for one: purple appears nowhere else in this app.
+  static const yours = Color(0xFF9B59B6);
+
   /// The pair a failure is written in: [connecting]'s yellow on a deep red.
   ///
   /// Fixed rather than taken from the scheme, and for the same reason the six

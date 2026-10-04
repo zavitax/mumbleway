@@ -485,7 +485,7 @@ class _UserRow extends StatelessWidget {
                             .runtimeFor(serverId)
                             .speakerLevels[user.session] ??
                         -120.0,
-                    muted: user.muted || user.localMute,
+                    muted: user.muted || user.selfMuted || user.localMute,
                   ),
           ),
           const SizedBox(width: 2),
@@ -498,7 +498,7 @@ class _UserRow extends StatelessWidget {
             tooltip: user.localMute ? l.unmuteForMe : l.muteForMe,
             icon: Icon(
               user.localMute ? Icons.volume_off : Icons.volume_up,
-              color: user.localMute ? StatusColors.failed : null,
+              color: user.localMute ? StatusColors.yours : null,
             ),
             onPressed: () => state.toggleUserLocalMute(serverId, user),
           ),
@@ -935,27 +935,41 @@ class _UserRow extends StatelessWidget {
     const quiet = StatusColors.idle;
     const theirOwn = StatusColors.failed;
     const imposed = StatusColors.reconnecting;
+    const yours = StatusColors.yours;
 
+    // **Somebody else's decision is read first, not the rider's.** A rider
+    // can be in both states at once, and on this app they usually are: muting
+    // a MumbleWay rider sends the server mute *and* asks their app to close
+    // its own microphone, so an imposed mute arrives with `self_mute` beside
+    // it. Reading their own hand first painted every admin mute in the colour
+    // of a decision the rider never made.
     final (IconData, Color, String) mic;
     if (u.muted) {
-      mic = u.selfMuted
-          ? (Icons.mic_off, theirOwn, l.statusTheirMicOff)
-          : (Icons.mic_off, imposed, l.statusMutedByAdmin);
+      mic = (Icons.mic_off, imposed, l.statusMutedByAdmin);
     } else if (u.suppressed) {
       // Silenced by the channel rather than by anybody's hand, and amber for
       // the same reason an admin mute is: it is not this rider's doing and
       // they cannot undo it by changing their mind. A glyph of its own because
       // the cure is different — this one is fixed by moving, not by a button.
       mic = (Icons.voice_over_off, imposed, l.statusSuppressedHere);
+    } else if (u.selfMuted) {
+      mic = (Icons.mic_off, theirOwn, l.statusTheirMicOff);
     } else {
       mic = (Icons.mic, quiet, l.statusMicOpen);
     }
 
     final (IconData, Color, String) ears;
-    if (u.selfDeafened) {
-      ears = (Icons.headset_off, theirOwn, l.statusTheyHearNothing);
+    if (u.localMute) {
+      // **Read before anything about them, because it is about you.** You have
+      // turned this rider down; whatever their own sound is doing, you are not
+      // hearing them, and that is the fact that explains the silence you are
+      // sitting in. Its own colour because it is also the only thing in this
+      // row that nobody else on the server can see.
+      ears = (Icons.headset_off, yours, l.statusMutedForYou);
     } else if (u.deafened) {
       ears = (Icons.headset_off, imposed, l.statusDeafenedByAdmin);
+    } else if (u.selfDeafened) {
+      ears = (Icons.headset_off, theirOwn, l.statusTheyHearNothing);
     } else {
       ears = (Icons.headset, quiet, l.statusTheyCanHear);
     }

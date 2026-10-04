@@ -116,21 +116,52 @@ class HomeScreen extends StatelessWidget {
                 ? Theme.of(context).colorScheme.primary
                 : null,
           ),
+          // **Both buttons say whose decision it was, in the roster's own
+          // colours.** Red is ours — we pressed it, and pressing it again
+          // undoes it. Amber is somebody else's: an admin's mute or deafen, or
+          // a channel that will not carry a voice, none of which this button
+          // can lift. Drawn red, as it was, an imposed silence read as a
+          // button the rider had pressed and forgotten, and pressing it did
+          // nothing they could see.
           IconButton(
-            tooltip: state.deafened ? l.undeafen : l.deafen,
+            tooltip: state.deafenedByServer
+                ? l.youWereDeafened
+                : state.deafened
+                ? l.undeafen
+                : l.deafen,
             onPressed: state.toggleDeafen,
             // A speaker rather than an ear. Deafen silences what *arrives*,
             // and every other app a rider has used puts that behind a speaker
             // with a line through it; an ear is the anatomy rather than the
             // control, and it reads as a hearing-aid setting.
-            icon: Icon(state.deafened ? Icons.volume_off : Icons.volume_up),
-            color: state.deafened ? StatusColors.failed : null,
+            icon: Icon(
+              state.deafened || state.deafenedByServer
+                  ? Icons.volume_off
+                  : Icons.volume_up,
+            ),
+            color: state.deafenedByServer
+                ? StatusColors.reconnecting
+                : state.deafened
+                ? StatusColors.failed
+                : null,
           ),
           IconButton(
-            tooltip: state.muted ? l.unmuteMicrophone : l.muteMicrophone,
+            tooltip: state.silencedByServer
+                ? (state.suppressedSomewhere
+                      ? l.suppressedTitle
+                      : l.youWereMuted)
+                : state.muted
+                ? l.unmuteMicrophone
+                : l.muteMicrophone,
             onPressed: state.toggleMute,
-            icon: Icon(state.muted ? Icons.mic_off : Icons.mic),
-            color: state.muted ? StatusColors.failed : null,
+            icon: Icon(
+              state.muted || state.silencedByServer ? Icons.mic_off : Icons.mic,
+            ),
+            color: state.silencedByServer
+                ? StatusColors.reconnecting
+                : state.muted
+                ? StatusColors.failed
+                : null,
           ),
           PopupMenuButton<String>(
             tooltip: l.more,

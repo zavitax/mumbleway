@@ -22,6 +22,7 @@ UiUser rider({
   bool selfMuted = false,
   bool deafened = false,
   bool selfDeafened = false,
+  bool localMute = false,
   String comment = '',
   UiQuality? quality,
 }) => UiUser(
@@ -29,9 +30,9 @@ UiUser rider({
   name: 'Anna',
   channelId: 0,
   talking: false,
-  muted: muted || selfMuted,
-  deafened: deafened || selfDeafened,
-  localMute: false,
+  muted: muted,
+  deafened: deafened,
+  localMute: localMute,
   selfMuted: selfMuted,
   selfDeafened: selfDeafened,
   status: 'silent',
@@ -247,6 +248,72 @@ void main() {
       t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
       StatusColors.reconnecting,
     );
+  });
+
+  testWidgets('an admin mute is not hidden by the rider muting themselves', (
+    t,
+  ) async {
+    // **The ordinary case on this app, not a corner of one.** Muting a rider
+    // who runs MumbleWay sends the server mute *and* asks their app to close
+    // its own microphone — the request is what reaches a rider the server will
+    // not mute for us — so an imposed mute comes back with `self_mute` beside
+    // it almost every time. Reading their own hand first painted the admin's
+    // decision in the colour of a decision the rider never made, and the words
+    // told them they had chosen it.
+    final l = await L.delegate.load(const Locale('en'));
+    final state = connected();
+    await t.pumpWidget(
+      host(state, rider(muted: true, selfMuted: true)),
+    );
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
+      StatusColors.reconnecting,
+    );
+    await t.tap(find.byIcon(Icons.mic_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusMutedByAdmin), findsOneWidget);
+  });
+
+  testWidgets('and the same for a deafening nobody asked for', (t) async {
+    final l = await L.delegate.load(const Locale('en'));
+    final state = connected();
+    await t.pumpWidget(
+      host(state, rider(deafened: true, selfDeafened: true)),
+    );
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      StatusColors.reconnecting,
+    );
+    await t.tap(find.byIcon(Icons.headset_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusDeafenedByAdmin), findsOneWidget);
+  });
+
+  testWidgets('a rider you turned down is marked in a colour of its own', (
+    t,
+  ) async {
+    // **Your own doing, and invisible to everybody else.** Red would say the
+    // rider chose it and amber that an admin did; this is neither, and it is
+    // the one state in the row that is about what *you* are hearing. It is
+    // read before anything about their own sound, because it is true whatever
+    // their sound is doing: you are not hearing them.
+    final l = await L.delegate.load(const Locale('en'));
+    final state = connected();
+    await t.pumpWidget(host(state, rider(localMute: true)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.headset_off), findsOneWidget);
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      StatusColors.yours,
+    );
+    await t.tap(find.byIcon(Icons.headset_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusMutedForYou), findsOneWidget);
   });
 
   testWidgets('a closed microphone says whose decision it was', (t) async {

@@ -97,17 +97,26 @@ pub struct UiUser {
     pub name: String,
     pub channel_id: u32,
     pub talking: bool,
-    /// Muted server-side or by themselves — nobody hears them.
+    /// Muted by somebody else, for everyone: an admin's decision, not theirs.
+    ///
+    /// **These used to be `mute || self_mute`, and that hid the admin.** A
+    /// moderator muting a rider who runs MumbleWay sends two things — the
+    /// server mute and a request to their app, which closes their microphone
+    /// itself — so `self_mute` comes back set on almost every imposed mute
+    /// there is. A reader that took the two together could not tell whose
+    /// decision it was, and the one that matters is the one the rider cannot
+    /// undo by changing their mind. Anything that wants "can they be heard at
+    /// all" takes the two fields together, which is a line of code, where
+    /// telling them apart afterwards is impossible.
     pub muted: bool,
+    /// Deafened by an admin. Their own choice is [`UiUser::self_deafened`].
     pub deafened: bool,
-    /// Which of the two it was.
+    /// Their own hand: they closed their microphone, or their ears.
     ///
     /// **The roster says different things about them.** A rider who closed
     /// their own microphone has made a decision; one an admin closed has had
     /// one made for them, and a rider who turned their own sound off cannot
-    /// hear anybody — which is worth knowing before talking to them. The
-    /// combined flags above stay as they are, because "can they be heard" is
-    /// the question most of this app asks.
+    /// hear anybody — which is worth knowing before talking to them.
     pub self_muted: bool,
     pub self_deafened: bool,
     /// Silenced by us alone. Needs no permission and is invisible to others.
@@ -919,8 +928,8 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 name: u.name,
                                 channel_id: u.channel_id,
                                 talking: u.talking,
-                                muted: u.mute || u.self_mute,
-                                deafened: u.deaf || u.self_deaf,
+                                muted: u.mute,
+                                deafened: u.deaf,
                                 self_muted: u.self_mute,
                                 self_deafened: u.self_deaf,
                                 local_mute: u.local_mute,

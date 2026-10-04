@@ -381,6 +381,26 @@ class ServerRuntime {
   /// and removing pull that session out from under itself.
   bool get isModifiable => !isLive && !isBusy;
 
+  /// Whether an admin has silenced us here, which no button of ours undoes.
+  ///
+  /// Read off our own roster entry rather than from the event that announced
+  /// it: a rider who reconnects while muted is told by nobody — the mute
+  /// arrives in the first roster with no actor against it — so an interface
+  /// built on the announcement alone comes back up claiming to be fine.
+  bool get mutedByAdmin => _selfEntry?.muted ?? false;
+
+  /// The same for our ears.
+  bool get deafenedByAdmin => _selfEntry?.deafened ?? false;
+
+  UiUser? get _selfEntry {
+    final me = selfSession;
+    if (me == null) return null;
+    for (final u in users) {
+      if (u.session == me) return u;
+    }
+    return null;
+  }
+
   /// The channel we are currently in, if known.
   int? get currentChannelId {
     final me = selfSession;
@@ -794,6 +814,25 @@ class AppState extends ChangeNotifier {
   /// to look, not what to look at. A widget that reads a level without
   /// listening to this is not wrong, only slow to notice.
   Listenable get meters => _meters;
+
+  /// Whether somebody else is stopping us being heard, anywhere we are.
+  ///
+  /// **Not the same as [muted], and it must not be drawn as if it were.** The
+  /// microphone button is ours and red is the colour of our own decision; an
+  /// admin's mute and a channel that will not carry a voice are decisions made
+  /// for us, and the button cannot undo either. So they are shown in the
+  /// colour the roster uses for exactly that, and the tooltip says which it is.
+  bool get silencedByServer => runtimes.values.any(
+    (rt) => rt.isLive && (rt.mutedByAdmin || rt.suppressed),
+  );
+
+  /// The same for being deafened by an admin.
+  bool get deafenedByServer =>
+      runtimes.values.any((rt) => rt.isLive && rt.deafenedByAdmin);
+
+  /// Whether what is stopping us is the channel rather than a person.
+  bool get suppressedSomewhere =>
+      runtimes.values.any((rt) => rt.isLive && rt.suppressed);
 
   /// Every user currently talking across all connected servers.
   List<String> get allSpeakingNames => [

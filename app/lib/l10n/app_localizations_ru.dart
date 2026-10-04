@@ -121,6 +121,12 @@ class LRu extends L {
   String get statusTheyCanHear => 'Они слышат канал';
 
   @override
+  String get youWereMuted => 'Вас заглушил администратор';
+
+  @override
+  String get youWereDeafened => 'Администратор выключил вам звук';
+
+  @override
   String get statusMutedByAdmin => 'Заглушён администратором';
 
   @override

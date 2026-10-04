@@ -295,6 +295,18 @@ abstract class L {
   /// **'They can hear the channel'**
   String get statusTheyCanHear;
 
+  /// No description provided for @youWereMuted.
+  ///
+  /// In en, this message translates to:
+  /// **'An admin has muted you'**
+  String get youWereMuted;
+
+  /// No description provided for @youWereDeafened.
+  ///
+  /// In en, this message translates to:
+  /// **'An admin has turned your sound off'**
+  String get youWereDeafened;
+
   /// No description provided for @statusMutedByAdmin.
   ///
   /// In en, this message translates to:

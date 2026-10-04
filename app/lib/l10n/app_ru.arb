@@ -54,6 +54,8 @@
   "statusTheirMicOff": "У них выключен микрофон",
   "statusMicOpen": "Микрофон у них включён",
   "statusTheyCanHear": "Они слышат канал",
+  "youWereMuted": "Вас заглушил администратор",
+  "youWereDeafened": "Администратор выключил вам звук",
   "statusMutedByAdmin": "Заглушён администратором",
   "statusTheyHearNothing": "У них выключен звук — они вас не слышат",
   "statusDeafenedByAdmin": "Лишён звука администратором",

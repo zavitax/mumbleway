@@ -121,6 +121,12 @@ class LEn extends L {
   String get statusTheyCanHear => 'They can hear the channel';
 
   @override
+  String get youWereMuted => 'An admin has muted you';
+
+  @override
+  String get youWereDeafened => 'An admin has turned your sound off';
+
+  @override
   String get statusMutedByAdmin => 'Muted by an admin';
 
   @override

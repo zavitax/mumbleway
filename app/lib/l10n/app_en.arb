@@ -54,6 +54,8 @@
   "statusTheirMicOff": "Their microphone is off",
   "statusMicOpen": "Their microphone is open",
   "statusTheyCanHear": "They can hear the channel",
+  "youWereMuted": "An admin has muted you",
+  "youWereDeafened": "An admin has turned your sound off",
   "statusMutedByAdmin": "Muted by an admin",
   "statusTheyHearNothing": "Their sound is off — they cannot hear you",
   "statusDeafenedByAdmin": "Deafened by an admin",

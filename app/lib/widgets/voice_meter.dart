@@ -134,60 +134,73 @@ class VoiceMeter extends StatelessWidget {
                   ),
                 ),
               ),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(thickness / 2),
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: filled),
-                  duration: _tween,
-                  curve: Curves.linear,
-                  builder: (context, value, child) => value <= 0.001
-                      ? const SizedBox.shrink()
-                      : ClipRect(
-                          child: Align(
-                            alignment: vertical
-                                ? Alignment.bottomCenter
-                                : Alignment.centerLeft,
-                            // Shrinks this Align to a fraction of its child
-                            // while the child keeps its full size, so the
-                            // gradient always spans the whole track and a given
-                            // colour always means the same loudness. Sizing the
-                            // gradient to the filled part instead would paint a
-                            // quiet talker red at full scale.
-                            widthFactor: vertical ? null : value,
-                            heightFactor: vertical ? value : null,
-                            child: child,
+              // **Pinned to the end the fill grows from.** A `Stack`'s
+              // unpositioned child sits at the top left, so a meter standing
+              // on end filled downward from the top — and since the gradient
+              // keeps its own scale, what showed was the green bottom of it,
+              // arriving at the top of the track. The loud end is the top; the
+              // fill has to start at the bottom and climb.
+              Positioned.fill(
+                child: Align(
+                  alignment: vertical
+                      ? Alignment.bottomCenter
+                      : Alignment.centerLeft,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(thickness / 2),
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: filled),
+                      duration: _tween,
+                      curve: Curves.linear,
+                      builder: (context, value, child) => value <= 0.001
+                          ? const SizedBox.shrink()
+                          : ClipRect(
+                              child: Align(
+                                alignment: vertical
+                                    ? Alignment.bottomCenter
+                                    : Alignment.centerLeft,
+                                // Shrinks this Align to a fraction of its child
+                                // while the child keeps its full size, so the
+                                // gradient always spans the whole track and a given
+                                // colour always means the same loudness. Sizing the
+                                // gradient to the filled part instead would paint a
+                                // quiet talker red at full scale.
+                                widthFactor: vertical ? null : value,
+                                heightFactor: vertical ? value : null,
+                                child: child,
+                              ),
+                            ),
+                      child: SizedBox(
+                        width: vertical ? thickness : track,
+                        height: vertical ? track : height,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            // The same three stops either way, so the shape of the
+                            // scale does not change when the colour does: a level
+                            // that was two thirds along stays two thirds along, and
+                            // only its meaning about being heard changes.
+                            gradient: LinearGradient(
+                              // Upwards when stood on end, so the quiet end is at
+                              // the bottom where the fill starts.
+                              begin: vertical
+                                  ? Alignment.bottomCenter
+                                  : Alignment.centerLeft,
+                              end: vertical
+                                  ? Alignment.topCenter
+                                  : Alignment.centerRight,
+                              colors: monochrome
+                                  ? [
+                                      grey.withValues(alpha: 0.45),
+                                      grey.withValues(alpha: 0.62),
+                                      grey.withValues(alpha: 0.85),
+                                    ]
+                                  : const [
+                                      StatusColors.connected,
+                                      StatusColors.connecting,
+                                      StatusColors.failed,
+                                    ],
+                              stops: const [0.0, 0.6, 1.0],
+                            ),
                           ),
-                        ),
-                  child: SizedBox(
-                    width: vertical ? thickness : track,
-                    height: vertical ? track : height,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        // The same three stops either way, so the shape of the
-                        // scale does not change when the colour does: a level
-                        // that was two thirds along stays two thirds along, and
-                        // only its meaning about being heard changes.
-                        gradient: LinearGradient(
-                          // Upwards when stood on end, so the quiet end is at
-                          // the bottom where the fill starts.
-                          begin: vertical
-                              ? Alignment.bottomCenter
-                              : Alignment.centerLeft,
-                          end: vertical
-                              ? Alignment.topCenter
-                              : Alignment.centerRight,
-                          colors: monochrome
-                              ? [
-                                  grey.withValues(alpha: 0.45),
-                                  grey.withValues(alpha: 0.62),
-                                  grey.withValues(alpha: 0.85),
-                                ]
-                              : const [
-                                  StatusColors.connected,
-                                  StatusColors.connecting,
-                                  StatusColors.failed,
-                                ],
-                          stops: const [0.0, 0.6, 1.0],
                         ),
                       ),
                     ),

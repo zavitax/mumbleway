@@ -479,20 +479,27 @@ class _UserRow extends StatelessWidget {
           // least to say: "how loud" is a fraction, and a column six pixels
           // wide says it as well as a bar does while handing the width back to
           // the name, the note and the badges that had been squeezed for it.
+          // It takes an icon's worth of room and sits in the middle of it, so
+          // the gaps on either side are the gaps between every other pair of
+          // things in this row. Six pixels of bar with its own narrow margins
+          // read as something that had been squeezed in.
           SizedBox(
-            width: 6,
+            width: 20,
+            height: 20,
             child: state.participantMetersDisabled
                 ? null
-                : VoiceMeter(
-                    vertical: true,
-                    width: 6,
-                    height: 20,
-                    levelDb:
-                        state
-                            .runtimeFor(serverId)
-                            .speakerLevels[user.session] ??
-                        -120.0,
-                    muted: user.muted || user.selfMuted || user.localMute,
+                : Center(
+                    child: VoiceMeter(
+                      vertical: true,
+                      width: 6,
+                      height: 20,
+                      levelDb:
+                          state
+                              .runtimeFor(serverId)
+                              .speakerLevels[user.session] ??
+                          -120.0,
+                      muted: user.muted || user.selfMuted || user.localMute,
+                    ),
                   ),
           ),
           const SizedBox(width: 2),

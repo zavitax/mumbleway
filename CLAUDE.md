@@ -235,6 +235,32 @@ default PATH:
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\src\flutter\bin;$env:PATH"
 ```
 
+### A failed Rust build does not fail `flutter build apk`
+
+cargokit logs the failure at `SEVERE:` and **gradle carries on**, packaging
+whatever `.so` was there from the last successful build. The command prints
+`✓ Built build\app\outputs\flutter-apk\app-debug.apk` and exits 0.
+
+So the APK installs, and the app dies on the first frame:
+
+```text
+Unhandled Exception: Bad state: Content hash on Dart side (2049039120) is
+different from Rust side (-1000703838), indicating out-of-sync code.
+```
+
+That message blames hot reload, and the real cause was a `PATH` without
+`protoc` on it — the build script could not compile the Mumble schemas, the old
+library stayed in place, and everything downstream reported success. **Read the
+build output rather than its exit code**, or grep it:
+
+```bash
+flutter build apk --debug 2>&1 | tee build.log; grep -c SEVERE build.log
+```
+
+The frb content hash is the only thing that catches this, and it catches it at
+*runtime* on a device. Nothing in `flutter analyze`, `flutter test` or
+`cargo test` can see it, because each of them is right about its own half.
+
 ### `--release` and debug can disagree about whether a model loads
 
 `cargo test` and `cargo test --release` are not the same check here, and the

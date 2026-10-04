@@ -115,6 +115,12 @@ class LEn extends L {
   String get statusTheirMicOff => 'Their microphone is off';
 
   @override
+  String get statusMicOpen => 'Their microphone is open';
+
+  @override
+  String get statusTheyCanHear => 'They can hear the channel';
+
+  @override
   String get statusMutedByAdmin => 'Muted by an admin';
 
   @override

@@ -52,6 +52,8 @@
   "audioFailedTitle": "Не удалось запустить звук",
   "audioFailedBody": "MumbleWay нужен микрофон. Проверьте, что он подключён и разрешение выдано, затем перезапустите приложение.",
   "statusTheirMicOff": "У них выключен микрофон",
+  "statusMicOpen": "Микрофон у них включён",
+  "statusTheyCanHear": "Они слышат канал",
   "statusMutedByAdmin": "Заглушён администратором",
   "statusTheyHearNothing": "У них выключен звук — они вас не слышат",
   "statusDeafenedByAdmin": "Лишён звука администратором",

@@ -283,6 +283,18 @@ abstract class L {
   /// **'Their microphone is off'**
   String get statusTheirMicOff;
 
+  /// No description provided for @statusMicOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Their microphone is open'**
+  String get statusMicOpen;
+
+  /// No description provided for @statusTheyCanHear.
+  ///
+  /// In en, this message translates to:
+  /// **'They can hear the channel'**
+  String get statusTheyCanHear;
+
   /// No description provided for @statusMutedByAdmin.
   ///
   /// In en, this message translates to:

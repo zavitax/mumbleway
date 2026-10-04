@@ -115,6 +115,12 @@ class LRu extends L {
   String get statusTheirMicOff => 'У них выключен микрофон';
 
   @override
+  String get statusMicOpen => 'Микрофон у них включён';
+
+  @override
+  String get statusTheyCanHear => 'Они слышат канал';
+
+  @override
   String get statusMutedByAdmin => 'Заглушён администратором';
 
   @override

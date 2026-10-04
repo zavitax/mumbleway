@@ -396,16 +396,16 @@ class _UserRow extends StatelessWidget {
                       const SizedBox(width: 6),
                       MumblewayBadge(version: version),
                     ],
-                    // Why this rider cannot be heard, or cannot hear — after
-                    // their name and their badge, at the size of both, and
-                    // held to read for who decided it. Nothing at all when
-                    // there is nothing to say: a glyph on every row is a glyph
-                    // nobody reads.
-                    if (_statusGlyph(user)
-                        case (final glyph, final colour)?) ...[
+                    // Their microphone and their hearing, after the name and
+                    // the badge and at the size of both. Always both, each
+                    // held to read for who decided it.
+                    for (final (glyph, colour, words) in statusGlyphs(
+                      l,
+                      user,
+                    )) ...[
                       const SizedBox(width: 6),
                       _StatusTooltip(
-                        message: statusWords(l, user),
+                        message: words,
                         child: Icon(glyph, size: 15, color: colour),
                       ),
                     ],
@@ -906,50 +906,55 @@ class _UserRow extends StatelessWidget {
   /// `speaking` comes from the audio, not the roster: the server never says
   /// who is talking, so `UiUser.talking` only ever changes when the server
   /// happens to send an unrelated roster update.
-  /// What the status glyph means, in words.
+  /// Their microphone and their hearing, as glyph, colour and words.
   ///
-  /// **Whose decision it was, which a glyph cannot say.** A closed microphone
-  /// looks the same whether the rider closed it or an admin did, and the two
-  /// call for different responses: one is somebody choosing not to talk, the
-  /// other is somebody who has been stopped.
-  static String statusWords(L l, UiUser u) {
-    if (u.selfDeafened) return l.statusTheyHearNothing;
-    if (u.deafened) return l.statusDeafenedByAdmin;
-    if (u.localMute) return l.statusMutedForYou;
+  /// **Two glyphs, always, because they are two switches.** A rider closes
+  /// their microphone with one button and their ears with another, and the two
+  /// say quite different things to whoever reads the row: one is somebody
+  /// choosing not to talk, the other is somebody who cannot hear a word you
+  /// say. Drawn as one glyph with the other hidden behind it — which is how
+  /// this started — a rider who had done both looked like a rider who had done
+  /// one, and which one depended on the order of the `if`s.
+  ///
+  /// **Present and quiet, or absent and red.** Grey means the thing is on and
+  /// nothing is wrong, which is worth drawing: a row with no mark at all reads
+  /// as "nobody has told us" rather than "they are fine". Red is this app's
+  /// colour for no audio crossing, whoever decided it, and the words say which
+  /// of them did.
+  ///
+  /// Speech is not in here: the name itself turns and thickens when somebody
+  /// talks.
+  static List<(IconData, Color, String)> statusGlyphs(L l, UiUser u) {
+    const quiet = StatusColors.idle;
+    const stopped = StatusColors.failed;
+
+    final (IconData, Color, String) mic;
     if (u.muted) {
-      return u.selfMuted ? l.statusTheirMicOff : l.statusMutedByAdmin;
+      mic = (
+        Icons.mic_off,
+        stopped,
+        u.selfMuted ? l.statusTheirMicOff : l.statusMutedByAdmin,
+      );
+    } else if (u.suppressed) {
+      // Silenced by the channel rather than by anybody's decision. A separate
+      // glyph because it has a separate cause and a separate cure: this one is
+      // fixed by moving, not by a button.
+      mic = (Icons.voice_over_off, stopped, l.statusSuppressedHere);
+    } else {
+      mic = (Icons.mic, quiet, l.statusMicOpen);
     }
-    if (u.suppressed) return l.statusSuppressedHere;
-    return '';
-  }
 
-  /// The glyph for a rider who cannot be heard or cannot hear, or null.
-  ///
-  /// The same glyph the toolbar uses for the same state: two icons for one
-  /// condition is how a roster ends up meaning something different from the
-  /// button that caused it. **A rider who turned their own sound off gets one
-  /// of their own** — it is the only state here about *them* hearing rather
-  /// than being heard, and talking to somebody who cannot hear a word of it is
-  /// the mistake this row can save a rider from. Suppression is separate again,
-  /// having a separate cause and a separate cure: that one is fixed by moving,
-  /// not by a button.
-  ///
-  /// The colour is the same red throughout: it means no audio is crossing,
-  /// whoever decided it, and that vocabulary is read at a glance through a
-  /// visor. Which of them decided it is in [statusWords].
-  ///
-  /// Silence and speech are not in it: the name itself turns and thickens when
-  /// somebody talks, and a mark against every quiet rider would be a mark
-  /// nobody reads.
-  static (IconData, Color)? _statusGlyph(UiUser u) {
-    if (u.selfDeafened) return (Icons.headset_off, StatusColors.failed);
-    if (u.deafened) return (Icons.volume_off, StatusColors.failed);
-    if (u.localMute) return (Icons.volume_off, StatusColors.failed);
-    if (u.muted) return (Icons.mic_off, StatusColors.failed);
-    if (u.suppressed) return (Icons.voice_over_off, StatusColors.failed);
-    return null;
-  }
+    final (IconData, Color, String) ears;
+    if (u.selfDeafened) {
+      ears = (Icons.headset_off, stopped, l.statusTheyHearNothing);
+    } else if (u.deafened) {
+      ears = (Icons.hearing_disabled, stopped, l.statusDeafenedByAdmin);
+    } else {
+      ears = (Icons.headset, quiet, l.statusTheyCanHear);
+    }
 
+    return [mic, ears];
+  }
 }
 
 /// Making, renaming, describing and removing a channel.

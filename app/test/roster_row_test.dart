@@ -88,6 +88,38 @@ void main() {
     expect(find.byIcon(Icons.person_outline), findsNothing);
   });
 
+  testWidgets('both switches are drawn, quiet when nothing is wrong', (
+    t,
+  ) async {
+    // **Two glyphs, always.** A rider closes their microphone with one button
+    // and their ears with another; grey means the thing is on, which is worth
+    // drawing, because a row with no mark at all reads as "nobody has told us"
+    // rather than "they are fine".
+    final state = connected();
+    await t.pumpWidget(host(state, rider()));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.mic), findsOneWidget);
+    expect(find.byIcon(Icons.headset), findsOneWidget);
+    expect(find.byIcon(Icons.mic_off), findsNothing);
+    expect(find.byIcon(Icons.headset_off), findsNothing);
+  });
+
+  testWidgets('a rider who did both is shown as having done both', (t) async {
+    // One glyph with the other hidden behind it is how this started, and a
+    // rider who had done both looked like a rider who had done one.
+    final state = connected();
+    await t.pumpWidget(
+      host(state, rider(selfMuted: true, selfDeafened: true)),
+    );
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.mic_off), findsOneWidget);
+    expect(find.byIcon(Icons.headset_off), findsOneWidget);
+    expect(find.byIcon(Icons.mic), findsNothing);
+    expect(find.byIcon(Icons.headset), findsNothing);
+  });
+
   testWidgets('the state is beside the name, not hidden on the picture', (
     t,
   ) async {
@@ -104,19 +136,6 @@ void main() {
     final name = t.getRect(find.text('Anna'));
     final glyph = t.getRect(find.byIcon(Icons.mic_off));
     expect(glyph.left, greaterThan(name.right));
-  });
-
-  testWidgets('a rider with nothing to say about them carries no glyph', (
-    t,
-  ) async {
-    // A mark against every quiet rider is a mark nobody reads.
-    final state = connected();
-    await t.pumpWidget(host(state, rider()));
-    await t.pump(const Duration(milliseconds: 50));
-
-    expect(find.byIcon(Icons.mic_off), findsNothing);
-    expect(find.byIcon(Icons.volume_off), findsNothing);
-    expect(find.byIcon(Icons.headset_off), findsNothing);
   });
 
   testWidgets('without a picture the person icon is the row', (t) async {
@@ -179,7 +198,9 @@ void main() {
     await t.pump(const Duration(milliseconds: 50));
 
     expect(find.byIcon(Icons.headset_off), findsOneWidget);
-    expect(find.byIcon(Icons.volume_off), findsNothing);
+    // Their microphone is drawn too, and the server closes it when a rider
+    // deafens themselves — see the live test.
+    expect(find.byIcon(Icons.hearing_disabled), findsNothing);
   });
 
   testWidgets('and an admin deafening somebody looks different', (t) async {
@@ -187,7 +208,7 @@ void main() {
     await t.pumpWidget(host(state, rider(deafened: true)));
     await t.pump(const Duration(milliseconds: 50));
 
-    expect(find.byIcon(Icons.volume_off), findsOneWidget);
+    expect(find.byIcon(Icons.hearing_disabled), findsOneWidget);
     expect(find.byIcon(Icons.headset_off), findsNothing);
   });
 

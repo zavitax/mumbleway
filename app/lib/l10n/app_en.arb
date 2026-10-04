@@ -52,6 +52,8 @@
   "audioFailedTitle": "Audio could not start",
   "audioFailedBody": "MumbleWay needs a microphone. Check that one is connected and that permission is granted, then restart the app.",
   "statusTheirMicOff": "Their microphone is off",
+  "statusMicOpen": "Their microphone is open",
+  "statusTheyCanHear": "They can hear the channel",
   "statusMutedByAdmin": "Muted by an admin",
   "statusTheyHearNothing": "Their sound is off — they cannot hear you",
   "statusDeafenedByAdmin": "Deafened by an admin",

@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/state/app_state.dart';
+import 'package:mumbleway/theme.dart';
 import 'package:mumbleway/widgets/channel_panel.dart';
 import 'package:mumbleway/widgets/connection_quality.dart';
 
@@ -65,7 +66,9 @@ void main() {
         GlobalWidgetsLocalizations.delegate,
       ],
       supportedLocales: L.supportedLocales,
-      home: Scaffold(body: ChannelUserList(serverId: 'srv', users: [user])),
+      home: Scaffold(
+        body: ChannelUserList(serverId: 'srv', users: [user]),
+      ),
     ),
   );
 
@@ -109,9 +112,7 @@ void main() {
     // One glyph with the other hidden behind it is how this started, and a
     // rider who had done both looked like a rider who had done one.
     final state = connected();
-    await t.pumpWidget(
-      host(state, rider(selfMuted: true, selfDeafened: true)),
-    );
+    await t.pumpWidget(host(state, rider(selfMuted: true, selfDeafened: true)));
     await t.pump(const Duration(milliseconds: 50));
 
     expect(find.byIcon(Icons.mic_off), findsOneWidget);
@@ -163,9 +164,7 @@ void main() {
     expect(written.top, greaterThanOrEqualTo(name.bottom - 1));
   });
 
-  testWidgets('a long note is cut at two lines and offered in full', (
-    t,
-  ) async {
+  testWidgets('a long note is cut at two lines and offered in full', (t) async {
     // A server caps a note at 512 characters, and a rider who writes all of
     // them would otherwise own the roster — every other row pushed off a phone
     // screen by one person's paragraph.
@@ -203,13 +202,51 @@ void main() {
     expect(find.byIcon(Icons.hearing_disabled), findsNothing);
   });
 
-  testWidgets('and an admin deafening somebody looks different', (t) async {
-    final state = connected();
-    await t.pumpWidget(host(state, rider(deafened: true)));
+  testWidgets('and an admin doing it is the same glyph in another colour', (
+    t,
+  ) async {
+    // **One glyph per state, the colour for whose decision it was.** Two red
+    // struck icons are not told apart through a visor at speed; what the row
+    // is for is "they cannot hear", and amber says the rider on the other end
+    // cannot undo it by changing their mind.
+    final theirs = connected();
+    await t.pumpWidget(host(theirs, rider(selfDeafened: true)));
     await t.pump(const Duration(milliseconds: 50));
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      StatusColors.failed,
+    );
 
-    expect(find.byIcon(Icons.hearing_disabled), findsOneWidget);
-    expect(find.byIcon(Icons.headset_off), findsNothing);
+    await t.pumpWidget(const SizedBox.shrink());
+    final admins = connected();
+    await t.pumpWidget(host(admins, rider(deafened: true)));
+    await t.pump(const Duration(milliseconds: 50));
+    expect(find.byIcon(Icons.headset_off), findsOneWidget);
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      StatusColors.reconnecting,
+    );
+  });
+
+  testWidgets('a muted rider is red by their own hand, amber by an admin', (
+    t,
+  ) async {
+    final theirs = connected();
+    await t.pumpWidget(host(theirs, rider(selfMuted: true)));
+    await t.pump(const Duration(milliseconds: 50));
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
+      StatusColors.failed,
+    );
+
+    await t.pumpWidget(const SizedBox.shrink());
+    final admins = connected();
+    await t.pumpWidget(host(admins, rider(muted: true)));
+    await t.pump(const Duration(milliseconds: 50));
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
+      StatusColors.reconnecting,
+    );
   });
 
   testWidgets('a closed microphone says whose decision it was', (t) async {

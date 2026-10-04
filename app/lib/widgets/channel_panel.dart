@@ -916,39 +916,46 @@ class _UserRow extends StatelessWidget {
   /// this started — a rider who had done both looked like a rider who had done
   /// one, and which one depended on the order of the `if`s.
   ///
-  /// **Present and quiet, or absent and red.** Grey means the thing is on and
-  /// nothing is wrong, which is worth drawing: a row with no mark at all reads
-  /// as "nobody has told us" rather than "they are fine". Red is this app's
-  /// colour for no audio crossing, whoever decided it, and the words say which
-  /// of them did.
+  /// **One glyph per state, and the colour says whose decision it was.** Grey
+  /// means the thing is on and nothing is wrong, which is worth drawing: a row
+  /// with no mark at all reads as "nobody has told us" rather than "they are
+  /// fine". Red is the rider's own hand — they chose not to talk, or not to
+  /// listen. Amber is somebody else's: an admin, or the channel's own rule,
+  /// and that is the one worth catching the eye, because it is the one the
+  /// rider on the other end cannot undo by asking.
+  ///
+  /// The glyph itself does not change with the cause. Two red struck
+  /// microphones are not told apart through a visor at speed, and the state —
+  /// "they cannot be heard" — is what the row is for; which of them decided it
+  /// is in the words, a press away.
   ///
   /// Speech is not in here: the name itself turns and thickens when somebody
   /// talks.
   static List<(IconData, Color, String)> statusGlyphs(L l, UiUser u) {
     const quiet = StatusColors.idle;
-    const stopped = StatusColors.failed;
+    const theirOwn = StatusColors.failed;
+    const imposed = StatusColors.reconnecting;
 
     final (IconData, Color, String) mic;
     if (u.muted) {
-      mic = (
-        Icons.mic_off,
-        stopped,
-        u.selfMuted ? l.statusTheirMicOff : l.statusMutedByAdmin,
-      );
+      mic = u.selfMuted
+          ? (Icons.mic_off, theirOwn, l.statusTheirMicOff)
+          : (Icons.mic_off, imposed, l.statusMutedByAdmin);
     } else if (u.suppressed) {
-      // Silenced by the channel rather than by anybody's decision. A separate
-      // glyph because it has a separate cause and a separate cure: this one is
-      // fixed by moving, not by a button.
-      mic = (Icons.voice_over_off, stopped, l.statusSuppressedHere);
+      // Silenced by the channel rather than by anybody's hand, and amber for
+      // the same reason an admin mute is: it is not this rider's doing and
+      // they cannot undo it by changing their mind. A glyph of its own because
+      // the cure is different — this one is fixed by moving, not by a button.
+      mic = (Icons.voice_over_off, imposed, l.statusSuppressedHere);
     } else {
       mic = (Icons.mic, quiet, l.statusMicOpen);
     }
 
     final (IconData, Color, String) ears;
     if (u.selfDeafened) {
-      ears = (Icons.headset_off, stopped, l.statusTheyHearNothing);
+      ears = (Icons.headset_off, theirOwn, l.statusTheyHearNothing);
     } else if (u.deafened) {
-      ears = (Icons.hearing_disabled, stopped, l.statusDeafenedByAdmin);
+      ears = (Icons.headset_off, imposed, l.statusDeafenedByAdmin);
     } else {
       ears = (Icons.headset, quiet, l.statusTheyCanHear);
     }

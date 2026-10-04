@@ -1436,22 +1436,15 @@ pub fn app_events(sink: StreamSink<AppEvent>) -> anyhow::Result<()> {
 pub fn add_server(config: ServerConfig) -> anyhow::Result<String> {
     let app = app()?;
 
-    let mut profile = ServerProfile::new(
-        config.name.clone(),
-        config.host.clone(),
-        config.port,
-        config.username.clone(),
-    );
-    profile.password = config.password;
-    profile.cert_fingerprint = config.cert_fingerprint;
-
-    // Honour a caller-supplied id rather than always deriving host:port. That
-    // derivation is a good default, but it makes duplicates impossible — and
-    // keeping the same server twice under different usernames or channels is a
-    // reasonable thing to want.
-    if !config.id.trim().is_empty() {
-        profile.id = config.id.clone();
-    }
+    // **One conversion, shared with the sharing paths.** This used to build the
+    // profile by hand and copy three fields across, which is how a server could
+    // be registered without the access tokens it was saved with: they were in
+    // the config, in the saved entry and in the settings file, and absent from
+    // the `Authenticate` that actually asks for them — so a rider came back
+    // after a restart outside the channel their token opens, with nothing
+    // anywhere saying why. A conversion that lists every field once cannot
+    // drift from the one the invite links use.
+    let profile = config_to_profile(config);
     let id = profile.id.clone();
 
     // Wire this session into the audio engine.
@@ -3350,6 +3343,11 @@ pub fn export_servers(configs: Vec<ServerConfig>) -> anyhow::Result<String> {
 }
 
 /// Converts the Dart-facing config into the core's profile type.
+///
+/// **Every field, in one place.** `add_server` once did this by hand and copied
+/// three of them; the fields it forgot were simply absent from the session, with
+/// nothing to say so. Anything added to `ServerConfig` belongs here and nowhere
+/// else.
 fn config_to_profile(c: ServerConfig) -> ServerProfile {
     let mut p = ServerProfile::new(c.name, c.host, c.port, c.username);
     p.password = c.password;
@@ -3401,6 +3399,65 @@ mod tests {
 
     fn slot_map() -> Arc<Mutex<HashMap<String, u16>>> {
         Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    /// Everything a saved server carries must reach the session.
+    ///
+    /// **The access tokens are why this test exists.** They were saved, shown
+    /// in the menu, sent to a *live* session when the rider typed one — and
+    /// dropped on the floor when a session was registered at startup, because
+    /// the registration built its profile by hand and copied three fields. The
+    /// symptom was a rider who held the word that opens a channel, could see it
+    /// listed, and was refused entry after every restart, with the client
+    /// offering no account of why.
+    #[test]
+    fn the_conversion_to_a_profile_keeps_every_field() {
+        let config = ServerConfig {
+            id: "chosen-id".into(),
+            name: "Rig".into(),
+            host: "example.test".into(),
+            port: 64739,
+            username: "rider".into(),
+            password: Some("secret".into()),
+            cert_fingerprint: Some("ab:cd".into()),
+            default_channel: Some("Garage".into()),
+            access_tokens: vec!["vip".into(), "rideboss".into()],
+        };
+
+        let p = config_to_profile(config);
+        assert_eq!(
+            p.id, "chosen-id",
+            "a caller-chosen id is what makes duplicates possible"
+        );
+        assert_eq!(p.name, "Rig");
+        assert_eq!(p.host, "example.test");
+        assert_eq!(p.port, 64739);
+        assert_eq!(p.username, "rider");
+        assert_eq!(p.password.as_deref(), Some("secret"));
+        assert_eq!(p.cert_fingerprint.as_deref(), Some("ab:cd"));
+        assert_eq!(p.auto_join_channel.as_deref(), Some("Garage"));
+        assert_eq!(
+            p.access_tokens,
+            vec!["vip".to_string(), "rideboss".to_string()],
+            "the tokens have to be on the profile, or the handshake never asks"
+        );
+    }
+
+    /// An empty id still derives one, which is what keeps old entries working.
+    #[test]
+    fn a_config_without_an_id_gets_the_usual_one() {
+        let config = ServerConfig {
+            id: "   ".into(),
+            name: "Rig".into(),
+            host: "example.test".into(),
+            port: 64739,
+            username: "rider".into(),
+            password: None,
+            cert_fingerprint: None,
+            default_channel: None,
+            access_tokens: Vec::new(),
+        };
+        assert_eq!(config_to_profile(config).id, "example.test:64739");
     }
 
     #[test]

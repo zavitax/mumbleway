@@ -10,6 +10,7 @@ import 'package:mumbleway/state/app_state.dart';
 import 'package:mumbleway/theme.dart';
 import 'package:mumbleway/widgets/channel_panel.dart';
 import 'package:mumbleway/widgets/connection_quality.dart';
+import 'package:mumbleway/widgets/voice_meter.dart';
 
 /// What a rider's row says about them, and in what order.
 ///
@@ -403,6 +404,45 @@ void main() {
     await t.tap(find.byIcon(Icons.mic_off));
     await t.pump(const Duration(milliseconds: 100));
     expect(find.text(l.statusMutedByAdmin), findsOneWidget);
+  });
+
+  testWidgets('a talking rider fills the upright meter from the bottom', (
+    t,
+  ) async {
+    // **The whole path, not the widget.** A level arrives for a session, the
+    // row looks it up by that session, and the meter stands it on end: the
+    // fill has to be anchored at the floor and a loud rider has to fill more
+    // of the track than a quiet one. Flat columns on a device have two
+    // possible causes — nothing arriving, or nothing drawn — and this rules
+    // out the second, which is the half that is ours.
+    final state = connected();
+    state.runtimes['srv']!.speakerLevels[7] = -10;
+    await t.pumpWidget(host(state, rider()));
+    await t.pump(const Duration(milliseconds: 300));
+
+    final meter = t.getRect(find.byType(VoiceMeter));
+    final loud = t.getRect(
+      find.descendant(
+        of: find.byType(VoiceMeter),
+        matching: find.byType(ClipRRect),
+      ),
+    );
+    expect(loud.bottom, closeTo(meter.bottom, 0.5), reason: 'grows upward');
+    expect(loud.height, greaterThan(meter.height / 2));
+
+    // And a quiet one fills less of it than a loud one did.
+    await t.pumpWidget(const SizedBox.shrink());
+    final quiet = connected();
+    quiet.runtimes['srv']!.speakerLevels[7] = -40;
+    await t.pumpWidget(host(quiet, rider()));
+    await t.pump(const Duration(milliseconds: 300));
+    final little = t.getRect(
+      find.descendant(
+        of: find.byType(VoiceMeter),
+        matching: find.byType(ClipRRect),
+      ),
+    );
+    expect(little.height, lessThan(loud.height));
   });
 
   testWidgets('the connection sits between the speaker and the menu', (

@@ -514,6 +514,7 @@ impl Session {
         let conn = control::connect(
             &self.config.profile.host,
             self.config.profile.port,
+            &[],
             tls_config,
             observed,
         )
@@ -522,7 +523,7 @@ impl Session {
         let control::Connected {
             mut reader,
             mut writer,
-            peer,
+            voice_peer,
             observed,
         } = conn;
 
@@ -626,15 +627,24 @@ impl Session {
         }
 
         // --- UDP setup -----------------------------------------------------
-        let mut udp = match state.crypt.take() {
-            Some(crypt) => match VoiceSocket::bind(peer, crypt).await {
+        //
+        // No address means voice goes through the tunnel: either the rider
+        // asked for that, or the server's own address could not be resolved —
+        // and the cipher is kept either way, because the tunnel needs it too.
+        let mut udp = match (voice_peer, state.crypt.take()) {
+            (Some(peer), Some(crypt)) => match VoiceSocket::bind(peer, crypt).await {
                 Ok(mut s) => {
                     let _ = s.send_ping(now_millis()).await;
                     Some(s)
                 }
                 Err(_) => None, // UDP unavailable; the tunnel still works
             },
-            None => None,
+            (None, crypt) => {
+                state.crypt = crypt;
+                tracing::info!("no UDP address for voice; tunnelling it over the control channel");
+                None
+            }
+            (Some(_), None) => None,
         };
 
         state.connected_at = Some(Instant::now());

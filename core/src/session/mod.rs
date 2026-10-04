@@ -264,6 +264,7 @@ impl LiveState {
                     self.peers.get(u.session).map(|p| p.version.clone())
                 };
                 u.quality = self.quality.get(&u.session).copied();
+                u.muted_you = self.peers.has_muted_us(u.session);
                 u
             })
             .collect();
@@ -1208,10 +1209,11 @@ impl Session {
                         local_mute: false,
                         suppress: false,
                         mumbleway: None,
-                        // Both of these live outside the roster map and are
+                        // These three live outside the roster map and are
                         // filled in by `user_list`; the copy kept here is
-                        // always `None`.
+                        // always the empty one.
                         quality: None,
+                        muted_you: false,
                         comment: String::new(),
                         priority_speaker: false,
                     });
@@ -1650,6 +1652,18 @@ impl Session {
                         self.emit(SessionEvent::RemoteMuteRequested { mute, by })
                             .await;
                     }
+                } else if id == peers::DATA_ID_MUTED_YOU {
+                    // Only from a peer that has identified itself, like every
+                    // other exchange here: an unannounced session saying this
+                    // is a client we know nothing about marking somebody's
+                    // roster, and there is no name to put against it.
+                    if !state.peers.is_mumbleway(sender) {
+                        return Ok(None);
+                    }
+                    if let Some(muted) = m.data.as_deref().and_then(peers::decode_muted_you) {
+                        state.peers.note_muted_us(sender, muted);
+                        self.emit(SessionEvent::Users(state.user_list())).await;
+                    }
                 }
                 // Other `mumbleway/` IDs are reserved for the exchanges this
                 // handshake exists to enable, and nothing under any other
@@ -1795,6 +1809,21 @@ impl Session {
                     u.local_mute = muted;
                 }
                 self.emit(SessionEvent::Users(state.user_list())).await;
+
+                // And told to the rider it is about, if their client can say
+                // so. Nothing else can: the server is not party to a local
+                // mute, so from their end being dropped looks exactly like
+                // being heard, and they carry on talking to somebody who
+                // stopped listening. See `peers::DATA_ID_MUTED_YOU`.
+                if state.plugin_data && state.peers.accepts_mute_notice(session) {
+                    let m = mumble::PluginDataTransmission {
+                        sender_session: None,
+                        receiver_sessions: vec![session],
+                        data: Some(peers::encode_muted_you(muted).into()),
+                        data_id: Some(peers::DATA_ID_MUTED_YOU.to_string()),
+                    };
+                    writer.send(MessageType::PluginDataTransmission, &m).await?;
+                }
             }
             SessionCommand::RegisterSelf => {
                 if let Some(me) = state.self_session {

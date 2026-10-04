@@ -120,11 +120,15 @@ pub const PROTOCOL: u32 = 1;
 /// only to peers whose hello listed the same name — so it never reaches a
 /// client that would not know what to do with it, and never needs a change to
 /// the handshake to be introduced.
-pub const CAPABILITIES: &[&str] = &[CAP_REMOTE_MUTE];
+pub const CAPABILITIES: &[&str] = &[CAP_REMOTE_MUTE, CAP_MUTE_NOTICE];
 
 /// This client will act on a request to mute or unmute its microphone — see
 /// [`DATA_ID_MUTE`].
 pub const CAP_REMOTE_MUTE: &str = "remote-mute";
+
+/// This client says when it has silenced a peer for itself, and understands
+/// being told — see [`DATA_ID_MUTED_YOU`].
+pub const CAP_MUTE_NOTICE: &str = "mute-notice";
 
 /// Asks a peer to turn its own microphone off or on.
 ///
@@ -140,6 +144,22 @@ pub const CAP_REMOTE_MUTE: &str = "remote-mute";
 /// roster's "Mute on server" sends both, so a rider with the permission gets the
 /// real, binding mute and one without still gets the request.
 pub const DATA_ID_MUTE: &str = "mumbleway/mute";
+
+/// Tells a peer they have been silenced for this rider alone, or let back in.
+///
+/// **The one way of being inaudible that nobody can see.** A local mute drops
+/// a rider's audio inside this app before it reaches the mixer: the server is
+/// not told, nothing is in the roster, and from the other end it is
+/// indistinguishable from being heard. So a rider carries on talking to
+/// somebody who stopped listening half an hour ago, and there is nothing
+/// anywhere that would tell them — unless the client that did it says so,
+/// which is what this is.
+///
+/// It is a courtesy, not a permission: the sender gains nothing by sending it
+/// and the receiver can do nothing about it but know. Sent only to peers whose
+/// hello listed [`CAP_MUTE_NOTICE`], so nobody hears about a feature their
+/// client cannot explain.
+pub const DATA_ID_MUTED_YOU: &str = "mumbleway/muted-you";
 
 /// How long after acting on one remote *mute* request the next one is ignored.
 ///
@@ -327,6 +347,27 @@ pub fn decode_mute_request(data: &[u8]) -> Option<bool> {
         .map(|w| w.mute)
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct MutedYouWire {
+    muted: bool,
+}
+
+/// Encodes "I have silenced you for myself" (`true`) or "you are back"
+/// (`false`).
+pub fn encode_muted_you(muted: bool) -> Vec<u8> {
+    serde_json::to_vec(&MutedYouWire { muted }).unwrap_or_default()
+}
+
+/// Decodes that notice, or `None` for anything that is not one.
+pub fn decode_muted_you(data: &[u8]) -> Option<bool> {
+    if data.is_empty() || data.len() > MAX_DATA_LENGTH {
+        return None;
+    }
+    serde_json::from_slice::<MutedYouWire>(data)
+        .ok()
+        .map(|w| w.muted)
+}
+
 /// What to do with a mute request that arrived from a peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoteMuteDecision {
@@ -431,6 +472,13 @@ pub struct Peers {
     owed: BTreeSet<u32>,
     /// Sessions a mute request went to, and when — see [`Peers::backup_covers`].
     backups: HashMap<u32, Instant>,
+    /// Sessions that have said they are not listening to us.
+    ///
+    /// Their word for it, and nothing else could be: this is a decision taken
+    /// inside somebody else's app, which neither the server nor we can observe.
+    /// Worth exactly as much as the peer is honest — which is enough for a mark
+    /// in a roster and would not be enough for anything that mattered.
+    muted_us: BTreeSet<u32>,
 }
 
 impl Peers {
@@ -458,6 +506,27 @@ impl Peers {
         self.known.remove(&session);
         self.owed.remove(&session);
         self.backups.remove(&session);
+        self.muted_us.remove(&session);
+    }
+
+    /// Whether `session` said it understands being told about a local mute.
+    pub fn accepts_mute_notice(&self, session: u32) -> bool {
+        self.get(session)
+            .is_some_and(|p| p.supports(CAP_MUTE_NOTICE))
+    }
+
+    /// Records that `session` has silenced us for themselves, or let us back.
+    pub fn note_muted_us(&mut self, session: u32, muted: bool) {
+        if muted {
+            self.muted_us.insert(session);
+        } else {
+            self.muted_us.remove(&session);
+        }
+    }
+
+    /// Whether `session` has told us they are not listening.
+    pub fn has_muted_us(&self, session: u32) -> bool {
+        self.muted_us.contains(&session)
     }
 
     /// Whether `session` said it will act on a mute request.
@@ -811,6 +880,76 @@ mod tests {
         assert!(
             !a.is_due(now + RETRY_INTERVAL),
             "nobody left to ask, so nothing more to say"
+        );
+    }
+
+    #[test]
+    fn this_build_offers_the_mute_notice() {
+        // Same reason as the one below: a capability missing from the hello is
+        // a feature every peer declines to use, for ever and without a word.
+        assert!(CAPABILITIES.contains(&CAP_MUTE_NOTICE));
+        assert!(DATA_ID_MUTED_YOU.starts_with(DATA_ID_PREFIX));
+        assert!(DATA_ID_MUTED_YOU.len() <= MAX_DATA_ID_LENGTH);
+    }
+
+    #[test]
+    fn being_told_you_were_muted_survives_the_round_trip() {
+        assert_eq!(decode_muted_you(&encode_muted_you(true)), Some(true));
+        assert_eq!(decode_muted_you(&encode_muted_you(false)), Some(false));
+        // Written by another client, so everything that is not one of ours is
+        // dropped rather than guessed at.
+        assert_eq!(decode_muted_you(b""), None);
+        assert_eq!(decode_muted_you(b"{}"), None, "it says nothing");
+        assert_eq!(decode_muted_you(b"go away"), None);
+        assert_eq!(
+            decode_muted_you(&vec![b'x'; MAX_DATA_LENGTH + 1]),
+            None,
+            "longer than the server will carry"
+        );
+    }
+
+    #[test]
+    fn who_has_us_muted_is_remembered_until_they_leave() {
+        let mut peers = Peers::default();
+        let hello = Hello {
+            version: "1.0".into(),
+            proto: PROTOCOL,
+            caps: vec![CAP_MUTE_NOTICE.into()],
+            reply: false,
+        };
+        peers.on_hello(7, hello);
+        assert!(peers.accepts_mute_notice(7));
+        assert!(!peers.has_muted_us(7), "nobody has said anything yet");
+
+        peers.note_muted_us(7, true);
+        assert!(peers.has_muted_us(7));
+        peers.note_muted_us(7, false);
+        assert!(!peers.has_muted_us(7), "they let us back in");
+
+        // **A session number is the server's and it gets handed on.** Leaving
+        // it behind would mark whoever inherits 7 as having muted us, which
+        // they have never heard of.
+        peers.note_muted_us(7, true);
+        peers.forget(7);
+        assert!(!peers.has_muted_us(7));
+        assert!(!peers.accepts_mute_notice(7));
+    }
+
+    #[test]
+    fn a_peer_without_the_capability_is_not_told() {
+        let mut peers = Peers::default();
+        peers.on_hello(
+            9,
+            Hello {
+                version: "0.9".into(),
+                proto: PROTOCOL,
+                caps: vec![CAP_REMOTE_MUTE.into()],
+                reply: false,
+            },
+        );
+        assert!(
+            !peers.accepts_mute_notice(9),
+            "an older build would be told something it cannot explain"
         );
     }
 

@@ -59,6 +59,7 @@
   "statusMutedByAdmin": "Заглушён администратором",
   "statusTheyHearNothing": "У них выключен звук — они вас не слышат",
   "statusDeafenedByAdmin": "Лишён звука администратором",
+  "statusTheyMutedYou": "Они заглушили вас у себя",
   "statusMutedForYou": "Заглушён только у вас",
   "statusSuppressedHere": "Этот канал не передаёт их голос",
   "statusConnected": "Подключено",

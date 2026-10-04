@@ -966,11 +966,21 @@ class _UserRow extends StatelessWidget {
       mic = (Icons.mic, quiet, l.statusMicOpen);
     }
 
-    // The ears are about *their* hearing only. Silencing somebody for
-    // yourself does nothing to what they can hear, and saying it here said
-    // they had gone deaf.
+    // The ears are about *their* hearing, and about yours in it: whether this
+    // rider can hear the channel, and whether they are hearing **you**.
+    // Silencing somebody for yourself does nothing to what they can hear, so
+    // that one is drawn on the microphone above and not here.
     final (IconData, Color, String) ears;
-    if (u.deafened) {
+    if (u.mutedYou) {
+      // **They have turned you down, and this is the only place it can be
+      // seen.** A local mute is invisible by design — the server is not told —
+      // so from this end being dropped looks exactly like being heard, and a
+      // rider carries on talking to somebody who stopped listening. Their app
+      // says so, and it is purple for the same reason the microphone is: it is
+      // one rider's private decision about another, and nobody else on the
+      // server can see it either.
+      ears = (Icons.headset_off, yours, l.statusTheyMutedYou);
+    } else if (u.deafened) {
       ears = (Icons.headset_off, imposed, l.statusDeafenedByAdmin);
     } else if (u.selfDeafened) {
       ears = (Icons.headset_off, theirOwn, l.statusTheyHearNothing);

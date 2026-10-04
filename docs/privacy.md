@@ -100,6 +100,13 @@ app acts on at most one such request every 30 seconds. Being unmuted by others
 can be turned off in Settings, with "Let MumbleWay users unmute me". Being
 muted cannot, and your own mute button always turns the microphone back on.
 
+**Silencing somebody for yourself.** Turning another rider down in the list of
+people in the channel affects only your own device — the server is not involved,
+and nobody else's app changes. If that rider uses MumbleWay, their app is told,
+so that they can see they are not coming through to you rather than talk to
+somebody who stopped listening; they are told again when you let them back in.
+Nobody else is told, and a rider using another Mumble app is not told at all.
+
 ### Invitation links
 
 An invitation you share is an ordinary `https://zavitax.github.io/mumbleway/join/`

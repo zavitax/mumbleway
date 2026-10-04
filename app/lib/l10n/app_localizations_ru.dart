@@ -136,6 +136,9 @@ class LRu extends L {
   String get statusDeafenedByAdmin => 'Лишён звука администратором';
 
   @override
+  String get statusTheyMutedYou => 'Они заглушили вас у себя';
+
+  @override
   String get statusMutedForYou => 'Заглушён только у вас';
 
   @override

@@ -21,6 +21,7 @@ void main() {
     muted: false,
     deafened: false,
     localMute: false,
+    mutedYou: false,
     selfMuted: false,
     selfDeafened: false,
     status: 'silent',

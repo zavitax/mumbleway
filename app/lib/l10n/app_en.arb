@@ -59,6 +59,7 @@
   "statusMutedByAdmin": "Muted by an admin",
   "statusTheyHearNothing": "Their sound is off — they cannot hear you",
   "statusDeafenedByAdmin": "Deafened by an admin",
+  "statusTheyMutedYou": "They have muted you for themselves",
   "statusMutedForYou": "Muted for you only",
   "statusSuppressedHere": "This channel will not carry their voice",
   "statusConnected": "Connected",

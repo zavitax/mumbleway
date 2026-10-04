@@ -43,6 +43,7 @@ void main() {
     selfMuted: false,
     selfDeafened: false,
     localMute: false,
+    mutedYou: false,
     status: 'silent',
     prioritySpeaker: false,
     suppressed: false,

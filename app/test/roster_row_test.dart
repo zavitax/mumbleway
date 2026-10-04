@@ -23,6 +23,7 @@ UiUser rider({
   bool deafened = false,
   bool selfDeafened = false,
   bool localMute = false,
+  bool mutedYou = false,
   String comment = '',
   UiQuality? quality,
 }) => UiUser(
@@ -33,6 +34,7 @@ UiUser rider({
   muted: muted,
   deafened: deafened,
   localMute: localMute,
+  mutedYou: mutedYou,
   selfMuted: selfMuted,
   selfDeafened: selfDeafened,
   status: 'silent',
@@ -334,6 +336,49 @@ void main() {
     await t.tap(find.byIcon(Icons.mic_off));
     await t.pump(const Duration(milliseconds: 100));
     expect(find.text(l.statusMutedForYou), findsOneWidget);
+  });
+
+  testWidgets('a rider who has turned *you* down says so, in the same purple', (
+    t,
+  ) async {
+    // **The other half of a local mute, and the only place it can be seen.**
+    // The server is not party to one, so from this end being dropped looks
+    // exactly like being heard: a rider carries on talking to somebody who
+    // stopped listening half an hour ago. Their app says so over the same
+    // channel the mute request uses, and it lands on the ears, because what it
+    // says is that this rider is not hearing you.
+    final l = await L.delegate.load(const Locale('en'));
+    final state = connected();
+    await t.pumpWidget(host(state, rider(mutedYou: true)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.byIcon(Icons.headset_off), findsOneWidget);
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      StatusColors.yours,
+    );
+    // Nothing about their microphone, which is working perfectly.
+    expect(find.byIcon(Icons.mic), findsOneWidget);
+    await t.tap(find.byIcon(Icons.headset_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusTheyMutedYou), findsOneWidget);
+  });
+
+  testWidgets('muting each other says both things at once', (t) async {
+    // One rider turned down, one rider who turned you down: two switches, two
+    // glyphs, and the row is the only thing that knows about either.
+    final state = connected();
+    await t.pumpWidget(host(state, rider(localMute: true, mutedYou: true)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
+      StatusColors.yours,
+    );
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      StatusColors.yours,
+    );
   });
 
   testWidgets('a closed microphone says whose decision it was', (t) async {

@@ -121,6 +121,15 @@ pub struct UiUser {
     pub self_deafened: bool,
     /// Silenced by us alone. Needs no permission and is invisible to others.
     pub local_mute: bool,
+    /// Whether this rider has told us they have silenced *us* for themselves.
+    ///
+    /// The mirror of [`UiUser::local_mute`], and the only way that mute is
+    /// ever visible from the other end: the server is not party to it, so
+    /// being dropped by somebody looks exactly like being heard by them. Their
+    /// client says so over the MumbleWay handshake's channel, which makes this
+    /// the one field here resting on another client's honesty rather than on
+    /// the server's word.
+    pub muted_you: bool,
     /// One word for the roster: talking, silent, muted, deafened, muted for you.
     pub status: String,
     /// The MumbleWay version this user's client reported, or `None` if it has
@@ -933,6 +942,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 self_muted: u.self_mute,
                                 self_deafened: u.self_deaf,
                                 local_mute: u.local_mute,
+                                muted_you: u.muted_you,
                                 status,
                                 mumbleway_version: u.mumbleway,
                                 priority_speaker: u.priority_speaker,

@@ -4916,6 +4916,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
         let mut var_selfMuted = <bool>::sse_decode(deserializer);
         let mut var_selfDeafened = <bool>::sse_decode(deserializer);
         let mut var_localMute = <bool>::sse_decode(deserializer);
+        let mut var_mutedYou = <bool>::sse_decode(deserializer);
         let mut var_status = <String>::sse_decode(deserializer);
         let mut var_mumblewayVersion = <Option<String>>::sse_decode(deserializer);
         let mut var_prioritySpeaker = <bool>::sse_decode(deserializer);
@@ -4932,6 +4933,7 @@ impl SseDecode for crate::api::mumbleway::UiUser {
             self_muted: var_selfMuted,
             self_deafened: var_selfDeafened,
             local_mute: var_localMute,
+            muted_you: var_mutedYou,
             status: var_status,
             mumbleway_version: var_mumblewayVersion,
             priority_speaker: var_prioritySpeaker,
@@ -6251,6 +6253,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiUser {
             self.self_muted.into_into_dart().into_dart(),
             self.self_deafened.into_into_dart().into_dart(),
             self.local_mute.into_into_dart().into_dart(),
+            self.muted_you.into_into_dart().into_dart(),
             self.status.into_into_dart().into_dart(),
             self.mumbleway_version.into_into_dart().into_dart(),
             self.priority_speaker.into_into_dart().into_dart(),
@@ -7335,6 +7338,7 @@ impl SseEncode for crate::api::mumbleway::UiUser {
         <bool>::sse_encode(self.self_muted, serializer);
         <bool>::sse_encode(self.self_deafened, serializer);
         <bool>::sse_encode(self.local_mute, serializer);
+        <bool>::sse_encode(self.muted_you, serializer);
         <String>::sse_encode(self.status, serializer);
         <Option<String>>::sse_encode(self.mumbleway_version, serializer);
         <bool>::sse_encode(self.priority_speaker, serializer);

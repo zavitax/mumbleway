@@ -325,6 +325,12 @@ abstract class L {
   /// **'Deafened by an admin'**
   String get statusDeafenedByAdmin;
 
+  /// No description provided for @statusTheyMutedYou.
+  ///
+  /// In en, this message translates to:
+  /// **'They have muted you for themselves'**
+  String get statusTheyMutedYou;
+
   /// No description provided for @statusMutedForYou.
   ///
   /// In en, this message translates to:

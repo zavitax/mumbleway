@@ -2593,23 +2593,43 @@ class UiUser {
   final int channelId;
   final bool talking;
 
-  /// Muted server-side or by themselves — nobody hears them.
+  /// Muted by somebody else, for everyone: an admin's decision, not theirs.
+  ///
+  /// **These used to be `mute || self_mute`, and that hid the admin.** A
+  /// moderator muting a rider who runs MumbleWay sends two things — the
+  /// server mute and a request to their app, which closes their microphone
+  /// itself — so `self_mute` comes back set on almost every imposed mute
+  /// there is. A reader that took the two together could not tell whose
+  /// decision it was, and the one that matters is the one the rider cannot
+  /// undo by changing their mind. Anything that wants "can they be heard at
+  /// all" takes the two fields together, which is a line of code, where
+  /// telling them apart afterwards is impossible.
   final bool muted;
+
+  /// Deafened by an admin. Their own choice is [`UiUser::self_deafened`].
   final bool deafened;
 
-  /// Which of the two it was.
+  /// Their own hand: they closed their microphone, or their ears.
   ///
   /// **The roster says different things about them.** A rider who closed
   /// their own microphone has made a decision; one an admin closed has had
   /// one made for them, and a rider who turned their own sound off cannot
-  /// hear anybody — which is worth knowing before talking to them. The
-  /// combined flags above stay as they are, because "can they be heard" is
-  /// the question most of this app asks.
+  /// hear anybody — which is worth knowing before talking to them.
   final bool selfMuted;
   final bool selfDeafened;
 
   /// Silenced by us alone. Needs no permission and is invisible to others.
   final bool localMute;
+
+  /// Whether this rider has told us they have silenced *us* for themselves.
+  ///
+  /// The mirror of [`UiUser::local_mute`], and the only way that mute is
+  /// ever visible from the other end: the server is not party to it, so
+  /// being dropped by somebody looks exactly like being heard by them. Their
+  /// client says so over the MumbleWay handshake's channel, which makes this
+  /// the one field here resting on another client's honesty rather than on
+  /// the server's word.
+  final bool mutedYou;
 
   /// One word for the roster: talking, silent, muted, deafened, muted for you.
   final String status;
@@ -2654,6 +2674,7 @@ class UiUser {
     required this.selfMuted,
     required this.selfDeafened,
     required this.localMute,
+    required this.mutedYou,
     required this.status,
     this.mumblewayVersion,
     required this.prioritySpeaker,
@@ -2673,6 +2694,7 @@ class UiUser {
       selfMuted.hashCode ^
       selfDeafened.hashCode ^
       localMute.hashCode ^
+      mutedYou.hashCode ^
       status.hashCode ^
       mumblewayVersion.hashCode ^
       prioritySpeaker.hashCode ^
@@ -2694,6 +2716,7 @@ class UiUser {
           selfMuted == other.selfMuted &&
           selfDeafened == other.selfDeafened &&
           localMute == other.localMute &&
+          mutedYou == other.mutedYou &&
           status == other.status &&
           mumblewayVersion == other.mumblewayVersion &&
           prioritySpeaker == other.prioritySpeaker &&

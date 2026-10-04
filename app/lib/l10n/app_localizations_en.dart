@@ -137,6 +137,9 @@ class LEn extends L {
   String get statusDeafenedByAdmin => 'Deafened by an admin';
 
   @override
+  String get statusTheyMutedYou => 'They have muted you for themselves';
+
+  @override
   String get statusMutedForYou => 'Muted for you only';
 
   @override

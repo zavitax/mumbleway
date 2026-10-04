@@ -307,6 +307,17 @@ pub struct UserInfo {
     /// client writes it in — see [`crate::session::notes`].
     #[serde(default)]
     pub comment: String,
+    /// Whether this rider has told us they have silenced us for themselves.
+    ///
+    /// **The mirror of [`UserInfo::local_mute`], and the only way it is ever
+    /// visible.** A local mute is invisible by design — the server is not
+    /// told — so being on the receiving end of one looks exactly like being
+    /// heard. Their client says so over `PluginDataTransmission`, which makes
+    /// this the one field here that rests on another client's honesty rather
+    /// than on the server's word. Fine for a mark in a roster; it is load
+    /// bearing for nothing.
+    #[serde(default)]
+    pub muted_you: bool,
 }
 
 impl UserInfo {
@@ -685,6 +696,7 @@ mod tests {
             suppress: false,
             mumbleway: None,
             quality: None,
+            muted_you: false,
             comment: String::new(),
             priority_speaker: false,
         }

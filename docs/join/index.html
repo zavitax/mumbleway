@@ -90,6 +90,7 @@
   </p>
   <h1 id="heading">ADD A SERVER</h1>
   <div id="detail" class="card" hidden><dl id="rows"></dl></div>
+  <p id="note" class="muted" hidden></p>
   <a id="open" class="open" hidden>Open in MumbleWay</a>
   <p id="empty" class="muted" hidden>
     This link carries no invitation. Ask whoever sent it for the full link &mdash;
@@ -134,6 +135,15 @@
       open: 'Открыть в MumbleWay',
       empty: 'Эта ссылка не содержит приглашения. Попросите отправителя прислать её целиком — важна именно часть после «#».',
       hint: 'Ничего не произошло? Возможно, MumbleWay ещё не установлен.',
+      proxyTitle: 'Добавить прокси · MumbleWay',
+      proxyHeading: 'ДОБАВИТЬ ПРОКСИ',
+      proxyOpen: 'Добавить прокси в MumbleWay',
+      proxyKind: 'Тип',
+      proxyAddress: 'Адрес',
+      proxyVoice: 'Голос',
+      proxyVoiceThrough: 'тоже через прокси',
+      proxyVoiceDirect: 'напрямую',
+      proxyNote: 'Через эту машину пойдут все соединения, которые настроены на общий прокси. Добавляйте её, только если доверяете тому, кто прислал ссылку.',
       more: 'Подробнее о MumbleWay',
       moreHref: '../ru/',
       htmlLang: 'ru',
@@ -175,6 +185,23 @@
     if (more) more.href = T.moreHref;
   }
 
+  // English, for the half of the page that only a proxy link uses. Kept beside
+  // the Russian rather than in the markup because the markup says "add a
+  // server", and a page that silently changed its own heading would be worse
+  // than one that says which of the two it is.
+  var EN = {
+    proxyTitle: 'Add a proxy · MumbleWay',
+    proxyHeading: 'ADD A PROXY',
+    proxyOpen: 'Add this proxy to MumbleWay',
+    proxyKind: 'Kind',
+    proxyAddress: 'Address',
+    proxyVoice: 'Voice',
+    proxyVoiceThrough: 'through the proxy too',
+    proxyVoiceDirect: 'straight to the server',
+    proxyNote: 'Every connection set to use the app\'s proxy would go through this machine. Add it only if you trust whoever sent you the link.',
+  };
+  function word(key) { return (T && T[key]) || EN[key]; }
+
   // Everything after the first '#'. Not `location.hash.slice(1)` alone,
   // because a mumble:// link may itself contain a '#' in a channel name and
   // splitting on the first one is what keeps the rest intact.
@@ -188,10 +215,19 @@
   var link = raw;
   try {
     var decoded = decodeURIComponent(raw);
-    if (decoded.toLowerCase().indexOf('mumble:') === 0) link = decoded;
+    if (decoded.toLowerCase().indexOf('mumble:') === 0 ||
+        decoded.toLowerCase().indexOf('mumble-proxy:') === 0) {
+      link = decoded;
+    }
   } catch (e) { /* malformed escapes: keep raw */ }
 
-  if (link.toLowerCase().indexOf('mumble:') !== 0) {
+  // **Two schemes that look alike and mean entirely different things.** One
+  // adds a server; the other changes how every connection leaves the device.
+  // `mumble-proxy:` does not start with `mumble:`, so this has to ask about the
+  // longer one first or a proxy link would read as no invitation at all.
+  var lower = link.toLowerCase();
+  var isProxy = lower.indexOf('mumble-proxy:') === 0;
+  if (!isProxy && lower.indexOf('mumble:') !== 0) {
     document.getElementById('empty').hidden = false;
     return;
   }
@@ -200,16 +236,37 @@
   // **The password is never displayed**, though it may be in the link: it is
   // the server's, shared with everyone who has the invitation, and putting it
   // on screen only helps whoever is standing behind them.
+  if (isProxy) {
+    document.title = word('proxyTitle');
+    put('heading', word('proxyHeading'));
+    put('open', word('proxyOpen'));
+  }
+
   try {
     var u = new URL(link);
-    var rows = [
-      [T ? T.server : 'Server', u.hostname],
-      [T ? T.port : 'Port', u.port || '64738'],
-      [T ? T.channel : 'Channel',
-       decodeURIComponent(u.pathname.replace(/^\/+|\/+$/g, '')) || '—'],
-    ];
-    var title = u.searchParams.get('title');
-    if (title) rows.unshift([T ? T.name : 'Name', title]);
+    var rows;
+    if (isProxy) {
+      // A proxy's own credentials may be in the link and are **never shown**,
+      // for the same reason a server's password is not: putting a secret on
+      // screen only helps whoever is standing behind the reader.
+      var kind = (u.searchParams.get('kind') || 'http').toLowerCase();
+      rows = [
+        [word('proxyKind'), kind === 'socks5' || kind === 'socks'
+          ? 'SOCKS5' : 'HTTP(S)'],
+        [word('proxyAddress'), u.host],
+        [word('proxyVoice'), u.searchParams.get('voice') === '1'
+          ? word('proxyVoiceThrough') : word('proxyVoiceDirect')],
+      ];
+    } else {
+      rows = [
+        [T ? T.server : 'Server', u.hostname],
+        [T ? T.port : 'Port', u.port || '64738'],
+        [T ? T.channel : 'Channel',
+         decodeURIComponent(u.pathname.replace(/^\/+|\/+$/g, '')) || '—'],
+      ];
+      var title = u.searchParams.get('title');
+      if (title) rows.unshift([T ? T.name : 'Name', title]);
+    }
 
     var dl = document.getElementById('rows');
     rows.forEach(function (r) {
@@ -219,6 +276,11 @@
       d.appendChild(dt); d.appendChild(dd); dl.appendChild(d);
     });
     document.getElementById('detail').hidden = false;
+    if (isProxy) {
+      // What they are agreeing to, said before the button rather than after.
+      var note = document.getElementById('note');
+      if (note) { note.textContent = word('proxyNote'); note.hidden = false; }
+    }
   } catch (e) {
     // An unparseable link is still worth offering to the app, which has a
     // better parser than this one and can say what is wrong with it.

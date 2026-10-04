@@ -48,7 +48,11 @@ class _ServerQrScreenState extends State<ServerQrScreen> {
   Future<void> _build() async {
     try {
       final link = await buildInviteLink(
-        config: widget.server.toConfig(),
+        // The same link the share menu builds, so a proxy travels in a
+        // scanned code exactly as it does in a message.
+        config: widget.server.toConfig(
+          proxyChain: AppState.sharedProxy(widget.server),
+        ),
         channel: widget.channel,
         // The whole point of a code is that scanning it is the only step.
         includePassword: true,

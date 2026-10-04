@@ -1294,6 +1294,17 @@ class AppState extends ChangeNotifier {
   /// the user has hung up, which is one deliberate tap away.
   bool canModifyServer(String id) => runtimeFor(id).isModifiable;
 
+  /// What a shared copy of this server should say about its route.
+  ///
+  /// **Only a proxy the rider chose for this server travels.** "Global
+  /// settings" is a fact about *their* network rather than about the server,
+  /// and leaking the app-wide default into every invitation would hand
+  /// strangers a route through a machine nobody volunteered.
+  static List<ServerProxy> sharedProxy(SavedServer s) =>
+      s.proxyMode == ServerProxyMode.custom && s.proxy != null
+      ? [s.proxy!]
+      : const [];
+
   /// Rebuilds the sessions of servers that follow the app-wide proxy setting,
   /// after that setting has changed.
   ///
@@ -1869,7 +1880,11 @@ class AppState extends ChangeNotifier {
     if (servers.isEmpty) return 'There are no servers to export.';
     try {
       final json = await exportServers(
-        configs: servers.map((s) => s.toConfig()).toList(),
+        // An export is the rider's own list coming back to them on another
+        // device, so it carries what they chose for each server.
+        configs: servers
+            .map((s) => s.toConfig(proxyChain: sharedProxy(s)))
+            .toList(),
       );
       const fileName = 'mumbleway-servers.json';
 
@@ -1935,7 +1950,7 @@ class AppState extends ChangeNotifier {
       // in anybody's access log. `buildInviteLink` is still there for the QR
       // code and for anything expecting what the official client registers.
       final link = await buildInviteWebLink(
-        config: s.toConfig(),
+        config: s.toConfig(proxyChain: sharedProxy(s)),
         channel: channel,
         includePassword: includePassword,
       );
@@ -1956,7 +1971,7 @@ class AppState extends ChangeNotifier {
   }) async {
     try {
       final json = await buildInviteFile(
-        config: s.toConfig(),
+        config: s.toConfig(proxyChain: sharedProxy(s)),
         channel: channel,
         includePassword: includePassword,
       );

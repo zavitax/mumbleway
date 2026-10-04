@@ -11,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CoreError, Result};
+use crate::net::{ProxyKind, ProxySpec};
 use crate::session::ServerProfile;
 
 /// Mumble's default port, used when a link omits one.
@@ -51,6 +52,14 @@ pub struct ProfileFileEntry {
     pub channel: Option<String>,
     #[serde(default)]
     pub cert_fingerprint: Option<String>,
+    /// A proxy to reach this server through, in the same form a link uses:
+    /// `socks5://host:port`, optionally with credentials and `?voice=1`.
+    ///
+    /// Written as text rather than as a nested object so that a file and a
+    /// link say the same thing in the same words — one parser, one shape, and
+    /// a rider can move a proxy between the two by copying it.
+    #[serde(default)]
+    pub proxy: Option<String>,
 }
 
 impl ProfileFileEntry {
@@ -66,6 +75,12 @@ impl ProfileFileEntry {
         p.password = self.password.filter(|s| !s.is_empty());
         p.auto_join_channel = self.channel.filter(|s| !s.is_empty());
         p.cert_fingerprint = self.cert_fingerprint;
+        p.proxy_chain = self
+            .proxy
+            .as_deref()
+            .and_then(parse_proxy)
+            .into_iter()
+            .collect();
         p
     }
 }
@@ -137,11 +152,109 @@ pub fn parse_url(input: &str, fallback_username: &str) -> Result<ServerProfile> 
         .map(|(_, v)| v.to_string())
         .filter(|t| !t.trim().is_empty());
 
+    // A proxy the sharer named for this server, if the link carries one.
+    //
+    // **Only an explicitly chosen one ever travels**, which the sharing side
+    // decides; here it is simply read. What arrives is shown before it is used
+    // — adopting somebody else's route silently is the thing to avoid, not
+    // carrying it, and a server that can only be reached through a proxy is
+    // not much of an invitation without one.
+    let proxy = parsed
+        .query_pairs()
+        .find(|(k, _)| k == "proxy")
+        .and_then(|(_, v)| parse_proxy(&v));
+
     let mut profile =
         ServerProfile::new(title.unwrap_or_else(|| host.clone()), host, port, username);
     profile.password = password;
     profile.auto_join_channel = channel;
+    profile.proxy_chain = proxy.into_iter().collect();
     Ok(profile)
+}
+
+/// `socks5://[user:password@]host:port[?voice=1]`, as a link carries it.
+///
+/// Returns `None` for anything it cannot read in full: half a proxy is a route
+/// nobody chose, and refusing it leaves the server reachable directly, which is
+/// the safer of the two failures.
+fn parse_proxy(text: &str) -> Option<ProxySpec> {
+    let text = percent_decode(text);
+    let (scheme, rest) = text.split_once("://")?;
+    let kind = match scheme.to_ascii_lowercase().as_str() {
+        "http" | "https" => ProxyKind::HttpConnect,
+        "socks" | "socks5" => ProxyKind::Socks5,
+        _ => return None,
+    };
+
+    let (rest, tunnel_voice) = match rest.split_once('?') {
+        Some((head, query)) => (head, query.split('&').any(|p| p == "voice=1")),
+        None => (rest, false),
+    };
+
+    let (credentials, address) = match rest.rsplit_once('@') {
+        Some((c, a)) => (Some(c), a),
+        None => (None, rest),
+    };
+    let (username, password) = match credentials {
+        Some(c) => match c.split_once(':') {
+            Some((u, p)) => (
+                Some(percent_decode(u)).filter(|u| !u.is_empty()),
+                Some(percent_decode(p)).filter(|p| !p.is_empty()),
+            ),
+            None => (Some(percent_decode(c)).filter(|u| !u.is_empty()), None),
+        },
+        None => (None, None),
+    };
+
+    // An IPv6 literal is bracketed; anything else splits at the last colon.
+    let (host, port) = if let Some(close) = address.find(']') {
+        let host = address.get(1..close)?;
+        let port = address.get(close + 2..)?;
+        (host, port)
+    } else {
+        address.rsplit_once(':')?
+    };
+    let port: u16 = port.parse().ok()?;
+    if host.trim().is_empty() || port == 0 {
+        return None;
+    }
+
+    Some(ProxySpec {
+        kind,
+        host: host.to_string(),
+        port,
+        username,
+        password,
+        tunnel_voice,
+    })
+}
+
+/// The same, as a link carries it. Credentials only when asked for.
+fn build_proxy(spec: &ProxySpec, include_credentials: bool) -> String {
+    let mut out = String::from(match spec.kind {
+        ProxyKind::HttpConnect => "http://",
+        ProxyKind::Socks5 => "socks5://",
+    });
+    if include_credentials {
+        if let Some(u) = spec.username.as_ref().filter(|u| !u.is_empty()) {
+            out.push_str(&percent_encode(u));
+            if let Some(p) = spec.password.as_ref().filter(|p| !p.is_empty()) {
+                out.push(':');
+                out.push_str(&percent_encode(p));
+            }
+            out.push('@');
+        }
+    }
+    if spec.host.contains(':') {
+        out.push_str(&format!("[{}]", spec.host));
+    } else {
+        out.push_str(&spec.host);
+    }
+    out.push_str(&format!(":{}", spec.port));
+    if spec.tunnel_voice {
+        out.push_str("?voice=1");
+    }
+    out
 }
 
 /// The `mumble://` link inside a web invitation, if `parsed` is one.
@@ -286,8 +399,24 @@ pub fn build_url(profile: &ServerProfile, channel: Option<&str>, include_passwor
         url.push_str(&percent_encode(c));
     }
 
+    let mut query: Vec<String> = Vec::new();
     if !profile.name.trim().is_empty() && profile.name != profile.host {
-        url.push_str(&format!("?title={}", percent_encode(&profile.name)));
+        query.push(format!("title={}", percent_encode(&profile.name)));
+    }
+    // **The route travels with the invitation.** A server that can only be
+    // reached through a proxy is not much of an invitation without it. Only
+    // the first hop: the rest of a chain is the sharer's own arrangement for
+    // getting out of their network, which says nothing about reaching this
+    // server from anywhere else.
+    if let Some(proxy) = profile.proxy_chain.last() {
+        query.push(format!(
+            "proxy={}",
+            percent_encode(&build_proxy(proxy, include_password))
+        ));
+    }
+    if !query.is_empty() {
+        url.push('?');
+        url.push_str(&query.join("&"));
     }
     url
 }
@@ -333,6 +462,14 @@ pub fn build_json(
         // Never shared: the pin is this device's own trust decision, and
         // copying it would launder it onto someone else's device.
         cert_fingerprint: None,
+        // Shared, unlike the pin, and for the opposite reason: a route is
+        // about reaching the server rather than about trusting it, and a
+        // server that needs one is unusable without it. Credentials ride only
+        // when the password does — the rider was asked about exactly that.
+        proxy: profile
+            .proxy_chain
+            .last()
+            .map(|p| build_proxy(p, include_password)),
     };
     serde_json::to_string_pretty(&vec![entry])
         .map_err(|e| CoreError::Other(format!("could not build profile: {e}")))
@@ -429,6 +566,107 @@ mod tests {
 
         assert_eq!(v[1].port, 9999);
         assert_eq!(v[1].auto_join_channel.as_deref(), Some("Riders"));
+    }
+
+    fn with_proxy(kind: ProxyKind, tunnel_voice: bool) -> ServerProfile {
+        let mut p = ServerProfile::new("Rig", "example.test", 64739, "rider");
+        p.proxy_chain = vec![ProxySpec {
+            kind,
+            host: "10.0.0.1".into(),
+            port: 1080,
+            username: Some("rider".into()),
+            password: Some("secret".into()),
+            tunnel_voice,
+        }];
+        p
+    }
+
+    #[test]
+    fn a_link_carries_the_proxy_a_server_was_given() {
+        // A server that can only be reached through a proxy is not much of an
+        // invitation without one.
+        let url = build_url(&with_proxy(ProxyKind::Socks5, true), None, false);
+        let back = parse_url(&url, "someone").unwrap();
+        let proxy = back.proxy_chain.first().expect("the proxy came back");
+        assert_eq!(proxy.kind, ProxyKind::Socks5);
+        assert_eq!(proxy.host, "10.0.0.1");
+        assert_eq!(proxy.port, 1080);
+        assert!(proxy.tunnel_voice, "where voice goes is part of the route");
+    }
+
+    #[test]
+    fn a_links_proxy_carries_credentials_only_when_the_password_does() {
+        // The rider was asked one question about secrets; this is the same
+        // answer, applied to the other one in the link.
+        let profile = with_proxy(ProxyKind::HttpConnect, false);
+
+        let without = build_url(&profile, None, false);
+        assert!(!without.contains("secret"), "{without}");
+        assert!(!without.contains("rider"), "{without}");
+        assert!(without.contains("10.0.0.1"), "the address still travels");
+
+        let with = build_url(&profile, None, true);
+        let back = parse_url(&with, "someone").unwrap();
+        let proxy = back.proxy_chain.first().unwrap();
+        assert_eq!(proxy.username.as_deref(), Some("rider"));
+        assert_eq!(proxy.password.as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn a_server_without_a_proxy_shares_a_link_that_says_nothing_about_one() {
+        let plain = ServerProfile::new("Rig", "example.test", 64739, "rider");
+        let url = build_url(&plain, None, true);
+        assert!(!url.contains("proxy"), "{url}");
+        assert!(parse_url(&url, "s").unwrap().proxy_chain.is_empty());
+    }
+
+    #[test]
+    fn a_profile_file_carries_a_proxy_the_same_way_a_link_does() {
+        // One shape in both, so a rider can move one between them by copying.
+        let json = build_json(&with_proxy(ProxyKind::Socks5, false), None, false).unwrap();
+        assert!(json.contains("socks5://10.0.0.1:1080"), "{json}");
+        let back = parse_json(&json, "someone").unwrap();
+        assert_eq!(back[0].proxy_chain.len(), 1);
+        assert_eq!(back[0].proxy_chain[0].port, 1080);
+    }
+
+    #[test]
+    fn half_a_proxy_in_a_link_is_no_proxy() {
+        // A route nobody can use is worse than none: without it the server is
+        // still reachable directly, which is the safer of the two failures.
+        for broken in [
+            "socks5://10.0.0.1",   // no port
+            "socks5://:1080",      // no host
+            "ftp://10.0.0.1:1080", // not a proxy this app speaks
+            "10.0.0.1:1080",       // no scheme
+            "socks5://10.0.0.1:not-a-port",
+        ] {
+            let url = format!(
+                "mumble://example.test:64739/?proxy={}",
+                broken.replace("://", "%3A%2F%2F")
+            );
+            let back = parse_url(&url, "rider").unwrap();
+            assert!(
+                back.proxy_chain.is_empty(),
+                "{broken} should not have become a proxy"
+            );
+        }
+    }
+
+    #[test]
+    fn an_ipv6_proxy_survives_the_brackets() {
+        let mut p = ServerProfile::new("Rig", "example.test", 64739, "rider");
+        p.proxy_chain = vec![ProxySpec {
+            kind: ProxyKind::Socks5,
+            host: "2001:db8::1".into(),
+            port: 1080,
+            username: None,
+            password: None,
+            tunnel_voice: false,
+        }];
+        let back = parse_url(&build_url(&p, None, false), "rider").unwrap();
+        assert_eq!(back.proxy_chain[0].host, "2001:db8::1");
+        assert_eq!(back.proxy_chain[0].port, 1080);
     }
 
     #[test]

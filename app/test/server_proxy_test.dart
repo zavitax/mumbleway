@@ -182,6 +182,40 @@ void main() {
     });
   });
 
+  group('sharing', () {
+    SavedServer entry({
+      ServerProxyMode mode = ServerProxyMode.useDefault,
+      ServerProxy? own,
+    }) => SavedServer(
+      name: 'Rig',
+      host: 'example.test',
+      port: 64738,
+      username: 'rider',
+      proxyMode: mode,
+      proxy: own,
+    );
+
+    test('a proxy the rider chose for this server travels', () {
+      final p = proxy('10.0.0.1');
+      expect(
+        AppState.sharedProxy(entry(mode: ServerProxyMode.custom, own: p)),
+        [p],
+      );
+    });
+
+    test('the app-wide default never does', () async {
+      // It is a fact about the sharer's network, not about the server, and
+      // leaking it would hand strangers a route through a machine nobody
+      // volunteered.
+      await ServerProxies.instance.setDefault(
+        mode: DefaultProxyMode.custom,
+        proxy: proxy('10.0.0.1'),
+      );
+      expect(AppState.sharedProxy(entry(mode: ServerProxyMode.useDefault)), isEmpty);
+      expect(AppState.sharedProxy(entry(mode: ServerProxyMode.direct)), isEmpty);
+    });
+  });
+
   group('the probe', () {
     test('is skipped exactly when voice goes through the proxy', () async {
       // It is a bare UDP datagram, so where voice cannot go, it cannot go —

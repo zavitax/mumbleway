@@ -630,19 +630,30 @@ class ServerCard extends StatelessWidget {
     final l = L.of(context);
     final channel = rt.currentChannel?.name ?? server.defaultChannel;
     final hasPassword = (server.password ?? '').isNotEmpty;
+    // A proxy's own username and password are a second secret in the same
+    // link, and the rider is asked about both in one question rather than two.
+    final proxy = AppState.sharedProxy(server).firstOrNull;
+    final hasProxyLogin = (proxy?.username ?? '').isNotEmpty;
     final messenger = ScaffoldMessenger.of(context);
 
     var includePassword = false;
-    if (hasPassword) {
+    if (hasPassword || hasProxyLogin) {
       final choice = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
           title: Text(l.includePasswordTitle),
           content: Text(
-            'Anyone who receives this can join ${server.name}'
-            '${channel == null ? '' : ' and land in $channel'} without being '
-            'asked for a password. It stays valid for as long as the password '
-            'does, wherever the message ends up.',
+            [
+              if (hasPassword)
+                'Anyone who receives this can join ${server.name}'
+                '${channel == null ? '' : ' and land in $channel'} without '
+                'being asked for a password. It stays valid for as long as '
+                'the password does, wherever the message ends up.',
+              if (hasProxyLogin)
+                'It would also carry the username and password for the proxy '
+                'at ${proxy!.host}:${proxy.port} — whoever receives it could '
+                'use that proxy for anything.',
+            ].join('\n\n'),
             style: const TextStyle(fontSize: 13),
           ),
           actions: [

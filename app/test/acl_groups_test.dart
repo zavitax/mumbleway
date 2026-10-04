@@ -76,11 +76,29 @@ void main() {
     return state;
   }
 
-  UiChannelAcl aclWith(List<UiAclGroup> groups) => UiChannelAcl(
+  UiChannelAcl aclWith(
+    List<UiAclGroup> groups, {
+    List<UiAclRule> rules = const [],
+    bool inheritAcls = true,
+  }) => UiChannelAcl(
     channelId: 3,
-    inheritAcls: true,
+    inheritAcls: inheritAcls,
     groups: groups,
-    rules: const [],
+    rules: rules,
+  );
+
+  UiAclRule rule({
+    String? group = 'all',
+    int? userId,
+    bool inherited = false,
+  }) => UiAclRule(
+    applyHere: true,
+    applySubs: true,
+    inherited: inherited,
+    userId: userId,
+    group: group,
+    grant: 0,
+    deny: 0,
   );
 
   /// The groups the screen is currently holding, edits included.
@@ -90,6 +108,94 @@ void main() {
     final draft = (screen as dynamic).edits as UiChannelAcl;
     return draft.groups;
   }
+
+  testWidgets('a new rule is addressed before it exists', (t) async {
+    // **It used to arrive addressed to everybody and stay that way.** The one
+    // thing a rule is for is naming somebody, and that was the one field this
+    // screen fixed at birth and never let go of.
+    final l = await L.delegate.load(const Locale('en'));
+    final state = ready(aclWith(const []));
+    await t.pumpWidget(host(state, channel));
+    await t.pump(const Duration(milliseconds: 50));
+
+    await t.ensureVisible(find.text(l.aclAddRule));
+    await t.pumpAndSettle();
+    await t.tap(find.text(l.aclAddRule));
+    await t.pumpAndSettle();
+    expect(find.text(l.aclRuleFor), findsOneWidget);
+
+    // A registered rider, which the old screen could not express at all.
+    await t.tap(find.text('Boris'));
+    await t.pumpAndSettle();
+
+    final screen = t.state(find.byType(ChannelAclScreen));
+    // ignore: avoid_dynamic_calls
+    final made = ((screen as dynamic).edits as UiChannelAcl).rules.single;
+    expect(made.userId, 9);
+    expect(made.group, isNull);
+  });
+
+  testWidgets('and backing out of the question adds nothing', (t) async {
+    final l = await L.delegate.load(const Locale('en'));
+    final state = ready(aclWith(const []));
+    await t.pumpWidget(host(state, channel));
+    await t.pump(const Duration(milliseconds: 50));
+
+    await t.ensureVisible(find.text(l.aclAddRule));
+    await t.pumpAndSettle();
+    await t.tap(find.text(l.aclAddRule));
+    await t.pumpAndSettle();
+    await t.tap(find.text(l.cancel));
+    await t.pumpAndSettle();
+
+    final screen = t.state(find.byType(ChannelAclScreen));
+    // ignore: avoid_dynamic_calls
+    expect((screen as dynamic).edits, isNull, reason: 'nothing was changed');
+  });
+
+  testWidgets('an existing rule can be readdressed', (t) async {
+    final l = await L.delegate.load(const Locale('en'));
+    final state = ready(aclWith(const [], rules: [rule()]));
+    await t.pumpWidget(host(state, channel));
+    await t.pump(const Duration(milliseconds: 50));
+
+    await t.tap(find.text(l.aclGroupNamed(l.aclEverybody)));
+    await t.pumpAndSettle();
+    await t.tap(find.text(l.aclRegistered));
+    await t.pumpAndSettle();
+
+    final screen = t.state(find.byType(ChannelAclScreen));
+    // ignore: avoid_dynamic_calls
+    final edited = ((screen as dynamic).edits as UiChannelAcl).rules.single;
+    expect(edited.group, 'auth');
+    expect(edited.userId, isNull);
+  });
+
+  testWidgets('a parent rule is hidden when it is not in force', (
+    t,
+  ) async {
+    // With the switch off they are not merely uneditable — they do not apply,
+    // and a list that still shows them says this channel grants things it
+    // does not.
+    final l = await L.delegate.load(const Locale('en'));
+    final state = ready(
+      aclWith(
+        const [],
+        inheritAcls: false,
+        rules: [rule(inherited: true), rule(group: 'auth')],
+      ),
+    );
+    await t.pumpWidget(host(state, channel));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(find.text(l.aclGroupNamed(l.aclEverybody)), findsNothing);
+    expect(find.text(l.aclGroupNamed(l.aclRegistered)), findsOneWidget);
+
+    // Turned back on, the parent's rule is in force and in the list again.
+    await t.tap(find.byType(SwitchListTile).first);
+    await t.pumpAndSettle();
+    expect(find.text(l.aclGroupNamed(l.aclEverybody)), findsOneWidget);
+  });
 
   testWidgets('a member is added by name, and lands in the add list', (
     t,

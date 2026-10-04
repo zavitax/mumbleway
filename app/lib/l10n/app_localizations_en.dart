@@ -2049,6 +2049,18 @@ class LEn extends L {
   String get aclSaved => 'Sent. The server decides what it keeps.';
 
   @override
+  String get aclRuleFor => 'Who is this rule about?';
+
+  @override
+  String get aclGroupIn => 'everybody in this channel';
+
+  @override
+  String get aclGroupOut => 'everybody outside this channel';
+
+  @override
+  String get aclGroupSub => 'everybody in the channels below';
+
+  @override
   String get aclEverybody => 'everybody';
 
   @override

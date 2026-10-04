@@ -3727,6 +3727,30 @@ abstract class L {
   /// **'Sent. The server decides what it keeps.'**
   String get aclSaved;
 
+  /// No description provided for @aclRuleFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Who is this rule about?'**
+  String get aclRuleFor;
+
+  /// No description provided for @aclGroupIn.
+  ///
+  /// In en, this message translates to:
+  /// **'everybody in this channel'**
+  String get aclGroupIn;
+
+  /// No description provided for @aclGroupOut.
+  ///
+  /// In en, this message translates to:
+  /// **'everybody outside this channel'**
+  String get aclGroupOut;
+
+  /// No description provided for @aclGroupSub.
+  ///
+  /// In en, this message translates to:
+  /// **'everybody in the channels below'**
+  String get aclGroupSub;
+
   /// No description provided for @aclEverybody.
   ///
   /// In en, this message translates to:

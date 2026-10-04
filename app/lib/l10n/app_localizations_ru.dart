@@ -2039,6 +2039,18 @@ class LRu extends L {
   String get aclSaved => 'Отправлено. Что оставить, решает сервер.';
 
   @override
+  String get aclRuleFor => 'О ком это правило?';
+
+  @override
+  String get aclGroupIn => 'все в этом канале';
+
+  @override
+  String get aclGroupOut => 'все за пределами этого канала';
+
+  @override
+  String get aclGroupSub => 'все в каналах ниже';
+
+  @override
   String get aclEverybody => 'все';
 
   @override

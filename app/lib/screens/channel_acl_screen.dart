@@ -104,10 +104,18 @@ class _ChannelAclScreenState extends State<ChannelAclScreen> {
               Text(l.aclRules, style: _heading(context)),
               Text(l.aclTapHint, style: _quiet(context)),
               const SizedBox(height: 8),
+              // **Hidden when they do not apply.** The switch above decides
+              // whether this channel takes the parent's rules at all; with it
+              // off they are not merely uneditable, they are not in force —
+              // and a list that still shows them is a list that says this
+              // channel grants things it does not.
               for (final (i, rule) in draft.rules.indexed)
-                _RuleCard(
+                if (draft.inheritAcls || !rule.inherited)
+                  _RuleCard(
                   rule: rule,
                   names: state.runtimeFor(widget.serverId).userNames,
+                  groups: draft.groups,
+                  registered: state.runtimeFor(widget.serverId).registered,
                   onChanged: rule.inherited
                       ? null
                       : (next) => setState(() {
@@ -126,20 +134,32 @@ class _ChannelAclScreenState extends State<ChannelAclScreen> {
               OutlinedButton.icon(
                 icon: const Icon(Icons.add),
                 label: Text(l.aclAddRule),
-                onPressed: () => setState(() {
-                  _draft = _withRules(draft, [
-                    ...draft.rules,
-                    const UiAclRule(
-                      applyHere: true,
-                      applySubs: true,
-                      inherited: false,
-                      userId: null,
-                      group: 'all',
-                      grant: 0,
-                      deny: 0,
-                    ),
-                  ]);
-                }),
+                // **Who it is about comes first.** A rule always arrived
+                // addressed to everybody and could never be readdressed, so
+                // the one thing a rule is for — naming somebody — was the one
+                // thing this screen could not do.
+                onPressed: () async {
+                  final who = await askRuleSubject(
+                    context,
+                    groups: draft.groups,
+                    registered: state.runtimeFor(widget.serverId).registered,
+                  );
+                  if (who == null || !mounted) return;
+                  setState(() {
+                    _draft = _withRules(draft, [
+                      ...draft.rules,
+                      UiAclRule(
+                        applyHere: true,
+                        applySubs: true,
+                        inherited: false,
+                        userId: who.userId,
+                        group: who.group,
+                        grant: 0,
+                        deny: 0,
+                      ),
+                    ]);
+                  });
+                },
               ),
               const Divider(height: 24),
               Text(l.aclGroups, style: _heading(context)),
@@ -565,12 +585,20 @@ class _RuleCard extends StatelessWidget {
   const _RuleCard({
     required this.rule,
     required this.names,
+    required this.groups,
+    required this.registered,
     required this.onChanged,
     required this.onRemove,
   });
 
   final UiAclRule rule;
   final Map<int, String> names;
+
+  /// What this channel's access list defines, so a rule can name one.
+  final List<UiAclGroup> groups;
+
+  /// Who has an account here, so a rule can name one of them instead.
+  final List<UiRegisteredUser> registered;
   final void Function(UiAclRule)? onChanged;
   final VoidCallback? onRemove;
 
@@ -594,9 +622,49 @@ class _RuleCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    who,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  // Tap to readdress it. The subject is as much a part of a
+                  // rule as the permissions are, and it used to be the only
+                  // part fixed at birth.
+                  child: InkWell(
+                    onTap: onChanged == null
+                        ? null
+                        : () async {
+                            final next = await askRuleSubject(
+                              context,
+                              groups: groups,
+                              registered: registered,
+                            );
+                            if (next == null) return;
+                            onChanged!(
+                              UiAclRule(
+                                applyHere: rule.applyHere,
+                                applySubs: rule.applySubs,
+                                inherited: false,
+                                userId: next.userId,
+                                group: next.group,
+                                grant: rule.grant,
+                                deny: rule.deny,
+                              ),
+                            );
+                          },
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            who,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        if (onChanged != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.edit_outlined,
+                            size: 14,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
                 if (rule.inherited)
@@ -693,13 +761,88 @@ class _RuleCard extends StatelessWidget {
     );
   }
 
-  /// The groups every Mumble server defines, in words rather than keywords.
-  static String _groupLabel(L l, String group) => switch (group) {
-    'all' => l.aclEverybody,
-    'auth' => l.aclRegistered,
-    final other => other,
-  };
+  static String _groupLabel(L l, String group) => groupLabel(l, group);
 }
+
+/// Who a rule is about: one of the groups, or one registered rider.
+class RuleSubject {
+  const RuleSubject({this.group, this.userId});
+
+  final String? group;
+  final int? userId;
+}
+
+/// Asks who a rule should be about.
+///
+/// **Both halves are offered, because the protocol has both.** An access list
+/// entry names either a group — the built-in ones every server has, or one
+/// this channel defines — or a single registered rider by account id. The
+/// built-ins come first because they are what most rules use; the riders are
+/// listed after them, and only those with an account, since an id is what a
+/// rule can hold.
+Future<RuleSubject?> askRuleSubject(
+  BuildContext context, {
+  required List<UiAclGroup> groups,
+  required List<UiRegisteredUser> registered,
+}) {
+  final l = L.of(context);
+  // The five Mumble defines itself, in the order its own client lists them.
+  const builtIn = ['all', 'auth', 'in', 'out', 'sub'];
+  final named = <String>[
+    ...builtIn,
+    for (final g in groups)
+      if (!builtIn.contains(g.name)) g.name,
+  ];
+  final riders = [...registered]
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+  return showDialog<RuleSubject>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(l.aclRuleFor),
+      content: SizedBox(
+        width: 340,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final g in named)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.groups_outlined, size: 20),
+                title: Text(groupLabel(l, g)),
+                onTap: () => Navigator.pop(context, RuleSubject(group: g)),
+              ),
+            if (riders.isNotEmpty) const Divider(),
+            for (final r in riders)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.person_outline, size: 20),
+                title: Text(r.name),
+                onTap: () =>
+                    Navigator.pop(context, RuleSubject(userId: r.userId)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l.cancel),
+        ),
+      ],
+    ),
+  );
+}
+
+/// The groups every Mumble server defines, in words rather than keywords.
+String groupLabel(L l, String group) => switch (group) {
+  'all' => l.aclEverybody,
+  'auth' => l.aclRegistered,
+  'in' => l.aclGroupIn,
+  'out' => l.aclGroupOut,
+  'sub' => l.aclGroupSub,
+  final other => other,
+};
 
 class _PermissionChip extends StatelessWidget {
   const _PermissionChip({

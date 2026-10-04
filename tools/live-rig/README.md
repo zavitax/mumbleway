@@ -3,10 +3,12 @@
 A Mumble server to test the moderation features against, in one command.
 
 ```bash
-python tools/live-rig/rig.py up      # a server, shaped for the tests
-python tools/live-rig/rig.py admin   # kick, ban, lift, move, register, ACLs
-python tools/live-rig/rig.py state   # what the server holds right now
-python tools/live-rig/rig.py down    # take it away
+python tools/live-rig/rig.py up        # a server, shaped for the tests
+python tools/live-rig/rig.py admin     # kick, ban, lift, move, register, ACLs
+python tools/live-rig/rig.py proxies   # put proxies in front of it
+python tools/live-rig/rig.py proxy     # dial the server through them
+python tools/live-rig/rig.py state     # what the server holds right now
+python tools/live-rig/rig.py down      # take it all away
 ```
 
 It needs Docker and `cargo`. Everything else it builds itself.
@@ -60,6 +62,38 @@ throw a working server away. `up --fresh` starts over.
 handshake, bandwidth, quality figures, suppression, tokens, listening,
 reconnection and the rest.
 
+## What `proxies` builds
+
+```
+mw-proxy-http     18080   tinyproxy, HTTP CONNECT, BasicAuth
+                          CONNECT allowed to the Mumble port and to 11080
+mw-proxy-socks    11080   SOCKS5, username and password
+mw-proxy-strict   18081   tinyproxy allowing CONNECT to 443 and nothing else
+```
+
+**The proxies are not asked for `127.0.0.1`.** Inside a container that is the
+container, so a proxy pointed at it would accept, connect to itself, and look
+for all the world like a proxy that works and a server that does not answer. The
+tests therefore get two addresses: the one they dial, and
+`host.docker.internal:64739`, which is what the proxy is asked to open.
+
+| Test | What it would catch |
+|---|---|
+| `a_session_through_an_http_proxy_holds_past_a_minute` | a CONNECT handshake that swallows the first bytes of the server's TLS; a session that comes up and dies |
+| `a_session_through_a_socks5_proxy_holds_past_a_minute` | the same for SOCKS5, whose reply carries a `BND.ADDR` that looks exactly like somewhere to send voice and is not |
+| `voice_tunnelled_through_a_proxy_never_promotes_to_udp` | voice quietly going out over UDP when the rider asked for everything to go through the proxy |
+| `a_chain_of_two_proxies_reaches_the_server` | the chain — which has no other way of being proved, since each hop is asked for the *next* hop's address |
+| `a_proxy_that_allows_only_443_says_so_and_stops` | a refusal reported as the *server* rejecting the rider, and a retry loop around an answer that will never change |
+
+**They hold the session past a minute on purpose.** The fault this feature exists
+to work around cuts the control channel ten to twenty seconds in while UDP keeps
+flowing, so a five-second test would pass against the very network that breaks
+the app.
+
+The proxy credentials are written into `.rig.env` with everything else. They are
+a rig fixture, not a secret — but the file is gitignored all the same, because
+SuperUser's password is in it and **this repository is public**.
+
 ## Things this server taught us the hard way
 
 - **A token group is written `#vip`, and the rider types `vip`.** Written as
@@ -89,3 +123,8 @@ reconnection and the rest.
 | `MW_LIVE_CHANNEL` | a channel to move in and out of |
 | `MW_LIVE_TOKEN_CHANNEL`, `MW_LIVE_TOKEN` | the shut channel and the token that opens it |
 | `MW_LIVE_EXPECT_SUGGESTIONS` | the server suggests push-to-talk and positional audio, so the client must say so |
+| `MW_LIVE_PROXY_TARGET` | the server **as a proxy sees it** — not the address the test itself dials |
+| `MW_LIVE_PROXY_HTTP`, `MW_LIVE_PROXY_SOCKS` | the two proxies, from here |
+| `MW_LIVE_PROXY_STRICT` | the one that allows CONNECT to 443 and nothing else |
+| `MW_LIVE_PROXY_INNER` | `socks5://host:port` — the second hop, **as the first hop sees it** |
+| `MW_LIVE_PROXY_USER`, `MW_LIVE_PROXY_PASSWORD` | what both proxies demand |

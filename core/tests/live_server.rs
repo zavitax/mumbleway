@@ -18,13 +18,35 @@
 //! `MW_LIVE_BANDWIDTH` tells the test what the server was configured with, so
 //! it can check the figure that arrives is that one rather than merely *a*
 //! number.
+//!
+//! # Through a proxy
+//!
+//! `python tools/live-rig/rig.py proxies` brings up proxies beside the server
+//! and writes the rest of these into `.rig.env`:
+//!
+//! | Variable | What it names |
+//! |---|---|
+//! | `MW_LIVE_PROXY_TARGET` | the server **as a proxy sees it** — a container cannot reach the test's `127.0.0.1` |
+//! | `MW_LIVE_PROXY_HTTP` | an HTTP CONNECT proxy, from here |
+//! | `MW_LIVE_PROXY_SOCKS` | a SOCKS5 proxy, from here |
+//! | `MW_LIVE_PROXY_USER`, `MW_LIVE_PROXY_PASSWORD` | what both of them demand |
+//! | `MW_LIVE_PROXY_INNER` | `socks5://host:port` — the second hop, **as the first hop sees it** |
+//! | `MW_LIVE_PROXY_STRICT` | a proxy that allows CONNECT to 443 and nothing else |
+//!
+//! **These hold the session past a minute on purpose.** The fault they exist to
+//! prove a cure for is a middlebox that cuts the control channel ten to twenty
+//! seconds in while UDP keeps flowing, so a five-second test would pass against
+//! the very network that breaks the app.
 
 use std::time::Duration;
 
 use mumbleway_core::audio::bandwidth;
+use mumbleway_core::net::proxy::{ProxyKind, ProxySpec};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
-use mumbleway_core::session::{AudioBridge, ConnectionState, ServerProfile, SessionEvent};
+use mumbleway_core::session::{
+    AudioBridge, ConnectionState, ServerProfile, SessionEvent, Transport,
+};
 use tokio::sync::mpsc;
 
 /// Where the server is, or `None` to skip.
@@ -60,14 +82,30 @@ fn silent_bridge() -> AudioBridge {
 /// Connects `names` to the live server and collects events for `secs`.
 async fn gather(names: &[&str], secs: u64) -> Vec<TaggedEvent> {
     let (host, port) = live_address().expect("MW_LIVE");
+    gather_through(names, secs, &host, port, &[]).await
+}
+
+/// The same, dialling `host:port` through `chain`.
+///
+/// `host` is separate from `MW_LIVE` because a proxy is somewhere else: a
+/// container reaching `127.0.0.1:64739` reaches *itself*, so the address the
+/// proxy is asked for is not the address this test would use.
+async fn gather_through(
+    names: &[&str],
+    secs: u64,
+    host: &str,
+    port: u16,
+    chain: &[ProxySpec],
+) -> Vec<TaggedEvent> {
     let (tx, mut rx) = mpsc::channel(4096);
     let identity = Identity::generate("MumbleWay live test").expect("identity");
     let mut manager =
         SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
 
     for name in names {
-        let mut profile = ServerProfile::new("live", host.clone(), port, *name);
+        let mut profile = ServerProfile::new("live", host.to_string(), port, *name);
         profile.id = (*name).to_string();
+        profile.proxy_chain = chain.to_vec();
         let id = manager
             .add(profile, silent_bridge())
             .expect("session added");
@@ -1997,5 +2035,232 @@ async fn a_rider_reaches_the_connected_state_at_all() {
             .iter()
             .any(|e| matches!(e.event, SessionEvent::State(ConnectionState::Connected))),
         "never connected: {states:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Through a proxy
+// ---------------------------------------------------------------------------
+
+/// The server's address **as a proxy sees it**, falling back to this test's own.
+fn proxy_target() -> (String, u16) {
+    match std::env::var("MW_LIVE_PROXY_TARGET").ok() {
+        Some(raw) => match raw.rsplit_once(':') {
+            Some((host, port)) => (host.to_string(), port.parse().expect("a port")),
+            None => panic!("MW_LIVE_PROXY_TARGET wants host:port"),
+        },
+        None => live_address().expect("MW_LIVE"),
+    }
+}
+
+/// One proxy from the environment, with whatever credentials were set.
+fn proxy_from(var: &str, kind: ProxyKind, tunnel_voice: bool) -> Option<ProxySpec> {
+    let raw = std::env::var(var).ok()?;
+    let (host, port) = raw.rsplit_once(':')?;
+    Some(ProxySpec {
+        kind,
+        host: host.to_string(),
+        port: port.parse().ok()?,
+        username: std::env::var("MW_LIVE_PROXY_USER").ok(),
+        password: std::env::var("MW_LIVE_PROXY_PASSWORD").ok(),
+        tunnel_voice,
+    })
+}
+
+/// `socks5://host:port` or `http://host:port`, for a hop named by one string.
+fn parse_hop(raw: &str, tunnel_voice: bool) -> ProxySpec {
+    let (scheme, rest) = raw.split_once("://").expect("scheme://host:port");
+    let (host, port) = rest.rsplit_once(':').expect("host:port");
+    ProxySpec {
+        kind: match scheme {
+            "socks5" | "socks" => ProxyKind::Socks5,
+            _ => ProxyKind::HttpConnect,
+        },
+        host: host.to_string(),
+        port: port.parse().expect("a port"),
+        username: std::env::var("MW_LIVE_PROXY_USER").ok(),
+        password: std::env::var("MW_LIVE_PROXY_PASSWORD").ok(),
+        tunnel_voice,
+    }
+}
+
+/// Every state the session passed through, in order.
+fn states(events: &[TaggedEvent]) -> Vec<ConnectionState> {
+    events
+        .iter()
+        .filter_map(|e| match &e.event {
+            SessionEvent::State(s) => Some(s.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Asserts the session came up and **stayed** up for the whole window.
+///
+/// The second half is the point. Reaching `Connected` through a proxy proves the
+/// handshake; it says nothing about the thing this feature exists for, which is
+/// a link that survives longer than the one it replaced.
+fn held_throughout(events: &[TaggedEvent], secs: u64) {
+    let seen = states(events);
+    println!("states: {seen:?}");
+    assert!(
+        seen.iter().any(|s| matches!(s, ConnectionState::Connected)),
+        "never reached Connected through the proxy"
+    );
+    let after = seen
+        .iter()
+        .skip_while(|s| !matches!(s, ConnectionState::Connected));
+    for state in after {
+        match state {
+            ConnectionState::Connected => {}
+            other => panic!("the proxied session did not hold {secs}s — it went to {other:?}"),
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server and MW_LIVE_PROXY_HTTP; see the file header"]
+async fn a_session_through_an_http_proxy_holds_past_a_minute() {
+    require_server!();
+    let Some(proxy) = proxy_from("MW_LIVE_PROXY_HTTP", ProxyKind::HttpConnect, false) else {
+        eprintln!("MW_LIVE_PROXY_HTTP is not set; skipping");
+        return;
+    };
+    let (host, port) = proxy_target();
+    println!("dialling {host}:{port} through {}", proxy.address());
+
+    let events = gather_through(&["rider-http"], 70, &host, port, &[proxy]).await;
+    held_throughout(&events, 70);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server and MW_LIVE_PROXY_SOCKS; see the file header"]
+async fn a_session_through_a_socks5_proxy_holds_past_a_minute() {
+    require_server!();
+    let Some(proxy) = proxy_from("MW_LIVE_PROXY_SOCKS", ProxyKind::Socks5, false) else {
+        eprintln!("MW_LIVE_PROXY_SOCKS is not set; skipping");
+        return;
+    };
+    let (host, port) = proxy_target();
+    println!("dialling {host}:{port} through {}", proxy.address());
+
+    let events = gather_through(&["rider-socks"], 70, &host, port, &[proxy]).await;
+    held_throughout(&events, 70);
+}
+
+/// Voice through the proxy as well, which is the case with no UDP socket at all.
+///
+/// Worth its own test because every indicator downstream of the transport
+/// decision behaves differently: the promote arm cannot fire, the demotes are
+/// unreachable, and outgoing audio has only the tunnel to go down. A session
+/// that merely *connects* would prove none of that.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server and MW_LIVE_PROXY_HTTP; see the file header"]
+async fn voice_tunnelled_through_a_proxy_never_promotes_to_udp() {
+    require_server!();
+    let Some(proxy) = proxy_from("MW_LIVE_PROXY_HTTP", ProxyKind::HttpConnect, true) else {
+        eprintln!("MW_LIVE_PROXY_HTTP is not set; skipping");
+        return;
+    };
+    let (host, port) = proxy_target();
+    println!("tunnelling voice to {host}:{port} through {}", proxy.address());
+
+    let events = gather_through(&["rider-tunnel"], 70, &host, port, &[proxy]).await;
+    held_throughout(&events, 70);
+
+    let transports: Vec<Transport> = events
+        .iter()
+        .filter_map(|e| match e.event {
+            SessionEvent::TransportChanged(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    println!("transports reported: {transports:?}");
+    assert!(
+        !transports.contains(&Transport::Udp),
+        "voice was asked to go through the proxy and went over UDP anyway: {transports:?}"
+    );
+
+    // And the control link kept answering, which is what carries the audio here.
+    let pings: Vec<f32> = events
+        .iter()
+        .filter_map(|e| match &e.event {
+            SessionEvent::Stats(s) if s.tcp_ping_ms > 0.0 => Some(s.tcp_ping_ms),
+            _ => None,
+        })
+        .collect();
+    println!("tcp pings: {pings:?}");
+    assert!(
+        pings.len() >= 3,
+        "a tunnelled session should answer every ping; got {}",
+        pings.len()
+    );
+}
+
+/// Two proxies, one behind the other — the only way to prove the chain at all.
+///
+/// The second hop's address is the one the *first* hop must be able to reach, so
+/// it comes from the environment separately rather than being derived from the
+/// address this test dials.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server, MW_LIVE_PROXY_HTTP and MW_LIVE_PROXY_INNER"]
+async fn a_chain_of_two_proxies_reaches_the_server() {
+    require_server!();
+    let (Some(outer), Ok(inner)) = (
+        proxy_from("MW_LIVE_PROXY_HTTP", ProxyKind::HttpConnect, false),
+        std::env::var("MW_LIVE_PROXY_INNER"),
+    ) else {
+        eprintln!("MW_LIVE_PROXY_HTTP / MW_LIVE_PROXY_INNER are not both set; skipping");
+        return;
+    };
+    let inner = parse_hop(&inner, false);
+    let (host, port) = proxy_target();
+    println!(
+        "dialling {host}:{port} through {} then {}",
+        outer.address(),
+        inner.address()
+    );
+
+    let events = gather_through(&["rider-chain"], 70, &host, port, &[outer, inner]).await;
+    held_throughout(&events, 70);
+}
+
+/// A proxy that allows CONNECT to 443 and nothing else.
+///
+/// The mistake a rider will actually make is pointing MumbleWay at the proxy
+/// their browser uses, and most of those refuse a Mumble port. What matters is
+/// that the app says *the proxy* refused and does not retry forever: a rider
+/// sent to check a server password that was never asked for has been sent to the
+/// wrong place entirely.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs MW_LIVE_PROXY_STRICT; see the file header"]
+async fn a_proxy_that_allows_only_443_says_so_and_stops() {
+    require_server!();
+    let Some(proxy) = proxy_from("MW_LIVE_PROXY_STRICT", ProxyKind::HttpConnect, false) else {
+        eprintln!("MW_LIVE_PROXY_STRICT is not set; skipping");
+        return;
+    };
+    let (host, port) = proxy_target();
+    println!("asking {} for {host}:{port}, which it will refuse", proxy.address());
+
+    let events = gather_through(&["rider-refused"], 20, &host, port, &[proxy]).await;
+    let seen = states(&events);
+    println!("states: {seen:?}");
+
+    assert!(
+        !seen.iter().any(|s| matches!(s, ConnectionState::Connected)),
+        "a proxy that allows only 443 let a Mumble port through"
+    );
+    let reason = seen
+        .iter()
+        .find_map(|s| match s {
+            ConnectionState::Failed { reason } => Some(reason.clone()),
+            _ => None,
+        })
+        .expect("a refusal that cannot succeed next time should Fail, not keep retrying");
+    println!("reason: {reason}");
+    assert!(
+        reason.to_lowercase().contains("proxy"),
+        "the reason must name the proxy, or a rider goes and checks their server password: {reason}"
     );
 }

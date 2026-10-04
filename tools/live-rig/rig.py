@@ -3,6 +3,8 @@
 
     python tools/live-rig/rig.py up        # a server, shaped for the tests
     python tools/live-rig/rig.py admin     # run the admin tests against it
+    python tools/live-rig/rig.py proxies   # add proxies in front of it
+    python tools/live-rig/rig.py proxy     # run the proxy tests
     python tools/live-rig/rig.py state     # what the server holds right now
     python tools/live-rig/rig.py down      # take it away
 
@@ -26,6 +28,18 @@ What `up` builds:
 
   SuperUser's password is generated per rig and written to `.rig.env`, which is
   gitignored. This repository is public; nothing here goes into it.
+
+What `proxies` adds, for the proxy tests:
+
+  mw-proxy-http    tinyproxy, HTTP CONNECT, BasicAuth, CONNECT allowed to the
+                   Mumble port and to the SOCKS proxy (so a chain can be built)
+  mw-proxy-socks   SOCKS5 with username and password
+  mw-proxy-strict  tinyproxy that allows CONNECT to 443 and nothing else
+
+**The target address is not `127.0.0.1`.** Inside a container that is the
+container, so the proxies are asked for `host.docker.internal`, which Docker
+Desktop points back at this machine, where the server's port is published. The
+tests get both addresses: the one they dial and the one the proxy is asked for.
 
 The tests themselves live in `core/tests/live_server.rs` and are `#[ignore]`d,
 so they never run on CI. This script passes them what they need through the
@@ -51,6 +65,32 @@ IMAGE = "mumblevoip/mumble-server:latest"
 DEFAULT_NAME = "mw-murmur"
 DEFAULT_PORT = 64739
 BANDWIDTH = 32000
+
+#: The proxies, and the ports they are published on.
+HTTP_IMAGE = "vimagick/tinyproxy:latest"
+SOCKS_IMAGE = "serjs/go-socks5-proxy:latest"
+HTTP_NAME = "mw-proxy-http"
+SOCKS_NAME = "mw-proxy-socks"
+STRICT_NAME = "mw-proxy-strict"
+HTTP_PORT = 18080
+SOCKS_PORT = 11080
+STRICT_PORT = 18081
+PROXY_USER = "rider"
+PROXY_PASSWORD = "throughhere"
+
+#: How a proxy container reaches this machine. Docker Desktop provides the name;
+#: `127.0.0.1` inside a container is the container itself, which would make the
+#: proxy appear to work and the connection appear to go nowhere.
+HOST_FROM_CONTAINER = "host.docker.internal"
+
+#: The tests that go through a proxy, in the order they are worth reading.
+PROXY_TESTS = [
+    "a_session_through_an_http_proxy_holds_past_a_minute",
+    "a_session_through_a_socks5_proxy_holds_past_a_minute",
+    "voice_tunnelled_through_a_proxy_never_promotes_to_udp",
+    "a_chain_of_two_proxies_reaches_the_server",
+    "a_proxy_that_allows_only_443_says_so_and_stops",
+]
 
 #: Murmur's ACL bits, by the names its source uses.
 WRITE = 0x01
@@ -247,6 +287,105 @@ def cmd_up(args):
     print(f"environment written to {ENV_FILE.relative_to(ROOT)} (gitignored)")
 
 
+def tinyproxy_conf(connect_ports):
+    """A tinyproxy configuration allowing CONNECT to exactly these ports.
+
+    The allow-list is the whole point of having two of these: a stock proxy
+    permits CONNECT to 443 and refuses a Mumble port, which is the mistake a
+    rider actually makes, and the client has to say that the *proxy* refused.
+    """
+    lines = [
+        "Port 8888",
+        "Listen 0.0.0.0",
+        "Timeout 600",
+        "MaxClients 50",
+        "LogLevel Info",
+        f"BasicAuth {PROXY_USER} {PROXY_PASSWORD}",
+    ]
+    lines += [f"ConnectPort {p}" for p in connect_ports]
+    return "\n".join(lines) + "\n"
+
+
+def run_tinyproxy(name, port, connect_ports):
+    """Starts a tinyproxy with its configuration written in from here.
+
+    `sh -c` rather than a bind mount: a mounted file would make this script care
+    about how the host's paths look to the daemon, which differs between Docker
+    Desktop and a plain Linux box for no benefit at all.
+    """
+    conf = tinyproxy_conf(connect_ports)
+    docker(
+        "run", "-d", "--name", name,
+        "-p", f"127.0.0.1:{port}:8888",
+        "--entrypoint", "sh",
+        HTTP_IMAGE, "-c",
+        f"printf '%s' {shlex_quote(conf)} > /etc/tinyproxy/tinyproxy.conf"
+        " && exec tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf",
+    )
+
+
+def shlex_quote(text):
+    """Single-quotes text for a POSIX shell, the way shlex would."""
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def cmd_proxies(args):
+    """Puts proxies in front of the server and records how to reach them."""
+    env = read_env()
+    port = args.port
+    wanted = {
+        HTTP_NAME: lambda: run_tinyproxy(
+            HTTP_NAME, HTTP_PORT,
+            # The Mumble port, so a session can be dialled; and the SOCKS port,
+            # so this proxy can be the first hop of a chain whose second hop is
+            # the SOCKS one.
+            [port, SOCKS_PORT],
+        ),
+        SOCKS_NAME: lambda: docker(
+            "run", "-d", "--name", SOCKS_NAME,
+            "-p", f"127.0.0.1:{SOCKS_PORT}:1080",
+            "-e", f"PROXY_USER={PROXY_USER}",
+            "-e", f"PROXY_PASSWORD={PROXY_PASSWORD}",
+            SOCKS_IMAGE,
+        ),
+        # Allows exactly what a browser's proxy allows, and so refuses Mumble.
+        STRICT_NAME: lambda: run_tinyproxy(STRICT_NAME, STRICT_PORT, [443]),
+    }
+    for name, start in wanted.items():
+        if container_exists(name) and args.fresh:
+            docker("rm", "-f", name)
+        if container_exists(name):
+            if not container_running(name):
+                docker("start", name)
+                print(f"started {name} again")
+            else:
+                print(f"{name} was already up")
+            continue
+        start()
+        print(f"started {name}")
+
+    for name, p in ((HTTP_NAME, HTTP_PORT), (SOCKS_NAME, SOCKS_PORT), (STRICT_NAME, STRICT_PORT)):
+        if not wait_for_port(p):
+            sys.exit(f"{name} is not listening on {p}:\n" + docker("logs", "--tail", "20", name))
+
+    env.update({
+        "MW_LIVE_PROXY_TARGET": f"{HOST_FROM_CONTAINER}:{port}",
+        "MW_LIVE_PROXY_HTTP": f"127.0.0.1:{HTTP_PORT}",
+        "MW_LIVE_PROXY_SOCKS": f"127.0.0.1:{SOCKS_PORT}",
+        "MW_LIVE_PROXY_STRICT": f"127.0.0.1:{STRICT_PORT}",
+        # The second hop as the *first* hop sees it, which is the only vantage
+        # that matters: the HTTP proxy is the one that has to open it.
+        "MW_LIVE_PROXY_INNER": f"socks5://{HOST_FROM_CONTAINER}:{SOCKS_PORT}",
+        "MW_LIVE_PROXY_USER": PROXY_USER,
+        "MW_LIVE_PROXY_PASSWORD": PROXY_PASSWORD,
+    })
+    write_env(env)
+    print(f"http {HTTP_PORT} (CONNECT to {port} and {SOCKS_PORT}), "
+          f"socks5 {SOCKS_PORT}, strict {STRICT_PORT} (443 only)")
+    print(f"both want {PROXY_USER} / {PROXY_PASSWORD} \u2014 a rig credential, not a secret")
+    print(f"proxies are asked for {HOST_FROM_CONTAINER}:{port}")
+
+
 def cmd_state(args):
     name = args.name
     if not container_running(name):
@@ -307,11 +446,12 @@ def cmd_test(args):
 
 
 def cmd_down(args):
-    if container_exists(args.name):
-        docker("rm", "-f", args.name)
-        print(f"removed {args.name}")
-    else:
-        print(f"{args.name} was not there")
+    for name in (args.name, HTTP_NAME, SOCKS_NAME, STRICT_NAME):
+        if container_exists(name):
+            docker("rm", "-f", name)
+            print(f"removed {name}")
+        elif name == args.name:
+            print(f"{args.name} was not there")
     if ENV_FILE.exists() and args.forget:
         ENV_FILE.unlink()
         print("forgot the environment")
@@ -331,6 +471,13 @@ def main():
 
     admin = sub.add_parser("admin", help="run the moderation tests")
     admin.set_defaults(fn=cmd_test, admin=True, names=None)
+
+    proxies = sub.add_parser("proxies", help="put proxies in front of the server")
+    proxies.add_argument("--fresh", action="store_true", help="throw away any existing ones")
+    proxies.set_defaults(fn=cmd_proxies)
+
+    proxy = sub.add_parser("proxy", help="run the proxy tests (several minutes)")
+    proxy.set_defaults(fn=cmd_test, admin=False, names=PROXY_TESTS)
 
     test = sub.add_parser("test", help="run live tests by name (default: all)")
     test.add_argument("names", nargs="*", help="test name filters")

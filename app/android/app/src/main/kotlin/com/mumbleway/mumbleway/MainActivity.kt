@@ -626,17 +626,26 @@ class MainActivity : FlutterActivity() {
 
     /// The invitation [intent] carries, if it carries one.
     ///
-    /// **Two shapes, because there are two filters in the manifest.** The
+    /// **Three shapes, because there are three filters in the manifest.** The
     /// `mumble://` scheme is what the official client registers and what a
-    /// camera app offers for a scanned code. The https form is the one that
-    /// survives a messaging app, and Android delivers it here rather than to a
-    /// browser once the domain is verified.
+    /// camera app offers for a scanned code. `mumble-proxy://` carries a proxy
+    /// on its own and means something entirely different — one adds a server,
+    /// the other changes how every connection leaves this device — which is
+    /// why it has a scheme rather than a parameter. The https form is the one
+    /// that survives a messaging app, and Android delivers it here rather than
+    /// to a browser once the domain is verified.
     ///
     /// Letting only the scheme through was a real bug, and a quiet one: with
     /// verification working, Android hands the https link straight to this
     /// activity, this function returned null, and the invitation vanished with
     /// no error and no browser fallback to rescue it. Verification *succeeding*
     /// was what broke it.
+    ///
+    /// **And it happened again with `mumble-proxy`.** The manifest filter was
+    /// added and this list was not, so Android matched the intent, started the
+    /// activity, handed the link over, and it was dropped here — no error, no
+    /// dialog, nothing in the log. A scheme belongs in both places or in
+    /// neither.
     ///
     /// The host and path are matched here only to decide whether a link is
     /// worth passing on. What it actually contains is the core's business:
@@ -646,7 +655,7 @@ class MainActivity : FlutterActivity() {
         if (intent?.action != Intent.ACTION_VIEW) return null
         val uri = intent.data ?: return null
         val scheme = uri.scheme?.lowercase()
-        if (scheme == "mumble") return uri.toString()
+        if (scheme == "mumble" || scheme == "mumble-proxy") return uri.toString()
         if (scheme == "https" || scheme == "http") {
             val host = uri.host?.lowercase()
             val path = uri.path.orEmpty()

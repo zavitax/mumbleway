@@ -668,6 +668,66 @@ void main() {
       );
     });
 
+    test('every scheme a platform is told about is one the code accepts', () async {
+      // **A scheme belongs in both places or in neither.** Declaring it makes
+      // the system start the app and hand the link over; accepting it is what
+      // the app does with it afterwards. Declared and not accepted, the link
+      // is dropped with no error, no dialog and nothing in the log — which is
+      // exactly what happened when `mumble-proxy` was added to the Android
+      // manifest and not to `MainActivity.linkIn`, and before that when the
+      // https form was delivered to an activity that only knew `mumble:`.
+      final manifest =
+          await File('android/app/src/main/AndroidManifest.xml').readAsString();
+      final declared = RegExp(r'android:scheme="([^"]+)"')
+          .allMatches(manifest)
+          .map((m) => m.group(1)!)
+          .where((s) => s != 'http' && s != 'https')
+          .toSet();
+      expect(declared, contains('mumble'), reason: 'the manifest lost its schemes');
+
+      final activity = await File(
+        'android/app/src/main/kotlin/com/mumbleway/mumbleway/MainActivity.kt',
+      ).readAsString();
+      for (final scheme in declared) {
+        expect(
+          activity,
+          contains('"$scheme"'),
+          reason: 'AndroidManifest declares $scheme and MainActivity never '
+              'names it, so every such link is silently dropped',
+        );
+      }
+
+      // The same pair on Apple's side, where the plist declares and one Swift
+      // file decides.
+      for (final platform in ['ios', 'macos']) {
+        final plist = await File('$platform/Runner/Info.plist').readAsString();
+        final block = RegExp(
+          r'<key>CFBundleURLSchemes</key>\s*<array>(.*?)</array>',
+          dotAll: true,
+        ).firstMatch(plist);
+        expect(block, isNotNull, reason: '$platform declares no URL schemes');
+        final apple = RegExp(r'<string>([^<]+)</string>')
+            .allMatches(block!.group(1)!)
+            .map((m) => m.group(1)!)
+            .toSet();
+        expect(apple, equals(declared),
+            reason: '$platform and Android disagree about which links exist');
+
+        final swift = await File(
+          platform == 'ios'
+              ? 'ios/Runner/DeepLinks.swift'
+              : 'macos/Runner/AppDelegate.swift',
+        ).readAsString();
+        for (final scheme in apple) {
+          expect(
+            swift,
+            contains('"$scheme"'),
+            reason: '$platform declares $scheme and never accepts it',
+          );
+        }
+      }
+    });
+
     test('every language the app speaks is declared to Apple', () async {
       // iOS and macOS report an English locale for an undeclared language
       // regardless of how the phone is set, so a complete translation simply

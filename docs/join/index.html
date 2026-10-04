@@ -144,6 +144,8 @@
       proxyVoiceThrough: 'тоже через прокси',
       proxyVoiceDirect: 'напрямую',
       proxyNote: 'Через эту машину пойдут все соединения, которые настроены на общий прокси. Добавляйте её, только если доверяете тому, кто прислал ссылку.',
+      proxyRow: 'Через прокси',
+      proxyRowNote: 'Это приглашение содержит прокси: соединение с сервером пойдёт через машину, которой распоряжается кто-то другой. Приложение спросит, прежде чем им пользоваться.',
       more: 'Подробнее о MumbleWay',
       moreHref: '../ru/',
       htmlLang: 'ru',
@@ -199,6 +201,8 @@
     proxyVoiceThrough: 'through the proxy too',
     proxyVoiceDirect: 'straight to the server',
     proxyNote: 'Every connection set to use the app\'s proxy would go through this machine. Add it only if you trust whoever sent you the link.',
+    proxyRow: 'Through a proxy',
+    proxyRowNote: 'This invitation carries a proxy: the connection to the server would go through a machine somebody else controls. The app asks before using it.',
   };
   function word(key) { return (T && T[key]) || EN[key]; }
 
@@ -266,6 +270,23 @@
       ];
       var title = u.searchParams.get('title');
       if (title) rows.unshift([T ? T.name : 'Name', title]);
+      // **A proxy in a server invitation is not a detail.** It routes the
+      // connection through a machine the sharer chose, so it is named here
+      // rather than appearing for the first time inside the app. The address
+      // only — never the credentials that may be beside it in the link.
+      var via = u.searchParams.get('proxy');
+      if (via) {
+        var shown = via;
+        try {
+          var p = new URL(via);
+          shown = (p.protocol.replace(':', '').toLowerCase() === 'socks5'
+            ? 'SOCKS5' : 'HTTP(S)') + ' · ' + p.host;
+        } catch (e) { /* unparseable: show it as it arrived, minus any userinfo */
+          var at = via.lastIndexOf('@');
+          if (at !== -1) shown = via.slice(at + 1);
+        }
+        rows.push([word('proxyRow'), shown]);
+      }
     }
 
     var dl = document.getElementById('rows');
@@ -276,10 +297,12 @@
       d.appendChild(dt); d.appendChild(dd); dl.appendChild(d);
     });
     document.getElementById('detail').hidden = false;
-    if (isProxy) {
-      // What they are agreeing to, said before the button rather than after.
-      var note = document.getElementById('note');
-      if (note) { note.textContent = word('proxyNote'); note.hidden = false; }
+    // What they are agreeing to, said before the button rather than after —
+    // for a proxy on its own, and for a server invitation that brings one.
+    var note = document.getElementById('note');
+    if (note && (isProxy || u.searchParams.get('proxy'))) {
+      note.textContent = word(isProxy ? 'proxyNote' : 'proxyRowNote');
+      note.hidden = false;
     }
   } catch (e) {
     // An unparseable link is still worth offering to the app, which has a

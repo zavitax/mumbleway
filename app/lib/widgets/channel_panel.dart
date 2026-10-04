@@ -944,7 +944,15 @@ class _UserRow extends StatelessWidget {
     // it. Reading their own hand first painted every admin mute in the colour
     // of a decision the rider never made.
     final (IconData, Color, String) mic;
-    if (u.muted) {
+    if (u.localMute) {
+      // **Yours, and about the microphone, because that is the switch you
+      // moved.** You turned this rider down; the row says so where it says
+      // everything else about being heard, in the colour reserved for a
+      // decision only you can see — and it is read first because it is true
+      // whatever anybody else has done to them, and it is the thing that
+      // explains the silence you are sitting in.
+      mic = (Icons.mic_off, yours, l.statusMutedForYou);
+    } else if (u.muted) {
       mic = (Icons.mic_off, imposed, l.statusMutedByAdmin);
     } else if (u.suppressed) {
       // Silenced by the channel rather than by anybody's hand, and amber for
@@ -958,15 +966,11 @@ class _UserRow extends StatelessWidget {
       mic = (Icons.mic, quiet, l.statusMicOpen);
     }
 
+    // The ears are about *their* hearing only. Silencing somebody for
+    // yourself does nothing to what they can hear, and saying it here said
+    // they had gone deaf.
     final (IconData, Color, String) ears;
-    if (u.localMute) {
-      // **Read before anything about them, because it is about you.** You have
-      // turned this rider down; whatever their own sound is doing, you are not
-      // hearing them, and that is the fact that explains the silence you are
-      // sitting in. Its own colour because it is also the only thing in this
-      // row that nobody else on the server can see.
-      ears = (Icons.headset_off, yours, l.statusMutedForYou);
-    } else if (u.deafened) {
+    if (u.deafened) {
       ears = (Icons.headset_off, imposed, l.statusDeafenedByAdmin);
     } else if (u.selfDeafened) {
       ears = (Icons.headset_off, theirOwn, l.statusTheyHearNothing);

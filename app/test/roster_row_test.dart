@@ -297,21 +297,41 @@ void main() {
     t,
   ) async {
     // **Your own doing, and invisible to everybody else.** Red would say the
-    // rider chose it and amber that an admin did; this is neither, and it is
-    // the one state in the row that is about what *you* are hearing. It is
-    // read before anything about their own sound, because it is true whatever
-    // their sound is doing: you are not hearing them.
+    // rider chose it and amber that an admin did; this is neither. It belongs
+    // on the microphone, which is the switch that moved — put on the headset
+    // it said this rider had gone deaf, which is somebody else's state
+    // entirely — and it is read first, because it is true whatever anybody
+    // else has done to them.
     final l = await L.delegate.load(const Locale('en'));
     final state = connected();
     await t.pumpWidget(host(state, rider(localMute: true)));
     await t.pump(const Duration(milliseconds: 50));
 
-    expect(find.byIcon(Icons.headset_off), findsOneWidget);
+    expect(find.byIcon(Icons.mic_off), findsOneWidget);
     expect(
-      t.widget<Icon>(find.byIcon(Icons.headset_off)).color,
+      t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
       StatusColors.yours,
     );
-    await t.tap(find.byIcon(Icons.headset_off));
+    // Their hearing is their own business, and nothing here has touched it.
+    expect(find.byIcon(Icons.headset), findsOneWidget);
+    await t.tap(find.byIcon(Icons.mic_off));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.statusMutedForYou), findsOneWidget);
+  });
+
+  testWidgets('and it is said over an admin mute, because you can lift it', (
+    t,
+  ) async {
+    final l = await L.delegate.load(const Locale('en'));
+    final state = connected();
+    await t.pumpWidget(host(state, rider(localMute: true, muted: true)));
+    await t.pump(const Duration(milliseconds: 50));
+
+    expect(
+      t.widget<Icon>(find.byIcon(Icons.mic_off)).color,
+      StatusColors.yours,
+    );
+    await t.tap(find.byIcon(Icons.mic_off));
     await t.pump(const Duration(milliseconds: 100));
     expect(find.text(l.statusMutedForYou), findsOneWidget);
   });

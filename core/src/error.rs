@@ -49,8 +49,15 @@ pub enum CoreError {
 pub enum DisconnectReason {
     /// The user pressed disconnect. Never auto-reconnects.
     UserRequested,
-    /// No ping response within the timeout window.
-    PingTimeout,
+    /// The control channel went quiet for longer than the timeout.
+    ///
+    /// **`voice_still_arriving` is the half that explains it.** The control
+    /// channel is TCP and voice is UDP, and they are not the same path: a
+    /// middlebox that cuts a long-lived TLS session leaves the UDP flowing, so
+    /// the rider sees a healthy ping beside a link this client has just called
+    /// dead. Said plainly, that reads as a contradiction and a bug in the app;
+    /// said with the other half, it points at where the fault actually is.
+    PingTimeout { voice_still_arriving: bool },
     /// Socket closed or errored.
     TransportLost(String),
     /// Server actively rejected us.
@@ -87,7 +94,7 @@ impl DisconnectReason {
     pub fn resets_backoff(&self) -> bool {
         matches!(
             self,
-            DisconnectReason::PingTimeout | DisconnectReason::TransportLost(_)
+            DisconnectReason::PingTimeout { .. } | DisconnectReason::TransportLost(_)
         )
     }
 }
@@ -96,7 +103,18 @@ impl fmt::Display for DisconnectReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DisconnectReason::UserRequested => write!(f, "disconnected by user"),
-            DisconnectReason::PingTimeout => write!(f, "ping timeout"),
+            DisconnectReason::PingTimeout {
+                voice_still_arriving,
+            } => {
+                if *voice_still_arriving {
+                    write!(
+                        f,
+                        "the server stopped answering on the control link,                          although voice was still arriving"
+                    )
+                } else {
+                    write!(f, "the server stopped answering")
+                }
+            }
             DisconnectReason::TransportLost(e) => write!(f, "connection lost: {e}"),
             DisconnectReason::ServerRejected { reason, .. } => {
                 write!(f, "rejected by server: {reason}")
@@ -110,5 +128,51 @@ impl fmt::Display for DisconnectReason {
 impl From<anyhow::Error> for CoreError {
     fn from(e: anyhow::Error) -> Self {
         CoreError::Other(e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **A rider reads this line next to a ping in milliseconds.** The two are
+    /// measured on different paths — the ping over UDP, the liveness rule over
+    /// the TCP control channel — so "ping timeout" beside a healthy 47 ms is a
+    /// contradiction, and the obvious reading of a contradiction is that the
+    /// app is broken. Saying which of the two went quiet turns it into a fact
+    /// about the link, which is what it is.
+    #[test]
+    fn a_silent_control_channel_says_so_rather_than_blaming_the_ping() {
+        let cut = DisconnectReason::PingTimeout {
+            voice_still_arriving: true,
+        };
+        let words = cut.to_string();
+        assert!(
+            words.contains("control link") && words.contains("voice"),
+            "the half that explains it is missing: {words}"
+        );
+        assert!(
+            !words.contains("ping"),
+            "a rider is looking at a ping figure while reading this: {words}"
+        );
+
+        let gone = DisconnectReason::PingTimeout {
+            voice_still_arriving: false,
+        };
+        assert_eq!(gone.to_string(), "the server stopped answering");
+    }
+
+    /// Both are worth retrying, and both reset the backoff: a link that has
+    /// been healthy for an hour and then goes quiet deserves an immediate
+    /// retry rather than whatever delay an earlier failure left behind.
+    #[test]
+    fn a_quiet_link_is_recoverable_either_way() {
+        for voice_still_arriving in [true, false] {
+            let r = DisconnectReason::PingTimeout {
+                voice_still_arriving,
+            };
+            assert!(r.is_recoverable());
+            assert!(r.resets_backoff());
+        }
     }
 }

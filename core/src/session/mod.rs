@@ -818,11 +818,26 @@ impl Session {
                 _ = health_timer.tick() => {
                     let now = Instant::now();
                     if now.duration_since(state.last_heard) > SERVER_SILENCE_TIMEOUT {
+                        // Whether the *other* path is still alive, asked at the
+                        // moment it matters. A control channel that dies while
+                        // voice keeps arriving is not a server that has gone
+                        // away — it is something in between cutting one of the
+                        // two, which is worth saying rather than leaving a
+                        // rider to compare a dead link with a healthy ping.
+                        let voice_still_arriving =
+                            udp.as_ref().map(|s| s.is_healthy(now)).unwrap_or(false);
                         tracing::warn!(
-                            "no reply from the server for {} s, treating the link as dead",
-                            now.duration_since(state.last_heard).as_secs()
+                            "no reply from the server for {} s, treating the link as dead{}",
+                            now.duration_since(state.last_heard).as_secs(),
+                            if voice_still_arriving {
+                                " — voice was still arriving over UDP, so the control                                  channel is what went quiet"
+                            } else {
+                                ""
+                            }
                         );
-                        return Ok(DisconnectReason::PingTimeout);
+                        return Ok(DisconnectReason::PingTimeout {
+                            voice_still_arriving,
+                        });
                     }
                     // Fall back to the tunnel if UDP goes quiet mid-session.
                     if state.transport == Transport::Udp

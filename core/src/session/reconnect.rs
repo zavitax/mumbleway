@@ -427,21 +427,32 @@ mod tests {
         );
         // ...nor should a network-available signal.
         s.on_network_available();
-        assert_eq!(s.on_disconnect(&DisconnectReason::PingTimeout), None);
+        assert_eq!(
+            s.on_disconnect(&DisconnectReason::PingTimeout {
+                voice_still_arriving: false,
+            }),
+            None
+        );
     }
 
     #[test]
     fn ping_timeout_reconnects() {
         // This is the case the requirements call out explicitly.
         let mut s = ReconnectState::new(BackoffPolicy::default());
-        assert!(s.on_disconnect(&DisconnectReason::PingTimeout).is_some());
+        assert!(s
+            .on_disconnect(&DisconnectReason::PingTimeout {
+                voice_still_arriving: false,
+            })
+            .is_some());
         assert_eq!(s.attempt(), 1);
     }
 
     #[test]
     fn anything_that_might_pass_gets_retried() {
         for reason in [
-            DisconnectReason::PingTimeout,
+            DisconnectReason::PingTimeout {
+                voice_still_arriving: false,
+            },
             DisconnectReason::TransportLost("reset by peer".into()),
             DisconnectReason::ServerRejected {
                 reason: "server is full".into(),
@@ -486,14 +497,20 @@ mod tests {
         s.arm();
         assert!(!s.stopped_by_user());
         assert_eq!(s.attempt(), 0);
-        assert!(s.on_disconnect(&DisconnectReason::PingTimeout).is_some());
+        assert!(s
+            .on_disconnect(&DisconnectReason::PingTimeout {
+                voice_still_arriving: false,
+            })
+            .is_some());
     }
 
     #[test]
     fn attempts_escalate_then_reset_when_healthy() {
         let mut s = ReconnectState::new(BackoffPolicy::default());
         for _ in 0..5 {
-            s.on_disconnect(&DisconnectReason::PingTimeout);
+            s.on_disconnect(&DisconnectReason::PingTimeout {
+                voice_still_arriving: false,
+            });
         }
         assert_eq!(s.attempt(), 5);
 
@@ -525,8 +542,12 @@ mod tests {
     fn attempt_counter_cannot_overflow() {
         let mut s = ReconnectState::new(BackoffPolicy::default());
         s.attempt = u32::MAX - 1;
-        s.on_disconnect(&DisconnectReason::PingTimeout);
-        s.on_disconnect(&DisconnectReason::PingTimeout);
+        s.on_disconnect(&DisconnectReason::PingTimeout {
+            voice_still_arriving: false,
+        });
+        s.on_disconnect(&DisconnectReason::PingTimeout {
+            voice_still_arriving: false,
+        });
         assert_eq!(s.attempt(), u32::MAX, "must saturate, not wrap");
     }
 }

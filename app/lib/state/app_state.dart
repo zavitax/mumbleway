@@ -265,6 +265,17 @@ class SavedServer {
   );
 
   /// A draft entry from what the core parsed out of a link or a profile file.
+  ///
+  /// **Everything the parser found, or the carrier was pointless.** A proxy
+  /// travels in an invitation only when the sharer set one explicitly — which
+  /// they do because it is how that server is reached at all — so dropping it
+  /// here hands the receiver an entry that cannot connect and no hint why.
+  /// Access tokens were being lost the same way, and they are what opens the
+  /// channel the invitation names.
+  ///
+  /// An empty chain means "use the app's setting" rather than "direct": the
+  /// link has no way to say Direct, because a sharer's Direct is a fact about
+  /// their network and not advice about the receiver's.
   factory SavedServer.fromConfig(ServerConfig c) => SavedServer(
     name: c.name,
     host: c.host,
@@ -273,6 +284,11 @@ class SavedServer {
     password: c.password,
     certFingerprint: c.certFingerprint,
     defaultChannel: c.defaultChannel,
+    accessTokens: c.accessTokens,
+    proxyMode: c.proxyChain.isEmpty
+        ? ServerProxyMode.useDefault
+        : ServerProxyMode.custom,
+    proxy: c.proxyChain.isEmpty ? null : c.proxyChain.first,
   );
 }
 

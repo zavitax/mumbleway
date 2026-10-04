@@ -182,6 +182,50 @@ void main() {
     });
   });
 
+  group('receiving', () {
+    // The other half of sharing, and the half that was broken: the link
+    // carried the proxy, the parser found it, and the entry built from it had
+    // none — so the form opened saying "Global settings" and the rider was
+    // handed a server they could not reach.
+    test('a proxy in an invitation reaches the entry built from it', () {
+      final entry = SavedServer.fromConfig(
+        ServerConfig(
+          id: 'x',
+          name: 'Through SOCKS',
+          host: 'abc2.ru',
+          port: 6033,
+          username: 'rider',
+          accessTokens: const ['rideboss'],
+          proxyChain: [proxy('10.0.0.1', port: 1080)],
+        ),
+      );
+      expect(entry.proxyMode, ServerProxyMode.custom);
+      expect(entry.proxy?.host, '10.0.0.1');
+      expect(entry.proxy?.port, 1080);
+      // Lost by the same factory, and with the same result: an admin whose
+      // token never arrives finds every moderation action greyed out.
+      expect(entry.accessTokens, ['rideboss']);
+    });
+
+    test('and an invitation without one defers to the app', () {
+      final entry = SavedServer.fromConfig(
+        ServerConfig(
+          id: 'x',
+          name: 'Plain',
+          host: 'abc2.ru',
+          port: 6033,
+          username: 'rider',
+          accessTokens: const [],
+          proxyChain: const [],
+        ),
+      );
+      // Not `direct`: a link cannot say Direct, and assuming it would override
+      // a rider's own app-wide setting with the sharer's silence.
+      expect(entry.proxyMode, ServerProxyMode.useDefault);
+      expect(entry.proxy, isNull);
+    });
+  });
+
   group('sharing', () {
     SavedServer entry({
       ServerProxyMode mode = ServerProxyMode.useDefault,

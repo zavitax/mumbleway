@@ -24,6 +24,7 @@ import '../services/engine_log.dart';
 import '../services/overlay.dart';
 import '../services/power.dart';
 import '../services/proxy.dart';
+import '../services/server_proxy.dart';
 import '../services/store_links.dart';
 import '../src/rust/api/mumbleway.dart';
 import 'server_sync.dart';
@@ -42,6 +43,8 @@ class SavedServer {
     this.lastChannel,
     this.accessTokens = const [],
     this.note = '',
+    this.proxyMode = ServerProxyMode.useDefault,
+    this.proxy,
     String? localId,
     this.updatedAt = 0,
   }) : localId = localId ?? '$host:$port';
@@ -55,6 +58,19 @@ class SavedServer {
 
   /// Channel joined automatically on every connect, if the rider set one.
   final String? defaultChannel;
+
+  /// How this server is reached: directly, by whatever the app is set to, or
+  /// through a proxy of its own.
+  ///
+  /// **The default is the app's setting, not "direct".** A rider on a network
+  /// that needs a proxy sets it once; a server that genuinely must not use one
+  /// says so for itself.
+  final ServerProxyMode proxyMode;
+
+  /// The proxy this entry names, when [proxyMode] is
+  /// [ServerProxyMode.custom]. Its credentials are not in here — see
+  /// `services/server_proxy.dart` for where they live and why.
+  final ServerProxy? proxy;
 
   /// Access tokens to present to this server.
   ///
@@ -123,6 +139,11 @@ class SavedServer {
   /// re-hosted one does.
   bool sameConnection(SavedServer o) =>
       listEquals(accessTokens, o.accessTokens) &&
+      // How a server is reached is part of reaching it: a proxy that arrives
+      // by sync has to rebuild the session, or it takes effect at some
+      // unrelated moment later.
+      proxyMode == o.proxyMode &&
+      proxy == o.proxy &&
       host == o.host &&
       port == o.port &&
       username == o.username &&
@@ -147,10 +168,13 @@ class SavedServer {
     String? lastChannel,
     List<String>? accessTokens,
     String? note,
+    ServerProxyMode? proxyMode,
+    ServerProxy? proxy,
     String? localId,
     int? updatedAt,
     bool clearDefaultChannel = false,
     bool clearPassword = false,
+    bool clearProxy = false,
   }) => SavedServer(
     updatedAt: updatedAt ?? this.updatedAt,
     name: name ?? this.name,
@@ -169,6 +193,10 @@ class SavedServer {
     // An empty note is a real value — it is how a rider clears one — so this
     // takes whatever it is given rather than treating empty as "unchanged".
     note: note ?? this.note,
+    proxyMode: proxyMode ?? this.proxyMode,
+    // Choosing Direct or Global has to be able to *remove* the named proxy,
+    // which `??` cannot say — the same reason the password has a flag.
+    proxy: clearProxy ? null : (proxy ?? this.proxy),
     localId: localId ?? this.localId,
   );
 
@@ -183,6 +211,8 @@ class SavedServer {
     'defaultChannel': defaultChannel,
     'lastChannel': lastChannel,
     'accessTokens': accessTokens,
+    'proxyMode': proxyMode.name,
+    'proxy': proxy == null ? null : encodeProxy(proxy!),
     'note': note,
     'updatedAt': updatedAt,
   };
@@ -204,14 +234,26 @@ class SavedServer {
         if (t is String && t.isNotEmpty) t,
     ],
     note: j['note'] as String? ?? '',
+    // An entry saved before proxies existed defers to the app's setting, which
+    // is what every entry does until somebody says otherwise.
+    proxyMode: switch (j['proxyMode'] as String?) {
+      'direct' => ServerProxyMode.direct,
+      'custom' => ServerProxyMode.custom,
+      _ => ServerProxyMode.useDefault,
+    },
+    proxy: decodeProxy(j['proxy'] as String?),
     updatedAt: (j['updatedAt'] as num?)?.toInt() ?? 0,
   );
 
-  ServerConfig toConfig() => ServerConfig(
+  /// The engine's view of this entry.
+  ///
+  /// [proxyChain] is passed in rather than read off the entry: resolving
+  /// "use the app's default" needs the app's settings, which a saved server
+  /// knows nothing about and should not.
+  ServerConfig toConfig({List<ServerProxy> proxyChain = const []}) =>
+      ServerConfig(
     accessTokens: accessTokens,
-    // Resolved by the caller, which is the only place that knows what the
-    // app-wide default is; an entry on its own cannot answer "use the default".
-    proxyChain: const [],
+    proxyChain: proxyChain,
     id: id,
     name: name,
     host: host,
@@ -925,6 +967,10 @@ class AppState extends ChangeNotifier {
       // Resolve the proxy once at startup; createClient() uses the cached
       // result, so no request pays for a subprocess.
       await SystemProxy.instance.refresh();
+      // And the one that dials servers, which is a different setting with a
+      // different answer — read before any server is registered, since
+      // registration is what resolves each entry's chain.
+      await ServerProxies.instance.load();
 
       _setUpButtons(prefs);
 
@@ -1187,7 +1233,14 @@ class AppState extends ChangeNotifier {
 
   Future<void> _register(SavedServer s) async {
     try {
-      await addServer(config: s.toConfig());
+      await addServer(
+        config: s.toConfig(
+          proxyChain: ServerProxies.instance.chainFor(
+            mode: s.proxyMode,
+            own: s.proxy,
+          ),
+        ),
+      );
       _registered.add(s.id);
       runtimeFor(s.id);
       // Where to land: where they were, or the channel they chose as a

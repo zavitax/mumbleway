@@ -183,7 +183,11 @@ class SystemProxy {
     return stripScheme(value.split(';').first);
   }
 
-  @visibleForTesting
+  /// `http://host:port` and friends down to `host:port`.
+  ///
+  /// Not test-only any more: the proxy that dials *servers* parses the same
+  /// thing a rider types, and two parsers that disagree about what `host:port`
+  /// means is how one setting works and the other quietly does not.
   static String stripScheme(String v) =>
       v.replaceFirst(RegExp(r'^\w+://'), '').trim();
 

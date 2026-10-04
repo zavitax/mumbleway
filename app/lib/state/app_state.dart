@@ -209,6 +209,9 @@ class SavedServer {
 
   ServerConfig toConfig() => ServerConfig(
     accessTokens: accessTokens,
+    // Resolved by the caller, which is the only place that knows what the
+    // app-wide default is; an entry on its own cannot answer "use the default".
+    proxyChain: const [],
     id: id,
     name: name,
     host: host,

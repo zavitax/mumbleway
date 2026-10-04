@@ -3685,6 +3685,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<ServerProxy> dco_decode_list_server_proxy(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_server_proxy).toList();
+  }
+
+  @protected
   List<UiAclGroup> dco_decode_list_ui_acl_group(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_ui_acl_group).toList();
@@ -3811,6 +3817,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ProxyScheme dco_decode_proxy_scheme(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ProxyScheme.values[raw as int];
+  }
+
+  @protected
   (String?, String?) dco_decode_record_opt_string_opt_string(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -3838,8 +3850,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ServerConfig dco_decode_server_config(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 9)
-      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    if (arr.length != 10)
+      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
     return ServerConfig(
       id: dco_decode_String(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -3850,6 +3862,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       certFingerprint: dco_decode_opt_String(arr[6]),
       defaultChannel: dco_decode_opt_String(arr[7]),
       accessTokens: dco_decode_list_String(arr[8]),
+      proxyChain: dco_decode_list_server_proxy(arr[9]),
+    );
+  }
+
+  @protected
+  ServerProxy dco_decode_server_proxy(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return ServerProxy(
+      scheme: dco_decode_proxy_scheme(arr[0]),
+      host: dco_decode_String(arr[1]),
+      port: dco_decode_u_16(arr[2]),
+      username: dco_decode_opt_String(arr[3]),
+      password: dco_decode_opt_String(arr[4]),
+      tunnelVoice: dco_decode_bool(arr[5]),
     );
   }
 
@@ -4781,6 +4810,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<ServerProxy> sse_decode_list_server_proxy(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ServerProxy>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_server_proxy(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<UiAclGroup> sse_decode_list_ui_acl_group(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -5030,6 +5071,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ProxyScheme sse_decode_proxy_scheme(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ProxyScheme.values[inner];
+  }
+
+  @protected
   (String?, String?) sse_decode_record_opt_string_opt_string(
     SseDeserializer deserializer,
   ) {
@@ -5062,6 +5110,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_certFingerprint = sse_decode_opt_String(deserializer);
     var var_defaultChannel = sse_decode_opt_String(deserializer);
     var var_accessTokens = sse_decode_list_String(deserializer);
+    var var_proxyChain = sse_decode_list_server_proxy(deserializer);
     return ServerConfig(
       id: var_id,
       name: var_name,
@@ -5072,6 +5121,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       certFingerprint: var_certFingerprint,
       defaultChannel: var_defaultChannel,
       accessTokens: var_accessTokens,
+      proxyChain: var_proxyChain,
+    );
+  }
+
+  @protected
+  ServerProxy sse_decode_server_proxy(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_scheme = sse_decode_proxy_scheme(deserializer);
+    var var_host = sse_decode_String(deserializer);
+    var var_port = sse_decode_u_16(deserializer);
+    var var_username = sse_decode_opt_String(deserializer);
+    var var_password = sse_decode_opt_String(deserializer);
+    var var_tunnelVoice = sse_decode_bool(deserializer);
+    return ServerProxy(
+      scheme: var_scheme,
+      host: var_host,
+      port: var_port,
+      username: var_username,
+      password: var_password,
+      tunnelVoice: var_tunnelVoice,
     );
   }
 
@@ -6153,6 +6222,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_server_proxy(
+    List<ServerProxy> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_server_proxy(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_ui_acl_group(
     List<UiAclGroup> self,
     SseSerializer serializer,
@@ -6379,6 +6460,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_proxy_scheme(ProxyScheme self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_record_opt_string_opt_string(
     (String?, String?) self,
     SseSerializer serializer,
@@ -6411,6 +6498,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_String(self.certFingerprint, serializer);
     sse_encode_opt_String(self.defaultChannel, serializer);
     sse_encode_list_String(self.accessTokens, serializer);
+    sse_encode_list_server_proxy(self.proxyChain, serializer);
+  }
+
+  @protected
+  void sse_encode_server_proxy(ServerProxy self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_proxy_scheme(self.scheme, serializer);
+    sse_encode_String(self.host, serializer);
+    sse_encode_u_16(self.port, serializer);
+    sse_encode_opt_String(self.username, serializer);
+    sse_encode_opt_String(self.password, serializer);
+    sse_encode_bool(self.tunnelVoice, serializer);
   }
 
   @protected

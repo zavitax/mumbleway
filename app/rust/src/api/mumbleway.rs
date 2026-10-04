@@ -41,6 +41,62 @@ pub fn init_app() {
 // ---------------------------------------------------------------------------
 
 /// A server the user has configured.
+/// Which language a proxy speaks.
+///
+/// Named `ProxyScheme` rather than anything with "config" in it: the app
+/// already has a `ProxyConfig` for the downloads proxy, in a file the state
+/// object imports alongside this one, and the bridge mirrors these names into
+/// Dart verbatim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyScheme {
+    /// `CONNECT host:port`, which is what most HTTP(S) proxies offer.
+    HttpConnect,
+    /// SOCKS5, with a username and password where the proxy asks for them.
+    Socks5,
+}
+
+/// A proxy to dial a server through, as the app holds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerProxy {
+    pub scheme: ProxyScheme,
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    /// Carry voice through it as well, rather than sending it direct over UDP.
+    pub tunnel_voice: bool,
+}
+
+impl ServerProxy {
+    fn from_spec(spec: mumbleway_core::net::ProxySpec) -> Self {
+        Self {
+            scheme: match spec.kind {
+                mumbleway_core::net::ProxyKind::HttpConnect => ProxyScheme::HttpConnect,
+                mumbleway_core::net::ProxyKind::Socks5 => ProxyScheme::Socks5,
+            },
+            host: spec.host,
+            port: spec.port,
+            username: spec.username,
+            password: spec.password,
+            tunnel_voice: spec.tunnel_voice,
+        }
+    }
+
+    fn into_spec(self) -> mumbleway_core::net::ProxySpec {
+        mumbleway_core::net::ProxySpec {
+            kind: match self.scheme {
+                ProxyScheme::HttpConnect => mumbleway_core::net::ProxyKind::HttpConnect,
+                ProxyScheme::Socks5 => mumbleway_core::net::ProxyKind::Socks5,
+            },
+            host: self.host,
+            port: self.port,
+            username: self.username,
+            password: self.password,
+            tunnel_voice: self.tunnel_voice,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub id: String,
@@ -64,6 +120,12 @@ pub struct ServerConfig {
     /// shut channel opens, and a rider who has to retype one at a junction
     /// does not have it.
     pub access_tokens: Vec<String>,
+    /// Proxies to reach this server through, outermost first.
+    ///
+    /// **Already resolved.** "Use the app's default" is a choice the rider
+    /// makes and the Dart side answers before it gets here, so this is a plain
+    /// list: nothing in the engine has to know a default exists.
+    pub proxy_chain: Vec<ServerProxy>,
 }
 
 /// Connection status, flattened for easy rendering.
@@ -3354,6 +3416,7 @@ fn config_to_profile(c: ServerConfig) -> ServerProfile {
     p.cert_fingerprint = c.cert_fingerprint;
     p.auto_join_channel = c.default_channel;
     p.access_tokens = c.access_tokens;
+    p.proxy_chain = c.proxy_chain.into_iter().map(ServerProxy::into_spec).collect();
     if !c.id.trim().is_empty() {
         p.id = c.id;
     }
@@ -3389,6 +3452,12 @@ pub fn import_servers(
             // sharer did not put in the link, and inventing one would be
             // claiming an invitation said something it did not.
             access_tokens: Vec::new(),
+            // A proxy, on the other hand, may well be in the link — a server
+            // that can only be reached through one is not much of an
+            // invitation without it. What arrives is shown before it is used:
+            // adopting somebody else's route silently is the thing to avoid,
+            // not carrying it.
+            proxy_chain: p.proxy_chain.into_iter().map(ServerProxy::from_spec).collect(),
         })
         .collect())
 }

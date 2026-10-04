@@ -8,9 +8,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `from_spec`, `into_spec`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -1072,6 +1072,20 @@ enum NoiseSetting {
 }
 
 /// A server the user has configured.
+/// Which language a proxy speaks.
+///
+/// Named `ProxyScheme` rather than anything with "config" in it: the app
+/// already has a `ProxyConfig` for the downloads proxy, in a file the state
+/// object imports alongside this one, and the bridge mirrors these names into
+/// Dart verbatim.
+enum ProxyScheme {
+  /// `CONNECT host:port`, which is what most HTTP(S) proxies offer.
+  httpConnect,
+
+  /// SOCKS5, with a username and password where the proxy asks for them.
+  socks5,
+}
+
 class ServerConfig {
   final String id;
   final String name;
@@ -1097,6 +1111,13 @@ class ServerConfig {
   /// does not have it.
   final List<String> accessTokens;
 
+  /// Proxies to reach this server through, outermost first.
+  ///
+  /// **Already resolved.** "Use the app's default" is a choice the rider
+  /// makes and the Dart side answers before it gets here, so this is a plain
+  /// list: nothing in the engine has to know a default exists.
+  final List<ServerProxy> proxyChain;
+
   const ServerConfig({
     required this.id,
     required this.name,
@@ -1107,6 +1128,7 @@ class ServerConfig {
     this.certFingerprint,
     this.defaultChannel,
     required this.accessTokens,
+    required this.proxyChain,
   });
 
   @override
@@ -1119,7 +1141,8 @@ class ServerConfig {
       password.hashCode ^
       certFingerprint.hashCode ^
       defaultChannel.hashCode ^
-      accessTokens.hashCode;
+      accessTokens.hashCode ^
+      proxyChain.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1134,7 +1157,50 @@ class ServerConfig {
           password == other.password &&
           certFingerprint == other.certFingerprint &&
           defaultChannel == other.defaultChannel &&
-          accessTokens == other.accessTokens;
+          accessTokens == other.accessTokens &&
+          proxyChain == other.proxyChain;
+}
+
+/// A proxy to dial a server through, as the app holds it.
+class ServerProxy {
+  final ProxyScheme scheme;
+  final String host;
+  final int port;
+  final String? username;
+  final String? password;
+
+  /// Carry voice through it as well, rather than sending it direct over UDP.
+  final bool tunnelVoice;
+
+  const ServerProxy({
+    required this.scheme,
+    required this.host,
+    required this.port,
+    this.username,
+    this.password,
+    required this.tunnelVoice,
+  });
+
+  @override
+  int get hashCode =>
+      scheme.hashCode ^
+      host.hashCode ^
+      port.hashCode ^
+      username.hashCode ^
+      password.hashCode ^
+      tunnelVoice.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ServerProxy &&
+          runtimeType == other.runtimeType &&
+          scheme == other.scheme &&
+          host == other.host &&
+          port == other.port &&
+          username == other.username &&
+          password == other.password &&
+          tunnelVoice == other.tunnelVoice;
 }
 
 /// How a stage of the chain is doing.

@@ -4013,6 +4013,20 @@ impl SseDecode for Vec<crate::api::mumbleway::ServerConfig> {
     }
 }
 
+impl SseDecode for Vec<crate::api::mumbleway::ServerProxy> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::mumbleway::ServerProxy>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::api::mumbleway::UiAclGroup> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4280,6 +4294,18 @@ impl SseDecode for Option<crate::api::mumbleway::UiWaveform> {
     }
 }
 
+impl SseDecode for crate::api::mumbleway::ProxyScheme {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::mumbleway::ProxyScheme::HttpConnect,
+            1 => crate::api::mumbleway::ProxyScheme::Socks5,
+            _ => unreachable!("Invalid variant for ProxyScheme: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for (Option<String>, Option<String>) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4311,6 +4337,8 @@ impl SseDecode for crate::api::mumbleway::ServerConfig {
         let mut var_certFingerprint = <Option<String>>::sse_decode(deserializer);
         let mut var_defaultChannel = <Option<String>>::sse_decode(deserializer);
         let mut var_accessTokens = <Vec<String>>::sse_decode(deserializer);
+        let mut var_proxyChain =
+            <Vec<crate::api::mumbleway::ServerProxy>>::sse_decode(deserializer);
         return crate::api::mumbleway::ServerConfig {
             id: var_id,
             name: var_name,
@@ -4321,6 +4349,27 @@ impl SseDecode for crate::api::mumbleway::ServerConfig {
             cert_fingerprint: var_certFingerprint,
             default_channel: var_defaultChannel,
             access_tokens: var_accessTokens,
+            proxy_chain: var_proxyChain,
+        };
+    }
+}
+
+impl SseDecode for crate::api::mumbleway::ServerProxy {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_scheme = <crate::api::mumbleway::ProxyScheme>::sse_decode(deserializer);
+        let mut var_host = <String>::sse_decode(deserializer);
+        let mut var_port = <u16>::sse_decode(deserializer);
+        let mut var_username = <Option<String>>::sse_decode(deserializer);
+        let mut var_password = <Option<String>>::sse_decode(deserializer);
+        let mut var_tunnelVoice = <bool>::sse_decode(deserializer);
+        return crate::api::mumbleway::ServerProxy {
+            scheme: var_scheme,
+            host: var_host,
+            port: var_port,
+            username: var_username,
+            password: var_password,
+            tunnel_voice: var_tunnelVoice,
         };
     }
 }
@@ -5580,6 +5629,27 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::NoiseSetting>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::ProxyScheme {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::HttpConnect => 0.into_dart(),
+            Self::Socks5 => 1.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::ProxyScheme
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::ProxyScheme>
+    for crate::api::mumbleway::ProxyScheme
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::ProxyScheme {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::ServerConfig {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -5592,6 +5662,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::ServerConfig {
             self.cert_fingerprint.into_into_dart().into_dart(),
             self.default_channel.into_into_dart().into_dart(),
             self.access_tokens.into_into_dart().into_dart(),
+            self.proxy_chain.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5604,6 +5675,31 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::ServerConfig>
     for crate::api::mumbleway::ServerConfig
 {
     fn into_into_dart(self) -> crate::api::mumbleway::ServerConfig {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::ServerProxy {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.scheme.into_into_dart().into_dart(),
+            self.host.into_into_dart().into_dart(),
+            self.port.into_into_dart().into_dart(),
+            self.username.into_into_dart().into_dart(),
+            self.password.into_into_dart().into_dart(),
+            self.tunnel_voice.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::ServerProxy
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::ServerProxy>
+    for crate::api::mumbleway::ServerProxy
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::ServerProxy {
         self
     }
 }
@@ -6711,6 +6807,16 @@ impl SseEncode for Vec<crate::api::mumbleway::ServerConfig> {
     }
 }
 
+impl SseEncode for Vec<crate::api::mumbleway::ServerProxy> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::mumbleway::ServerProxy>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::api::mumbleway::UiAclGroup> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6937,6 +7043,22 @@ impl SseEncode for Option<crate::api::mumbleway::UiWaveform> {
     }
 }
 
+impl SseEncode for crate::api::mumbleway::ProxyScheme {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::mumbleway::ProxyScheme::HttpConnect => 0,
+                crate::api::mumbleway::ProxyScheme::Socks5 => 1,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
 impl SseEncode for (Option<String>, Option<String>) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -6966,6 +7088,19 @@ impl SseEncode for crate::api::mumbleway::ServerConfig {
         <Option<String>>::sse_encode(self.cert_fingerprint, serializer);
         <Option<String>>::sse_encode(self.default_channel, serializer);
         <Vec<String>>::sse_encode(self.access_tokens, serializer);
+        <Vec<crate::api::mumbleway::ServerProxy>>::sse_encode(self.proxy_chain, serializer);
+    }
+}
+
+impl SseEncode for crate::api::mumbleway::ServerProxy {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::api::mumbleway::ProxyScheme>::sse_encode(self.scheme, serializer);
+        <String>::sse_encode(self.host, serializer);
+        <u16>::sse_encode(self.port, serializer);
+        <Option<String>>::sse_encode(self.username, serializer);
+        <Option<String>>::sse_encode(self.password, serializer);
+        <bool>::sse_encode(self.tunnel_voice, serializer);
     }
 }
 

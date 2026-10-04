@@ -416,6 +416,67 @@ class LEn extends L {
   String get overrideProxy => 'Override proxy';
 
   @override
+  String get proxyForServers => 'Proxy for servers';
+
+  @override
+  String get proxyForThisServer => 'Proxy for this server';
+
+  @override
+  String get proxyNone => 'Direct';
+
+  @override
+  String get proxyUseGlobal => 'Global settings';
+
+  @override
+  String get proxyUseSystem => 'System proxy settings';
+
+  @override
+  String get proxySchemeHttp => 'HTTP(S) proxy';
+
+  @override
+  String get proxySchemeSocks5 => 'SOCKS5 proxy';
+
+  @override
+  String get proxyUsernameOptional => 'Username (optional)';
+
+  @override
+  String get proxyPasswordOptional => 'Password (optional)';
+
+  @override
+  String get proxyCredentialsStayHere =>
+      'Kept on this device only, and never synced.';
+
+  @override
+  String get proxyAddressNeeded =>
+      'Type an address and a port, like 10.0.0.1:1080';
+
+  @override
+  String get proxyTunnelVoice => 'Send voice through the proxy as well';
+
+  @override
+  String get proxyTunnelVoiceHelp =>
+      'Off, voice goes straight to the server and only the connection to it is proxied. On for a network that blocks it too — it costs some delay.';
+
+  @override
+  String get proxyVoiceThroughIt => 'voice too';
+
+  @override
+  String get proxyChainServers =>
+      'Always reach a server\'s own proxy through this one';
+
+  @override
+  String get proxyChainServersHelp =>
+      'For a network where nothing gets out directly. Servers set to Direct stay direct.';
+
+  @override
+  String get proxyServersHelp =>
+      'For the connection to a Mumble server itself. Off unless you set it, and never found automatically: a proxy your browser uses will often refuse a Mumble port.';
+
+  @override
+  String get proxyTakesEffectNextConnect =>
+      'Servers already connected keep their current route until they reconnect.';
+
+  @override
   String get proxyOverride => 'Proxy override';
 
   @override

@@ -853,6 +853,114 @@ abstract class L {
   /// **'Override proxy'**
   String get overrideProxy;
 
+  /// No description provided for @proxyForServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy for servers'**
+  String get proxyForServers;
+
+  /// No description provided for @proxyForThisServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Proxy for this server'**
+  String get proxyForThisServer;
+
+  /// No description provided for @proxyNone.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get proxyNone;
+
+  /// No description provided for @proxyUseGlobal.
+  ///
+  /// In en, this message translates to:
+  /// **'Global settings'**
+  String get proxyUseGlobal;
+
+  /// No description provided for @proxyUseSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System proxy settings'**
+  String get proxyUseSystem;
+
+  /// No description provided for @proxySchemeHttp.
+  ///
+  /// In en, this message translates to:
+  /// **'HTTP(S) proxy'**
+  String get proxySchemeHttp;
+
+  /// No description provided for @proxySchemeSocks5.
+  ///
+  /// In en, this message translates to:
+  /// **'SOCKS5 proxy'**
+  String get proxySchemeSocks5;
+
+  /// No description provided for @proxyUsernameOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Username (optional)'**
+  String get proxyUsernameOptional;
+
+  /// No description provided for @proxyPasswordOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Password (optional)'**
+  String get proxyPasswordOptional;
+
+  /// No description provided for @proxyCredentialsStayHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept on this device only, and never synced.'**
+  String get proxyCredentialsStayHere;
+
+  /// No description provided for @proxyAddressNeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Type an address and a port, like 10.0.0.1:1080'**
+  String get proxyAddressNeeded;
+
+  /// No description provided for @proxyTunnelVoice.
+  ///
+  /// In en, this message translates to:
+  /// **'Send voice through the proxy as well'**
+  String get proxyTunnelVoice;
+
+  /// No description provided for @proxyTunnelVoiceHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Off, voice goes straight to the server and only the connection to it is proxied. On for a network that blocks it too — it costs some delay.'**
+  String get proxyTunnelVoiceHelp;
+
+  /// No description provided for @proxyVoiceThroughIt.
+  ///
+  /// In en, this message translates to:
+  /// **'voice too'**
+  String get proxyVoiceThroughIt;
+
+  /// No description provided for @proxyChainServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Always reach a server\'s own proxy through this one'**
+  String get proxyChainServers;
+
+  /// No description provided for @proxyChainServersHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'For a network where nothing gets out directly. Servers set to Direct stay direct.'**
+  String get proxyChainServersHelp;
+
+  /// No description provided for @proxyServersHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'For the connection to a Mumble server itself. Off unless you set it, and never found automatically: a proxy your browser uses will often refuse a Mumble port.'**
+  String get proxyServersHelp;
+
+  /// No description provided for @proxyTakesEffectNextConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Servers already connected keep their current route until they reconnect.'**
+  String get proxyTakesEffectNextConnect;
+
   /// No description provided for @proxyOverride.
   ///
   /// In en, this message translates to:

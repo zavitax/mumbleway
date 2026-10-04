@@ -1290,6 +1290,31 @@ class AppState extends ChangeNotifier {
   /// the user has hung up, which is one deliberate tap away.
   bool canModifyServer(String id) => runtimeFor(id).isModifiable;
 
+  /// Rebuilds the sessions of servers that follow the app-wide proxy setting,
+  /// after that setting has changed.
+  ///
+  /// **Only the idle ones.** Connection details are baked in when a session is
+  /// registered, so a server that defers to the app has to be rebuilt for a new
+  /// default to mean anything — but tearing down a live session from a settings
+  /// screen would drop a rider out of a conversation they are having, with the
+  /// settings screen in front of them and no idea why. Those keep their current
+  /// route until they reconnect, which the tile says.
+  Future<void> reregisterIdleServers() async {
+    for (final s in servers) {
+      if (s.proxyMode == ServerProxyMode.direct) continue;
+      if (!canModifyServer(s.id)) continue;
+      if (!_registered.contains(s.id)) continue;
+      try {
+        await removeServer(serverId: s.id);
+      } catch (_) {
+        // Never registered after all; _register puts it back either way.
+      }
+      _deregister(s.id);
+      await _register(s);
+    }
+    notifyListeners();
+  }
+
   /// Replaces a saved server in place, keeping its key so the live session and
   /// anything pointing at it stay attached to the same entry.
   Future<String?> updateServer(SavedServer updated) async {

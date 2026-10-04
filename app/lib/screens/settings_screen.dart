@@ -11,6 +11,8 @@ import '../services/cloud_sync.dart';
 import '../services/noise_profiles.dart';
 import '../services/overlay.dart';
 import '../services/proxy.dart';
+import '../services/server_proxy.dart';
+import '../widgets/proxy_editor.dart';
 import '../services/site_links.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -228,6 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SectionHeader(l.network),
           _Explainer(l.networkBody),
           const _ProxyTile(),
+          const _ServerProxyTile(),
 
           // Only where something can actually carry the data to another
           // device. On Windows there is nothing behind this at all, and a
@@ -1112,6 +1115,87 @@ class _ProxyTile extends StatelessWidget {
     );
     controller.dispose();
     if (value != null) await state.setManualProxy(value);
+  }
+}
+
+/// The proxy that dials *servers*, as opposed to the one above it, which
+/// fetches the public directory and profile files.
+///
+/// **Two tiles rather than one switch, and the wording has to earn it.** The
+/// older one detects — environment, then the Windows registry — and a proxy a
+/// browser is configured with is usually an HTTP one whose allow-list stops at
+/// 443, so adopting it for a Mumble port would break connections that work
+/// today. This one is therefore explicit: Direct unless a rider says
+/// otherwise, with "System proxy settings" offered as a choice rather than
+/// taken as an assumption.
+class _ServerProxyTile extends StatefulWidget {
+  const _ServerProxyTile();
+
+  @override
+  State<_ServerProxyTile> createState() => _ServerProxyTileState();
+}
+
+class _ServerProxyTileState extends State<_ServerProxyTile> {
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final proxies = ServerProxies.instance;
+    final state = AppStateScope.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          leading: const Icon(Icons.swap_horiz),
+          title: Text(l.proxyForServers),
+          subtitle: Text(
+            defaultProxySummary(l, proxies.mode, proxies.custom),
+          ),
+          onTap: () async {
+            final choice = await showProxyEditor(
+              context,
+              defaultMode: proxies.mode,
+              proxy: proxies.custom,
+            );
+            if (choice?.defaultMode == null) return;
+            await proxies.setDefault(
+              mode: choice!.defaultMode!,
+              proxy: choice.proxy,
+            );
+            // Idle servers pick the new route up at once; a live one would be
+            // dropped mid-conversation by a settings screen, which is not a
+            // thing a settings screen should do.
+            await state.reregisterIdleServers();
+            if (mounted) setState(() {});
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Text(
+            l.proxyServersHelp,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        if (proxies.mode != DefaultProxyMode.direct)
+          SwitchListTile(
+            secondary: const Icon(Icons.alt_route),
+            title: Text(l.proxyChainServers),
+            subtitle: Text(l.proxyChainServersHelp),
+            value: proxies.chainServerProxies,
+            onChanged: (v) async {
+              await proxies.setDefault(
+                mode: proxies.mode,
+                proxy: proxies.custom,
+                chainServerProxies: v,
+              );
+              await state.reregisterIdleServers();
+              if (mounted) setState(() {});
+            },
+          ),
+      ],
+    );
   }
 }
 

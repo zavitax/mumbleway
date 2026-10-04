@@ -415,6 +415,66 @@ class LRu extends L {
   String get overrideProxy => 'Задать прокси вручную';
 
   @override
+  String get proxyForServers => 'Прокси для серверов';
+
+  @override
+  String get proxyForThisServer => 'Прокси для этого сервера';
+
+  @override
+  String get proxyNone => 'Напрямую';
+
+  @override
+  String get proxyUseGlobal => 'Как в общих настройках';
+
+  @override
+  String get proxyUseSystem => 'Как в настройках системы';
+
+  @override
+  String get proxySchemeHttp => 'HTTP(S)-прокси';
+
+  @override
+  String get proxySchemeSocks5 => 'SOCKS5-прокси';
+
+  @override
+  String get proxyUsernameOptional => 'Имя пользователя (необязательно)';
+
+  @override
+  String get proxyPasswordOptional => 'Пароль (необязательно)';
+
+  @override
+  String get proxyCredentialsStayHere =>
+      'Хранятся только на этом устройстве и не синхронизируются.';
+
+  @override
+  String get proxyAddressNeeded =>
+      'Укажите адрес и порт, например 10.0.0.1:1080';
+
+  @override
+  String get proxyTunnelVoice => 'Передавать голос тоже через прокси';
+
+  @override
+  String get proxyTunnelVoiceHelp =>
+      'Если выключено, голос идёт прямо на сервер, а через прокси идёт только соединение с ним. Включайте, если сеть блокирует и его — будет чуть больше задержка.';
+
+  @override
+  String get proxyVoiceThroughIt => 'и голос';
+
+  @override
+  String get proxyChainServers => 'Добираться до прокси сервера через этот';
+
+  @override
+  String get proxyChainServersHelp =>
+      'Для сети, из которой напрямую не выйти вообще. Серверы с выбором «Напрямую» так и останутся.';
+
+  @override
+  String get proxyServersHelp =>
+      'Для самого соединения с сервером Mumble. Выключено, пока вы его не зададите, и никогда не подбирается сам: прокси для браузера часто не пропускает порт Mumble.';
+
+  @override
+  String get proxyTakesEffectNextConnect =>
+      'Уже подключённые серверы останутся на прежнем маршруте до переподключения.';
+
+  @override
   String get proxyOverride => 'Свой прокси';
 
   @override

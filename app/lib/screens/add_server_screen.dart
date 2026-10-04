@@ -351,21 +351,32 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
     final state = AppStateScope.of(context);
     final existing = widget.existing;
-    final draft = SavedServer(
-      name: _name.text.trim(),
-      host: _host.text.trim(),
-      port: int.parse(_port.text),
-      username: _user.text.trim(),
-      password: _password.text.isEmpty ? null : _password.text,
-      // Editing keeps the key and everything hanging off it; the pinned
-      // certificate and default channel belong to the entry, not the form.
-      localId: existing?.localId,
-      certFingerprint: existing?.certFingerprint,
-      // The channel has no field on this form, so it rides along from wherever
-      // the entry came from: the saved one when editing, and the link's own
-      // when a code or an invitation filled the form in.
-      defaultChannel: existing?.defaultChannel ?? _source?.defaultChannel,
-    );
+    // **An edit changes the five fields on this form and nothing else.** Built
+    // from the saved entry rather than from the constructor, because an entry
+    // carries more than this screen shows — access tokens, the rider's note,
+    // the channel to return to — and a fresh `SavedServer` quietly dropped
+    // every field nobody remembered to list here. Tokens went that way: a
+    // rider who edited the server's name came back unable to enter the channel
+    // the token was for, with the token gone and nothing having said so.
+    final draft =
+        existing?.copyWith(
+          name: _name.text.trim(),
+          host: _host.text.trim(),
+          port: int.parse(_port.text),
+          username: _user.text.trim(),
+          password: _password.text.isEmpty ? null : _password.text,
+          clearPassword: _password.text.isEmpty,
+        ) ??
+        SavedServer(
+          name: _name.text.trim(),
+          host: _host.text.trim(),
+          port: int.parse(_port.text),
+          username: _user.text.trim(),
+          password: _password.text.isEmpty ? null : _password.text,
+          // The channel has no field on this form, so it rides along from the
+          // link's own when a code or an invitation filled the form in.
+          defaultChannel: _source?.defaultChannel,
+        );
 
     final error = existing == null
         ? await state.addNewServer(draft)

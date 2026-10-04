@@ -130,9 +130,18 @@ class SavedServer {
       certFingerprint == o.certFingerprint &&
       defaultChannel == o.defaultChannel;
 
+  /// **Everything not named is kept.** That is the point of it: the add and
+  /// edit form can change five of these fields and knows nothing about the
+  /// rest — the tokens, the note, the channel to come back to — and a draft
+  /// built from the constructor instead silently dropped every one of them,
+  /// which is a rider losing the word that lets them into their club's channel
+  /// because they corrected a typo in the server's name.
   SavedServer copyWith({
     String? name,
+    String? host,
+    int? port,
     String? username,
+    String? password,
     String? certFingerprint,
     String? defaultChannel,
     String? lastChannel,
@@ -141,13 +150,16 @@ class SavedServer {
     String? localId,
     int? updatedAt,
     bool clearDefaultChannel = false,
+    bool clearPassword = false,
   }) => SavedServer(
     updatedAt: updatedAt ?? this.updatedAt,
     name: name ?? this.name,
-    host: host,
-    port: port,
+    host: host ?? this.host,
+    port: port ?? this.port,
     username: username ?? this.username,
-    password: password,
+    // An empty password field means the rider took it off, which `??` cannot
+    // say — so it is said with a flag, the way the default channel is.
+    password: clearPassword ? null : (password ?? this.password),
     certFingerprint: certFingerprint ?? this.certFingerprint,
     defaultChannel: clearDefaultChannel
         ? null

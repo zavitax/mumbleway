@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/server_proxy.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../widgets/app_bar_title.dart';
+import '../widgets/proxy_editor.dart';
 import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import 'import_screen.dart';
@@ -154,6 +156,24 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
   bool get _editing => widget.existing != null;
 
+  /// How this server is reached, which is not a text field and so is held
+  /// here rather than in a controller.
+  ServerProxyMode _proxyMode = ServerProxyMode.useDefault;
+  ServerProxy? _proxy;
+
+  /// Sets the route without opening the sheet, for tests.
+  ///
+  /// The sheet is a modal with its own sheet-sized assumptions; what the tests
+  /// are about is whether a choice survives the save, which is this state and
+  /// the two branches of `_submit`.
+  @visibleForTesting
+  void setProxyForTesting(ServerProxyMode mode, ServerProxy? proxy) {
+    setState(() {
+      _proxyMode = mode;
+      _proxy = proxy;
+    });
+  }
+
   /// Where the form's contents came from.
   ///
   /// Kept because the entry carries things this form has no field for — the
@@ -189,6 +209,8 @@ class _AddServerScreenState extends State<AddServerScreen> {
     _port.text = source.port.toString();
     _user.text = source.username;
     _password.text = source.password ?? '';
+    _proxyMode = source.proxyMode;
+    _proxy = source.proxy;
   }
 
   /// Fills the username field with the device's own suggestion.
@@ -322,6 +344,34 @@ class _AddServerScreenState extends State<AddServerScreen> {
                 prefixIcon: const Icon(Icons.lock_outline),
               ),
             ),
+            const SizedBox(height: 12),
+            // **A sixth field, and the one that decides whether any of the
+            // others can be reached.** Under the password because that is
+            // where the connection details end and the route begins.
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.swap_horiz),
+              title: Text(l.proxyForThisServer),
+              subtitle: Text(proxySummary(l, _proxyMode, _proxy)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final choice = await showProxyEditor(
+                  context,
+                  mode: _proxyMode,
+                  proxy: _proxy,
+                );
+                if (choice?.mode == null) return;
+                setState(() {
+                  _proxyMode = choice!.mode!;
+                  _proxy = choice.proxy;
+                });
+                // Remembered against the proxy's address rather than this
+                // entry, so another server behind the same one finds them.
+                if (choice?.proxy case final p? when p.username != null) {
+                  await ServerProxies.instance.rememberCredentials(p);
+                }
+              },
+            ),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: _saving ? null : _submit,
@@ -366,6 +416,11 @@ class _AddServerScreenState extends State<AddServerScreen> {
           username: _user.text.trim(),
           password: _password.text.isEmpty ? null : _password.text,
           clearPassword: _password.text.isEmpty,
+          proxyMode: _proxyMode,
+          proxy: _proxy,
+          // Direct and Global carry no address, and `??` cannot say "drop the
+          // one that is there" — the same flag the password needs.
+          clearProxy: _proxyMode != ServerProxyMode.custom,
         ) ??
         SavedServer(
           name: _name.text.trim(),
@@ -376,6 +431,8 @@ class _AddServerScreenState extends State<AddServerScreen> {
           // The channel has no field on this form, so it rides along from the
           // link's own when a code or an invitation filled the form in.
           defaultChannel: _source?.defaultChannel,
+          proxyMode: _proxyMode,
+          proxy: _proxyMode == ServerProxyMode.custom ? _proxy : null,
         );
 
     final error = existing == null

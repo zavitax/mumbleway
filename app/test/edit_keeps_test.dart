@@ -3,6 +3,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mumbleway/l10n/app_localizations.dart';
 import 'package:mumbleway/screens/add_server_screen.dart';
+import 'package:mumbleway/services/server_proxy.dart';
+import 'package:mumbleway/src/rust/api/mumbleway.dart';
 import 'package:mumbleway/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -46,6 +48,15 @@ void main() {
     lastChannel: 'Clubhouse',
     accessTokens: const ['vip', 'rideboss'],
     note: 'Wednesday ride, 7pm',
+    proxyMode: ServerProxyMode.custom,
+    proxy: const ServerProxy(
+      scheme: ProxyScheme.socks5,
+      host: '10.0.0.1',
+      port: 1080,
+      username: null,
+      password: null,
+      tunnelVoice: false,
+    ),
   );
 
   testWidgets('editing the name keeps the tokens, the note and the way back', (
@@ -70,6 +81,36 @@ void main() {
     expect(after.defaultChannel, 'Garage');
     expect(after.certFingerprint, 'ab:cd');
     expect(after.password, 'hunter2');
+    expect(after.proxyMode, ServerProxyMode.custom);
+    expect(
+      after.proxy?.host,
+      '10.0.0.1',
+      reason: 'the route to a server is not a field this form shows',
+    );
+  });
+
+  testWidgets('and choosing Direct really drops the proxy it named', (t) async {
+    // The other half of the same rule: a field that cannot be *cleared* is as
+    // wrong as one that cannot be kept, and `??` cannot say "remove it".
+    final state = AppState();
+    addTearDown(state.dispose);
+    state.servers.add(saved);
+
+    await t.pumpWidget(host(state, saved));
+    await t.pump(const Duration(milliseconds: 50));
+
+    final screen = t.state(find.byType(AddServerScreen));
+    // ignore: avoid_dynamic_calls
+    (screen as dynamic).setProxyForTesting(ServerProxyMode.direct, null);
+    await t.pump();
+    await t.tap(
+      find.text(L.of(t.element(find.byType(AddServerScreen))).saveChanges),
+    );
+    await t.pumpAndSettle();
+
+    expect(state.servers.single.proxy, isNull);
+    expect(state.servers.single.proxyMode, ServerProxyMode.direct);
+    expect(state.servers.single.accessTokens, ['vip', 'rideboss']);
   });
 
   testWidgets('and clearing the password still clears it', (t) async {

@@ -30,6 +30,28 @@ pub enum CoreError {
     #[error("TLS error: {0}")]
     Tls(String),
 
+    /// Something went wrong between here and the proxy, or at it.
+    ///
+    /// Kept apart from [`CoreError::Rejected`] on purpose: a proxy refusing to
+    /// open a port reads as the *server* refusing the rider if the two share a
+    /// variant, which sends them to fix the wrong thing.
+    #[error("proxy error: {reason}")]
+    Proxy {
+        reason: String,
+        /// Whether the same attempt is worth making again in a moment.
+        ///
+        /// A refusal about *this* request — a port the proxy will not open, a
+        /// kind of connection it does not do — says the same thing every ten
+        /// seconds for ever, and retrying it hides what the proxy said behind a
+        /// spinner. Failing to *reach* something may be a moment's trouble.
+        /// Decided where the answer is read, not by reading the sentence back.
+        retry: bool,
+    },
+
+    /// The proxy wants credentials, or did not accept the ones it was given.
+    #[error("proxy authentication failed: {0}")]
+    ProxyAuth(String),
+
     #[error("decode error: {0}")]
     Decode(#[from] prost::DecodeError),
 
@@ -67,6 +89,12 @@ pub enum DisconnectReason {
     ServerRejected { reason: String, retry: bool },
     /// Handshake did not complete in time.
     HandshakeTimeout,
+    /// The proxy would not carry the connection, or would not have us.
+    ///
+    /// Its own reason rather than [`DisconnectReason::ServerRejected`]: the
+    /// server never heard of this attempt, and telling a rider their *server*
+    /// refused them sends them to check a password that was never asked for.
+    ProxyRejected { reason: String, retry: bool },
     /// Anything else.
     Error(String),
 }
@@ -85,6 +113,7 @@ impl DisconnectReason {
         match self {
             DisconnectReason::UserRequested => false,
             DisconnectReason::ServerRejected { retry, .. } => *retry,
+            DisconnectReason::ProxyRejected { retry, .. } => *retry,
             _ => true,
         }
     }
@@ -120,6 +149,9 @@ impl fmt::Display for DisconnectReason {
                 write!(f, "rejected by server: {reason}")
             }
             DisconnectReason::HandshakeTimeout => write!(f, "handshake timed out"),
+            DisconnectReason::ProxyRejected { reason, .. } => {
+                write!(f, "the proxy refused the connection: {reason}")
+            }
             DisconnectReason::Error(e) => write!(f, "{e}"),
         }
     }

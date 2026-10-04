@@ -4,9 +4,11 @@ pub mod audio_packet;
 pub mod control;
 pub mod frame;
 pub mod ping;
+pub mod proxy;
 pub mod stats;
 pub mod tls;
 pub mod voice;
 
 pub use audio_packet::VoicePacket;
+pub use proxy::{ProxyKind, ProxySpec};
 pub use tls::{Identity, TrustPolicy};

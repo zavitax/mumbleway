@@ -448,6 +448,12 @@ impl Session {
                     DisconnectReason::TransportLost(what.to_string())
                 }
             }
+            // Never a `ServerRejected`: nothing of this reached the server.
+            CoreError::Proxy { reason, retry } => DisconnectReason::ProxyRejected { reason, retry },
+            CoreError::ProxyAuth(reason) => DisconnectReason::ProxyRejected {
+                reason,
+                retry: false,
+            },
             CoreError::Io(e) => DisconnectReason::TransportLost(e.to_string()),
             other => DisconnectReason::Error(other.to_string()),
         }

@@ -865,6 +865,12 @@ abstract class L {
   /// **'Share this proxy'**
   String get proxyShare;
 
+  /// Said before a proxy is shared, because a proxy login works for anything the receiver wants, not only for this app.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone who receives this could use the proxy at {address} for anything, not only for MumbleWay.'**
+  String proxyShareWarning(String address);
+
   /// No description provided for @proxyLinkTitle.
   ///
   /// In en, this message translates to:

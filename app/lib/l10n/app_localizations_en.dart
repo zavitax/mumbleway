@@ -422,6 +422,11 @@ class LEn extends L {
   String get proxyShare => 'Share this proxy';
 
   @override
+  String proxyShareWarning(String address) {
+    return 'Anyone who receives this could use the proxy at $address for anything, not only for MumbleWay.';
+  }
+
+  @override
   String get proxyLinkTitle => 'A proxy was shared with you';
 
   @override

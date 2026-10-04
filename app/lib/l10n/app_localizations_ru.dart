@@ -421,6 +421,11 @@ class LRu extends L {
   String get proxyShare => 'Поделиться этим прокси';
 
   @override
+  String proxyShareWarning(String address) {
+    return 'Любой, кто получит ссылку, сможет пользоваться прокси $address для чего угодно, не только для MumbleWay.';
+  }
+
+  @override
   String get proxyLinkTitle => 'Вам прислали прокси';
 
   @override

@@ -1223,8 +1223,7 @@ Future<void> _shareProxy(BuildContext context, ServerProxy proxy) async {
       builder: (c) => AlertDialog(
         title: Text(l.includePasswordTitle),
         content: Text(
-          'Anyone who receives this could use the proxy at '
-          '${proxy.host}:${proxy.port} for anything, not only for MumbleWay.',
+          l.proxyShareWarning('${proxy.host}:${proxy.port}'),
           style: const TextStyle(fontSize: 13),
         ),
         actions: [

@@ -198,12 +198,26 @@
   "useSystemProxy": "Use the system proxy",
   "overrideProxy": "Override proxy",
   "proxyShare": "Share this proxy",
+  "proxyShareWarning": "Anyone who receives this could use the proxy at {address} for anything, not only for MumbleWay.",
+  "@proxyShareWarning": {
+    "description": "Said before a proxy is shared, because a proxy login works for anything the receiver wants, not only for this app.",
+    "placeholders": {
+      "address": {
+        "type": "String",
+        "example": "10.0.0.1:1080"
+      }
+    }
+  },
   "proxyLinkTitle": "A proxy was shared with you",
   "proxyLinkBody": "Every connection set to use the app's proxy would go through {address}, a machine somebody else controls. It can see which servers you connect to and when.",
   "proxyLinkUse": "Use it",
   "proxyLinkAdded": "Saved as the proxy for servers",
   "@proxyLinkBody": {
-    "placeholders": { "address": { "type": "String" } }
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
   },
   "proxyForServers": "Proxy for servers",
   "proxyForThisServer": "Proxy for this server",

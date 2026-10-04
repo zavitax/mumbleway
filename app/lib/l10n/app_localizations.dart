@@ -3031,6 +3031,12 @@ abstract class L {
   /// **'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.'**
   String get allowRemoteUnmuteBody;
 
+  /// No description provided for @qualityUnmeasured.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has not measured this connection'**
+  String get qualityUnmeasured;
+
   /// Tooltip line: the server's own round-trip measurement to this rider.
   ///
   /// In en, this message translates to:

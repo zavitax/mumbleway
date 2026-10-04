@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'access_tokens_dialog.dart';
 import 'ban_list_dialog.dart';
+import 'connection_quality.dart';
 import 'registered_users_dialog.dart';
 import 'channel_panel.dart';
 import 'status_badge.dart';
@@ -145,11 +146,11 @@ class ServerCard extends StatelessWidget {
                         // two servers are connected at once under different
                         // names — "who am I on this one" is otherwise a trip
                         // into the editor to find out.
-                        if (rt.selfName ?? server.username case final me
-                            when me.isNotEmpty) ...[
+                        if (rt.selfName ?? server.username case final name
+                            when name.isNotEmpty) ...[
                           const SizedBox(width: 6),
                           Text(
-                            '@$me',
+                            '@$name',
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(
@@ -157,6 +158,26 @@ class ServerCard extends StatelessWidget {
                               ).colorScheme.onSurfaceVariant,
                             ),
                           ),
+                          // **What the server made of us, beside the name it
+                          // knows us by.** Everybody else's row carries these;
+                          // our own was the one place that said nothing, so a
+                          // rider granted priority speaker — or wondering how
+                          // their own link is doing — had to read it off
+                          // somebody else's screen.
+                          if (rt.me?.prioritySpeaker ?? false) ...[
+                            const SizedBox(width: 6),
+                            Tooltip(
+                              message: l.prioritySpeaker,
+                              triggerMode: TooltipTriggerMode.tap,
+                              child: const Icon(
+                                Icons.campaign_outlined,
+                                size: 14,
+                                color: StatusColors.talking,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(width: 6),
+                          ConnectionQualityBars(quality: rt.me?.quality),
                         ],
                       ],
                     ),

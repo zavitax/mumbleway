@@ -33,6 +33,7 @@ class VoiceMeter extends StatelessWidget {
     this.width,
     this.height = 7,
     this.marks = const [],
+    this.vertical = false,
   });
 
   final double levelDb;
@@ -53,6 +54,18 @@ class VoiceMeter extends StatelessWidget {
   /// Fixed width, or null to fill whatever is available.
   final double? width;
   final double height;
+
+  /// Stands the meter on end: it fills upward from the bottom and is as tall
+  /// as it is told, instead of as wide.
+  ///
+  /// **For a row where the horizontal space belongs to the name.** A roster
+  /// row has a name, a note, a badge and up to four glyphs competing for the
+  /// width, and a bar lying across eighty pixels of it was the one thing there
+  /// that did not need to be long: what it says is "how loud", which a column
+  /// says in six pixels and the height of a glyph. The scale is the same one —
+  /// same floor, same three gradient stops, same fall rate — so a given
+  /// loudness fills the same fraction whichever way the meter is turned.
+  final bool vertical;
 
   /// Ticks drawn over the track, on the same scale as the fill.
   final List<VoiceMeterMark> marks;
@@ -106,9 +119,10 @@ class VoiceMeter extends StatelessWidget {
 
     final meter = LayoutBuilder(
       builder: (context, constraints) {
-        final track = constraints.maxWidth;
+        final track = vertical ? constraints.maxHeight : constraints.maxWidth;
+        final thickness = vertical ? (width ?? 6) : height;
         return SizedBox(
-          height: height,
+          height: vertical ? null : height,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -116,12 +130,12 @@ class VoiceMeter extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: grey.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(height / 2),
+                    borderRadius: BorderRadius.circular(thickness / 2),
                   ),
                 ),
               ),
               ClipRRect(
-                borderRadius: BorderRadius.circular(height / 2),
+                borderRadius: BorderRadius.circular(thickness / 2),
                 child: TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: filled),
                   duration: _tween,
@@ -130,20 +144,23 @@ class VoiceMeter extends StatelessWidget {
                       ? const SizedBox.shrink()
                       : ClipRect(
                           child: Align(
-                            alignment: Alignment.centerLeft,
+                            alignment: vertical
+                                ? Alignment.bottomCenter
+                                : Alignment.centerLeft,
                             // Shrinks this Align to a fraction of its child
-                            // while the child keeps its full width, so the
+                            // while the child keeps its full size, so the
                             // gradient always spans the whole track and a given
                             // colour always means the same loudness. Sizing the
                             // gradient to the filled part instead would paint a
                             // quiet talker red at full scale.
-                            widthFactor: value,
+                            widthFactor: vertical ? null : value,
+                            heightFactor: vertical ? value : null,
                             child: child,
                           ),
                         ),
                   child: SizedBox(
-                    width: track,
-                    height: height,
+                    width: vertical ? thickness : track,
+                    height: vertical ? track : height,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         // The same three stops either way, so the shape of the
@@ -151,6 +168,14 @@ class VoiceMeter extends StatelessWidget {
                         // that was two thirds along stays two thirds along, and
                         // only its meaning about being heard changes.
                         gradient: LinearGradient(
+                          // Upwards when stood on end, so the quiet end is at
+                          // the bottom where the fill starts.
+                          begin: vertical
+                              ? Alignment.bottomCenter
+                              : Alignment.centerLeft,
+                          end: vertical
+                              ? Alignment.topCenter
+                              : Alignment.centerRight,
                           colors: monochrome
                               ? [
                                   grey.withValues(alpha: 0.45),
@@ -171,14 +196,23 @@ class VoiceMeter extends StatelessWidget {
               ),
               for (final mark in marks)
                 Positioned(
-                  left: (track * fractionFor(mark.levelDb) - 1).clamp(
-                    0.0,
-                    (track - 2).clamp(0.0, double.infinity),
-                  ),
-                  top: -mark.overhang,
-                  bottom: -mark.overhang,
+                  left: vertical
+                      ? -mark.overhang
+                      : (track * fractionFor(mark.levelDb) - 1).clamp(
+                          0.0,
+                          (track - 2).clamp(0.0, double.infinity),
+                        ),
+                  right: vertical ? -mark.overhang : null,
+                  bottom: vertical
+                      ? (track * fractionFor(mark.levelDb) - 1).clamp(
+                          0.0,
+                          (track - 2).clamp(0.0, double.infinity),
+                        )
+                      : -mark.overhang,
+                  top: vertical ? null : -mark.overhang,
                   child: Container(
-                    width: 2,
+                    width: vertical ? null : 2,
+                    height: vertical ? 2 : null,
                     decoration: BoxDecoration(
                       color: mark.color,
                       borderRadius: BorderRadius.circular(1),
@@ -191,6 +225,9 @@ class VoiceMeter extends StatelessWidget {
       },
     );
 
+    if (vertical) {
+      return SizedBox(width: width ?? 6, height: height, child: meter);
+    }
     return width == null
         ? meter
         : SizedBox(width: width, height: height, child: meter);

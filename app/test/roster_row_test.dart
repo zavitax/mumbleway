@@ -422,13 +422,27 @@ void main() {
     expect(bars.width, greaterThanOrEqualTo(18));
   });
 
-  testWidgets('and is absent when the server has not measured them', (t) async {
+  testWidgets('and is present but quiet when nothing has been measured', (
+    t,
+  ) async {
+    // **It used to vanish, and a row that changes shape reads as a fault.**
+    // Having no measurement is the ordinary case for anybody outside our own
+    // channel — that is all the server measures — so the bars stay where they
+    // are, grey and at half opacity, saying nothing rather than disappearing.
+    final l = await L.delegate.load(const Locale('en'));
     final state = connected();
     await t.pumpWidget(host(state, rider()));
     await t.pump(const Duration(milliseconds: 50));
 
-    // Nothing beside a row means "no measurement", which is what happens for
-    // anybody outside our own channel — see ConnectionQualityBars.
-    expect(find.byType(ConnectionQualityBars), findsNothing);
+    expect(find.byType(ConnectionQualityBars), findsOneWidget);
+    expect(t.widget<Opacity>(
+      find.descendant(
+        of: find.byType(ConnectionQualityBars),
+        matching: find.byType(Opacity),
+      ),
+    ).opacity, 0.5);
+    await t.tap(find.byType(ConnectionQualityBars));
+    await t.pump(const Duration(milliseconds: 100));
+    expect(find.text(l.qualityUnmeasured), findsOneWidget);
   });
 }

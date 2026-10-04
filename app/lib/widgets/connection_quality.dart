@@ -38,14 +38,16 @@ LinkGrade gradeFor(UiQuality q) {
 
 /// A rider's connection, as bars beside their name.
 ///
-/// Drawn for everybody rather than only for the bad ones, so that a row with
-/// nothing beside it means *we have no measurement* — which happens for anyone
-/// outside our own channel — rather than being indistinguishable from a rider
-/// whose connection is fine.
+/// **Always drawn, including when there is nothing to draw.** A row that
+/// simply loses the bars is a row that has changed shape, and the eye reads
+/// that as a connection having *gone* rather than as a measurement not having
+/// arrived — which is the ordinary case for anybody outside our own channel,
+/// since that is all the server measures. Unmeasured is the grey placeholder
+/// at half opacity: present, quiet, and plainly saying nothing.
 ///
-/// The healthy state is deliberately quiet: full bars at a third opacity, so a
-/// channel where everybody is fine has no colour in it and the one rider who is
-/// struggling is the only thing the eye finds.
+/// The healthy state is deliberately quiet too: full bars at a third opacity,
+/// so a channel where everybody is fine has no colour in it and the one rider
+/// who is struggling is the only thing the eye finds.
 class ConnectionQualityBars extends StatelessWidget {
   const ConnectionQualityBars({
     super.key,
@@ -53,7 +55,8 @@ class ConnectionQualityBars extends StatelessWidget {
     this.size = 14,
   });
 
-  final UiQuality quality;
+  /// `null` when the server has not measured this rider.
+  final UiQuality? quality;
 
   /// Drawn at the size of whatever it stands beside, so it reads as one of the
   /// row's controls rather than as a mark on the name.
@@ -62,7 +65,22 @@ class ConnectionQualityBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
-    final grade = gradeFor(quality);
+    final measured = quality;
+    if (measured == null) {
+      return Tooltip(
+        message: l.qualityUnmeasured,
+        triggerMode: TooltipTriggerMode.tap,
+        child: Opacity(
+          opacity: 0.5,
+          child: Icon(
+            Icons.signal_cellular_alt,
+            size: size,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+    final grade = gradeFor(measured);
     final (icon, colour) = switch (grade) {
       LinkGrade.good => (Icons.signal_cellular_alt, StatusColors.connected),
       LinkGrade.fair => (
@@ -73,7 +91,7 @@ class ConnectionQualityBars extends StatelessWidget {
     };
 
     return Tooltip(
-      message: describeQuality(l, quality),
+      message: describeQuality(l, measured),
       child: Icon(
         icon,
         size: size,

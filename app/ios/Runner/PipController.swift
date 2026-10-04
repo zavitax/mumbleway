@@ -993,10 +993,12 @@ final class PipController: NSObject {
     // costs the height of one, which is what limited this to three people; on
     // the same line the pairing is obvious and the list can breathe.
     //
-    // A quarter of the width is enough for a level to be seen moving without
-    // taking room from the names, which are what identifies who is talking.
+    // **And the meter stands on end, the width of a stroke.** Lying across a
+    // quarter of the width it took the room the names need, and a name is what
+    // identifies who is talking where the meter only says how loudly — which a
+    // column as tall as the line says just as well.
     let visible = snapshot.speakers.prefix(4)
-    let meterWidth = (inset.width * 0.25).rounded()
+    let meterWidth: CGFloat = 6
     let gap: CGFloat = 10
     // A column for the face, kept whether or not there is one to draw, so the
     // names line up down the list rather than stepping in and out as riders
@@ -1033,12 +1035,12 @@ final class PipController: NSObject {
           alignment: .left)
       }
 
-      let height: CGFloat = 8
+      let height: CGFloat = 20
       let track = CGRect(
         x: inset.maxX - meterWidth, y: y + (font.lineHeight - height) / 2,
         width: meterWidth, height: height)
       UIColor(white: 1, alpha: 0.12).setFill()
-      UIBezierPath(roundedRect: track, cornerRadius: height / 2).fill()
+      UIBezierPath(roundedRect: track, cornerRadius: meterWidth / 2).fill()
 
       let level = CGFloat(max(0, min(1, speaker.level)))
       if level > 0.001 {
@@ -1053,11 +1055,14 @@ final class PipController: NSObject {
           colour = UIColor(red: 0.36, green: 0.85, blue: 0.45, alpha: 1)
         }
         colour.setFill()
+        // Upward from the bottom, like every meter stood on end: the quiet end
+        // is where the fill starts.
+        let filled = max(meterWidth, track.height * level)
         UIBezierPath(
           roundedRect: CGRect(
-            x: track.minX, y: track.minY,
-            width: max(height, track.width * level), height: height),
-          cornerRadius: height / 2
+            x: track.minX, y: track.maxY - filled,
+            width: meterWidth, height: filled),
+          cornerRadius: meterWidth / 2
         ).fill()
       }
       // Taller when there is a note under the name, so the next rider's row

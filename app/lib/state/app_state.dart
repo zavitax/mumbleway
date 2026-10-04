@@ -399,16 +399,21 @@ class ServerRuntime {
   /// it: a rider who reconnects while muted is told by nobody — the mute
   /// arrives in the first roster with no actor against it — so an interface
   /// built on the announcement alone comes back up claiming to be fine.
-  bool get mutedByAdmin => _selfEntry?.muted ?? false;
+  bool get mutedByAdmin => me?.muted ?? false;
 
   /// The same for our ears.
-  bool get deafenedByAdmin => _selfEntry?.deafened ?? false;
+  bool get deafenedByAdmin => me?.deafened ?? false;
 
-  UiUser? get _selfEntry {
-    final me = selfSession;
-    if (me == null) return null;
+  /// Our own row in this server's roster, once it has arrived.
+  ///
+  /// The roster is the only place that holds what the *server* says about us —
+  /// the account it gave us, a mute it imposed, the priority speaker flag it
+  /// granted — as opposed to what this app did to itself.
+  UiUser? get me {
+    final session = selfSession;
+    if (session == null) return null;
     for (final u in users) {
-      if (u.session == me) return u;
+      if (u.session == session) return u;
     }
     return null;
   }

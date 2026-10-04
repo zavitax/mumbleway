@@ -474,12 +474,19 @@ class _UserRow extends StatelessWidget {
           // speaking survives; the amount does not. The row keeps the meter's
           // width either way, because a layout that reflows when a device gets
           // busy reads as a second fault.
+          // **On end, at the height of the glyphs beside it.** Lying across
+          // eighty pixels it was the widest thing in the row and the one with
+          // least to say: "how loud" is a fraction, and a column six pixels
+          // wide says it as well as a bar does while handing the width back to
+          // the name, the note and the badges that had been squeezed for it.
           SizedBox(
-            width: 81,
+            width: 6,
             child: state.participantMetersDisabled
                 ? null
                 : VoiceMeter(
-                    width: 81,
+                    vertical: true,
+                    width: 6,
+                    height: 20,
                     levelDb:
                         state
                             .runtimeFor(serverId)
@@ -507,11 +514,9 @@ class _UserRow extends StatelessWidget {
           // of both: the rider who keeps breaking up and the rider you are
           // about to mute are the same row, and this is the half that says
           // which of the two is happening.
-          if (user.quality case final quality?) ...[
-            const SizedBox(width: 2),
-            ConnectionQualityBars(quality: quality, size: 20),
-            const SizedBox(width: 2),
-          ],
+          const SizedBox(width: 2),
+          ConnectionQualityBars(quality: user.quality, size: 20),
+          const SizedBox(width: 2),
           PopupMenuButton<String>(
             tooltip: 'Moderation',
             icon: const Icon(Icons.more_vert, size: 18),

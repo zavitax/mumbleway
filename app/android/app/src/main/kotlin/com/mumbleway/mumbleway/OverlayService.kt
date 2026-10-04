@@ -1109,8 +1109,11 @@ class OverlayService : Service() {
          *
          * A meter under its name reads as a second row and costs the height of
          * one; on the same line the pairing is obvious and the list can breathe.
-         * A quarter of the width is enough for a level to be seen moving without
-         * taking room from the names, which are what identify who is talking.
+         *
+         * **And stood on end, the width of a stroke.** Lying across a quarter
+         * of the column it took the room the names need — and a name is what
+         * identifies who is talking, where the meter only says how loudly. A
+         * column as tall as the line says the same fraction in six pixels.
          */
         private fun drawSpeakers(canvas: Canvas, divider: Float, w: Float) {
             val left = divider + dp(12)
@@ -1153,7 +1156,7 @@ class OverlayService : Service() {
             // The first four, without copying them into a list to find out
             // which four. `take` allocated one on every draw.
             val shown = minOf(state.speakers.size, 4)
-            val meterWidth = (right - left) * 0.25f
+            val meterWidth = dp(5).toFloat()
             val gap = dp(8).toFloat()
             // A column for the face, kept whether or not there is one to draw,
             // so names line up down the list rather than stepping in and out
@@ -1185,7 +1188,7 @@ class OverlayService : Service() {
                     )
                 }
 
-                val barHeight = dp(6).toFloat()
+                val barHeight = dp(16).toFloat()
                 // `y` is the baseline, not the top: Canvas.drawText measures
                 // from there. The visual middle of the line sits at the
                 // baseline plus half of (ascent + descent), and ascent is
@@ -1194,7 +1197,7 @@ class OverlayService : Service() {
                 // text size and one density and nowhere else.
                 val centre = y + (text.ascent() + text.descent()) / 2f
                 val trackTop = centre - barHeight / 2f
-                val r = barHeight / 2f
+                val r = meterWidth / 2f
                 rect.set(right - meterWidth, trackTop, right, trackTop + barHeight)
                 paint.color = Color.argb(31, 255, 255, 255)
                 canvas.drawRoundRect(rect, r, r, paint)
@@ -1207,10 +1210,12 @@ class OverlayService : Service() {
                         level > 0.65f -> Color.argb(255, 250, 191, 64)
                         else -> Color.argb(255, 92, 217, 115)
                     }
+                    // Upward from the bottom, like every meter stood on end:
+                    // the quiet end is where the fill starts.
+                    val filled = (barHeight * level).coerceAtLeast(meterWidth)
                     rect.set(
-                        right - meterWidth, trackTop,
-                        right - meterWidth + (meterWidth * level).coerceAtLeast(barHeight),
-                        trackTop + barHeight,
+                        right - meterWidth, trackTop + barHeight - filled,
+                        right, trackTop + barHeight,
                     )
                     canvas.drawRoundRect(rect, r, r, paint)
                 }

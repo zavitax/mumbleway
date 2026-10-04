@@ -1648,6 +1648,9 @@ class LEn extends L {
       'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.';
 
   @override
+  String get qualityUnmeasured => 'The server has not measured this connection';
+
+  @override
   String qualityPing(int ms) {
     return '$ms ms round trip';
   }

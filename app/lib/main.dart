@@ -7,6 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/app_localizations.dart';
 import 'screens/add_server_screen.dart';
 import 'services/deep_links.dart';
+import 'services/server_proxy.dart';
+import 'src/rust/api/mumbleway.dart';
 import 'services/qr_intake.dart';
 import 'src/rust/frb_generated.dart';
 import 'state/app_state.dart';
@@ -15,7 +17,26 @@ import 'theme.dart';
 import 'widgets/refusal_listener.dart';
 import 'widgets/remote_mute_listener.dart';
 
-Future<void> main() async {
+/// `args` carries a link on Windows, and is empty everywhere else.
+///
+/// **Desktop has no URL scheme plumbing**, and the method channel the phones
+/// use is simply unimplemented there. What Windows does instead is start the
+/// app with the URL as an argument — so an invitation or a shared proxy opened
+/// from a browser arrives here, and nowhere else.
+/// A link this app was launched with, on a platform that passes one as an
+/// argument rather than through a channel.
+String? _launchLink;
+
+Future<void> main(List<String> args) async {
+  _launchLink = args
+      .map((a) => a.trim())
+      .where(
+        (a) =>
+            a.toLowerCase().startsWith('mumble:') ||
+            a.toLowerCase().startsWith('mumble-proxy:') ||
+            a.toLowerCase().startsWith('https://zavitax.github.io/mumbleway/join'),
+      )
+      .firstOrNull;
   WidgetsFlutterBinding.ensureInitialized();
   await RustLib.init();
 
@@ -92,7 +113,7 @@ class _MumbleWayAppState extends State<MumbleWayApp>
   }
 
   Future<void> _startLinks() async {
-    final initial = await DeepLinks.instance.start();
+    final initial = await DeepLinks.instance.start() ?? _launchLink;
     if (initial != null) _openLink(initial);
   }
 
@@ -107,6 +128,15 @@ class _MumbleWayAppState extends State<MumbleWayApp>
     final navigator = await _readyNavigator();
     if (navigator == null) return;
 
+    // A proxy on its own, which looks like a server link and is not one. Asked
+    // about rather than adopted: every connection set to follow the app's
+    // proxy would go through a machine somebody else controls, which is a
+    // bigger thing to agree to than adding a server.
+    if (await parseProxyLink(text: url) case final proxy?) {
+      await _offerProxy(navigator, proxy);
+      return;
+    }
+
     final result = await QrReader.fromText(
       url,
       await _state.suggestedUsername(),
@@ -118,6 +148,40 @@ class _MumbleWayAppState extends State<MumbleWayApp>
     }
     // Anything else came from a link this app should not have been handed in
     // the first place. There is nobody to apologise to and nothing to fix.
+  }
+
+  /// Asks before a shared proxy becomes the one everything goes through.
+  Future<void> _offerProxy(NavigatorState navigator, ServerProxy proxy) async {
+    final context = navigator.context;
+    final l = L.of(context);
+    final address = '${proxy.host}:${proxy.port}';
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.proxyLinkTitle),
+        content: Text(l.proxyLinkBody(address), style: const TextStyle(fontSize: 13)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.proxyLinkUse),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    await ServerProxies.instance.setDefault(
+      mode: DefaultProxyMode.custom,
+      proxy: proxy,
+    );
+    await _state.reregisterIdleServers();
+    if (!navigator.mounted) return;
+    ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
+      SnackBar(content: Text(l.proxyLinkAdded)),
+    );
   }
 
   /// The navigator, once there is one.

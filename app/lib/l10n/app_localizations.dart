@@ -859,6 +859,36 @@ abstract class L {
   /// **'Override proxy'**
   String get overrideProxy;
 
+  /// No description provided for @proxyShare.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this proxy'**
+  String get proxyShare;
+
+  /// No description provided for @proxyLinkTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A proxy was shared with you'**
+  String get proxyLinkTitle;
+
+  /// No description provided for @proxyLinkBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Every connection set to use the app\'s proxy would go through {address}, a machine somebody else controls. It can see which servers you connect to and when.'**
+  String proxyLinkBody(String address);
+
+  /// No description provided for @proxyLinkUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use it'**
+  String get proxyLinkUse;
+
+  /// No description provided for @proxyLinkAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved as the proxy for servers'**
+  String get proxyLinkAdded;
+
   /// No description provided for @proxyForServers.
   ///
   /// In en, this message translates to:

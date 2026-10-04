@@ -418,6 +418,23 @@ class LRu extends L {
   String get overrideProxy => 'Задать прокси вручную';
 
   @override
+  String get proxyShare => 'Поделиться этим прокси';
+
+  @override
+  String get proxyLinkTitle => 'Вам прислали прокси';
+
+  @override
+  String proxyLinkBody(String address) {
+    return 'Всё, что настроено на общий прокси, пойдёт через $address — машину, которой распоряжается кто-то другой. Она видит, к каким серверам и когда вы подключаетесь.';
+  }
+
+  @override
+  String get proxyLinkUse => 'Использовать';
+
+  @override
+  String get proxyLinkAdded => 'Сохранён как прокси для серверов';
+
+  @override
   String get proxyForServers => 'Прокси для серверов';
 
   @override

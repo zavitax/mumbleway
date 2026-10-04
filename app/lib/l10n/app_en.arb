@@ -197,6 +197,14 @@
   "hearMyselfHelp": "Plays your processed voice back. Use headphones — on speakers it will feed back.",
   "useSystemProxy": "Use the system proxy",
   "overrideProxy": "Override proxy",
+  "proxyShare": "Share this proxy",
+  "proxyLinkTitle": "A proxy was shared with you",
+  "proxyLinkBody": "Every connection set to use the app's proxy would go through {address}, a machine somebody else controls. It can see which servers you connect to and when.",
+  "proxyLinkUse": "Use it",
+  "proxyLinkAdded": "Saved as the proxy for servers",
+  "@proxyLinkBody": {
+    "placeholders": { "address": { "type": "String" } }
+  },
   "proxyForServers": "Proxy for servers",
   "proxyForThisServer": "Proxy for this server",
   "proxyNone": "Direct",

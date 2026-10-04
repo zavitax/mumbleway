@@ -41,7 +41,10 @@ final class DeepLinks {
   /// Returns whether it was ours, so a caller can pass on anything else.
   @discardableResult
   func handle(_ url: URL) -> Bool {
-    guard url.scheme?.lowercased() == "mumble" else { return false }
+    // Both schemes: a server, and a proxy on its own. What each one means is
+    // decided in Dart, which has the parser and the dialogs.
+    let scheme = url.scheme?.lowercased()
+    guard scheme == "mumble" || scheme == "mumble-proxy" else { return false }
     let text = url.absoluteString
 
     guard let channel else {

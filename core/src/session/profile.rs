@@ -31,6 +31,15 @@ pub const DEFAULT_PORT: u16 = 64738;
 /// works with no domain and no network.
 pub const WEB_INVITE_BASE: &str = "https://zavitax.github.io/mumbleway/join/";
 
+/// The scheme a proxy on its own is shared under.
+///
+/// **A proxy is worth sharing by itself.** On a network where nothing gets out
+/// directly, the first thing a new rider needs is the way out — before any
+/// server is worth adding. It travels like a server does: as a link, as a QR
+/// code, and wrapped in the same https page for messengers that will not carry
+/// a private scheme.
+pub const PROXY_SCHEME: &str = "mumble-proxy";
+
 /// Host and path of [`WEB_INVITE_BASE`], for recognising one on the way back in.
 const WEB_INVITE_HOST: &str = "zavitax.github.io";
 const WEB_INVITE_PATH: &str = "/mumbleway/join";
@@ -229,7 +238,22 @@ fn parse_proxy(text: &str) -> Option<ProxySpec> {
     })
 }
 
-/// The same, as a link carries it. Credentials only when asked for.
+/// A proxy as text: `socks5://host:port`, optionally with credentials and
+/// `?voice=1`.
+///
+/// **One form everywhere it is written down** — in a server link's `proxy`
+/// parameter, in a profile file, and inside a `mumble-proxy://` link — so a
+/// rider can move one between them by copying, and so there is one parser to
+/// be wrong about.
+pub fn build_proxy_text(spec: &ProxySpec, include_credentials: bool) -> String {
+    build_proxy(spec, include_credentials)
+}
+
+/// Reads what [`build_proxy_text`] writes.
+pub fn parse_proxy_text(text: &str) -> Option<ProxySpec> {
+    parse_proxy(text)
+}
+
 fn build_proxy(spec: &ProxySpec, include_credentials: bool) -> String {
     let mut out = String::from(match spec.kind {
         ProxyKind::HttpConnect => "http://",
@@ -281,10 +305,10 @@ fn web_invite_payload(parsed: &url::Url) -> Option<String> {
     } else {
         decoded
     };
-    candidate
-        .to_ascii_lowercase()
-        .starts_with("mumble:")
-        .then_some(candidate)
+    // Either scheme: the page carries both, and tells them apart by exactly
+    // this prefix before it decides which button to show.
+    let lower = candidate.to_ascii_lowercase();
+    (lower.starts_with("mumble:") || lower.starts_with("mumble-proxy:")).then_some(candidate)
 }
 
 fn percent_decode(s: &str) -> String {
@@ -473,6 +497,73 @@ pub fn build_json(
     };
     serde_json::to_string_pretty(&vec![entry])
         .map_err(|e| CoreError::Other(format!("could not build profile: {e}")))
+}
+
+/// Builds a `mumble-proxy://` link for one proxy.
+///
+/// Credentials only when asked for, the same question a server's password
+/// gets: a proxy login in a link is usable by whoever receives it, for
+/// anything.
+pub fn build_proxy_url(spec: &ProxySpec, include_credentials: bool) -> String {
+    let inner = build_proxy(spec, include_credentials);
+    // `build_proxy` writes `http://host:port`; the kind is carried as a
+    // parameter here instead, so the scheme can stay `mumble-proxy` and be
+    // recognised by a phone before anything is parsed.
+    let (kind, rest) = inner.split_once("://").unwrap_or(("http", inner.as_str()));
+    let (address, voice) = match rest.split_once('?') {
+        Some((a, q)) => (a, q.contains("voice=1")),
+        None => (rest, false),
+    };
+    format!(
+        "{PROXY_SCHEME}://{address}/?kind={kind}{}",
+        if voice { "&voice=1" } else { "" }
+    )
+}
+
+/// The same, as the https wrapper that survives a messenger.
+pub fn build_proxy_web_url(spec: &ProxySpec, include_credentials: bool) -> String {
+    format!(
+        "{WEB_INVITE_BASE}#{}",
+        build_proxy_url(spec, include_credentials)
+    )
+}
+
+/// Reads a `mumble-proxy://` link, or the https wrapper around one.
+///
+/// Returns `None` for anything else, including a `mumble://` server link: the
+/// two look alike and mean entirely different things, and a page or a handler
+/// that confuses them would add a server as a proxy or the reverse.
+pub fn parse_proxy_url(input: &str) -> Option<ProxySpec> {
+    let trimmed = input.trim();
+    let text = if let Ok(parsed) = url::Url::parse(trimmed) {
+        match web_invite_payload(&parsed) {
+            Some(inner) => inner,
+            None => trimmed.to_string(),
+        }
+    } else {
+        trimmed.to_string()
+    };
+
+    let rest = text
+        .strip_prefix(&format!("{PROXY_SCHEME}://"))
+        .or_else(|| text.strip_prefix(&format!("{PROXY_SCHEME}:")))?;
+
+    // Everything after the address is a query; the kind lives there so that the
+    // scheme itself stays one word a platform can register.
+    let (address, query) = match rest.split_once('?') {
+        Some((a, q)) => (a.trim_end_matches('/'), q),
+        None => (rest.trim_end_matches('/'), ""),
+    };
+    let kind = query
+        .split('&')
+        .find_map(|p| p.strip_prefix("kind="))
+        .unwrap_or("http");
+    let voice = query.split('&').any(|p| p == "voice=1");
+
+    parse_proxy(&format!(
+        "{kind}://{address}{}",
+        if voice { "?voice=1" } else { "" }
+    ))
 }
 
 /// Accepts either a link or a JSON file body and returns whatever it finds.
@@ -667,6 +758,52 @@ mod tests {
         let back = parse_url(&build_url(&p, None, false), "rider").unwrap();
         assert_eq!(back.proxy_chain[0].host, "2001:db8::1");
         assert_eq!(back.proxy_chain[0].port, 1080);
+    }
+
+    #[test]
+    fn a_proxy_link_round_trips_on_its_own() {
+        let spec = ProxySpec {
+            kind: ProxyKind::Socks5,
+            host: "10.0.0.1".into(),
+            port: 1080,
+            username: Some("rider".into()),
+            password: Some("secret".into()),
+            tunnel_voice: true,
+        };
+        let link = build_proxy_url(&spec, true);
+        assert!(link.starts_with("mumble-proxy://"), "{link}");
+        let back = parse_proxy_url(&link).expect("it reads back");
+        assert_eq!(back, spec);
+
+        // And through the https wrapper a messenger will actually carry.
+        let web = build_proxy_web_url(&spec, true);
+        assert_eq!(parse_proxy_url(&web), Some(spec));
+    }
+
+    #[test]
+    fn a_shared_proxy_keeps_its_credentials_to_itself_unless_asked() {
+        let spec = ProxySpec {
+            kind: ProxyKind::HttpConnect,
+            host: "proxy.example".into(),
+            port: 8000,
+            username: Some("rider".into()),
+            password: Some("secret".into()),
+            tunnel_voice: false,
+        };
+        let link = build_proxy_url(&spec, false);
+        assert!(!link.contains("secret"), "{link}");
+        let back = parse_proxy_url(&link).unwrap();
+        assert_eq!(back.host, "proxy.example");
+        assert_eq!(back.username, None);
+    }
+
+    #[test]
+    fn a_server_link_is_not_a_proxy_link_and_the_reverse() {
+        // They look alike and mean entirely different things; confusing them
+        // would add a server as a proxy, or a proxy as a server.
+        assert!(parse_proxy_url("mumble://example.test:64738/").is_none());
+        assert!(parse_proxy_url("https://example.com/#mumble://a.test/").is_none());
+        assert!(parse_url("mumble-proxy://10.0.0.1:1080/?kind=socks5", "u").is_err());
     }
 
     #[test]

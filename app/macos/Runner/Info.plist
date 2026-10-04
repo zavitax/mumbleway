@@ -68,6 +68,27 @@
 	     alone. See docs/RELEASING.md. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Links this app answers for.
+
+	     **New here, and it is the first time macOS has had any.** The Mac build
+	     has always been able to add a server by hand and never by following a
+	     `mumble://` link; the scheme was declared on iOS and Android only. A
+	     proxy shared as a link is the thing that made the gap worth closing,
+	     and closing it brings server links along for the ride. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.mumbleway.mumbleway.invite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mumble</string>
+				<string>mumble-proxy</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>

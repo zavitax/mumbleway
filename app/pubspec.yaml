@@ -149,6 +149,12 @@ msix_config:
   msix_version: 1.0.0.0
   logo_path: assets/icon/mumbleway.png
   capabilities: microphone, internetClient, internetClientServer, privateNetworkClientServer
+  # The links this package answers for: a server invitation, and a proxy shared
+  # on its own. Declared here because an MSIX is the only way Windows learns a
+  # protocol — a loose .exe cannot register one — so a sideloaded or
+  # Store-installed build gets them and `flutter run` does not. The app reads
+  # the URL from its own command line; see windows/runner/main.cpp.
+  protocol_activation: mumble, mumble-proxy
 
 # App icon generation. Regenerate after changing assets/icon/*.svg with:
 #   rsvg-convert -w 1024 -h 1024 -o assets/icon/mumbleway.png assets/icon/mumbleway.svg

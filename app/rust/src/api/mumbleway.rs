@@ -3397,6 +3397,12 @@ pub fn export_servers(configs: Vec<ServerConfig>) -> anyhow::Result<String> {
             // Pinned fingerprints stay on the device that made the trust
             // decision; exporting them would launder it onto another machine.
             cert_fingerprint: None,
+            // The route does travel: an export is the rider's own list coming
+            // back to them on another device, and a server they can only reach
+            // through a proxy is unusable without it.
+            proxy: c.proxy_chain.into_iter().next().map(|p| {
+                mumbleway_core::session::profile::build_proxy_text(&p.into_spec(), true)
+            }),
         })
         .collect();
 
@@ -3421,6 +3427,31 @@ fn config_to_profile(c: ServerConfig) -> ServerProfile {
         p.id = c.id;
     }
     p
+}
+
+/// A `mumble-proxy://` link for one proxy, to share as a link or a QR code.
+///
+/// `web` wraps it in the same https page a server invitation uses, which is
+/// what survives a messenger.
+pub fn build_proxy_link(
+    proxy: ServerProxy,
+    include_credentials: bool,
+    web: bool,
+) -> anyhow::Result<String> {
+    let spec = proxy.into_spec();
+    Ok(if web {
+        mumbleway_core::session::profile::build_proxy_web_url(&spec, include_credentials)
+    } else {
+        mumbleway_core::session::profile::build_proxy_url(&spec, include_credentials)
+    })
+}
+
+/// Reads a `mumble-proxy://` link, or the https wrapper around one.
+///
+/// `None` for anything else — including a server link, which looks alike and
+/// means something entirely different.
+pub fn parse_proxy_link(text: String) -> Option<ServerProxy> {
+    mumbleway_core::session::profile::parse_proxy_url(&text).map(ServerProxy::from_spec)
 }
 
 // ---------------------------------------------------------------------------

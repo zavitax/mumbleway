@@ -419,6 +419,23 @@ class LEn extends L {
   String get overrideProxy => 'Override proxy';
 
   @override
+  String get proxyShare => 'Share this proxy';
+
+  @override
+  String get proxyLinkTitle => 'A proxy was shared with you';
+
+  @override
+  String proxyLinkBody(String address) {
+    return 'Every connection set to use the app\'s proxy would go through $address, a machine somebody else controls. It can see which servers you connect to and when.';
+  }
+
+  @override
+  String get proxyLinkUse => 'Use it';
+
+  @override
+  String get proxyLinkAdded => 'Saved as the proxy for servers';
+
+  @override
   String get proxyForServers => 'Proxy for servers';
 
   @override

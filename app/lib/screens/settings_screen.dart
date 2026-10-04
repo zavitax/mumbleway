@@ -10,6 +10,8 @@ import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/noise_profiles.dart';
 import '../services/overlay.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../services/proxy.dart';
 import '../services/server_proxy.dart';
 import '../widgets/proxy_editor.dart';
@@ -1178,6 +1180,12 @@ class _ServerProxyTileState extends State<_ServerProxyTile> {
             ),
           ),
         ),
+        if (proxies.custom case final p?)
+          ListTile(
+            leading: const Icon(Icons.qr_code_2),
+            title: Text(l.proxyShare),
+            onTap: () => _shareProxy(context, p),
+          ),
         if (proxies.mode != DefaultProxyMode.direct)
           SwitchListTile(
             secondary: const Icon(Icons.alt_route),
@@ -1196,6 +1204,54 @@ class _ServerProxyTileState extends State<_ServerProxyTile> {
           ),
       ],
     );
+  }
+}
+
+/// Shares the app's proxy as a link somebody else can open.
+///
+/// The https form, like a server invitation, because a private scheme does not
+/// survive a messenger — and the same question about credentials, since a proxy
+/// login in a link can be used by whoever receives it for anything at all.
+Future<void> _shareProxy(BuildContext context, ServerProxy proxy) async {
+  final l = L.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  var includeCredentials = false;
+
+  if ((proxy.username ?? '').isNotEmpty) {
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(l.includePasswordTitle),
+        content: Text(
+          'Anyone who receives this could use the proxy at '
+          '${proxy.host}:${proxy.port} for anything, not only for MumbleWay.',
+          style: const TextStyle(fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: Text(l.withoutPassword),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(l.includeIt),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    includeCredentials = choice;
+  }
+
+  try {
+    final link = await buildProxyLink(
+      proxy: proxy,
+      includeCredentials: includeCredentials,
+      web: true,
+    );
+    await SharePlus.instance.share(ShareParams(text: link));
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('$e')));
   }
 }
 

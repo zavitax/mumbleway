@@ -97,6 +97,19 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mumble"/>
             </intent-filter>
+            <!-- A proxy on its own, shared the same way a server is.
+
+                 Its own scheme rather than a parameter on `mumble://`: the two
+                 mean entirely different things — one adds a server, the other
+                 changes how every connection leaves this device — and a phone
+                 showing "open in MumbleWay" should not be the only thing
+                 standing between the two. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="mumble-proxy"/>
+            </intent-filter>
             <!-- The same invitation as an ordinary https link, because
                  `mumble://` does not survive a messaging app.
 

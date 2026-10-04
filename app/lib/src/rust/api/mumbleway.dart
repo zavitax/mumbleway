@@ -753,6 +753,27 @@ Future<String> buildInviteFile({
 Future<String> exportServers({required List<ServerConfig> configs}) =>
     RustLib.instance.api.crateApiMumblewayExportServers(configs: configs);
 
+/// A `mumble-proxy://` link for one proxy, to share as a link or a QR code.
+///
+/// `web` wraps it in the same https page a server invitation uses, which is
+/// what survives a messenger.
+Future<String> buildProxyLink({
+  required ServerProxy proxy,
+  required bool includeCredentials,
+  required bool web,
+}) => RustLib.instance.api.crateApiMumblewayBuildProxyLink(
+  proxy: proxy,
+  includeCredentials: includeCredentials,
+  web: web,
+);
+
+/// Reads a `mumble-proxy://` link, or the https wrapper around one.
+///
+/// `None` for anything else — including a server link, which looks alike and
+/// means something entirely different.
+Future<ServerProxy?> parseProxyLink({required String text}) =>
+    RustLib.instance.api.crateApiMumblewayParseProxyLink(text: text);
+
 /// Parses a `mumble://` link or a JSON profile file into server definitions.
 ///
 /// Nothing is connected or saved here; the caller decides what to keep.

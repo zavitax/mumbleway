@@ -365,11 +365,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
                   _proxyMode = choice!.mode!;
                   _proxy = choice.proxy;
                 });
-                // Remembered against the proxy's address rather than this
-                // entry, so another server behind the same one finds them.
-                if (choice?.proxy case final p? when p.username != null) {
-                  await ServerProxies.instance.rememberCredentials(p);
-                }
+                // Not remembered here: saving does it, which is the one route
+                // both a typed proxy and one that arrived in an invitation
+                // pass through. Doing it here covered only the first, and a
+                // shared proxy with a login reached the engine without it.
               },
             ),
             const SizedBox(height: 24),
@@ -399,7 +398,25 @@ class _AddServerScreenState extends State<AddServerScreen> {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
 
+    // **Against the proxy's address, not this entry**, so a second server
+    // behind the same proxy finds them — and because the entry itself must
+    // not hold them: it is synced, and a proxy login works for anything at
+    // all, not only for MumbleWay.
+    //
+    // Here rather than in the editor sheet, because a proxy can also arrive
+    // already filled in, from an invitation that carried one. Remembering it
+    // only when somebody typed it meant a shared proxy was dialled with no
+    // credentials and the rider was told the proxy refused them.
+    // Taken before the await below: reading an inherited widget off a context
+    // after one is reading a tree that may have moved on.
     final state = AppStateScope.of(context);
+
+    if (_proxyMode == ServerProxyMode.custom) {
+      if (_proxy case final p? when (p.username ?? '').isNotEmpty) {
+        await ServerProxies.instance.rememberCredentials(p);
+      }
+    }
+
     final existing = widget.existing;
     // **An edit changes the five fields on this form and nothing else.** Built
     // from the saved entry rather than from the constructor, because an entry
@@ -428,9 +445,13 @@ class _AddServerScreenState extends State<AddServerScreen> {
           port: int.parse(_port.text),
           username: _user.text.trim(),
           password: _password.text.isEmpty ? null : _password.text,
-          // The channel has no field on this form, so it rides along from the
-          // link's own when a code or an invitation filled the form in.
+          // Neither the channel nor the access tokens have a field on this
+          // form, so they ride along from the invitation that filled it in.
+          // The tokens are what open the channel it names, so an invitation
+          // that carries both and keeps only one is an invitation to a door
+          // the rider cannot pass.
           defaultChannel: _source?.defaultChannel,
+          accessTokens: _source?.accessTokens ?? const [],
           proxyMode: _proxyMode,
           proxy: _proxyMode == ServerProxyMode.custom ? _proxy : null,
         );

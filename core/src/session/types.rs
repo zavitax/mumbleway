@@ -78,6 +78,15 @@ pub struct ServerProfile {
     /// has to retype one at a junction does not have it.
     #[serde(default)]
     pub access_tokens: Vec<String>,
+    /// Proxies to dial this server through, outermost first.
+    ///
+    /// Empty is a direct connection. **The core has no "use the app's default"
+    /// state**: it holds no settings, so a tri-state here would mean carrying a
+    /// copy of the default into every session and keeping the two in step. The
+    /// layer that owns the settings resolves it to this flat list, exactly as
+    /// it already flattens everything else a profile carries.
+    #[serde(default)]
+    pub proxy_chain: Vec<crate::net::ProxySpec>,
 }
 
 impl ServerProfile {
@@ -100,6 +109,7 @@ impl ServerProfile {
             cert_fingerprint: None,
             auto_join_channel: None,
             access_tokens: Vec::new(),
+            proxy_chain: Vec::new(),
         }
     }
 }
@@ -710,6 +720,40 @@ mod tests {
             comment: String::new(),
             priority_speaker: false,
         }
+    }
+
+    #[test]
+    fn a_profile_saved_before_proxies_existed_still_loads() {
+        // Everything persisted and everything shared goes through serde, so a
+        // new field that is not defaulted is every saved server disappearing.
+        let old = r#"{
+            "id": "a:64738", "name": "a", "host": "a", "port": 64738,
+            "username": "rider", "password": null, "cert_fingerprint": null,
+            "auto_join_channel": null
+        }"#;
+        let p: ServerProfile = serde_json::from_str(old).expect("old entries still load");
+        assert!(p.proxy_chain.is_empty(), "no proxy means direct");
+        assert!(p.access_tokens.is_empty());
+    }
+
+    #[test]
+    fn a_profile_with_a_proxy_survives_the_round_trip() {
+        let mut p = ServerProfile::new("rig", "example.test", 64738, "rider");
+        p.proxy_chain = vec![crate::net::ProxySpec {
+            kind: crate::net::ProxyKind::Socks5,
+            host: "10.0.0.1".into(),
+            port: 1080,
+            username: Some("u".into()),
+            password: Some("p".into()),
+            tunnel_voice: true,
+        }];
+        let text = serde_json::to_string(&p).unwrap();
+        let back: ServerProfile = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.proxy_chain, p.proxy_chain);
+        assert!(
+            back.proxy_chain[0].tunnel_voice,
+            "the flag that decides where voice goes must survive"
+        );
     }
 
     #[test]

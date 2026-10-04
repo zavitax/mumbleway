@@ -173,14 +173,6 @@ impl VoiceSocket {
     }
 }
 
-/// Chooses the transport to use given UDP health.
-pub fn choose_transport(udp: Option<&VoiceSocket>, now: Instant) -> crate::session::Transport {
-    match udp {
-        Some(s) if s.is_healthy(now) => crate::session::Transport::Udp,
-        _ => crate::session::Transport::TcpTunnel,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

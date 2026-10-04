@@ -514,7 +514,7 @@ impl Session {
         let conn = control::connect(
             &self.config.profile.host,
             self.config.profile.port,
-            &[],
+            &self.config.profile.proxy_chain,
             tls_config,
             observed,
         )

@@ -2163,7 +2163,10 @@ async fn voice_tunnelled_through_a_proxy_never_promotes_to_udp() {
         return;
     };
     let (host, port) = proxy_target();
-    println!("tunnelling voice to {host}:{port} through {}", proxy.address());
+    println!(
+        "tunnelling voice to {host}:{port} through {}",
+        proxy.address()
+    );
 
     let events = gather_through(&["rider-tunnel"], 70, &host, port, &[proxy]).await;
     held_throughout(&events, 70);
@@ -2241,7 +2244,10 @@ async fn a_proxy_that_allows_only_443_says_so_and_stops() {
         return;
     };
     let (host, port) = proxy_target();
-    println!("asking {} for {host}:{port}, which it will refuse", proxy.address());
+    println!(
+        "asking {} for {host}:{port}, which it will refuse",
+        proxy.address()
+    );
 
     let events = gather_through(&["rider-refused"], 20, &host, port, &[proxy]).await;
     let seen = states(&events);

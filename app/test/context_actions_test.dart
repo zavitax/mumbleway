@@ -33,6 +33,7 @@ UiUser rider() => const UiUser(
   deafened: false,
   localMute: false,
   mutedYou: false,
+  userId: null,
   selfMuted: false,
   selfDeafened: false,
   status: 'silent',

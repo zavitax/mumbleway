@@ -24,6 +24,7 @@ UiUser rider({bool suppressed = false}) => UiUser(
   deafened: false,
   localMute: false,
   mutedYou: false,
+  userId: null,
   selfMuted: false,
   selfDeafened: false,
   status: suppressed ? 'suppressed' : 'silent',

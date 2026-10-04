@@ -3349,6 +3349,24 @@ abstract class L {
   /// **'Stop being priority speaker'**
   String get priorityRevoke;
 
+  /// No description provided for @unregisterThem.
+  ///
+  /// In en, this message translates to:
+  /// **'Unregister from the server'**
+  String get unregisterThem;
+
+  /// No description provided for @unregisterThemSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Asked the server to remove their registration'**
+  String get unregisterThemSent;
+
+  /// No description provided for @registerAlready.
+  ///
+  /// In en, this message translates to:
+  /// **'You already have an account here'**
+  String get registerAlready;
+
   /// No description provided for @registerThem.
   ///
   /// In en, this message translates to:

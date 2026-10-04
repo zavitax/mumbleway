@@ -121,6 +121,13 @@ pub struct UiUser {
     pub self_deafened: bool,
     /// Silenced by us alone. Needs no permission and is invisible to others.
     pub local_mute: bool,
+    /// The account this server knows them by, or `None` if they have none.
+    ///
+    /// **Presence is registration**, which is what the roster's menu needs:
+    /// offering "register" to somebody who already has an account is an action
+    /// that can only fail, and offering "unregister" to somebody who has none
+    /// is the same. `Some(0)` is SuperUser, whose id really is zero.
+    pub user_id: Option<u32>,
     /// Whether this rider has told us they have silenced *us* for themselves.
     ///
     /// The mirror of [`UiUser::local_mute`], and the only way that mute is
@@ -942,6 +949,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                                 self_muted: u.self_mute,
                                 self_deafened: u.self_deaf,
                                 local_mute: u.local_mute,
+                                user_id: u.user_id,
                                 muted_you: u.muted_you,
                                 status,
                                 mumbleway_version: u.mumbleway,

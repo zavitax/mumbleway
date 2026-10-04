@@ -35,6 +35,7 @@ UiUser rider({
   deafened: deafened,
   localMute: localMute,
   mutedYou: mutedYou,
+  userId: null,
   selfMuted: selfMuted,
   selfDeafened: selfDeafened,
   status: 'silent',

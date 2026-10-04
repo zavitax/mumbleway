@@ -44,6 +44,7 @@ void main() {
     selfDeafened: false,
     localMute: false,
     mutedYou: false,
+    userId: null,
     status: 'silent',
     prioritySpeaker: false,
     suppressed: false,

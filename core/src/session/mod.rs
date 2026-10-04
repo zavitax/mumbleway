@@ -1209,6 +1209,7 @@ impl Session {
                         local_mute: false,
                         suppress: false,
                         mumbleway: None,
+                        user_id: None,
                         // These three live outside the roster map and are
                         // filled in by `user_list`; the copy kept here is
                         // always the empty one.
@@ -1249,6 +1250,16 @@ impl Session {
                     }
                     if let Some(v) = m.suppress {
                         e.suppress = v;
+                    }
+                    // **Never cleared from a later message.** The server sends
+                    // the id once, when it registers somebody or when the
+                    // roster first arrives, and says nothing about it again;
+                    // an absent field here is "no news", not "the account is
+                    // gone". Losing a registration is an `unregister`, and the
+                    // server announces that by a `UserState` carrying a
+                    // user_id of its own — see the Mumble protocol notes.
+                    if let Some(v) = m.user_id {
+                        e.user_id = Some(v);
                     }
                     // Listening is reported as two lists of changes rather
                     // than as a state, so the set is kept here and the server's

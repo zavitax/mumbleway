@@ -2621,6 +2621,14 @@ class UiUser {
   /// Silenced by us alone. Needs no permission and is invisible to others.
   final bool localMute;
 
+  /// The account this server knows them by, or `None` if they have none.
+  ///
+  /// **Presence is registration**, which is what the roster's menu needs:
+  /// offering "register" to somebody who already has an account is an action
+  /// that can only fail, and offering "unregister" to somebody who has none
+  /// is the same. `Some(0)` is SuperUser, whose id really is zero.
+  final int? userId;
+
   /// Whether this rider has told us they have silenced *us* for themselves.
   ///
   /// The mirror of [`UiUser::local_mute`], and the only way that mute is
@@ -2674,6 +2682,7 @@ class UiUser {
     required this.selfMuted,
     required this.selfDeafened,
     required this.localMute,
+    this.userId,
     required this.mutedYou,
     required this.status,
     this.mumblewayVersion,
@@ -2694,6 +2703,7 @@ class UiUser {
       selfMuted.hashCode ^
       selfDeafened.hashCode ^
       localMute.hashCode ^
+      userId.hashCode ^
       mutedYou.hashCode ^
       status.hashCode ^
       mumblewayVersion.hashCode ^
@@ -2716,6 +2726,7 @@ class UiUser {
           selfMuted == other.selfMuted &&
           selfDeafened == other.selfDeafened &&
           localMute == other.localMute &&
+          userId == other.userId &&
           mutedYou == other.mutedYou &&
           status == other.status &&
           mumblewayVersion == other.mumblewayVersion &&

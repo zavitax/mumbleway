@@ -350,7 +350,16 @@ class ServerCard extends StatelessWidget {
                             () {
                               final mayRegister =
                                   !rt.rights.known || rt.rights.selfRegister;
-                              final enabled = rt.isLive && mayRegister;
+                              // And not when the server has already given us
+                              // one: it answers a second request with a
+                              // refusal, which reads as the feature being
+                              // broken rather than as "you are already in".
+                              final already = rt.users.any(
+                                (u) =>
+                                    u.session == rt.selfSession &&
+                                    u.userId != null,
+                              );
+                              final enabled = rt.isLive && mayRegister && !already;
                               return PopupMenuItem(
                                 value: 'register',
                                 enabled: enabled,
@@ -363,6 +372,7 @@ class ServerCard extends StatelessWidget {
                                   subtitle: switch (enabled) {
                                     true => null,
                                     false when !rt.isLive => Text(l.connectFirst),
+                                    false when already => Text(l.registerAlready),
                                     false => Text(l.registerNotAllowed),
                                   },
                                 ),

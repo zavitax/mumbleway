@@ -1842,6 +1842,16 @@ class LEn extends L {
   String get priorityRevoke => 'Stop being priority speaker';
 
   @override
+  String get unregisterThem => 'Unregister from the server';
+
+  @override
+  String get unregisterThemSent =>
+      'Asked the server to remove their registration';
+
+  @override
+  String get registerAlready => 'You already have an account here';
+
+  @override
   String get registerThem => 'Register on this server';
 
   @override

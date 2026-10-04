@@ -4293,8 +4293,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiUser dco_decode_ui_user(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 16)
-      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    if (arr.length != 17)
+      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
     return UiUser(
       session: dco_decode_u_32(arr[0]),
       name: dco_decode_String(arr[1]),
@@ -4305,13 +4305,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       selfMuted: dco_decode_bool(arr[6]),
       selfDeafened: dco_decode_bool(arr[7]),
       localMute: dco_decode_bool(arr[8]),
-      mutedYou: dco_decode_bool(arr[9]),
-      status: dco_decode_String(arr[10]),
-      mumblewayVersion: dco_decode_opt_String(arr[11]),
-      prioritySpeaker: dco_decode_bool(arr[12]),
-      suppressed: dco_decode_bool(arr[13]),
-      comment: dco_decode_String(arr[14]),
-      quality: dco_decode_opt_box_autoadd_ui_quality(arr[15]),
+      userId: dco_decode_opt_box_autoadd_u_32(arr[9]),
+      mutedYou: dco_decode_bool(arr[10]),
+      status: dco_decode_String(arr[11]),
+      mumblewayVersion: dco_decode_opt_String(arr[12]),
+      prioritySpeaker: dco_decode_bool(arr[13]),
+      suppressed: dco_decode_bool(arr[14]),
+      comment: dco_decode_String(arr[15]),
+      quality: dco_decode_opt_box_autoadd_ui_quality(arr[16]),
     );
   }
 
@@ -5622,6 +5623,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_selfMuted = sse_decode_bool(deserializer);
     var var_selfDeafened = sse_decode_bool(deserializer);
     var var_localMute = sse_decode_bool(deserializer);
+    var var_userId = sse_decode_opt_box_autoadd_u_32(deserializer);
     var var_mutedYou = sse_decode_bool(deserializer);
     var var_status = sse_decode_String(deserializer);
     var var_mumblewayVersion = sse_decode_opt_String(deserializer);
@@ -5639,6 +5641,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       selfMuted: var_selfMuted,
       selfDeafened: var_selfDeafened,
       localMute: var_localMute,
+      userId: var_userId,
       mutedYou: var_mutedYou,
       status: var_status,
       mumblewayVersion: var_mumblewayVersion,
@@ -6764,6 +6767,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.selfMuted, serializer);
     sse_encode_bool(self.selfDeafened, serializer);
     sse_encode_bool(self.localMute, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.userId, serializer);
     sse_encode_bool(self.mutedYou, serializer);
     sse_encode_String(self.status, serializer);
     sse_encode_opt_String(self.mumblewayVersion, serializer);

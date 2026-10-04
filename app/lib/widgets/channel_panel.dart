@@ -525,6 +525,8 @@ class _UserRow extends StatelessWidget {
                   _moveElsewhere(context, state);
                 case 'register':
                   _registerThem(context, state);
+                case 'unregister':
+                  _unregisterThem(context, state);
                 case 'priority':
                   state.setPriority(serverId, user, on: !user.prioritySpeaker);
                 case 'reset':
@@ -592,10 +594,25 @@ class _UserRow extends StatelessWidget {
                     user.prioritySpeaker ? l.priorityRevoke : l.priorityGrant,
                   ),
                 ),
+                // **One of these two is always the wrong one to offer.**
+                // Registering somebody who already has an account and
+                // unregistering somebody who has none are both actions whose
+                // only possible outcome is a refusal, and the roster knows
+                // which it is: the server sends an account id for a registered
+                // rider and nothing at all for the rest.
                 PopupMenuItem(
                   value: 'register',
-                  enabled: unanswered || rights.registerOthers,
+                  enabled:
+                      (unanswered || rights.registerOthers) &&
+                      user.userId == null,
                   child: Text(l.registerThem),
+                ),
+                PopupMenuItem(
+                  value: 'unregister',
+                  enabled:
+                      (unanswered || rights.registerOthers) &&
+                      user.userId != null,
+                  child: Text(l.unregisterThem),
                 ),
                 PopupMenuItem(
                   value: 'reset',
@@ -659,6 +676,24 @@ class _UserRow extends StatelessWidget {
       showError(messenger, error);
     } else {
       messenger.showSnackBar(SnackBar(content: Text(l.registerThemSent)));
+    }
+  }
+
+  /// Takes their account away again, by the id the server gave it.
+  ///
+  /// The registration is what an access list names, so removing it quietly
+  /// drops them out of every group they were in — which is why this is in the
+  /// menu rather than beside the name.
+  Future<void> _unregisterThem(BuildContext context, AppState state) async {
+    final id = user.userId;
+    if (id == null) return;
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await state.unregister(serverId, id);
+    if (error != null) {
+      showError(messenger, error);
+    } else {
+      messenger.showSnackBar(SnackBar(content: Text(l.unregisterThemSent)));
     }
   }
 

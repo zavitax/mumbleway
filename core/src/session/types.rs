@@ -307,6 +307,15 @@ pub struct UserInfo {
     /// client writes it in — see [`crate::session::notes`].
     #[serde(default)]
     pub comment: String,
+    /// The account the server knows this rider by, if they have one.
+    ///
+    /// **Presence is registration.** The server sends it only for a rider with
+    /// an account, so `None` means unregistered and `Some(0)` is SuperUser,
+    /// whose id really is zero. Worth having beyond the yes/no: removing a
+    /// registration is done by id, and the roster is where the rider doing it
+    /// is standing.
+    #[serde(default)]
+    pub user_id: Option<u32>,
     /// Whether this rider has told us they have silenced us for themselves.
     ///
     /// **The mirror of [`UserInfo::local_mute`], and the only way it is ever
@@ -696,6 +705,7 @@ mod tests {
             suppress: false,
             mumbleway: None,
             quality: None,
+            user_id: None,
             muted_you: false,
             comment: String::new(),
             priority_speaker: false,

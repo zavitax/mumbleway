@@ -23,6 +23,7 @@ UiUser rider({String comment = '', int session = 7}) => UiUser(
   deafened: false,
   localMute: false,
   mutedYou: false,
+  userId: null,
   selfMuted: false,
   selfDeafened: false,
   status: 'silent',

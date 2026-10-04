@@ -1831,6 +1831,15 @@ class LRu extends L {
   String get priorityRevoke => 'Снять приоритет';
 
   @override
+  String get unregisterThem => 'Удалить регистрацию на сервере';
+
+  @override
+  String get unregisterThemSent => 'Сервер попрошен удалить их регистрацию';
+
+  @override
+  String get registerAlready => 'У вас здесь уже есть учётная запись';
+
+  @override
   String get registerThem => 'Зарегистрировать на сервере';
 
   @override

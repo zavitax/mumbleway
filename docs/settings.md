@@ -477,14 +477,69 @@ than your music app.</p>
 <div class="shots">
   <figure>
     <img src="{{ '/assets/img/shots/settings-network-phone.webp' | relative_url }}"
-         alt="The network section: use the system proxy, on, with a direct connection, and an override that is detected automatically."
-         width="560" height="489" loading="lazy" decoding="async">
-    <figcaption>For downloads only. Voice does not go through it.</figcaption>
+         alt="The network section: use the system proxy, on, with a direct connection and an override that is detected automatically; below them, proxy for servers, set to Direct."
+         width="560" height="656" loading="lazy" decoding="async">
+    <figcaption>Two proxies, for two different jobs. The one for servers is off
+    until you set it.</figcaption>
   </figure>
 </div>
 
-A proxy override for the app's downloads — the public server directory and
-profile files. It does not tunnel voice.
+**Two separate settings**, because a proxy that suits one of these jobs will
+often refuse the other.
+
+**Use the system proxy** — for what the app downloads: the public server
+directory and profile files. It does not carry voice.
+
+**Proxy for servers** — for the connection to a Mumble server itself. Off unless
+you set it, and never found automatically: a proxy your browser uses will often
+refuse a Mumble port. Four choices — **Direct**, **System proxy settings** (take
+what this machine already says), **HTTP(S) proxy** and **SOCKS5 proxy**, the last
+two with an address and, if the proxy wants them, a username and password.
+
+A proxy login is kept on this device only and is never synced: it can be used
+for anything, not only for MumbleWay.
+
+### Whether voice goes through it too
+
+**Off by default.** Only the connection to the server is proxied, and voice goes
+straight to the server over UDP. That is the lower-latency path, and it is also
+the one that cures the usual fault — a network that interferes with the
+long-lived control connection while leaving UDP alone.
+
+**Send voice through the proxy as well** is for a network that blocks UDP too.
+Voice then rides the proxied connection, in Mumble's own tunnelled mode, which
+costs some delay. Such a server shows "Reached through a proxy" in the list
+instead of a ping, because the ping is a bare UDP datagram and no proxy here can
+carry it.
+
+### One server, or all of them
+
+Every server has a proxy row of its own in its form, with the same four choices
+and one more — **Global settings**, which is where every server starts. So a
+proxy one server needs does not drag the rest through it.
+
+**Always reach a server's own proxy through this one** links them into a chain: a
+server with a proxy of its own is dialled through the app's. Servers set to
+**Direct** stay direct — the switch chains, it does not override.
+
+Servers you are already connected to keep their current route until they
+reconnect. Cutting a live connection from a settings screen would take somebody
+out of a conversation without warning.
+
+### Handing one to somebody else
+
+**Share this proxy** sends yours as a link or a QR code, and a server you share
+carries its proxy when you set one explicitly — never when it is on *Global
+settings* or *Direct*. The login travels only if you say so, in the same dialog
+that asks about the server password, and the far side is shown the proxy before
+accepting it rather than after.
+
+<div class="panel warn">
+<p><strong>A proxy is a fact about your own network.</strong> Many have addresses
+nothing outside it can reach, so a shared one may simply not work; and one that
+does work routes somebody else's connections through a machine you may not have
+meant to volunteer.</p>
+</div>
 
 ## Sync
 

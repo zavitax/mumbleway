@@ -1980,6 +1980,41 @@ class LEn extends L {
   String get aclRules => 'Rules';
 
   @override
+  String get aclGroupsHint =>
+      'A group is a name an access list can grant rights to. Only riders with an account on this server can be in one.';
+
+  @override
+  String get aclGroupNew => 'New group';
+
+  @override
+  String get aclGroupCreate => 'Create';
+
+  @override
+  String get aclGroupName => 'Group name';
+
+  @override
+  String get aclGroupExists => 'There is already a group with that name';
+
+  @override
+  String get aclGroupRemove => 'Remove this group';
+
+  @override
+  String get aclGroupAddMember => 'Add somebody';
+
+  @override
+  String get aclGroupNobody => 'Nobody is in it yet';
+
+  @override
+  String get aclGroupNobodyToAdd =>
+      'Everybody registered here is already accounted for.';
+
+  @override
+  String get aclGroupInherit => 'Take members from the channel above';
+
+  @override
+  String get aclGroupInheritable => 'Channels below may use this group';
+
+  @override
   String get aclGroups => 'Groups';
 
   @override

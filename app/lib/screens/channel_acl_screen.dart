@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
@@ -44,12 +46,25 @@ class _ChannelAclScreenState extends State<ChannelAclScreen> {
   UiChannelAcl? _draft;
   bool _asked = false;
 
+  /// The rider's edits, for tests.
+  ///
+  /// Null until they change something, which is the same thing the field
+  /// means; what reaches the server is this list, whole, and the shape of it
+  /// is what the group tests are about.
+  @visibleForTesting
+  UiChannelAcl? get edits => _draft;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_asked) return;
     _asked = true;
-    AppStateScope.of(context).loadAcl(widget.serverId, widget.channel.id);
+    final state = AppStateScope.of(context);
+    state.loadAcl(widget.serverId, widget.channel.id);
+    // The names to offer when adding somebody to a group. Only registered
+    // riders can be in one — a group holds account numbers, and somebody with
+    // no account has no number to hold.
+    state.loadRegistered(widget.serverId);
   }
 
   @override
@@ -128,21 +143,54 @@ class _ChannelAclScreenState extends State<ChannelAclScreen> {
               ),
               const Divider(height: 24),
               Text(l.aclGroups, style: _heading(context)),
-              for (final g in draft.groups)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(g.name),
-                  subtitle: Text(
-                    [
-                      l.aclGroupMembers(
-                        g.add.length + g.inheritedMembers.length,
-                      ),
-                      if (g.inherited) l.aclInherited,
-                    ].join(' · '),
-                    style: _quiet(context),
-                  ),
+              Text(l.aclGroupsHint, style: _quiet(context)),
+              const SizedBox(height: 8),
+              for (final (i, g) in draft.groups.indexed)
+                _GroupCard(
+                  group: g,
+                  names: state.runtimeFor(widget.serverId).userNames,
+                  registered: state.runtimeFor(widget.serverId).registered,
+                  onChanged: g.inherited
+                      ? null
+                      : (next) => setState(() {
+                          final groups = [...draft.groups];
+                          groups[i] = next;
+                          _draft = _withGroups(draft, groups);
+                        }),
+                  onRemove: g.inherited
+                      ? null
+                      : () => setState(() {
+                          final groups = [...draft.groups]..removeAt(i);
+                          _draft = _withGroups(draft, groups);
+                        }),
                 ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.group_add_outlined),
+                label: Text(l.aclGroupNew),
+                onPressed: () async {
+                  final name = await _askGroupName(context, draft);
+                  if (name == null || !mounted) return;
+                  setState(() {
+                    _draft = _withGroups(draft, [
+                      ...draft.groups,
+                      UiAclGroup(
+                        name: name,
+                        inherited: false,
+                        // What a new group means by default: it takes the
+                        // parent's members of the same name, and channels
+                        // below may take ours. Both are the server's own
+                        // defaults for a group created in Mumble's client.
+                        inherit: true,
+                        inheritable: true,
+                        add: Uint32List(0),
+                        remove: Uint32List(0),
+                        inheritedMembers: Uint32List(0),
+                      ),
+                    ]);
+                  });
+                },
+              ),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: () async {
@@ -190,6 +238,326 @@ class _ChannelAclScreenState extends State<ChannelAclScreen> {
         groups: acl.groups,
         rules: rules,
       );
+
+  UiChannelAcl _withGroups(UiChannelAcl acl, List<UiAclGroup> groups) =>
+      UiChannelAcl(
+        channelId: acl.channelId,
+        inheritAcls: acl.inheritAcls,
+        groups: groups,
+        rules: acl.rules,
+      );
+
+  /// Asks for a name, refusing an empty one and one already taken.
+  ///
+  /// **A second group of the same name is not a second group.** The server
+  /// keys them by name, so saving two leaves one, and which one is anybody's
+  /// guess — better to say so here than to have members quietly disappear.
+  Future<String?> _askGroupName(BuildContext context, UiChannelAcl acl) {
+    final l = L.of(context);
+    final controller = TextEditingController();
+    final taken = {for (final g in acl.groups) g.name.toLowerCase()};
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) {
+          final text = controller.text.trim();
+          final error = switch (text) {
+            '' => null,
+            final t when taken.contains(t.toLowerCase()) => l.aclGroupExists,
+            _ => null,
+          };
+          return AlertDialog(
+            title: Text(l.aclGroupNew),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: l.aclGroupName,
+                errorText: error,
+              ),
+              onChanged: (_) => setLocal(() {}),
+              onSubmitted: (v) {
+                final name = v.trim();
+                if (name.isEmpty || taken.contains(name.toLowerCase())) return;
+                Navigator.pop(context, name);
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(l.cancel),
+              ),
+              FilledButton(
+                onPressed: text.isEmpty || error != null
+                    ? null
+                    : () => Navigator.pop(context, text),
+                child: Text(l.aclGroupCreate),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One group: who is in it, who was taken out of it, and where it reaches.
+///
+/// **Three lists, not one.** Mumble keeps a group's membership as what this
+/// channel *adds*, what it *removes* from whatever the parent passed down, and
+/// the inherited members themselves. So taking somebody out of an inherited
+/// group is not deleting them — it is adding them to the remove list, and the
+/// chip says so rather than vanishing, because a rider who disappears from a
+/// list reads as a mistake rather than as a decision.
+class _GroupCard extends StatelessWidget {
+  const _GroupCard({
+    required this.group,
+    required this.names,
+    required this.registered,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  final UiAclGroup group;
+  final Map<int, String> names;
+  final List<UiRegisteredUser> registered;
+  final void Function(UiAclGroup)? onChanged;
+  final VoidCallback? onRemove;
+
+  String _name(int id) =>
+      names[id] ??
+      registered.where((r) => r.userId == id).map((r) => r.name).firstOrNull ??
+      '#$id';
+
+  /// The bridge hands these over as `Uint32List`, so every edit is rebuilt
+  /// as one rather than as the `List<int>` that reads more naturally here.
+  UiAclGroup _with({
+    bool? inherit,
+    bool? inheritable,
+    List<int>? add,
+    List<int>? remove,
+  }) => UiAclGroup(
+    name: group.name,
+    inherited: group.inherited,
+    inherit: inherit ?? group.inherit,
+    inheritable: inheritable ?? group.inheritable,
+    add: add == null ? group.add : Uint32List.fromList(add),
+    remove: remove == null ? group.remove : Uint32List.fromList(remove),
+    inheritedMembers: group.inheritedMembers,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final editable = onChanged != null;
+    final taken = {...group.add, ...group.inheritedMembers, ...group.remove};
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    group.name,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                if (group.inherited)
+                  Text(
+                    l.aclInherited,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  )
+                else if (onRemove != null)
+                  IconButton(
+                    tooltip: l.aclGroupRemove,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    onPressed: onRemove,
+                  ),
+              ],
+            ),
+            if (group.add.isEmpty &&
+                group.inheritedMembers.isEmpty &&
+                group.remove.isEmpty)
+              Text(l.aclGroupNobody, style: _quiet(context))
+            else
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final id in group.add)
+                    _MemberChip(
+                      label: _name(id),
+                      onRemove: editable
+                          ? () => onChanged!(
+                              _with(
+                                add: [...group.add]..remove(id),
+                              ),
+                            )
+                          : null,
+                    ),
+                  for (final id in group.inheritedMembers)
+                    if (!group.remove.contains(id))
+                      _MemberChip(
+                        label: _name(id),
+                        inherited: true,
+                        onRemove: editable
+                            ? () => onChanged!(
+                                _with(remove: [...group.remove, id]),
+                              )
+                            : null,
+                      ),
+                  for (final id in group.remove)
+                    _MemberChip(
+                      label: _name(id),
+                      excluded: true,
+                      onUndo: editable
+                          ? () => onChanged!(
+                              _with(
+                                remove: [...group.remove]..remove(id),
+                              ),
+                            )
+                          : null,
+                    ),
+                ],
+              ),
+            if (editable) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.person_add_alt, size: 18),
+                    label: Text(l.aclGroupAddMember),
+                    onPressed: () async {
+                      final id = await _pickMember(context, taken);
+                      if (id == null) return;
+                      onChanged!(
+                        _with(
+                          add: [...group.add, id],
+                          remove: [...group.remove]..remove(id),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: group.inherit,
+                title: Text(l.aclGroupInherit, style: const TextStyle(fontSize: 13)),
+                onChanged: (v) => onChanged!(_with(inherit: v)),
+              ),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: group.inheritable,
+                title: Text(
+                  l.aclGroupInheritable,
+                  style: const TextStyle(fontSize: 13),
+                ),
+                onChanged: (v) => onChanged!(_with(inheritable: v)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The registered riders, minus the ones already accounted for here.
+  Future<int?> _pickMember(BuildContext context, Set<int> taken) {
+    final l = L.of(context);
+    final choices = [
+      for (final r in registered)
+        if (!taken.contains(r.userId)) r,
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(l.aclGroupAddMember),
+        content: SizedBox(
+          width: 320,
+          child: choices.isEmpty
+              ? Text(l.aclGroupNobodyToAdd)
+              : ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final r in choices)
+                      ListTile(
+                        dense: true,
+                        title: Text(r.name),
+                        onTap: () => Navigator.pop(context, r.userId),
+                      ),
+                  ],
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l.cancel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  TextStyle _quiet(BuildContext context) => TextStyle(
+    fontSize: 12,
+    color: Theme.of(context).colorScheme.onSurfaceVariant,
+  );
+}
+
+/// One rider in a group: theirs, the parent's, or taken out of the parent's.
+class _MemberChip extends StatelessWidget {
+  const _MemberChip({
+    required this.label,
+    this.inherited = false,
+    this.excluded = false,
+    this.onRemove,
+    this.onUndo,
+  });
+
+  final String label;
+  final bool inherited;
+  final bool excluded;
+  final VoidCallback? onRemove;
+  final VoidCallback? onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Chip(
+      visualDensity: VisualDensity.compact,
+      avatar: Icon(
+        excluded
+            ? Icons.person_off_outlined
+            : inherited
+            ? Icons.arrow_downward
+            : Icons.person_outline,
+        size: 16,
+        color: excluded ? scheme.error : scheme.onSurfaceVariant,
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          decoration: excluded ? TextDecoration.lineThrough : null,
+          color: excluded ? scheme.onSurfaceVariant : null,
+        ),
+      ),
+      onDeleted: onRemove ?? onUndo,
+      deleteIcon: Icon(onUndo != null ? Icons.undo : Icons.close, size: 15),
+    );
+  }
 }
 
 /// One rule: who it is about, where it applies, and what it says.

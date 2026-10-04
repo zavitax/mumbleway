@@ -1274,6 +1274,112 @@ async fn an_acl_survives_a_round_trip() {
     );
 }
 
+/// A group written here comes back with the member it was given.
+///
+/// **The half of an access list the client could only read.** Rules have been
+/// round-tripped since this file existed; groups were listed and never
+/// written, so nothing had ever checked that `add` survives the trip — and a
+/// group is how a rider is granted anything by name, so a membership that
+/// quietly did not stick would be a permission that quietly did not apply.
+///
+/// SuperUser's own account id is 0 and it is a real registered id, which is
+/// what makes a member available on a server nobody has registered anybody on.
+///
+/// Leaves the server as it found it: the group goes in, is read back, and is
+/// taken out again, with the root rules written back untouched each time.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live server AND MW_LIVE_SUPERUSER set to its password"]
+async fn a_group_written_here_comes_back_with_its_member() {
+    require_server!();
+    let Ok(password) = std::env::var("MW_LIVE_SUPERUSER") else {
+        eprintln!("MW_LIVE_SUPERUSER is not set; skipping");
+        return;
+    };
+    let (host, port) = live_address().expect("MW_LIVE");
+    let (tx, mut rx) = mpsc::channel(4096);
+    let identity = Identity::generate("MumbleWay live groups").expect("identity");
+    let mut manager =
+        SessionManager::new(identity, "MumbleWay 0.0-live", tx).with_app_version("0.0-live");
+
+    let mut admin = ServerProfile::new("live", host, port, "SuperUser");
+    admin.id = "admin".into();
+    admin.password = Some(password);
+    let id = manager.add(admin, silent_bridge()).expect("added");
+    manager
+        .send(&id, mumbleway_core::session::SessionCommand::Connect)
+        .await
+        .expect("connect");
+
+    use mumbleway_core::session::{AclGroup, SessionCommand as C};
+
+    const NAME: &str = "mw-live-group";
+    let mut step = 0;
+    let mut came_back: Option<AclGroup> = None;
+    let mut gone_again = false;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+
+    loop {
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Ok(Some(event)) = tokio::time::timeout(left, rx.recv()).await else {
+            break;
+        };
+        match &event.event {
+            SessionEvent::SelfSession(_) if step == 0 => {
+                step = 1;
+                manager.send(&id, C::RequestAcl(0)).await.expect("read acl");
+            }
+            SessionEvent::Acl(acl) => {
+                if step == 1 {
+                    step = 2;
+                    let mut next = acl.clone();
+                    next.groups.push(AclGroup {
+                        name: NAME.into(),
+                        inherited: false,
+                        inherit: true,
+                        inheritable: true,
+                        add: vec![0],
+                        remove: Vec::new(),
+                        inherited_members: Vec::new(),
+                    });
+                    manager
+                        .send(&id, C::SetAcl(next))
+                        .await
+                        .expect("write the group");
+                } else if step == 2 {
+                    step = 3;
+                    came_back = acl.groups.iter().find(|g| g.name == NAME).cloned();
+                    let mut next = acl.clone();
+                    next.groups.retain(|g| g.name != NAME);
+                    manager
+                        .send(&id, C::SetAcl(next))
+                        .await
+                        .expect("take it away again");
+                } else if step == 3 {
+                    step = 4;
+                    gone_again = !acl.groups.iter().any(|g| g.name == NAME);
+                }
+            }
+            SessionEvent::Refused { reason, kind } => {
+                println!("server refused something: kind={kind} reason={reason:?}");
+            }
+            _ => {}
+        }
+    }
+    manager.shutdown_all().await;
+
+    let group = came_back.expect("the group that was written never came back");
+    println!("group came back: {group:?}");
+    assert!(
+        group.add.contains(&0),
+        "the member went missing on the way through: {group:?}"
+    );
+    assert!(group.inheritable, "the flags did not survive: {group:?}");
+    assert!(gone_again, "the server was not left as it was found");
+}
+
 /// Everything an admin can now do, in one round trip on a real server.
 ///
 /// Channel management, the registered-user list, registering and unregistering

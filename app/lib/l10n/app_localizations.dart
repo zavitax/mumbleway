@@ -3601,6 +3601,72 @@ abstract class L {
   /// **'Rules'**
   String get aclRules;
 
+  /// No description provided for @aclGroupsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A group is a name an access list can grant rights to. Only riders with an account on this server can be in one.'**
+  String get aclGroupsHint;
+
+  /// No description provided for @aclGroupNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New group'**
+  String get aclGroupNew;
+
+  /// No description provided for @aclGroupCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get aclGroupCreate;
+
+  /// No description provided for @aclGroupName.
+  ///
+  /// In en, this message translates to:
+  /// **'Group name'**
+  String get aclGroupName;
+
+  /// No description provided for @aclGroupExists.
+  ///
+  /// In en, this message translates to:
+  /// **'There is already a group with that name'**
+  String get aclGroupExists;
+
+  /// No description provided for @aclGroupRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this group'**
+  String get aclGroupRemove;
+
+  /// No description provided for @aclGroupAddMember.
+  ///
+  /// In en, this message translates to:
+  /// **'Add somebody'**
+  String get aclGroupAddMember;
+
+  /// No description provided for @aclGroupNobody.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody is in it yet'**
+  String get aclGroupNobody;
+
+  /// No description provided for @aclGroupNobodyToAdd.
+  ///
+  /// In en, this message translates to:
+  /// **'Everybody registered here is already accounted for.'**
+  String get aclGroupNobodyToAdd;
+
+  /// No description provided for @aclGroupInherit.
+  ///
+  /// In en, this message translates to:
+  /// **'Take members from the channel above'**
+  String get aclGroupInherit;
+
+  /// No description provided for @aclGroupInheritable.
+  ///
+  /// In en, this message translates to:
+  /// **'Channels below may use this group'**
+  String get aclGroupInheritable;
+
   /// No description provided for @aclGroups.
   ///
   /// In en, this message translates to:

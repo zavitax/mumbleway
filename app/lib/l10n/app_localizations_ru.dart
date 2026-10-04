@@ -1970,6 +1970,41 @@ class LRu extends L {
   String get aclRules => 'Правила';
 
   @override
+  String get aclGroupsHint =>
+      'Группа — это имя, которому список доступа выдаёт права. В группе могут состоять только те, у кого есть учётная запись на этом сервере.';
+
+  @override
+  String get aclGroupNew => 'Новая группа';
+
+  @override
+  String get aclGroupCreate => 'Создать';
+
+  @override
+  String get aclGroupName => 'Название группы';
+
+  @override
+  String get aclGroupExists => 'Группа с таким названием уже есть';
+
+  @override
+  String get aclGroupRemove => 'Удалить группу';
+
+  @override
+  String get aclGroupAddMember => 'Добавить человека';
+
+  @override
+  String get aclGroupNobody => 'Пока никого';
+
+  @override
+  String get aclGroupNobodyToAdd => 'Все зарегистрированные здесь уже учтены.';
+
+  @override
+  String get aclGroupInherit => 'Брать участников из канала выше';
+
+  @override
+  String get aclGroupInheritable =>
+      'Каналы ниже могут пользоваться этой группой';
+
+  @override
   String get aclGroups => 'Группы';
 
   @override

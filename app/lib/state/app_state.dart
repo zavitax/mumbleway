@@ -4372,9 +4372,15 @@ class AppState extends ChangeNotifier {
         rt.acls[acl.channelId] = acl;
         // Rules name people by number. Ask who they are, once per batch of
         // numbers nobody has a name for yet.
+        // Groups name them by number too — their members, the ones a parent
+        // handed down, and the ones this channel takes back out — and a chip
+        // reading "#7" is a rider nobody can identify.
         final unknown = <int>{
           for (final r in acl.rules)
             if (r.userId case final id?)
+              if (!rt.userNames.containsKey(id)) id,
+          for (final g in acl.groups)
+            for (final id in [...g.add, ...g.remove, ...g.inheritedMembers])
               if (!rt.userNames.containsKey(id)) id,
         };
         if (unknown.isNotEmpty) {

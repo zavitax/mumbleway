@@ -1984,6 +1984,13 @@ impl Session {
                     groups: acl
                         .groups
                         .into_iter()
+                        // Inherited groups belong to the channel above, the
+                        // same as inherited rules. Sending one back does not
+                        // leave things as they were: the server reads the list
+                        // as the groups *this* channel defines, so an
+                        // inherited one written back becomes a local copy that
+                        // stops following its parent.
+                        .filter(|g| !g.inherited)
                         .map(|g| mumble::acl::ChanGroup {
                             name: g.name,
                             inherited: Some(g.inherited),

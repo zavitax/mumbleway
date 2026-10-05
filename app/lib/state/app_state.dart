@@ -931,6 +931,20 @@ class AppState extends ChangeNotifier {
   bool get deafenedByServer =>
       runtimes.values.any((rt) => rt.isLive && rt.deafenedByAdmin);
 
+  /// Whether **no** connected server can hear us, because every one of them
+  /// has silenced us one way or another.
+  ///
+  /// Distinct from [silencedByServer], which is true when *any* of them has.
+  /// The difference matters in both directions and the wrong one is dangerous:
+  /// a rider connected to two servers and muted on one is still being heard on
+  /// the other, and an interface that said "not on air" there would invite
+  /// them to say something they believed was going nowhere.
+  bool get silencedEverywhere {
+    final live = runtimes.values.where((rt) => rt.isLive);
+    return live.isNotEmpty &&
+        live.every((rt) => rt.mutedByAdmin || rt.suppressed);
+  }
+
   /// Whether what is stopping us is the channel rather than a person.
   bool get suppressedSomewhere =>
       runtimes.values.any((rt) => rt.isLive && rt.suppressed);
@@ -3614,6 +3628,13 @@ class AppState extends ChangeNotifier {
   /// whether a rider is being heard would be worse than either being wrong.
   bool get isOnAir {
     final connected = runtimes.values.any((r) => r.isLive);
+    // **An imposed silence is still a silence.** This counted our own mute and
+    // not an admin's, so a rider muted by the server saw a meter in the colour
+    // that means "somebody is hearing this" and an on-air light to match,
+    // while nothing they said left the device. `silencedEverywhere` rather
+    // than `silencedByServer`, because one server muting us does not stop the
+    // other one hearing every word.
+    if (silencedEverywhere) return false;
     return switch (micMode) {
       MicMode.pushToTalk => _transmitting,
       MicMode.voiceActivity => connected && !_muted && _speaking,

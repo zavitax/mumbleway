@@ -124,6 +124,83 @@ void main() {
     expect(colourOf(t, Icons.volume_off), StatusColors.reconnecting);
   });
 
+  testWidgets('the microphone button does not toggle an imposed silence', (
+    t,
+  ) async {
+    // **It was still wired to self-mute.** Amber says "an admin muted you",
+    // and a tap changed a different state than the one on screen: the colour
+    // stayed put, nothing visible moved, and the microphone silently opened or
+    // closed underneath. A control that acts on something other than what it
+    // displays is worse than one that does nothing.
+    final state = connected(mutedByAdmin: true);
+    await t.pumpWidget(host(state));
+    await t.pump(const Duration(milliseconds: 50));
+
+    final button = t.widget<IconButton>(
+      find.ancestor(of: inBar(Icons.mic_off), matching: find.byType(IconButton)),
+    );
+    expect(button.onPressed, isNull, reason: 'it is an indicator, not a switch');
+    // And it keeps saying why rather than going the usual disabled grey.
+    expect(button.disabledColor, StatusColors.reconnecting);
+
+    await t.tap(inBar(Icons.mic_off), warnIfMissed: false);
+    await t.pump(const Duration(milliseconds: 50));
+    expect(state.muted, isFalse, reason: 'our own switch still has not moved');
+  });
+
+  testWidgets('a suppressed channel disables it the same way', (t) async {
+    final state = connected(suppressed: true);
+    await t.pumpWidget(host(state));
+    await t.pump(const Duration(milliseconds: 50));
+    expect(
+      t
+          .widget<IconButton>(
+            find.ancestor(
+              of: inBar(Icons.mic_off),
+              matching: find.byType(IconButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
+
+  group('on air', () {
+    // The meter's colour and the floating window's light both read this, and
+    // the whole point of one definition is that they cannot disagree.
+    test('an admin muting us is not on air', () {
+      final state = connected(mutedByAdmin: true)..micMode = MicMode.continuous;
+      expect(
+        state.isOnAir,
+        isFalse,
+        reason: 'the meter was still drawn in the colour that means '
+            'somebody is hearing this',
+      );
+    });
+
+    test('a channel that will not carry a voice is not either', () {
+      final state = connected(suppressed: true)..micMode = MicMode.continuous;
+      expect(state.isOnAir, isFalse);
+    });
+
+    test('and an ordinary connected microphone still is', () {
+      final state = connected()..micMode = MicMode.continuous;
+      expect(state.isOnAir, isTrue);
+    });
+
+    test('muted on one server of two is still on air on the other', () {
+      // **The dangerous direction.** Saying "not on air" here would invite a
+      // rider to speak freely into a server that is carrying every word.
+      final state = connected(mutedByAdmin: true)..micMode = MicMode.continuous;
+      state.runtimes['other'] = ServerRuntime()
+        ..status = ConnStatus.connected
+        ..selfSession = 7
+        ..users = [me()];
+      expect(state.silencedEverywhere, isFalse);
+      expect(state.isOnAir, isTrue);
+    });
+  });
+
   testWidgets('nothing imposed leaves both buttons alone', (t) async {
     final state = connected();
     await t.pumpWidget(host(state));

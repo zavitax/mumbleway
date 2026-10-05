@@ -153,7 +153,20 @@ class HomeScreen extends StatelessWidget {
                 : state.muted
                 ? l.unmuteMicrophone
                 : l.muteMicrophone,
-            onPressed: state.toggleMute,
+            // **Not a toggle while the silence is somebody else's.** Drawn
+            // amber, this button says "an admin muted you" — and it was still
+            // wired to self-mute, so a tap changed a different state than the
+            // one on screen, the colour did not move, and the microphone
+            // silently opened or closed underneath. A control that acts on
+            // something other than what it displays is worse than one that
+            // does nothing.
+            //
+            // Only when *no* server can hear us. Muted on one of two, self-mute
+            // still decides whether the other one does, so it stays live.
+            onPressed: state.silencedEverywhere ? null : state.toggleMute,
+            // Kept amber rather than going the usual disabled grey: the reason
+            // it cannot be pressed is the thing the colour is saying.
+            disabledColor: StatusColors.reconnecting,
             icon: Icon(
               state.muted || state.silencedByServer ? Icons.mic_off : Icons.mic,
             ),

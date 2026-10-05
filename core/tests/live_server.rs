@@ -2038,6 +2038,58 @@ async fn a_rider_reaches_the_connected_state_at_all() {
     );
 }
 
+/// The meter beside a rider's own name had nothing in it, for ever.
+///
+/// The quality figures come from the server, which measures voice packets in
+/// both directions and hands them over when asked. This client asked about
+/// everybody in its channel **except itself**, so its own meter drew the grey
+/// placeholder and said "the server has not measured this connection" — a
+/// sentence about the server that was really a question nobody had asked.
+///
+/// Live rather than a unit test because the thing that was wrong is the
+/// conversation with the server, and a fake one would have been written to
+/// answer whatever we asked.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a live Mumble server; see the file header"]
+async fn the_server_measures_our_own_connection_too() {
+    require_server!();
+    // Long enough for a poll round and its reply: the poller runs every few
+    // seconds, and the first roster arrives before any of it has happened.
+    let events = gather(&["rider-self-quality"], 25).await;
+
+    let mine = events
+        .iter()
+        .find_map(|e| match e.event {
+            SessionEvent::SelfSession(s) => Some(s),
+            _ => None,
+        })
+        .expect("the server never told us which session we are");
+
+    let measured = events.iter().rev().find_map(|e| match &e.event {
+        SessionEvent::Users(users) => users
+            .iter()
+            .find(|u| u.session == mine)
+            .and_then(|u| u.quality),
+        _ => None,
+    });
+
+    println!("our own quality: {measured:?}");
+    let q = measured.expect(
+        "no quality for our own session — the poll is asking about everybody \
+         but us, and the meter on the server panel says so for ever",
+    );
+    assert_eq!(q.session, mine);
+    // Loss is a proportion and a ping is not negative; a figure outside that
+    // is a field read from the wrong place rather than a bad connection.
+    assert!((0.0..=1.0).contains(&q.loss_up), "loss up {}", q.loss_up);
+    assert!(
+        (0.0..=1.0).contains(&q.loss_down),
+        "loss down {}",
+        q.loss_down
+    );
+    assert!(q.ping_ms >= 0.0, "ping {}", q.ping_ms);
+}
+
 // ---------------------------------------------------------------------------
 // Through a proxy
 // ---------------------------------------------------------------------------

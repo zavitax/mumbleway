@@ -233,17 +233,26 @@ impl LiveState {
             .map(|u| u.channel_id)
     }
 
-    /// Everybody in our own channel but us.
+    /// Everybody in our own channel whose connection is worth asking about —
+    /// **including ourselves**.
     ///
     /// The roster draws these, and they are also the only riders the server
     /// reports packet loss for — see [`quality`].
+    ///
+    /// **Ourselves used to be excluded, and ours is the one that matters
+    /// most.** The meter beside our own name on the server panel had nothing
+    /// to draw for the whole session and said "the server has not measured
+    /// this connection" for ever, which is a sentence about the server and was
+    /// really a question this client never asked. Our own `Ping` round trip is
+    /// no substitute: that is the control channel, and it knows nothing about
+    /// voice packets lost in either direction.
     fn channel_peers(&self) -> Vec<u32> {
         let Some(mine) = self.self_channel(self.self_session) else {
             return Vec::new();
         };
         self.users
             .values()
-            .filter(|u| u.channel_id == mine && Some(u.session) != self.self_session)
+            .filter(|u| u.channel_id == mine)
             .map(|u| u.session)
             .collect()
     }

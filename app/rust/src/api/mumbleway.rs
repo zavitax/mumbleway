@@ -359,6 +359,35 @@ pub struct UiRights {
     pub register_others: bool,
     pub self_register: bool,
 }
+/// The same permissions, in the shape the interface reads.
+///
+/// One place rather than two: the per-channel answer and the one for where the
+/// rider is standing carry identical fields, and a copy of twelve assignments
+/// is twelve chances to transpose two of them.
+fn ui_rights(r: &mumbleway_core::session::permissions::Rights) -> UiRights {
+    UiRights {
+        known: r.known,
+        speak: r.speak,
+        mute_deafen: r.mute_deafen,
+        move_users: r.move_users,
+        text: r.text,
+        whisper: r.whisper,
+        make_channel: r.make_channel,
+        write: r.write,
+        kick: r.kick,
+        ban: r.ban,
+        register_others: r.register_others,
+        self_register: r.self_register,
+    }
+}
+
+/// What a rider may do in one channel, named by its id.
+#[derive(Debug, Clone, Copy)]
+pub struct UiChannelRights {
+    pub channel_id: u32,
+    pub rights: UiRights,
+}
+
 
 /// The server's measurements of one rider's connection.
 #[derive(Debug, Clone, Copy)]
@@ -535,6 +564,18 @@ pub enum AppEvent {
     Rights {
         server_id: String,
         rights: UiRights,
+    },
+    /// What this rider may do **in each channel** the server has answered
+    /// about, as the whole set each time.
+    ///
+    /// Separate from `Rights` because that one is about the channel the rider
+    /// is standing in, and a list of channels needs an answer per row: a rider
+    /// with Write in one channel and not in another was seeing the management
+    /// menu everywhere or nowhere, according to where they happened to be
+    /// standing.
+    ChannelRights {
+        server_id: String,
+        channels: Vec<UiChannelRights>,
     },
     /// Someone else changed our mute or deafen state.
     Moderated {
@@ -1249,20 +1290,17 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 }),
                 SessionEvent::Rights(r) => emit(AppEvent::Rights {
                     server_id,
-                    rights: UiRights {
-                        known: r.known,
-                        speak: r.speak,
-                        mute_deafen: r.mute_deafen,
-                        move_users: r.move_users,
-                        text: r.text,
-                        whisper: r.whisper,
-                        make_channel: r.make_channel,
-                        write: r.write,
-                        kick: r.kick,
-                        ban: r.ban,
-                        register_others: r.register_others,
-                        self_register: r.self_register,
-                    },
+                    rights: ui_rights(&r),
+                }),
+                SessionEvent::ChannelRights(list) => emit(AppEvent::ChannelRights {
+                    server_id,
+                    channels: list
+                        .into_iter()
+                        .map(|c| UiChannelRights {
+                            channel_id: c.channel_id,
+                            rights: ui_rights(&c.rights),
+                        })
+                        .collect(),
                 }),
                 SessionEvent::RemoteMuteRequested { mute, by } => {
                     // Decided here rather than in the session, because this is
@@ -1599,6 +1637,15 @@ pub fn disconnect_server(server_id: String) -> anyhow::Result<()> {
 /// Accepts a changed server certificate and re-pins it.
 pub fn accept_certificate(server_id: String) -> anyhow::Result<()> {
     send_command(server_id, SessionCommand::AcceptCertificate)
+}
+
+/// Asks the server what this rider may do in one channel.
+///
+/// Lazily, from the row that wants to know: a server with fifty channels would
+/// otherwise be fifty queries at connect, for answers about rows nobody has
+/// looked at. The answer arrives as an ordinary `ChannelRights` event.
+pub fn ask_channel_permissions(server_id: String, channel_id: u32) -> anyhow::Result<()> {
+    send_command(server_id, SessionCommand::AskPermissions(channel_id))
 }
 
 pub fn join_channel(server_id: String, channel_id: u32) -> anyhow::Result<()> {

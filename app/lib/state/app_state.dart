@@ -397,6 +397,22 @@ class ServerRuntime {
   /// with it: an interface that greys out every moderation action for the
   /// second before the first reply looks broken. Ask `known` before reading the
   /// rest.
+  /// What the rider may do **in each channel**, by channel id.
+  ///
+  /// Separate from the one below, which is about the channel they are standing
+  /// in. A list of channels needs an answer per row: a rider with Write in one
+  /// and not in another was shown the management menu on every row or on none,
+  /// according to where they happened to be standing.
+  ///
+  /// Empty until something asks. A missing entry means "not asked yet", which
+  /// the interface treats the way it treats every unanswered permission —
+  /// offer it, and let the server refuse.
+  Map<int, UiRights> channelRights = {};
+
+  /// Channels an answer has already been asked for, so a rebuild does not ask
+  /// again. A rebuilt row is not new information.
+  final Set<int> channelRightsAsked = {};
+
   UiRights rights = const UiRights(
     known: false,
     speak: false,
@@ -2537,6 +2553,31 @@ class AppState extends ChangeNotifier {
   /// and left no trace anywhere. A server can decline for reasons the app
   /// cannot see — a full channel, one that needs a password, or a permission
   /// the account does not have — so the reason has to come back out.
+  /// Asks the server what this rider may do in [channelId], once.
+  ///
+  /// Called from the row that wants to know, the first time it is drawn. The
+  /// alternative — asking about every channel at connect — is fifty queries on
+  /// a big server for answers about rows nobody will look at, and the server
+  /// rate-limits what it will answer.
+  void askChannelRights(String serverId, int channelId) {
+    final runtime = runtimeFor(serverId);
+    if (runtime.status != ConnStatus.connected) return;
+    if (!runtime.channelRightsAsked.add(channelId)) return;
+    unawaited(
+      Future(() async {
+        try {
+          await askChannelPermissions(serverId: serverId, channelId: channelId);
+        } catch (_) {
+          // The session went away between the build and the call. Forgotten
+          // rather than left remembered as asked, so the answer is wanted
+          // again next time; meanwhile the row keeps offering the menu, which
+          // is what an unanswered permission does everywhere here.
+          runtime.channelRightsAsked.remove(channelId);
+        }
+      }),
+    );
+  }
+
   Future<String?> joinChannelOn(String id, int channelId) async {
     try {
       await joinChannel(serverId: id, channelId: channelId);
@@ -4471,6 +4512,13 @@ class AppState extends ChangeNotifier {
         }
       case AppEvent_Rights(:final serverId, :final rights):
         runtimeFor(serverId).rights = rights;
+      case AppEvent_ChannelRights(:final serverId, :final channels):
+        // The whole set each time, so a server saying "forget everything I
+        // told you" is honoured by replacement rather than by bookkeeping.
+        runtimeFor(serverId).channelRights = {
+          for (final c in channels) c.channelId: c.rights,
+        };
+        notifyListeners();
       case AppEvent_ServerSuggests(
         :final serverId,
         :final pushToTalk,

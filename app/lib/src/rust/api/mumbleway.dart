@@ -8,9 +8,9 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mumbleway.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `from_spec`, `into_spec`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`
+// These functions are ignored because they are not marked as `pub`: `allocate_slot`, `app`, `config_to_profile`, `cue_for_moderation`, `cue_for_transition`, `emit`, `from_profile_index`, `from_spec`, `into_spec`, `is_waiting`, `rung_at`, `send_command`, `status_of`, `to_profile`, `to_transmit`, `ui_rights`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `App`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`
 
 /// Starts the engine. Must be called once before anything else.
 Future<void> startEngine({required StartupOptions options}) =>
@@ -46,6 +46,19 @@ Future<void> disconnectServer({required String serverId}) =>
 /// Accepts a changed server certificate and re-pins it.
 Future<void> acceptCertificate({required String serverId}) =>
     RustLib.instance.api.crateApiMumblewayAcceptCertificate(serverId: serverId);
+
+/// Asks the server what this rider may do in one channel.
+///
+/// Lazily, from the row that wants to know: a server with fifty channels would
+/// otherwise be fifty queries at connect, for answers about rows nobody has
+/// looked at. The answer arrives as an ordinary `ChannelRights` event.
+Future<void> askChannelPermissions({
+  required String serverId,
+  required int channelId,
+}) => RustLib.instance.api.crateApiMumblewayAskChannelPermissions(
+  serverId: serverId,
+  channelId: channelId,
+);
 
 Future<void> joinChannel({required String serverId, required int channelId}) =>
     RustLib.instance.api.crateApiMumblewayJoinChannel(
@@ -977,6 +990,19 @@ sealed class AppEvent with _$AppEvent {
     required UiRights rights,
   }) = AppEvent_Rights;
 
+  /// What this rider may do **in each channel** the server has answered
+  /// about, as the whole set each time.
+  ///
+  /// Separate from `Rights` because that one is about the channel the rider
+  /// is standing in, and a list of channels needs an answer per row: a rider
+  /// with Write in one channel and not in another was seeing the management
+  /// menu everywhere or nowhere, according to where they happened to be
+  /// standing.
+  const factory AppEvent.channelRights({
+    required String serverId,
+    required List<UiChannelRights> channels,
+  }) = AppEvent_ChannelRights;
+
   /// Someone else changed our mute or deafen state.
   const factory AppEvent.moderated({
     required String serverId,
@@ -1901,6 +1927,25 @@ class UiChannelAcl {
           inheritAcls == other.inheritAcls &&
           groups == other.groups &&
           rules == other.rules;
+}
+
+/// What a rider may do in one channel, named by its id.
+class UiChannelRights {
+  final int channelId;
+  final UiRights rights;
+
+  const UiChannelRights({required this.channelId, required this.rights});
+
+  @override
+  int get hashCode => channelId.hashCode ^ rights.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiChannelRights &&
+          runtimeType == other.runtimeType &&
+          channelId == other.channelId &&
+          rights == other.rights;
 }
 
 /// A menu entry this server registered.

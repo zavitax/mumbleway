@@ -206,6 +206,19 @@ pub struct AclRule {
     pub deny: u32,
 }
 
+/// What a rider may do in one channel.
+///
+/// Carries the whole [`Rights`] rather than the two channel-scoped bits,
+/// because the server-wide half — kick, ban, register somebody — is decided by
+/// the **root** channel's mask and is what most of the menu is made of. Only
+/// `write` and `make_channel` differ from channel to channel, and separating
+/// them here would make every reader recombine them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelRights {
+    pub channel_id: u32,
+    pub rights: crate::session::permissions::Rights,
+}
+
 /// A named group of users on a channel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AclGroup {
@@ -490,6 +503,13 @@ pub enum SessionEvent {
     /// — it is a hint for greying out what would be refused, never a substitute
     /// for the refusal itself.
     Rights(crate::session::permissions::Rights),
+    /// What the rider may do **in each channel the server has answered about**.
+    ///
+    /// Sent as the whole set rather than one entry at a time, for the reason
+    /// [`SessionEvent::ContextActions`] is: a map built from a running total
+    /// drifts out of step with the server when it says "forget everything I
+    /// told you", and nobody notices until a menu does the wrong thing.
+    ChannelRights(Vec<ChannelRights>),
     /// The server's certificate, reported so the UI can pin or compare it.
     ServerCertificate {
         fingerprint: String,
@@ -516,6 +536,12 @@ pub enum SessionEvent {
 #[derive(Debug, Clone)]
 pub enum SessionCommand {
     Connect,
+    /// Ask what the rider may do in one particular channel.
+    ///
+    /// The client asks about the root and the channel it is standing in on its
+    /// own; this is for the rest, which are asked about only when something is
+    /// about to be drawn for them.
+    AskPermissions(u32),
     /// Explicit user disconnect — suppresses automatic reconnection.
     Disconnect,
     JoinChannel(u32),

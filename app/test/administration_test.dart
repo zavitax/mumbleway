@@ -96,7 +96,12 @@ void main() {
     addTearDown(state.dispose);
     state.runtimes['srv'] = ServerRuntime()
       ..status = ConnStatus.connected
-      ..rights = has;
+      ..rights = has
+      // The channel list reads the answer **for that channel**, not the
+      // server-wide one: a rider with Write in one channel and not in another
+      // must get the menu on the first and not on the second. Both are set
+      // here so these tests say which of the two they mean.
+      ..channelRights = {_channel.id: has};
     return state;
   }
 
@@ -119,6 +124,58 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.byIcon(Icons.more_horiz), findsNothing);
+    });
+
+    testWidgets('the menu follows the channel, not where the rider stands', (
+      tester,
+    ) async {
+      // **The bug this replaced.** The panel read one server-wide answer,
+      // built from the mask of whichever channel the rider happened to be
+      // standing in, and drew the same menu on every row. So an admin standing
+      // somewhere they may not write saw no menu anywhere — which is how it
+      // was reported — and the reverse put a menu on rows where every entry
+      // would have been refused.
+      const other = UiChannel(
+        id: 2,
+        name: 'Clubhouse',
+        description: '',
+        userCount: 0,
+        maxUsers: 0,
+      );
+      final state = AppState();
+      addTearDown(state.dispose);
+      state.runtimes['srv'] = ServerRuntime()
+        ..status = ConnStatus.connected
+        // Standing in Garage, where nothing is allowed.
+        ..rights = rights()
+        ..channelRights = {
+          _channel.id: rights(),
+          other.id: rights(write: true),
+        };
+
+      await tester.pumpWidget(
+        host(
+          state,
+          const ChannelTree(
+            serverId: 'srv',
+            channels: [_channel, other],
+            currentChannelId: 1,
+            defaultChannelName: null,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // One menu, on the channel that allows something — not none, and not two.
+      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text('Clubhouse'),
+          matching: find.byType(Row),
+        ),
+        findsWidgets,
+        reason: 'the row that should carry it is drawn at all',
+      );
     });
 
     testWidgets('a rider who may make channels gets the menu', (tester) async {

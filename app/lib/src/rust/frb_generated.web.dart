@@ -135,6 +135,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> dco_decode_list_ui_channel(dynamic raw);
 
   @protected
+  List<UiChannelRights> dco_decode_list_ui_channel_rights(dynamic raw);
+
+  @protected
   List<UiContextAction> dco_decode_list_ui_context_action(dynamic raw);
 
   @protected
@@ -241,6 +244,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiChannelAcl dco_decode_ui_channel_acl(dynamic raw);
+
+  @protected
+  UiChannelRights dco_decode_ui_channel_rights(dynamic raw);
 
   @protected
   UiContextAction dco_decode_ui_context_action(dynamic raw);
@@ -433,6 +439,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<UiChannel> sse_decode_list_ui_channel(SseDeserializer deserializer);
 
   @protected
+  List<UiChannelRights> sse_decode_list_ui_channel_rights(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<UiContextAction> sse_decode_list_ui_context_action(
     SseDeserializer deserializer,
   );
@@ -557,6 +568,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiChannelAcl sse_decode_ui_channel_acl(SseDeserializer deserializer);
+
+  @protected
+  UiChannelRights sse_decode_ui_channel_rights(SseDeserializer deserializer);
 
   @protected
   UiContextAction sse_decode_ui_context_action(SseDeserializer deserializer);
@@ -802,6 +816,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_ui_channel_rights(
+    List<UiChannelRights> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_ui_context_action(
     List<UiContextAction> self,
     SseSerializer serializer,
@@ -947,6 +967,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_channel_acl(UiChannelAcl self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_channel_rights(
+    UiChannelRights self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ui_context_action(

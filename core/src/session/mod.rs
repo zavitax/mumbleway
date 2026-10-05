@@ -203,6 +203,25 @@ impl LiveState {
         )
     }
 
+    /// What the rider may do in every channel the server has answered about.
+    ///
+    /// Each one combines that channel's own mask with the root's, because the
+    /// root is where kicking, banning and registration are decided and they
+    /// belong in the same answer — see [`ChannelRights`].
+    fn channel_rights(&self) -> Vec<ChannelRights> {
+        let root = self.perms.get(&permissions::ROOT_CHANNEL).copied();
+        let mut v: Vec<ChannelRights> = self
+            .perms
+            .iter()
+            .map(|(id, mask)| ChannelRights {
+                channel_id: *id,
+                rights: permissions::Rights::from_masks(root, Some(*mask)),
+            })
+            .collect();
+        v.sort_by_key(|c| c.channel_id);
+        v
+    }
+
     fn channel_list(&self) -> Vec<ChannelInfo> {
         let mut v: Vec<ChannelInfo> = self.channels.values().cloned().collect();
         // Occupancy is derived rather than tracked: the server never sends it,
@@ -362,6 +381,11 @@ impl Session {
             state.rights_sent = Some(now);
             self.emit(SessionEvent::Rights(now)).await;
         }
+        // Unconditionally, unlike the single answer above: this set changes
+        // whenever *any* channel is answered about, and a cheap equality check
+        // on a growing map is not worth the chance of swallowing one.
+        self.emit(SessionEvent::ChannelRights(state.channel_rights()))
+            .await;
     }
 
     async fn set_state(&self, s: ConnectionState) {
@@ -1732,6 +1756,13 @@ impl Session {
         writer: &mut ControlWriter,
     ) -> Result<()> {
         match cmd {
+            SessionCommand::AskPermissions(channel) => {
+                // Asked for rather than polled: a server with fifty channels
+                // would otherwise be fifty queries at connect, for answers
+                // about rows nobody has looked at. The reply arrives as an
+                // ordinary PermissionQuery and lands in the same map.
+                ask_permissions(writer, channel).await?;
+            }
             SessionCommand::JoinChannel(id) => {
                 if let Some(me) = state.self_session {
                     let m = mumble::UserState {

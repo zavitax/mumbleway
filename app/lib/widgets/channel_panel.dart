@@ -70,13 +70,24 @@ class ChannelTree extends StatelessWidget {
     );
   }
 
-  /// Whether this rider may change anything about the channels here.
+  /// Whether this rider may change anything about **this** channel.
   ///
   /// Before the server has answered, yes: the same rule as the participant
   /// menu, since a menu that is dead for the first second reads as broken.
-  static bool _mayManage(AppState state, String serverId) {
-    final rights = state.runtimeFor(serverId).rights;
-    return !rights.known || rights.write || rights.makeChannel;
+  ///
+  /// **Per channel, because Write is per channel.** This used to read one
+  /// server-wide answer, built from the mask of whichever channel the rider
+  /// happened to be standing in, and drew the same menu on every row from it.
+  /// So an admin standing in a channel they may not write to saw no menu
+  /// anywhere, which is exactly how this was reported.
+  static bool _mayManage(AppState state, String serverId, int channelId) {
+    final here = state.runtimeFor(serverId).channelRights[channelId];
+    if (here == null) {
+      // Not answered yet. Ask, and meanwhile offer it.
+      state.askChannelRights(serverId, channelId);
+      return true;
+    }
+    return !here.known || here.write || here.makeChannel;
   }
 
   List<Widget> _buildNode(
@@ -193,7 +204,7 @@ class ChannelTree extends StatelessWidget {
               // server, so the menu is only drawn where the rider may do
               // something — an always-present menu of greyed entries is a
               // worse answer here than no menu.
-              if (_mayManage(state, serverId))
+              if (_mayManage(state, serverId, channel.id))
                 _ChannelMenu(serverId: serverId, channel: channel),
             ],
           ),

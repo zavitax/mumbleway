@@ -8,6 +8,7 @@ import '../screens/channel_acl_screen.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
+import 'server_text.dart';
 import 'connection_quality.dart';
 import 'voice_meter.dart';
 import '../theme.dart';
@@ -222,8 +223,8 @@ class ChannelTree extends StatelessWidget {
       if ((isCurrent || listening) && channel.description.trim().isNotEmpty)
         Padding(
           padding: EdgeInsets.fromLTRB(32.0 + depth * 16, 0, 12, 8),
-          child: Text(
-            channel.description.trim(),
+          child: ServerText.description(
+            channel.description,
             style: TextStyle(
               fontSize: 11,
               height: 1.35,

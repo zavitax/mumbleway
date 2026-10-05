@@ -120,6 +120,76 @@ void main() {
     });
   });
 
+  group('a channel description keeps the text the core used to produce', () {
+    // The core stripped these itself and sent plain text, which threw every
+    // address away before anything could draw it. It now sends the markup and
+    // this does the stripping — so these are `strip_html`'s own cases, ported,
+    // and they are what proves no description changed on screen.
+    const cases = {
+      '<p>back in <b>ten</b></p>': 'back in ten',
+      'On the A9<br/>heading north': 'On the A9 heading north',
+      'Tom &amp; Jerry &lt;3': 'Tom & Jerry <3',
+      '&quot;quoted&quot;': '"quoted"',
+      'R&D on tyres': 'R&D on tyres',
+      'fish & chips': 'fish & chips',
+      'safe <b': 'safe',
+      // Qt's editor writes one of these into every description it saves, so
+      // without dropping its contents a channel reads as a stylesheet.
+      '<style>p, li { white-space: pre-wrap; }</style>Sunday run':
+          'Sunday run',
+      '<script>alert(1)</script>Hello': 'Hello',
+      '  spaced   out  ': 'spaced out',
+    };
+
+    cases.forEach((html, want) {
+      test('"$html"', () {
+        expect(serverDescriptionPlain(html), want);
+      });
+    });
+
+    test("and it is still cut at the core's limit", () {
+      final long = 'x' * 900;
+      expect(serverDescriptionPlain(long).length, kServerTextMaxChars);
+    });
+  });
+
+  group('links in a channel description', () {
+    test('an anchor survives the stripping', () {
+      final spans = parseServerDescription(
+        '<p>Read <a href="https://e.test/how">the guide</a> first.</p>',
+      );
+      final link = spans.singleWhere((s) => s.href != null);
+      expect(link.text, 'the guide');
+      expect(link.href, Uri.parse('https://e.test/how'));
+      expect(
+        serverDescriptionPlain(
+          '<p>Read <a href="https://e.test/how">the guide</a> first.</p>',
+        ),
+        'Read the guide first.',
+      );
+    });
+
+    test('a link inside a Qt style block is not resurrected', () {
+      // The contents of an opaque element are not text, and an anchor written
+      // inside one is not an offer to the rider.
+      final spans = parseServerDescription(
+        '<style><a href="https://evil.test">x</a></style>ok',
+      );
+      expect(spans.every((s) => s.href == null), isTrue);
+      expect(serverDescriptionPlain(
+        '<style><a href="https://evil.test">x</a></style>ok',
+      ), 'ok');
+    });
+
+    test('the same schemes are refused here', () {
+      expect(
+        parseServerDescription('<a href="javascript:x">tap</a>')
+            .every((s) => s.href == null),
+        isTrue,
+      );
+    });
+  });
+
   testWidgets('the widget draws the words and leaks no recognizer', (
     tester,
   ) async {

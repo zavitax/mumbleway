@@ -1197,7 +1197,18 @@ impl Session {
                         e.name = n;
                     }
                     if let Some(d) = m.description {
-                        e.description = notes::strip_html(&d);
+                        // **Raw, markup and all.** A description routinely
+                        // carries links — it is where an operator writes down
+                        // how to set something up — and stripping the tags
+                        // here threw the addresses away before anything could
+                        // draw them. The interface does the stripping now, by
+                        // the same rules, and keeps the anchors; see
+                        // `services/server_html.dart`.
+                        //
+                        // It also means editing a description no longer
+                        // destroys it: the form is filled from what the server
+                        // actually holds rather than from a flattened copy.
+                        e.description = d;
                         state.blobs.got_channel(id);
                     }
                     // Long ones arrive as a hash, exactly like a rider's

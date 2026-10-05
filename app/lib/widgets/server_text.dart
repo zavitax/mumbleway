@@ -19,12 +19,21 @@ import '../services/site_links.dart';
 /// [openSite], so a device with no browser says so rather than swallowing the
 /// tap.
 class ServerText extends StatefulWidget {
-  const ServerText(this.html, {super.key, this.style});
+  /// A welcome message, under the rule that its text may not move.
+  const ServerText(this.html, {super.key, this.style}) : _tidy = false;
+
+  /// A channel description, under the core's old `strip_html` rules — the
+  /// contents of a Qt `<style>` block dropped, entities decoded, whitespace
+  /// collapsed, cut at 512 characters — and now with its links intact.
+  const ServerText.description(this.html, {super.key, this.style})
+      : _tidy = true;
 
   /// The server's text, markup and all.
   final String html;
 
   final TextStyle? style;
+
+  final bool _tidy;
 
   @override
   State<ServerText> createState() => _ServerTextState();
@@ -54,7 +63,9 @@ class _ServerTextState extends State<ServerText> {
   @override
   Widget build(BuildContext context) {
     _clear();
-    final spans = parseServerText(widget.html);
+    final spans = widget._tidy
+        ? parseServerDescription(widget.html)
+        : parseServerText(widget.html);
     final linkColour = Theme.of(context).colorScheme.primary;
 
     return SelectionArea(

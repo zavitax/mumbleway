@@ -192,7 +192,7 @@ void main() {
         ServerConfig(
           id: 'x',
           name: 'Through SOCKS',
-          host: 'abc2.ru',
+          host: 'voice.example.com',
           port: 6033,
           username: 'rider',
           accessTokens: const ['rideboss'],
@@ -212,7 +212,7 @@ void main() {
         ServerConfig(
           id: 'x',
           name: 'Plain',
-          host: 'abc2.ru',
+          host: 'voice.example.com',
           port: 6033,
           username: 'rider',
           accessTokens: const [],

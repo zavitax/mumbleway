@@ -75,8 +75,11 @@ STRICT_NAME = "mw-proxy-strict"
 HTTP_PORT = 18080
 SOCKS_PORT = 11080
 STRICT_PORT = 18081
+#: A fixture, not a secret: these are generated into two containers that
+#: listen on 127.0.0.1 only and are thrown away with `rig.py down`. They are
+#: in the open here so the tests can be read; nothing else uses them.
 PROXY_USER = "rider"
-PROXY_PASSWORD = "throughhere"
+PROXY_PASSWORD = "rig-only-not-a-secret"
 
 #: How a proxy container reaches this machine. Docker Desktop provides the name;
 #: `127.0.0.1` inside a container is the container itself, which would make the

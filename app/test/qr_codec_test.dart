@@ -84,8 +84,8 @@ void main() {
     // percent-encoded URL inside a query parameter, which is the longest and
     // most escape-heavy thing this app ever asks a code to carry.
     const link =
-        'mumble://rider:letmein@abc2.ru:6033/Garage?title=Rig'
-        '&proxy=socks5%3A%2F%2Frider%3Athroughhere%4010.0.0.1%3A1080%3Fvoice%3D1';
+        'mumble://rider:letmein@voice.example.com:6033/Garage?title=Rig'
+        '&proxy=socks5%3A%2F%2Frider%3Alettherough%4010.0.0.1%3A1080%3Fvoice%3D1';
     expect(QrCodec.decodeImage(encodePng(link)), link);
   });
 

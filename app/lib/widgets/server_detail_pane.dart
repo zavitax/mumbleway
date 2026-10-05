@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import 'channel_panel.dart';
+import 'server_text.dart';
 import 'status_badge.dart';
 
 /// Right-hand pane on wide layouts.
@@ -117,12 +118,7 @@ class ServerDetailPane extends StatelessWidget {
         if (rt.welcome.isNotEmpty) ...[
           const SizedBox(height: 22),
           _Heading(L.of(context).welcomeMessage),
-          Text(
-            // Servers routinely put HTML in this; strip the tags rather than
-            // rendering them as literal text.
-            rt.welcome.replaceAll(RegExp(r'<[^>]*>'), ' ').trim(),
-            style: const TextStyle(fontSize: 12),
-          ),
+          ServerText(rt.welcome, style: const TextStyle(fontSize: 12)),
         ],
 
         if (rt.messages.isNotEmpty) ...[

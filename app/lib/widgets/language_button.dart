@@ -26,11 +26,19 @@ class LanguageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = AppStateScope.of(context);
+    // **Read, not `of`.** This needs the state only to cycle the locale, and
+    // the locale it displays is already reachable without subscribing:
+    // `MaterialApp` is given `state.locale`, so `Localizations` below carries
+    // it, and `Localizations.localeOf` rebuilds exactly when the language
+    // changes rather than on every notification.
+    //
+    // Subscribing cost a rebuild of this button and the flag image it draws
+    // every time anything at all moved — the quality poll, a roster update, a
+    // ping — for a value that changes when somebody taps it and never
+    // otherwise.
+    final state = AppStateScope.read(context);
 
-    final current =
-        state.locale?.languageCode ??
-        Localizations.localeOf(context).languageCode;
+    final current = Localizations.localeOf(context).languageCode;
     final locales = AppState.supportedLocales;
     final index = locales.indexWhere((l) => l.languageCode == current);
     final next =

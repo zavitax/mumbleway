@@ -27,13 +27,22 @@ import 'package:mumbleway/state/app_state.dart';
 // same machine, so read them as "about a third of what it was" rather than as
 // figures:
 //
-// | Screen   | Widgets rebuilt | Before  | After   |
-// |----------|-----------------|---------|---------|
-// | home     | 395 -> 224      | ~16 ms  | ~9.5 ms |
-// | settings | 875 -> 109      | ~13 ms  | ~3 ms   |
+// | Screen   | Widgets rebuilt      | Before  | After   |
+// |----------|----------------------|---------|---------|
+// | home     | 395 -> 224 -> 205    | ~16 ms  | ~9.5 ms |
+// | settings | 875 -> 109 ->  86    | ~13 ms  | ~3 ms   |
+//
+// The third column of counts is the language button, which subscribed to the
+// whole state for a locale that `Localizations` already carries, and redrew
+// itself, its tooltip's overlay and a flag image on every notification.
 //
 // What still rebuilds on each is what genuinely shows live audio: the talk
-// panel and mic notice on home, the device list and level meter on settings.
+// panel and mic notice on home, the device list and level meter on settings —
+// **plus the app bar's own buttons, which are not waste**. Mute, deafen and the
+// diagnostics light all read state that really changes. They rebuild on every
+// notification because there is one notifier for everything, so a quality poll
+// redraws the mute button; narrowing that further means splitting `AppState`
+// into more than one `Listenable`, which is a design change and not a tidy-up.
 
 /// Flutter's own widgets, by the names they print. Not exhaustive and does not
 /// need to be — it only has to leave this app's widgets legible in the census.

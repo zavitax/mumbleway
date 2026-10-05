@@ -899,6 +899,9 @@ class AppState extends ChangeNotifier {
   ServerRuntime runtimeFor(String id) =>
       runtimes.putIfAbsent(id, () => ServerRuntime());
 
+  /// Collapses a burst of per-channel permission answers into one rebuild.
+  Timer? _channelRightsSettle;
+
   final _MeterNotifier _meters = _MeterNotifier();
 
   /// Fires when a level has moved and nothing else has.
@@ -4518,7 +4521,17 @@ class AppState extends ChangeNotifier {
         runtimeFor(serverId).channelRights = {
           for (final c in channels) c.channelId: c.rights,
         };
-        notifyListeners();
+        // **Coalesced, because these arrive in a burst.** Opening the channel
+        // panel asks about every channel it draws, and each answer is its own
+        // message: on a fifty-channel server that is fifty replies in a moment,
+        // and a rebuild each would be most of a second of jank. Nothing waits
+        // on it — an unanswered row already shows its menu — so collapsing a
+        // burst into one rebuild costs nothing visible.
+        _channelRightsSettle?.cancel();
+        _channelRightsSettle = Timer(const Duration(milliseconds: 120), () {
+          _channelRightsSettle = null;
+          notifyListeners();
+        });
       case AppEvent_ServerSuggests(
         :final serverId,
         :final pushToTalk,
@@ -4744,6 +4757,7 @@ class AppState extends ChangeNotifier {
     _pingTimer?.cancel();
     _reliefTimer?.cancel();
     _probeTimer?.cancel();
+    _channelRightsSettle?.cancel();
     _audioRelease?.cancel();
     _lifecycle?.dispose();
     _events?.cancel();
@@ -4763,13 +4777,6 @@ class AppStateScope extends InheritedNotifier<AppState> {
     required super.child,
   }) : super(notifier: state);
 
-  /// The state, **and a subscription to every change of it**.
-  ///
-  /// This is an `InheritedNotifier`, so a widget that calls this rebuilds on
-  /// every `notifyListeners()` — of which there are dozens of callers and one
-  /// two-second poll that runs for the whole of a ride. Read it as low in the
-  /// tree as the value is used: a call in a screen's own `build` subscribes
-  /// that screen's entire subtree.
   /// The state, **and a subscription to every change of it**.
   ///
   /// This is an `InheritedNotifier`, so a widget that calls this rebuilds on

@@ -712,6 +712,43 @@ mod tests {
     }
 
     #[test]
+    fn a_web_invitation_carries_the_proxy_too() {
+        // The carrier that actually gets sent to people: `mumble://` does not
+        // survive a messenger, so this is the form a rider shares, and the
+        // landing page reads the proxy out of the fragment to show it before
+        // the button. A proxy that travelled in the scheme link and not in
+        // this one would work for nobody.
+        let p = with_proxy(ProxyKind::Socks5, true);
+        let url = build_web_url(&p, Some("Garage"), false);
+        assert!(url.starts_with("https://"), "{url}");
+
+        // The fragment is never sent to the server, which is why a credential
+        // may ride in it at all — and why the address is safe to show.
+        let payload = url.split_once('#').expect("a fragment").1;
+        let back = parse_url(payload, "someone").expect("the fragment parses");
+        let proxy = back.proxy_chain.first().expect("the proxy came back");
+        assert_eq!(proxy.host, "10.0.0.1");
+        assert_eq!(proxy.port, 1080);
+        assert!(proxy.tunnel_voice);
+        assert_eq!(back.auto_join_channel.as_deref(), Some("Garage"));
+    }
+
+    #[test]
+    fn a_web_invitation_keeps_the_proxy_password_behind_the_same_question() {
+        // One question about secrets, one answer, every carrier.
+        let p = with_proxy(ProxyKind::HttpConnect, false);
+        let url = build_web_url(&p, None, false);
+        assert!(!url.contains("secret"), "{url}");
+        assert!(url.contains("10.0.0.1"), "the address still travels: {url}");
+
+        let shared = build_web_url(&p, None, true);
+        let payload = shared.split_once('#').expect("a fragment").1;
+        let back = parse_url(payload, "someone").expect("parses");
+        let proxy = back.proxy_chain.first().expect("the proxy came back");
+        assert_eq!(proxy.username.as_deref(), Some("rider"));
+    }
+
+    #[test]
     fn a_profile_file_carries_a_proxy_the_same_way_a_link_does() {
         // One shape in both, so a rider can move one between them by copying.
         let json = build_json(&with_proxy(ProxyKind::Socks5, false), None, false).unwrap();

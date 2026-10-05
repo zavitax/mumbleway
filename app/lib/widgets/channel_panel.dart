@@ -210,6 +210,27 @@ class ChannelTree extends StatelessWidget {
           ),
         ),
       ),
+      // **Only where the rider has a stake in it.** A description is a
+      // paragraph, and a paragraph under every row turns a channel list into a
+      // wall of prose that hides the list. Under the channel they are standing
+      // in, and under the ones they have chosen to listen to, it is the
+      // explanation of what they are hearing — which is where an operator put
+      // it to be read.
+      //
+      // Already stripped of its markup by the core, and fetched as a blob when
+      // it is 128 bytes or more, so it is here in full or not at all.
+      if ((isCurrent || listening) && channel.description.trim().isNotEmpty)
+        Padding(
+          padding: EdgeInsets.fromLTRB(32.0 + depth * 16, 0, 12, 8),
+          child: Text(
+            channel.description.trim(),
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.35,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
     ];
 
     for (final child in byParent[channel.id] ?? const <UiChannel>[]) {

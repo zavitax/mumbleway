@@ -126,6 +126,64 @@ void main() {
       expect(find.byIcon(Icons.more_horiz), findsNothing);
     });
 
+    testWidgets('a description is shown where the rider has a stake in it', (
+      tester,
+    ) async {
+      // Under the channel they are standing in and the ones they have chosen
+      // to listen to, because there it explains what they are hearing. Not
+      // under every row: a paragraph per channel turns the list into a wall of
+      // prose and hides the thing the list is for.
+      const here = UiChannel(
+        id: 1,
+        name: 'Garage',
+        description: 'Spanners and swearing.',
+        userCount: 1,
+        maxUsers: 0,
+      );
+      const heard = UiChannel(
+        id: 2,
+        name: 'Clubhouse',
+        description: 'Sunday plans go here.',
+        userCount: 0,
+        maxUsers: 0,
+      );
+      const elsewhere = UiChannel(
+        id: 3,
+        name: 'Storage',
+        description: 'Nobody reads this one.',
+        userCount: 0,
+        maxUsers: 0,
+      );
+
+      final state = AppState();
+      addTearDown(state.dispose);
+      state.runtimes['srv'] = ServerRuntime()
+        ..status = ConnStatus.connected
+        ..rights = rights()
+        ..listening = const [2];
+
+      await tester.pumpWidget(
+        host(
+          state,
+          const ChannelTree(
+            serverId: 'srv',
+            channels: [here, heard, elsewhere],
+            currentChannelId: 1,
+            defaultChannelName: null,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('Spanners and swearing.'), findsOneWidget);
+      expect(find.text('Sunday plans go here.'), findsOneWidget);
+      expect(
+        find.text('Nobody reads this one.'),
+        findsNothing,
+        reason: 'a channel the rider is neither in nor listening to',
+      );
+    });
+
     testWidgets('the menu follows the channel, not where the rider stands', (
       tester,
     ) async {

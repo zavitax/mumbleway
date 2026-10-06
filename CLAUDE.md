@@ -19,7 +19,7 @@ That really uploads, to real stores:
 | Google Play | internal track, `status: completed` — **live at once** to testers named in the console | roll forward only |
 | TestFlight | build uploaded, then **every older build is expired** | no |
 | Mac App Store | signed `.pkg` to App Store Connect | no |
-| Windows MSIX | artifact only; `MSIX_PUBLISHER` is unset, so it is a sideload package | n/a |
+| Windows MSIX | store package **submitted to certification**, with this repo's listing text — on a tag, or with `microsoft_store=true` | cancel the submission |
 
 None of it submits for App Store review, and no wider Play track goes live: the
 workflow uploads alpha, beta and production as `draft` on purpose, so anything

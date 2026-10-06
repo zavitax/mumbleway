@@ -20,12 +20,16 @@ serves all four.
 
 ---
 
-## 1.0.2
+## 1.1.0
 
-The first release since 1.0.1 build 144, published 4 September. It goes out as
-1.0.2 for the same reason 1.0.1 did: 1.0.1 is `READY_FOR_SALE` on both of
-Apple's stores, which closes its train — checked against App Store Connect
-before the build rather than discovered by a red one.
+The first release since 1.0.1 build 144, published 4 September. **A minor bump
+rather than a patch**: this adds features rather than repairing the last lot,
+and the number should say which it is before anybody opens the notes.
+
+It could not have stayed at 1.0.1 in any case — that version is
+`READY_FOR_SALE` on both of Apple's stores, which closes its train. Checked
+against App Store Connect before the build rather than discovered by a red one
+twenty minutes in.
 
 **The headline is the proxy**, and it exists because of a measured fault: on
 one network the TLS control channel to a server was being cut ten to twenty

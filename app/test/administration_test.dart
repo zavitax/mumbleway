@@ -16,13 +16,14 @@ import 'package:mumbleway/widgets/registered_users_dialog.dart';
 /// and hiding one that can is worse.
 UiRights rights({
   bool known = true,
+  bool speak = true,
   bool write = false,
   bool makeChannel = false,
   bool registerOthers = false,
   bool muteDeafen = false,
 }) => UiRights(
   known: known,
-  speak: true,
+  speak: speak,
   muteDeafen: muteDeafen,
   moveUsers: false,
   text: true,
@@ -182,6 +183,64 @@ void main() {
         findsNothing,
         reason: 'a channel the rider is neither in nor listening to',
       );
+    });
+
+    testWidgets('a channel nobody may speak in says so on its row', (
+      tester,
+    ) async {
+      // The same glyph the card's notice uses, so a rider who has met it once
+      // knows what the row means before they move there and find out.
+      const open_ = UiChannel(
+        id: 1,
+        name: 'Garage',
+        description: '',
+        userCount: 0,
+        maxUsers: 0,
+      );
+      const shut = UiChannel(
+        id: 2,
+        name: 'Announcements',
+        description: '',
+        userCount: 0,
+        maxUsers: 0,
+      );
+      const unknown = UiChannel(
+        id: 3,
+        name: 'Storage',
+        description: '',
+        userCount: 0,
+        maxUsers: 0,
+      );
+
+      final state = AppState();
+      addTearDown(state.dispose);
+      state.runtimes['srv'] = ServerRuntime()
+        ..status = ConnStatus.connected
+        ..rights = rights()
+        ..channelRights = {
+          open_.id: rights(),
+          shut.id: rights(speak: false),
+          // `unknown` deliberately absent.
+        };
+
+      await tester.pumpWidget(
+        host(
+          state,
+          const ChannelTree(
+            serverId: 'srv',
+            channels: [open_, shut, unknown],
+            currentChannelId: null,
+            defaultChannelName: null,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Exactly one: the channel the server said we may not speak in. Not the
+      // one it said we may, and **not** the one it has not answered about —
+      // not knowing is not the same as not allowed, and a guess there would be
+      // a lie about a rule.
+      expect(find.byIcon(Icons.voice_over_off), findsOneWidget);
     });
 
     testWidgets('the menu follows the channel, not where the rider stands', (

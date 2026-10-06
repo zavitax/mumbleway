@@ -1018,11 +1018,12 @@ class _SuppressedBanner extends StatelessWidget {
       // decided this" — the microphone button beside it is amber for the same
       // reason, and the two now agree.
       decoration: BoxDecoration(
+        // The toast that says the same thing bakes this wash into
+        // `StatusColors.noticeBackground`, so the two match wherever they are
+        // seen. Kept translucent here because it sits on a card and can.
         color: StatusColors.reconnecting.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: StatusColors.reconnecting.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: StatusColors.noticeBorder),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

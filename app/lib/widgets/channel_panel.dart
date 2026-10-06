@@ -142,6 +142,24 @@ class ChannelTree extends StatelessWidget {
                   ),
                 ),
               ),
+              // **A channel nobody may speak in says so on its own row.**
+              // The same glyph the card's notice uses, so a rider who has met
+              // it once knows what a row carrying it means before they move
+              // there and find out. Only where the server has actually
+              // answered about that channel: not knowing is not the same as
+              // not allowed, and a guess here would be a lie about a rule.
+              if (state.runtimeFor(serverId).channelRights[channel.id]
+                  case final r? when !r.speak) ...[
+                Tooltip(
+                  message: L.of(context).suppressedTitle,
+                  child: const Icon(
+                    Icons.voice_over_off,
+                    size: 14,
+                    color: StatusColors.reconnecting,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
               if (channel.userCount > 0) ...[
                 Icon(
                   Icons.person,

@@ -32,6 +32,26 @@ class StatusColors {
   /// `#F1C40F` on `#E74C3C` is about 2:1 and unreadable; on this it is 5.3:1.
   static const errorBackground = Color(0xFF8C1D18);
   static const errorForeground = connecting;
+
+  /// What a notice is drawn in: amber on a dark wash of itself, inside an
+  /// amber hairline.
+  ///
+  /// **The same scheme as the suppression panel on the server card**, because
+  /// they say the same thing in two places and a rider meeting one after the
+  /// other should not have to work out that they are the same message. The
+  /// panel washes [reconnecting] over the card at 13%; a toast floats over
+  /// whatever happens to be behind it, so the same result is baked in here as
+  /// an opaque colour rather than a translucent one.
+  ///
+  /// **Not [reconnecting] as a fill.** That orange is for a glyph on a dark
+  /// card; as a background it leaves text on a saturated mid-tone that nothing
+  /// reads well against — the theme's default dark text on it is the state
+  /// this replaced. `#E67E22` on `#36291E` is 4.5:1.
+  static const noticeBackground = Color(0xFF36291E);
+  static const noticeForeground = reconnecting;
+
+  /// The hairline around a notice, matching the panel's border.
+  static const noticeBorder = Color(0x73E67E22);
 }
 
 ThemeData buildTheme(Brightness brightness) {

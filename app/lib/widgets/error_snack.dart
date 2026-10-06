@@ -38,9 +38,20 @@ void showNotice(ScaffoldMessengerState messenger, String message) {
       SnackBar(
         content: Text(
           message,
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          // **Set explicitly.** Left to the theme it came out as the default
+          // dark text on a saturated orange, which is unreadable.
+          style: const TextStyle(
+            color: StatusColors.noticeForeground,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        backgroundColor: StatusColors.reconnecting,
+        backgroundColor: StatusColors.noticeBackground,
+        // The panel on the card has one; without it the toast is a dark slab
+        // and the two stop looking like the same message.
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+          side: const BorderSide(color: StatusColors.noticeBorder),
+        ),
         duration: const Duration(seconds: 6),
       ),
     );

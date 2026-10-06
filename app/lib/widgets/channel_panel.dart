@@ -21,6 +21,14 @@ import 'watch.dart';
 /// automatically on every future connect. Those are separate ideas on purpose —
 /// a rider often drops into another channel briefly without wanting it to
 /// become the default.
+/// The gap between two of this row's indicators.
+///
+/// Matches what the trailing `IconButton`s produce between their glyphs: an
+/// 18pt icon centred in a compact box leaves far more air than a plain
+/// `SizedBox` of the same nominal width, so this is the measured result rather
+/// than the nominal one.
+const double _iconGap = 27;
+
 class ChannelTree extends StatelessWidget {
   const ChannelTree({
     super.key,
@@ -150,11 +158,16 @@ class ChannelTree extends StatelessWidget {
               // not allowed, and a guess here would be a lie about a rule.
               if (state.runtimeFor(serverId).channelRights[channel.id]
                   case final r? when !r.speak) ...[
-                // Six either side: the same gap that separates every other
-                // group on this row, so it sits off the name by as much as it
-                // sits off whatever follows it rather than crowding one of
-                // them.
-                const SizedBox(width: 6),
+                // **The rhythm the icon buttons on the right already set.**
+                // They are 18pt glyphs in compact 34pt boxes, so the gap the
+                // eye reads between the star and the menu is far wider than
+                // the six this used — six left it crowding the user count
+                // while the controls beyond it sat comfortably apart.
+                //
+                // Measured rather than guessed, and `channel_panel_test.dart`
+                // asserts the two gaps stay equal, so a change to an icon size
+                // cannot quietly pull them apart again.
+                const SizedBox(width: _iconGap),
                 Tooltip(
                   message: L.of(context).suppressedTitle,
                   child: const Icon(
@@ -163,7 +176,7 @@ class ChannelTree extends StatelessWidget {
                     color: StatusColors.reconnecting,
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: _iconGap),
               ],
               if (channel.userCount > 0) ...[
                 Icon(

@@ -488,7 +488,14 @@ than your music app.</p>
 often refuse the other.
 
 **Use the system proxy** — for what the app downloads: the public server
-directory and profile files. It does not carry voice.
+directory and profile files. It does not carry voice. On, the line under it
+says what was found and is being used: *Direct connection*, *System proxy*,
+*Environment proxy* or *Manual proxy*, each with the address. Off, it reads
+*Off — connecting directly*.
+
+**Override proxy** — where you type one yourself, when detection gets it wrong
+or there is nothing to detect. It takes a `host:port`; **leave it empty to
+detect automatically** and the switch above goes back to deciding.
 
 **Proxy for servers** — for the connection to a Mumble server itself. Off unless
 you set it, and never found automatically: a proxy your browser uses will often
@@ -498,6 +505,16 @@ two with an address and, if the proxy wants them, a username and password.
 
 A proxy login is kept on this device only and is never synced: it can be used
 for anything, not only for MumbleWay.
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/settings-proxy-servers-phone.webp' | relative_url }}"
+         alt="The proxy sheet: four choices — Direct, System proxy settings, HTTP(S) proxy, SOCKS5 proxy — with HTTP(S) chosen, a host and port field, optional username and password marked as kept on this device only, and a switch for sending voice through the proxy as well."
+         width="560" height="778" loading="lazy" decoding="async">
+    <figcaption>The same sheet opens from a server's own proxy row, with one
+    more choice on it: <em>Global settings</em>.</figcaption>
+  </figure>
+</div>
 
 ### Whether voice goes through it too
 
@@ -555,8 +572,10 @@ meant to volunteer.</p>
   </figure>
 </div>
 
-Optionally copies your server list and settings between your own devices, via
-your own iCloud or Android Backup account. Passwords are held separately from
+**Sync servers and settings across devices** copies your server list and
+settings between your own devices, via your own iCloud or Android Backup
+account. **Sync now** pushes and pulls immediately rather than waiting for the
+next time the app gets round to it. Passwords are held separately from
 the server list. Nothing passes through any server of ours, because there is
 no server of ours.
 

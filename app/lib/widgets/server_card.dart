@@ -1008,9 +1008,21 @@ class _SuppressedBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      // **A rule, not a casualty.** This was a filled block of the error red
+      // with the failure yellow on it — the loudest thing on the card, and the
+      // same dress a lost connection wears, so a rider who may simply not speak
+      // in this channel read it as the app having broken. It says exactly the
+      // same words in the same order; what changed is the volume.
+      //
+      // Amber, because amber is already this app's word for "somebody else
+      // decided this" — the microphone button beside it is amber for the same
+      // reason, and the two now agree.
       decoration: BoxDecoration(
-        color: StatusColors.errorBackground,
+        color: StatusColors.reconnecting.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: StatusColors.reconnecting.withValues(alpha: 0.45),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1018,7 +1030,7 @@ class _SuppressedBanner extends StatelessWidget {
           const Icon(
             Icons.voice_over_off,
             size: 18,
-            color: StatusColors.errorForeground,
+            color: StatusColors.reconnecting,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1028,16 +1040,18 @@ class _SuppressedBanner extends StatelessWidget {
                 Text(
                   l.suppressedTitle,
                   style: const TextStyle(
-                    color: StatusColors.errorForeground,
-                    fontWeight: FontWeight.w700,
+                    color: StatusColors.reconnecting,
+                    fontWeight: FontWeight.w600,
                     fontSize: 13,
                   ),
                 ),
                 const SizedBox(height: 2),
+                // The explanation in ordinary body colour: it is a sentence to
+                // read, not a second alarm.
                 Text(
                   l.suppressedBody,
-                  style: const TextStyle(
-                    color: StatusColors.errorForeground,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),

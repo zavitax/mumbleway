@@ -64,7 +64,8 @@ class _RemoteMuteListenerState extends State<RemoteMuteListener> {
     if (messenger == null) return;
     messenger.hideCurrentSnackBar();
     if (suppressed) {
-      showError(messenger, '${l.suppressedTitle} ${l.suppressedBody}');
+      // A rule, not a fault — see [showNotice].
+      showNotice(messenger, '${l.suppressedTitle} ${l.suppressedBody}');
     } else {
       messenger.showSnackBar(
         SnackBar(

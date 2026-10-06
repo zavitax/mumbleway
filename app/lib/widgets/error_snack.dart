@@ -22,6 +22,30 @@ import '../theme.dart';
 /// * **Replaces rather than queues.** Failures arrive in bursts when something
 ///   retries, and a queue makes the rider sit through stale ones to reach the
 ///   one that is true now.
+/// Something a rider should know, that is nobody's fault.
+///
+/// **Amber, not the error red.** The deep red and its yellow are for a failure
+/// — a refusal, a connection lost, a thing that went wrong. A channel that will
+/// not carry a voice is none of those: it is a rule, working as its operator
+/// intended, and dressed as a fatal error it reads as the app having broken.
+/// Amber is already this app's word for "somebody else decided this", on the
+/// microphone button and in the roster, so the notice matches the glyph it is
+/// explaining.
+void showNotice(ScaffoldMessengerState messenger, String message) {
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: StatusColors.reconnecting,
+        duration: const Duration(seconds: 6),
+      ),
+    );
+}
+
 void showError(ScaffoldMessengerState messenger, String message) {
   messenger
     ..hideCurrentSnackBar()

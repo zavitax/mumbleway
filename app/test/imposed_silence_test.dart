@@ -165,6 +165,48 @@ void main() {
     );
   });
 
+  testWidgets('the suppression notice is a notice, not a casualty', (t) async {
+    // **It was a filled block of the error red with the failure yellow on it**
+    // — the same dress a lost connection wears, and the loudest thing on the
+    // card. A rider who simply may not speak in this channel read it as the app
+    // having broken. Same words, same icon, amber: the register this app
+    // already uses for "somebody else decided this", and the colour of the
+    // microphone button sitting beside it.
+    final state = connected(suppressed: true);
+    // The banner lives on the server's card, so there has to be one.
+    state.servers.add(
+      SavedServer(
+        name: 'Clubhouse',
+        host: 'mumble.example',
+        port: 64738,
+        username: 'rider',
+        localId: 'srv',
+      ),
+    );
+    await t.pumpWidget(host(state));
+    await t.pump(const Duration(milliseconds: 50));
+
+    final l = await L.delegate.load(const Locale('en'));
+    final title = t.widget<Text>(find.text(l.suppressedTitle));
+    expect(title.style?.color, StatusColors.reconnecting);
+    expect(
+      title.style?.color,
+      isNot(StatusColors.errorForeground),
+      reason: 'the failure palette is for failures',
+    );
+
+    final box = t
+        .widgetList<Container>(find.byType(Container))
+        .where((c) => c.decoration is BoxDecoration)
+        .map((c) => c.decoration! as BoxDecoration)
+        .where((d) => d.color == StatusColors.errorBackground);
+    expect(box, isEmpty, reason: 'nothing on this card is painted as an error');
+
+    // And it still says both halves: the fact and what to do about it.
+    expect(find.text(l.suppressedTitle), findsOneWidget);
+    expect(find.text(l.suppressedBody), findsOneWidget);
+  });
+
   group('on air', () {
     // The meter's colour and the floating window's light both read this, and
     // the whole point of one definition is that they cannot disagree.

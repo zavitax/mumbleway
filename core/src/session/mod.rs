@@ -241,6 +241,17 @@ impl LiveState {
             .map(|c| c.id)
     }
 
+    /// Whether this server will carry our voice at all.
+    ///
+    /// An admin's mute, or a channel that suppresses us. Either way the server
+    /// throws away every packet we send, so there is no reason to send one.
+    fn server_silences_us(&self) -> bool {
+        self.self_session
+            .and_then(|s| self.users.get(&s))
+            .map(|u| u.silenced_by_server())
+            .unwrap_or(false)
+    }
+
     fn is_locally_muted(&self, session: u32) -> bool {
         self.users.get(&session).is_some_and(|u| u.local_mute)
     }
@@ -807,13 +818,29 @@ impl Session {
                     // A `None` here means the audio engine went away; the session
                     // stays up regardless, so there is nothing to handle.
                     if let Some((sequence, opus, terminator)) = frame {
-                        let packet = VoicePacket::speech(sequence, opus, terminator);
-                        let sent_over_udp = match (state.transport, udp.as_mut()) {
-                            (Transport::Udp, Some(s)) => s.send_voice(&packet).await.is_ok(),
-                            _ => false,
-                        };
-                        if !sent_over_udp {
-                            writer.send_tunnel(&packet.encode_outgoing()).await?;
+                        // **Not while this server is refusing to carry us.**
+                        // An admin's mute or a suppressing channel means the
+                        // server discards every packet, so sending them spends
+                        // a rider's mobile data and battery to be thrown away —
+                        // and puts their voice on the wire after the app has
+                        // told them they cannot be heard. Per session, because
+                        // being muted on one server says nothing about the
+                        // other one, which may be carrying every word.
+                        //
+                        // The frame is still taken off the channel: it is the
+                        // engine's only consumer, and leaving it to fill would
+                        // stall the capture chain rather than mute it.
+                        if !state.server_silences_us() {
+                            let packet = VoicePacket::speech(sequence, opus, terminator);
+                            let sent_over_udp = match (state.transport, udp.as_mut()) {
+                                (Transport::Udp, Some(s)) => {
+                                    s.send_voice(&packet).await.is_ok()
+                                }
+                                _ => false,
+                            };
+                            if !sent_over_udp {
+                                writer.send_tunnel(&packet.encode_outgoing()).await?;
+                            }
                         }
                     }
                 }

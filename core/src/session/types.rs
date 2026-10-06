@@ -376,6 +376,15 @@ impl UserInfo {
     pub fn is_audible(&self) -> bool {
         !self.local_mute && !self.mute && !self.self_mute && !self.suppress
     }
+
+    /// Whether the server will carry this rider's voice at all.
+    ///
+    /// An admin's mute or a channel that suppresses them — both are the
+    /// server's decision rather than the rider's, and under either one every
+    /// packet they send is discarded on arrival.
+    pub fn silenced_by_server(&self) -> bool {
+        self.mute || self.suppress
+    }
 }
 
 /// Round-trip and quality figures for the status UI.
@@ -801,6 +810,30 @@ mod tests {
         assert!(u.is_audible());
         u.suppress = true;
         assert!(!u.is_audible());
+    }
+
+    #[test]
+    fn a_server_that_will_not_carry_a_voice_is_worth_asking_about() {
+        // **The session asks this before sending a packet.** It used to send
+        // regardless: an admin's mute left the microphone open, the chain
+        // running and every frame going out to a server that threw it away —
+        // spending a rider's data and battery, and putting their voice on the
+        // wire after the app had told them they could not be heard.
+        let mut u = rider();
+        assert!(!u.silenced_by_server());
+
+        u.mute = true;
+        assert!(u.silenced_by_server(), "an admin's mute");
+
+        u.mute = false;
+        u.suppress = true;
+        assert!(u.silenced_by_server(), "a channel that will not carry it");
+
+        // Our own doing is not the server's, and is handled where the
+        // microphone is, not where the packets are.
+        u.suppress = false;
+        u.self_mute = true;
+        assert!(!u.silenced_by_server());
     }
 
     #[test]

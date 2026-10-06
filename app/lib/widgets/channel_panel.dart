@@ -21,13 +21,15 @@ import 'watch.dart';
 /// automatically on every future connect. Those are separate ideas on purpose —
 /// a rider often drops into another channel briefly without wanting it to
 /// become the default.
-/// The gap between two of this row's indicators.
+/// The gap either side of a bare indicator on a channel row.
 ///
-/// Matches what the trailing `IconButton`s produce between their glyphs: an
-/// 18pt icon centred in a compact box leaves far more air than a plain
-/// `SizedBox` of the same nominal width, so this is the measured result rather
-/// than the nominal one.
-const double _iconGap = 27;
+/// **Not the same number as the gap between the trailing controls**, and that
+/// was the mistake worth recording: those are `IconButton`s, 18pt glyphs
+/// centred in compact boxes, so the blank between the star and the menu
+/// measures 27 while reading as two tap targets sitting side by side. Copying
+/// 27 between two bare icons produced a gulf. Fourteen is what a bare icon
+/// needs to read as separate without floating.
+const double _iconGap = 14;
 
 class ChannelTree extends StatelessWidget {
   const ChannelTree({

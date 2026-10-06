@@ -76,16 +76,15 @@ void main() {
     double gap(IconData left, IconData right) =>
         t.getRect(find.byIcon(right)).left - t.getRect(find.byIcon(left)).right;
 
-    // The reference: two of the row's own controls, side by side.
+    // **Deliberately not the controls' own gap.** The star and the menu
+    // measure 27 apart and read as two tap targets side by side, because each
+    // glyph sits centred in a padded box. Between two bare icons the same
+    // number is a gulf — it was tried. What matters is that this one is
+    // comfortably clear of the crowding it started at and well short of that.
     final controls = gap(Icons.star_border, Icons.more_horiz);
-    expect(controls, greaterThan(0), reason: 'the row did not lay out');
-
-    expect(
-      gap(Icons.voice_over_off, Icons.person),
-      closeTo(controls, 0.5),
-      reason: 'the indicator should sit in the same rhythm as the controls; '
-          'it was six pixels against twenty-seven',
-    );
+    final here = gap(Icons.voice_over_off, Icons.person);
+    expect(here, greaterThan(8), reason: 'it started at six and looked stuck');
+    expect(here, lessThan(controls), reason: 'copying 27 made a gulf');
   });
 
   testWidgets('and it is spaced the same on both sides', (t) async {

@@ -132,7 +132,7 @@ BUILT FOR A BIKE
 FOR WHEN YOU ARE NOT LOOKING AT THE SCREEN
 • A floating window over your navigation app on Android, Picture in Picture on iPhone and iPad, a panel on Mac.
 • A falling two-tone when the connection drops and a rising one when it returns — you learn from the headset, not from silence.
-• Automatic reconnection on everything except a disconnect you asked for, every ten seconds with the countdown on screen, and at once when your phone reports signal is back.
+• Automatic reconnection unless you disconnected yourself: every ten seconds with a countdown, and at once when signal returns.
 • Audio keeps running with the screen locked and the phone in a pocket.
 
 TALKING TO PEOPLE
@@ -141,21 +141,21 @@ TALKING TO PEOPLE
 • Two servers connected at once.
 • Live ping per server, and whether voice goes direct over UDP or is tunnelled through TCP when a carrier will not pass it.
 • A jitter buffer that plays a backlog off at up to double speed, rather than leaving everybody a second behind.
-• Join by QR code or a mumble:// link.
+• Join or share by QR code or a mumble:// link.
+• Reach a server through an HTTP or SOCKS5 proxy when the network cuts the connection — one server or all, voice direct or through it too, and shared like a server.
+• If the server is yours: groups, permissions, registration, kick and ban.
 
 PRIVATE BY DEFAULT
-Voice is encrypted with AES-128 and the control channel runs over TLS. Server certificates are pinned on first connection and a changed one is refused until you say otherwise. MumbleWay has no servers of its own, collects no analytics and shows no advertising.
+Voice is encrypted with AES-128 and the control channel runs over TLS. Server certificates are pinned on first connection and a changed one is refused until you say otherwise. MumbleWay has no servers of its own, no analytics and no advertising.
 
 ON AN OLDER PHONE
-A block of audio arrives every 10 ms and the chain has to finish before the next one. If your phone cannot manage that, MumbleWay gives stages up one at a time, cheapest first, in a measured order — and says which ones, rather than quietly sounding worse.
+A block of audio arrives every 10 ms and the chain has to finish before the next one. If your phone cannot manage that, MumbleWay turns stages off one at a time, cheapest first — and says which ones, rather than quietly sounding worse.
 
 DIAGNOSTICS
-An optional panel shows the chain working — the spectrum before and after suppression, and which stage stopped a sound reaching the far end. A recorder, off unless you switch it on, captures what your headset hears on a ride; play it back as the far end would have heard it, without a second phone.
+An optional panel shows the chain working — the spectrum before and after suppression, and which stage stopped a sound reaching the far end. A recorder, off unless you switch it on, captures what your headset hears on a ride, to play back as the far end heard it.
 
 NOT ONLY ON A BIKE
-In a quiet room the Light profile takes almost nothing out, and diagnostics shows what each stage does to your voice — so you tune by looking, not guessing. At a desk or at 120 km/h, the same client: Opus at 48 kHz, no account, no telemetry.
-
-Available in English and Russian.
+In a quiet room the Light profile takes almost nothing out. At a desk or at 120 km/h, the same client: Opus at 48 kHz, no account, no telemetry.
 
 MumbleWay is free and open source. It is an independent client, not affiliated with the Mumble project.
 
@@ -198,7 +198,7 @@ MumbleWay подключается к любому: к серверу друга
 КОГДА ВЫ НЕ СМОТРИТЕ НА ЭКРАН
 • Плавающее окно поверх навигации на Android, «картинка в картинке» на iPhone и iPad, панель на Mac.
 • Нисходящий сигнал, когда связь оборвалась, и восходящий, когда вернулась, — вы узнаёте об этом из гарнитуры, а не из тишины.
-• Автоматическое переподключение — кроме случая, когда вы отключились сами: раз в десять секунд с отсчётом на экране и сразу, как только телефон сообщит, что связь вернулась.
+• Автоматическое переподключение, если вы не отключились сами: раз в десять секунд с отсчётом и сразу, как связь вернётся.
 • Звук работает с заблокированным экраном и телефоном в кармане.
 
 РАЗГОВОР С ЛЮДЬМИ
@@ -207,21 +207,21 @@ MumbleWay подключается к любому: к серверу друга
 • Два сервера одновременно.
 • Текущий пинг по каждому серверу и то, идёт ли голос напрямую по UDP или через TCP, когда оператор не пропускает первое.
 • Буфер джиттера проигрывает накопленное до двух раз быстрее, а не оставляет всех на секунду позади.
-• Подключение по QR-коду или ссылке mumble://.
+• Подключиться или поделиться — по QR-коду или ссылке mumble://.
+• Подключение через HTTP- или SOCKS5-прокси, когда сеть рвёт соединение: для одного сервера или для всех, голос напрямую или тоже через прокси, и передаётся как сервер.
+• Если сервер ваш: группы, права, регистрация, отключение и бан.
 
 ПРИВАТНОСТЬ ПО УМОЛЧАНИЮ
-Голос шифруется AES-128, управляющий канал идёт по TLS. Сертификат сервера запоминается при первом подключении, а изменившийся — отклоняется, пока вы не подтвердите. У MumbleWay нет своих серверов, он не собирает аналитику и не показывает рекламу.
+Голос шифруется AES-128, управляющий канал идёт по TLS. Сертификат сервера запоминается при первом подключении, изменившийся отклоняется, пока вы не подтвердите. Своих серверов у MumbleWay нет, аналитики и рекламы тоже.
 
 НА СТАРОМ ТЕЛЕФОНЕ
-Блок звука приходит каждые 10 мс, и вся цепочка должна успеть до следующего. Если телефон не справляется, MumbleWay отключает ступени по одной, начиная с самых дешёвых, в измеренном заранее порядке — и говорит, каких не стало, вместо того чтобы молча звучать хуже.
+Блок звука приходит каждые 10 мс, и вся цепочка должна успеть до следующего. Если телефон не справляется, MumbleWay отключает ступени по одной, начиная с самых дешёвых, — и говорит, каких не стало, вместо того чтобы молча звучать хуже.
 
 ДИАГНОСТИКА
-Панель показывает работу тракта: спектр до и после шумоподавления и то, какая ступень не пустила звук дальше. Там же запись — выключенная, пока вы её не включите: послушайте свою поездку так, как её слышал бы собеседник, без второго телефона.
+Панель показывает работу тракта: спектр до и после шумоподавления и то, какая ступень не пустила звук дальше. Там же запись — выключенная, пока вы её не включите: послушать поездку так, как её слышал бы собеседник.
 
 НЕ ТОЛЬКО НА МОТОЦИКЛЕ
-В тишине профиль «Слабое» почти ничего не убирает, а диагностика показывает, что каждая ступень делает с голосом, — настройка глазами, а не наугад. За столом и на скорости 120 км/ч это один и тот же клиент: Opus 48 кГц, без учётной записи и телеметрии.
-
-Русский и английский языки.
+В тишине профиль «Слабое» почти ничего не убирает. За столом и на скорости 120 км/ч это один и тот же клиент: Opus 48 кГц, без учётной записи и телеметрии.
 
 MumbleWay — свободное приложение с открытым кодом. Независимый клиент, не связанный с проектом Mumble.
 

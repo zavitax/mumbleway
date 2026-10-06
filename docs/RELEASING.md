@@ -498,6 +498,19 @@ msstore submission get <productId>
 msstore submission publish <productId>
 ```
 
+**`publish.yml` now does exactly this.** The MSIX job stages with `--noCommit`,
+runs `python tool/push_ms_store_listing.py <productId> --push --submit
+--expect-version <version>`, and that commits — steps 1 to 4 above in one job,
+so the package and this repository's listing text share a certification run. It
+did not always: a plain `msstore publish` commits on the spot and carries the
+listing Partner Center already held, which is how `1.1.148.0` reached the Store
+with the 1.0.1 description and the 1.0.1 release notes while every job stayed
+green. `docs/RELEASE_NOTES.md` has that measurement.
+
+The route by hand is still worth knowing, for a text-only fix between releases
+and for finishing a run that left a draft staged but uncommitted. Run the script
+with no flags first: it prints the fields that differ and changes nothing.
+
 Four things fail in ways that do not name themselves:
 
 - **`msstore publish` wants the package *file*, not the folder it is in.** Given

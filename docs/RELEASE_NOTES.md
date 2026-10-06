@@ -10,9 +10,10 @@ two files rather than a fenced block, because the action reads a directory.
 This file is where the text is written and reviewed; those files are what ships.
 Change both, or Play gets last release's notes.
 
-Only Play is uploaded by the workflow. Apple's two fields are scriptable and
-Microsoft's are not; [the table below](#where-each-one-goes) says which is
-which, and why that is a choice rather than a gap.
+Only Play is uploaded by the workflow. Apple's two fields are scriptable through
+App Store Connect, and Microsoft's through `tool/push_ms_store_listing.py`;
+[the table below](#where-each-one-goes) says which is which, and why keeping
+them out of `publish.yml` is a choice rather than a gap.
 
 Limits, shortest first: **Google Play 500**, Microsoft Store 1500, App Store
 "What's New" 4000, TestFlight "What to Test" 4000. Writing to 500 means one text
@@ -98,7 +99,7 @@ only phrase in the notice nobody could say out loud.
 | TestFlight | *What to Test* | API: `betaBuildLocalizations.whatsNew`, per build. |
 | App Store | *What's New in This Version* | API: `appStoreVersionLocalizations.whatsNew` — **needs an editable version record.** A released version's notes cannot be changed. |
 | Mac App Store | *What's New in This Version* | Same, and separately from iOS: two version records, and they drift. |
-| Microsoft Store | *What's new in this version* | Part of a submission, and a submission in certification locks it. |
+| Microsoft Store | *What's new in this version* | `tool/push_ms_store_listing.py`, which carries the description with it. Part of a submission, so writing it starts a certification run. |
 
 **Apple has two release-note fields and they are not connected.** The App Store
 one lives on a *version* localization and is what a customer reads; TestFlight's
@@ -118,13 +119,33 @@ Two traps in the API, each of which reads as something else:
 
 </div>
 
-**Only Play is wired into `publish.yml`, and that stays true even though the
-Apple half turned out to be scriptable.** Apple's notes belong to a version
+**Only Play is wired into `publish.yml`, and that stays true even though both of
+the others turned out to be scriptable.** Apple's notes belong to a version
 record that does not exist until somebody decides to ship a version, and
 Microsoft's belong to a submission that starts a certification run. Both are
 decisions rather than steps, and a workflow that made them automatically would
 be making them on nobody's authority. Scripting them for a human to run is a
 different thing from a release doing it unasked.
+
+### `msstore publish` carries the old listing forward, silently
+
+`publish.yml` runs `msstore publish <package>`, which creates a submission,
+uploads the package and commits it in one step. The listing it submits is
+**whatever Partner Center already held** — so a release ships new code behind
+the previous release's words, and nothing in the pipeline is in a position to
+notice. Four fields, not one: the description drifts along with the notes.
+
+Measured on 1.1.0: the Microsoft Store published `1.1.148.0`, which is the right
+package, with the 1.0.1 description in both languages — no proxy bullet, no
+administration bullet, still carrying the "Available in English and Russian"
+line that had been cut to make room — and the 1.0.1 release notes, *Steadier
+voice on a poor mobile signal*. The store said `Published`, the workflow said
+success, and both were telling the truth about the only thing they checked.
+
+This is why the text needs a run of its own, after the package submission
+publishes: `python tool/push_ms_store_listing.py` reports the four fields it
+would change and touches nothing, and `--push --submit` makes the text-only
+submission. Do it as a step of releasing, not as a thing remembered later.
 
 ## Writing the next one
 

@@ -784,6 +784,19 @@ jobs:
           (github.event_name == 'push' || inputs.microsoft_store)
         uses: microsoft/microsoft-store-apppublisher@v1.1
 
+      # Pinned rather than taken from the image: `tool/push_ms_store_listing.py`
+      # sets the listing text in the submit step below, and a runner image that
+      # drops or renames `python` would turn that into a staged package nobody
+      # committed. Standard library only, so the version barely matters — having
+      # one at a known name does.
+      - name: Set up Python for the listing text
+        if: >-
+          env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
+          (github.event_name == 'push' || inputs.microsoft_store)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       # `reconfigure` rather than `configure`: the runner is fresh every time,
       # but `configure` prompts when it finds no existing credentials and a
       # prompt on a headless runner is a job that hangs until it is cancelled.
@@ -942,7 +955,31 @@ jobs:
             exit 1
           }
           Write-Output "submitting $(Split-Path $package -Leaf) as version ${{ env.MSIX_VERSION }}"
-          msstore publish $package -id "${{ env.STORE_PRODUCT_ID }}"
+
+          # **Staged, not committed** -- `--noCommit` is what makes the package
+          # and the listing text one certification run instead of two.
+          #
+          # A plain `msstore publish` commits immediately and carries whatever
+          # listing Partner Center already held, so the release ships new code
+          # behind the previous release's words. That is not a hypothetical: it
+          # is how 1.1.148.0 reached the Store with the 1.0.1 description and the
+          # 1.0.1 release notes, green all the way. `docs/RELEASING.md` 4e-bis
+          # worked this route out, and this is it.
+          msstore publish $package -id "${{ env.STORE_PRODUCT_ID }}" --noCommit
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::Staging the package failed, so nothing was submitted. Check Partner Center for a draft submission left open; 'msstore submission delete ${{ env.STORE_PRODUCT_ID }} --no-confirm' clears one the API created."
+            exit 1
+          }
+
+          # The text this repository holds, into the draft just staged, and only
+          # then commit. `--expect-version` refuses to commit a draft the
+          # package did not attach to, which would spend the run on text alone.
+          python ../tool/push_ms_store_listing.py "${{ env.STORE_PRODUCT_ID }}" `
+            --push --submit --expect-version "${{ env.MSIX_VERSION }}"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::The package is staged but the listing text or the commit failed, so this submission is sitting as an uncommitted draft. Finish it with 'python tool/push_ms_store_listing.py <productId> --push --submit', or discard it with 'msstore submission delete ${{ env.STORE_PRODUCT_ID }} --no-confirm'. The MSIX is attached to this run."
+            exit 1
+          }
 
       # Said here rather than left for somebody to discover on the dashboard.
       # A successful submission is not a published app: it is a package handed

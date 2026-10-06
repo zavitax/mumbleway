@@ -150,6 +150,11 @@ class ChannelTree extends StatelessWidget {
               // not allowed, and a guess here would be a lie about a rule.
               if (state.runtimeFor(serverId).channelRights[channel.id]
                   case final r? when !r.speak) ...[
+                // Six either side: the same gap that separates every other
+                // group on this row, so it sits off the name by as much as it
+                // sits off whatever follows it rather than crowding one of
+                // them.
+                const SizedBox(width: 6),
                 Tooltip(
                   message: L.of(context).suppressedTitle,
                   child: const Icon(

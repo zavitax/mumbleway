@@ -1,3 +1,5 @@
-Steadier voice on a poor mobile signal.
+Reach a server through a proxy.
 
-When two packets went missing together, the repair took the wrong copy and damaged three pieces of audio instead of one — a click or a stutter where a word should have been. That is fixed. Error correction now runs at full strength all the time: measuring it showed the stronger setting costs no extra data at all, so there was nothing to save by being sparing with it.
+On a network that cuts the connection to a Mumble server, or blocks it, you can now dial through an HTTP or SOCKS5 proxy — for one server or for all of them, with voice going straight to the server or through the proxy too. A proxy can be shared by link or QR code, like a server.
+
+Also: links in welcome messages and channel descriptions work, a channel you may not speak in is marked, and groups and permissions can be managed in the app.

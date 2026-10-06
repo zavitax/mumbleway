@@ -20,6 +20,35 @@ serves all four.
 
 ---
 
+## 1.0.2
+
+The first release since 1.0.1 build 144, published 4 September. It goes out as
+1.0.2 for the same reason 1.0.1 did: 1.0.1 is `READY_FOR_SALE` on both of
+Apple's stores, which closes its train — checked against App Store Connect
+before the build rather than discovered by a red one.
+
+**The headline is the proxy**, and it exists because of a measured fault: on
+one network the TLS control channel to a server was being cut ten to twenty
+seconds in while UDP kept flowing, so the app reconnected for ever and the
+server was innocent. A proxy carries the control channel past whatever is doing
+that. It can be set for one server or for all of them, speaks HTTP CONNECT or
+SOCKS5, and voice either goes straight to the server — lower latency, and
+enough on its own for that fault — or through the proxy too, for a network that
+blocks UDP as well. A proxy travels by link, QR code or profile file like a
+server does, and arrives behind a confirmation that names the machine.
+
+The rest is what a rider meets rather than configures: links in a server's
+welcome message and in channel descriptions now work instead of being flattened
+into plain words; a channel description is drawn under the channel you are in
+and the ones you are listening to; a channel you may not speak in is marked on
+its row before you move there; being muted by an admin reads as somebody else's
+decision rather than your own, and the meter stops claiming you are heard; and
+the connection quality beside your own name is measured at last, having asked
+the server about everybody except you.
+
+For whoever runs the server: groups, access lists and registration can be
+managed from the app, which is also newly written up on the site.
+
 ## 1.0.1, build 144
 
 The first release since 1.0 build 142, published 17 August. It went out as

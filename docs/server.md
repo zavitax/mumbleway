@@ -180,6 +180,121 @@ which is why the app's <em>Identity</em> setting is worth keeping.</p>
   </figure>
 </div>
 
+## Administering it from the app
+
+**You do not need a desktop Mumble client to run the server day to day.**
+Everything below is in MumbleWay, on the phone, with gloves on at a petrol
+station if it comes to that.
+
+Each action is a request the server may refuse, so the app greys out what you
+may not do and reports a refusal in the server's own words rather than pretending
+it worked.
+
+### A rider
+
+The **⋯** beside somebody in the channel:
+
+| Entry | What it does |
+|---|---|
+| **Mute on server (for everyone)**, **Deafen on server** | Silences them for the whole channel, not just for you. Needs Mute/Deafen on that channel. |
+| **Move to channel** | Puts them somewhere else — the usual cure for somebody sitting in a channel that will not carry their voice. |
+| **Make priority speaker** | Quietens everybody else while they talk. For a ride leader. |
+| **Register on this server** | Gives them an account, so the server knows them by certificate next time and an access list can name them. |
+| **Kick from server…** | Disconnects them, with an optional reason they are shown. They can come straight back. |
+| **Ban from server** | Removes them and bars the address and the certificate, so a new connection does not get round it. |
+| **Information** | What the server will say about them: client, system, address, certificate — and only to somebody allowed to ask. |
+
+### The server
+
+The **⋯** on the server card:
+
+- **Registered users** — everybody with an account, and **Remove** to take one
+  away.
+- **Banned users** — the ban list, with **Lift** on each. A ban is either
+  **Until lifted** or counts down.
+- **Access tokens** — the passwords that open token-gated channels. Held per
+  server and sent when you connect.
+
+### A channel
+
+The **⋯** on a channel row — and it is now drawn per channel, so a channel you
+may write to offers it and one you may not does not, wherever you happen to be
+standing:
+
+- **New channel here**, **Rename**, **Remove channel**.
+- **Permissions** — the access list, which is the part worth explaining.
+
+### Access lists
+
+**Permissions in …** shows the channel's rules in the order the server applies
+them, each one saying plainly that it *grants* or *denies* something, to a group
+or to one user, **Here** or **And below**.
+
+Rules inherited from the parent channel are shown greyed and marked *from the
+parent channel*: they belong to the channel that defines them and are edited
+there. Turn off **Also use the parent channel's rules** and they stop applying —
+and stop being shown, since a list of rules that no longer do anything is a list
+that misleads.
+
+**Groups** are names a rule can grant rights to. Only riders with an account on
+this server can be in one, which is why **Register on this server** comes first
+in most of these jobs. A group can **Take members from the channel above** and
+can be left usable by the channels under it — **Channels below may use this group**.
+
+<div class="panel warn">
+<p><strong>Murmur rate-limits writes to an access list.</strong> Two in quick
+succession and the second is refused. The app re-reads on its own health tick
+rather than immediately after writing, so give it a moment before expecting the
+list to show what you just saved.</p>
+</div>
+
+## What riders see of your server's text
+
+Two of the settings above are read by every rider who connects, and MumbleWay
+draws both of them.
+
+**`welcometext` may contain HTML, and its links work.** Write it with an
+anchor and a rider can tap it:
+
+```html
+welcometext=Set push-to-talk — <a href="https://example.test/ptt">here is how, with pictures</a>
+```
+
+Only `http`, `https` and `mailto` become links. Anything else — `javascript:`,
+`file:`, even `mumble:` — stays ordinary text, because a welcome message is
+yours to write and a tap that added a server or a proxy from a sentence is not
+something a rider agreed to.
+
+**A channel's description is shown too**, under the channel a rider is standing
+in and under each channel they are listening to. Not under every row: a
+paragraph per channel would bury the list. Its links work the same way. This is
+the place to put what a channel is *for* — Mumble's own client shows it when a
+channel is selected, so the text serves both.
+
+<div class="panel">
+<p><strong>Qt's editor writes a <code>&lt;style&gt;</code> block into every
+description it saves.</strong> MumbleWay drops it rather than drawing it, so a
+description written in the official client reads as prose here and not as a
+stylesheet.</p>
+</div>
+
+**A channel nobody may speak in is marked.** Where your access list denies
+Speak, the row carries a struck-through microphone, so a rider sees it before
+moving there rather than after. Standing in one, they also get a notice on the
+server card saying the channel will not carry their voice and that moving is
+the cure — and their microphone button turns amber and stops being a switch,
+because it is not their silence to lift.
+
+<div class="shots">
+  <figure>
+    <img src="{{ '/assets/img/shots/server-text-phone.webp' | relative_url }}"
+         alt="A server card on the phone: an amber notice saying this channel will not carry your voice and to move or ask whoever runs the server; below it the Root row with a struck-through microphone beside the user count, and under that the channel's description with one word rendered as a tappable link."
+         width="560" height="446" loading="lazy" decoding="async">
+    <figcaption>All three at once: the notice for a rider standing there, the
+    mark on the row, and the description with its link.</figcaption>
+  </figure>
+</div>
+
 ## Going further
 
 This page covers only enough to get a group talking. Mumble has considerably

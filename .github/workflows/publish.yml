@@ -111,6 +111,13 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
         if: steps.gate.outputs.ready == 'true'
+        with:
+          # **Not the default `tools platform-tools`.** `tools` was removed from
+          # the Android SDK, and the runner image's cmdline-tools now answers
+          # `sdkmanager tools` with "Failed to find package 'tools'" and exit 1
+          # — so the job dies before Gradle is even reached, with a message
+          # about a package nobody here asked for.
+          packages: platform-tools
 
       - name: Add Android Rust targets
         if: steps.gate.outputs.ready == 'true'

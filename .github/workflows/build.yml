@@ -531,6 +531,13 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+        with:
+          # **Not the default `tools platform-tools`.** `tools` was removed from
+          # the Android SDK, and the runner image's cmdline-tools now answers
+          # `sdkmanager tools` with "Failed to find package 'tools'" and exit 1
+          # — so the job dies before Gradle is even reached, with a message
+          # about a package nobody here asked for.
+          packages: platform-tools
 
       # cargokit cross-compiles the engine for each ABI, so those Rust targets
       # must exist before Gradle runs.

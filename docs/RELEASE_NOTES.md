@@ -97,8 +97,8 @@ only phrase in the notice nobody could say out loud.
 |---|---|---|
 | Google Play | *What's new* | **Automatic.** `distribution/whatsnew/` is uploaded with the bundle by `publish.yml`. |
 | TestFlight | *What to Test* | API: `betaBuildLocalizations.whatsNew`, per build. |
-| App Store | *What's New in This Version* | API: `appStoreVersionLocalizations.whatsNew` — **needs an editable version record.** A released version's notes cannot be changed. |
-| Mac App Store | *What's New in This Version* | Same, and separately from iOS: two version records, and they drift. |
+| App Store | *What's New in This Version* | `tool/push_app_store_listing.mjs`, which carries the description with it. **Needs an editable version record** — a released version's notes cannot be changed. |
+| Mac App Store | *What's New in This Version* | Same script, same run, but a separate version record from iOS: two records, and they drift. |
 | Microsoft Store | *What's new in this version* | `tool/push_ms_store_listing.py`, which carries the description with it. Part of a submission, so writing it starts a certification run. |
 
 **Apple has two release-note fields and they are not connected.** The App Store
@@ -116,6 +116,10 @@ Two traps in the API, each of which reads as something else:
 - **A new version record does not inherit promotional text.** Every other field
   clones and that one arrives empty, so a version submitted without noticing
   publishes with Apple's one review-free field blank.
+  `tool/push_app_store_listing.mjs` now fills it from the previous version of
+  the *same platform* when it finds it empty — not from this repository, which
+  holds one set of keywords and promotional text for two platforms whose own are
+  deliberately different. Those two fields it reports and never writes.
 
 </div>
 

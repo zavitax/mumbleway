@@ -76,6 +76,12 @@ const EDITABLE = new Set([
 
 const LIMITS = { description: 4000, whatsNew: 4000, promotionalText: 170 };
 
+// Apple is midway through renaming this: `appStoreState` is what the API still
+// serves and `appVersionState` is what replaces it. Read whichever is there, and
+// if neither is, carry on rather than refusing -- a rename should not stop an
+// edit Apple will accept, and Apple refuses it anyway if the state is wrong.
+const stateOf = (v) => v.attributes.appStoreState ?? v.attributes.appVersionState ?? null;
+
 /** Every fenced block, paired with the nearest heading above it. */
 function blocks(text) {
   const fold = (s) => s.replace(/[—–]/g, '-');
@@ -149,7 +155,7 @@ for (const platform of PLATFORMS) {
 
   if (!record) {
     console.log(`=== ${platform}: no ${version} record ===`);
-    console.log(`    newest is ${mine[0]?.attributes.versionString} (${mine[0]?.attributes.appStoreState})`);
+    console.log(`    newest is ${mine[0]?.attributes.versionString} (${mine[0] ? stateOf(mine[0]) : 'none'})`);
     if (!CREATE) {
       console.log('    --create-version makes one. Nothing was changed.\n');
       pending += 1;
@@ -165,14 +171,14 @@ for (const platform of PLATFORMS) {
       },
     });
     record = made.data;
-    console.log(`    created ${version} (${record.attributes.appStoreState}), release MANUAL\n`);
+    console.log(`    created ${version} (${stateOf(record) ?? 'state not reported'}), release MANUAL\n`);
     wrote += 1;
   } else {
-    console.log(`=== ${platform}: ${version} exists (${record.attributes.appStoreState}) ===`);
+    console.log(`=== ${platform}: ${version} exists (${stateOf(record) ?? 'state not reported'}) ===`);
   }
 
-  const state = record.attributes.appStoreState;
-  if (!EDITABLE.has(state)) {
+  const state = stateOf(record);
+  if (state && !EDITABLE.has(state)) {
     console.log(`    ${state} does not take a metadata edit; skipping.\n`);
     continue;
   }

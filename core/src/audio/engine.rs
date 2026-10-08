@@ -841,6 +841,10 @@ pub struct AudioShared {
     /// intact even if the worker is busy, and makes a cue a single atomic
     /// action that cannot be half-played.
     cue_queue: Mutex<VecDeque<f32>>,
+
+    /// The priority of whatever is in `cue_queue`, meaningful only while that
+    /// queue is non-empty. See [`AudioShared::play_cue`].
+    cue_priority: AtomicU8,
     /// A recording being played back in the diagnostics panel.
     ///
     /// Its own queue rather than the cue one: a cue clears whatever is there
@@ -1033,6 +1037,47 @@ impl AudioCue {
             _ => 0.22,
         }
     }
+
+    /// How badly this cue needs to be heard, when two arrive together.
+    ///
+    /// **Mattered little until a cue got long.** Every cue here is 40–150 ms,
+    /// so two colliding was rare enough that [`AudioShared::play_cue`]'s
+    /// replace-the-queue could simply let the later one win. A cue that plays
+    /// for as long as a profile transition takes changes that arithmetic: a
+    /// participant joining mid-pattern becomes likely, and it is the least
+    /// important thing this app has to say.
+    ///
+    /// Three levels, and the ordering is the whole of the rule — a cue replaces
+    /// what is playing when its own priority is **greater than or equal** to
+    /// the one playing. Equal still replaces, which keeps the behaviour that
+    /// reason exists for: a flapping connection must not build a backlog.
+    ///
+    /// **A pair of cues must share a level**, and the first attempt at this got
+    /// it wrong in a way `a_new_cue_replaces_any_pending_one` caught
+    /// immediately. `Disconnected` was ranked above `Reconnected`, so a
+    /// connection that dropped and came back played "lost" and then swallowed
+    /// "restored" — leaving the rider believing they were still offline, which
+    /// is worse than having heard neither. Every lost/restored pair in the
+    /// grammar therefore sits at one level: the question "how badly does this
+    /// need to be heard" has the same answer for both halves of a fact.
+    fn priority(self) -> u8 {
+        match self {
+            // Informational, and the only things that should ever lose.
+            AudioCue::ParticipantJoined | AudioCue::ParticipantLeft => 0,
+            // Losing the group, or having the microphone taken, is not
+            // something to miss because somebody joined — and each is paired
+            // with the cue that says it is over. `Test` is here because a rider
+            // pressed a button and is waiting to hear it.
+            AudioCue::Disconnected
+            | AudioCue::Reconnected
+            | AudioCue::MutedByOther
+            | AudioCue::UnmutedByOther
+            | AudioCue::DeafenedByOther
+            | AudioCue::UndeafenedByOther
+            | AudioCue::Test => 2,
+            _ => 1,
+        }
+    }
 }
 
 /// Renders a cue to PCM at [`SAMPLE_RATE`].
@@ -1194,6 +1239,7 @@ impl AudioShared {
             capture_dropped_samples: AtomicU64::new(0),
             active_speakers: AtomicU32::new(0),
             cue_queue: Mutex::new(VecDeque::new()),
+            cue_priority: AtomicU8::new(0),
             preview_queue: Mutex::new(VecDeque::new()),
             preview_tx: Mutex::new(None),
             preview_inflight: AtomicUsize::new(0),
@@ -1776,13 +1822,30 @@ impl AudioShared {
     ///
     /// Cues bypass the deafen flag deliberately: "the connection dropped" is
     /// exactly the thing a deafened user still needs to know.
+    ///
+    /// **A cue is dropped rather than deferred when something more important is
+    /// playing.** See [`AudioCue::priority`]. Dropped, because a pending queue
+    /// is the backlog the replace below exists to prevent — it would grow
+    /// output latency monotonically on a flapping connection.
+    ///
+    /// The emptiness check is the whole of the safety argument, and it is why
+    /// the priority can be a plain atomic rather than living under this lock.
+    /// Read on its own, a priority left set by a cue that has long since
+    /// finished would silently swallow everything quieter for the rest of the
+    /// session — inaudibly, and from a state no test would think to construct.
+    /// An empty queue means nothing is playing, whatever the atomic says, and
+    /// that is checked here while the lock is held.
     pub fn play_cue(&self, cue: AudioCue) {
         let pcm = render_cue(cue);
         let mut q = self.cue_queue.lock();
+        if !q.is_empty() && cue.priority() < self.cue_priority.load(Ordering::Relaxed) {
+            return;
+        }
         // Replace rather than append: a flapping connection would otherwise
         // queue a backlog of tones that keeps playing long after it settles.
         q.clear();
         q.extend(pcm);
+        self.cue_priority.store(cue.priority(), Ordering::Relaxed);
     }
 
     /// Hands the output a stretch of a recording being previewed.
@@ -1889,6 +1952,13 @@ impl AudioShared {
         let mut q = self.cue_queue.lock();
         q.clear();
         q.extend(pcm);
+        // Takes `Test`'s priority rather than leaving whatever the last cue
+        // set. A rider pressed a button and is waiting to hear this, so it
+        // should not be cut off — and, the other way round, a high priority
+        // left over from an earlier cue must not silence ordinary ones for as
+        // long as the tone runs.
+        self.cue_priority
+            .store(AudioCue::Test.priority(), Ordering::Relaxed);
     }
 
     pub fn stop_test_tone(&self) {
@@ -5511,6 +5581,64 @@ mod tests {
             shared.device_generation(),
             settled,
             "an already-open device was needlessly reopened"
+        );
+    }
+
+    #[test]
+    fn a_quieter_cue_cannot_cut_off_a_more_important_one() {
+        let shared = AudioShared::new();
+
+        // The renderer is deterministic — fixed-seed noise and fixed ramps — so
+        // "was this left alone" is an exact question rather than a length
+        // comparison.
+        shared.play_cue(AudioCue::Disconnected);
+        let important: Vec<f32> = shared.cue_queue.lock().iter().copied().collect();
+        assert!(!important.is_empty());
+
+        shared.play_cue(AudioCue::ParticipantJoined);
+        let after: Vec<f32> = shared.cue_queue.lock().iter().copied().collect();
+        assert_eq!(
+            after, important,
+            "somebody joining talked over the connection dropping"
+        );
+
+        // Equal priority still replaces, which is the behaviour the
+        // replace-rather-append rule exists for: a flapping connection must not
+        // build a backlog.
+        shared.cue_queue.lock().clear();
+        shared.play_cue(AudioCue::Suppressed);
+        let suppressed: Vec<f32> = shared.cue_queue.lock().iter().copied().collect();
+        shared.play_cue(AudioCue::Unsuppressed);
+        let unsuppressed: Vec<f32> = shared.cue_queue.lock().iter().copied().collect();
+        assert_ne!(
+            unsuppressed, suppressed,
+            "an equal-priority cue was dropped instead of replacing"
+        );
+
+        // The half of that which matters most: both halves of a lost/restored
+        // pair sit at one level, so "restored" is never swallowed by "lost"
+        // still playing. Ranking them apart leaves a rider believing they are
+        // still offline, which is worse than having heard neither.
+        shared.cue_queue.lock().clear();
+        shared.play_cue(AudioCue::Disconnected);
+        shared.play_cue(AudioCue::Reconnected);
+        assert_eq!(
+            shared.cue_queue.lock().len(),
+            render_cue(AudioCue::Reconnected).len(),
+            "coming back was silenced by having gone"
+        );
+
+        // **An empty queue outranks a stale priority.** This is the failure the
+        // emptiness check exists to make impossible: a high-priority cue that
+        // has finished must not swallow everything quieter for the rest of the
+        // session.
+        shared.cue_queue.lock().clear();
+        shared.play_cue(AudioCue::Disconnected);
+        shared.cue_queue.lock().clear();
+        shared.play_cue(AudioCue::ParticipantJoined);
+        assert!(
+            !shared.cue_queue.lock().is_empty(),
+            "a finished cue's priority was still blocking later ones"
         );
     }
 

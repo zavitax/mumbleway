@@ -178,24 +178,27 @@ class MainActivity : FlutterActivity() {
                             mapOf("ok" to false, "inputChannels" to 0, "sampleRate" to 0.0)
                         )
                     } else {
-                        audioRouting.activate { ok ->
-                            result.success(
-                                mapOf(
-                                    "ok" to ok,
-                                    // Which microphone this turned out to be.
-                                    // See `AudioRouting.routeCode`.
-                                    "route" to audioRouting.routeCode,
-                                    // Android does not offer a channel count
-                                    // before the device is open, and the engine
-                                    // opens it itself. Negative means "not
-                                    // known", which the Dart side already
-                                    // distinguishes from zero.
-                                    "inputChannels" to -1,
-                                    "sampleRate" to 0.0,
-                                )
-                            )
+                        // `captureOnDemand` stops at the listening state and
+                        // waits for `startCapture`. Absent means false, which is
+                        // today's behaviour: one call, capture live.
+                        val onDemand = call.argument<Boolean>("captureOnDemand") == true
+                        audioRouting.activate(onDemand) { ok ->
+                            result.success(sessionReply(ok))
                         }
                     }
+                }
+                "startCapture" -> {
+                    if (!hasMicrophone()) {
+                        result.success(
+                            mapOf("ok" to false, "inputChannels" to 0, "sampleRate" to 0.0)
+                        )
+                    } else {
+                        audioRouting.startCapture { ok -> result.success(sessionReply(ok)) }
+                    }
+                }
+                "stopCapture" -> {
+                    audioRouting.stopCapture()
+                    result.success(sessionReply(true))
                 }
                 "deactivate" -> {
                     audioRouting.deactivate()
@@ -586,6 +589,28 @@ class MainActivity : FlutterActivity() {
     private fun hasMicrophone() =
         checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    /**
+     * What `activate`, `startCapture` and `stopCapture` all answer with.
+     *
+     * One shape for the three, so the Dart side reads every reply the same way
+     * and a route reported by one cannot mean something different from a route
+     * reported by another.
+     */
+    private fun sessionReply(ok: Boolean): Map<String, Any> =
+        mapOf(
+            "ok" to ok,
+            // Which microphone this turned out to be. See
+            // `AudioRouting.routeCode` and `Recorded::route`.
+            "route" to audioRouting.routeCode,
+            // Android does not offer a channel count before the device is open,
+            // and the engine opens it itself. Negative means "not known", which
+            // the Dart side distinguishes from zero — and zero, which means
+            // "nothing to record from", is a fault only when capture was asked
+            // for.
+            "inputChannels" to -1,
+            "sampleRate" to 0.0,
+        )
 
     private fun showOverlayWindow() {
         if (!canDrawOverlays() || !hasMicrophone()) return

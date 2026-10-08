@@ -197,19 +197,67 @@ class AudioRouting(private val context: Context) {
         }
     }
 
-    fun activate(done: (Boolean) -> Unit) {
-        if (active) {
+    /** Whether the hands-free profile is currently held. */
+    private var capturing = false
+
+    /**
+     * Takes the session, and the profile with it unless capture is on demand.
+     *
+     * **The split is along session versus profile**, and on Android it falls out
+     * almost for free: focus and the saved mode are the session, while
+     * `MODE_IN_COMMUNICATION` and the communication device *are* the hands-free
+     * profile. See `docs/CAPTURE_ON_DEMAND.md`.
+     *
+     * `captureOnDemand = false` is today's behaviour to the letter: one call,
+     * SCO negotiated, capture live, route reported. Only the tap-driven mode
+     * passes `true`, which stops at the listening state — mode left
+     * `MODE_NORMAL` and no communication device, so the output stream (which
+     * carries AAudio's default media usage, because the vendored cpal backend
+     * never calls `setUsage`) rides A2DP and music plays at full bandwidth.
+     */
+    fun activate(captureOnDemand: Boolean, done: (Boolean) -> Unit) {
+        if (!active) {
+            previousMode = audio.mode
+            // Before the mode change, so whatever is playing is already ducking
+            // by the time the route moves under it.
+            requestMusicFocus()
+            active = true
+            watchForRouteChanges()
+        }
+        if (captureOnDemand) {
+            // Listening only. Nothing to negotiate, so there is nothing to wait
+            // for — and the route is whatever the platform is already doing,
+            // which is reported rather than guessed at.
+            routeCode = currentRouteCode()
             done(true)
             return
         }
-        previousMode = audio.mode
-        // Before the mode change, so whatever is playing is already ducking by
-        // the time the route moves under it.
-        requestMusicFocus()
+        startCapture(done)
+    }
+
+    /**
+     * Takes the hands-free profile, which is what makes a microphone exist.
+     *
+     * Asynchronous because an SCO link has to be negotiated, and the caller
+     * needs to know *when* — the cue that tells a rider they may speak is only
+     * honest if it fires once input is genuinely live.
+     */
+    fun startCapture(done: (Boolean) -> Unit) {
+        if (!active) {
+            // Nothing to take a profile on. Refused rather than silently
+            // activating: an ordering mistake should be visible once, not
+            // produce a session nobody asked for.
+            Log.w(TAG, "startCapture with no session")
+            done(false)
+            return
+        }
+        if (capturing) {
+            done(true)
+            return
+        }
+        capturing = true
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
-        active = true
         watchForSilencing()
-        watchForRouteChanges()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             done(chooseCommunicationDevice())
@@ -232,18 +280,27 @@ class AudioRouting(private val context: Context) {
     }
 
     /**
-     * Hands the route back.
+     * Gives the hands-free profile back while keeping the session.
      *
-     * Unconditionally, and swallowing failures. A phone left in
-     * `MODE_IN_COMMUNICATION` routes every other app's audio to the earpiece
-     * and keeps the SCO link alive, which flattens a headset's battery — and
-     * the rider has no way to know that is what happened or which app to blame.
+     * The point of the whole exercise: with the mode and the communication
+     * device released, the headset falls back to A2DP and everything the rider
+     * hears — the group, and whatever music is playing — returns to full
+     * bandwidth.
      */
-    fun deactivate() {
-        if (!active) return
-        active = false
+    fun stopCapture() {
+        if (!capturing) return
+        capturing = false
         stopWatchingForSilencing()
-        stopWatchingForRouteChanges()
+        releaseCommunicationRoute()
+        try {
+            audio.mode = AudioManager.MODE_NORMAL
+        } catch (e: Exception) {
+            Log.w(TAG, "could not leave communication mode", e)
+        }
+        routeCode = currentRouteCode()
+    }
+
+    private fun releaseCommunicationRoute() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audio.clearCommunicationDevice()
@@ -258,6 +315,23 @@ class AudioRouting(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "could not release the communication route", e)
         }
+    }
+
+    /**
+     * Hands everything back.
+     *
+     * Unconditionally, and swallowing failures. A phone left in
+     * `MODE_IN_COMMUNICATION` routes every other app's audio to the earpiece
+     * and keeps the SCO link alive, which flattens a headset's battery — and
+     * the rider has no way to know that is what happened or which app to blame.
+     */
+    fun deactivate() {
+        if (!active) return
+        active = false
+        capturing = false
+        stopWatchingForSilencing()
+        stopWatchingForRouteChanges()
+        releaseCommunicationRoute()
         try {
             audio.mode = previousMode
         } catch (e: Exception) {

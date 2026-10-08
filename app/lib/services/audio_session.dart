@@ -11,6 +11,7 @@ class AudioSessionState {
     required this.sampleRate,
     this.route = 0,
     this.error,
+    this.capturing = true,
   });
 
   /// Whether the user has allowed recording.
@@ -26,6 +27,12 @@ class AudioSessionState {
   /// Negative means the question was never put, on a platform with no session
   /// to put it to. Not the same as zero, and treating it as zero would refuse
   /// to start the engine on every desktop.
+  ///
+  /// **And a third case now: zero is expected, not a fault, when the session is
+  /// listening only.** See [capturing] — the listening state of
+  /// `docs/CAPTURE_ON_DEMAND.md` has no input by design, so reading zero there
+  /// as "nothing to record from" would have stopped the engine ever starting
+  /// and made the state unreachable.
   final int inputChannels;
 
   final double sampleRate;
@@ -39,7 +46,19 @@ class AudioSessionState {
   /// outright rather than merely being refused.
   final String? error;
 
-  bool get usable => granted && inputChannels != 0;
+  /// Whether capture was asked for at all.
+  ///
+  /// True for everything that existed before the listening state, so no caller
+  /// changes meaning by not mentioning it.
+  final bool capturing;
+
+  /// Whether the engine can be started on this session.
+  ///
+  /// The `capturing` term is what keeps the old meaning of zero intact: when
+  /// capture was asked for, zero channels still means "nothing to record from"
+  /// and still refuses. When it was not, zero is the expected answer and
+  /// readiness is [AudioSessionBridge.startCapture]'s to report instead.
+  bool get usable => granted && (!capturing || inputChannels != 0);
 
   /// The state on platforms that have no session to configure.
   static const notNeeded = AudioSessionState(
@@ -148,7 +167,19 @@ class AudioSessionBridge {
   /// is spoken. Activation is not instant and can be refused outright by a
   /// phone call holding a session that will not mix, and neither is worth
   /// discovering half-way through a sentence.
-  Future<AudioSessionState> activate({bool voiceProcessing = false}) async {
+  /// `captureOnDemand` stops at the listening state and waits for
+  /// [startCapture].
+  ///
+  /// **Absent or false is today's behaviour to the letter**: one call, the
+  /// hands-free profile taken, capture live, the route reported. Only the
+  /// tap-driven mode asks for the other, which makes this flag the feature's
+  /// kill switch — if the measurements in `docs/CAPTURE_ON_DEMAND.md` come back
+  /// badly, riders stay on the path that works today and there is nothing to
+  /// unpick.
+  Future<AudioSessionState> activate({
+    bool voiceProcessing = false,
+    bool captureOnDemand = false,
+  }) async {
     if (!isNeeded) return AudioSessionState.notNeeded;
     _ensureHandler();
     try {
@@ -157,6 +188,7 @@ class AudioSessionBridge {
       // built. Neither can be told later and act on it now.
       final r = await _channel.invokeMapMethod<String, dynamic>('activate', {
         'voiceProcessing': voiceProcessing,
+        'captureOnDemand': captureOnDemand,
       });
       return AudioSessionState(
         granted: true,
@@ -166,6 +198,9 @@ class AudioSessionBridge {
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
         route: (r?['route'] as num?)?.toInt() ?? 0,
         error: r?['error'] as String?,
+        // The listening state genuinely has no input, so zero channels there is
+        // expected rather than a refusal. See [AudioSessionState.usable].
+        capturing: !captureOnDemand,
       );
     } on MissingPluginException {
       // An older platform side. Let the engine try rather than refusing: it
@@ -178,6 +213,63 @@ class AudioSessionBridge {
         sampleRate: 0,
         error: e.message,
       );
+    }
+  }
+
+  /// Takes the hands-free profile, so there is a microphone.
+  ///
+  /// Asynchronous because an SCO link has to be negotiated and the answer is
+  /// what the cue depends on: telling a rider they may speak is only honest
+  /// once input is genuinely live. Returns the route it ended up on, which is
+  /// the value a transition is *asserted* against — the audio chain is never
+  /// told whether capture is on, so it will transmit whatever it is handed.
+  Future<AudioSessionState> startCapture() async {
+    if (!isNeeded) return AudioSessionState.notNeeded;
+    _ensureHandler();
+    try {
+      final r = await _channel.invokeMapMethod<String, dynamic>('startCapture');
+      return AudioSessionState(
+        granted: true,
+        inputChannels: r?['ok'] == true
+            ? (r?['inputChannels'] as num?)?.toInt() ?? 0
+            : 0,
+        sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
+        route: (r?['route'] as num?)?.toInt() ?? 0,
+        error: r?['error'] as String?,
+        capturing: true,
+      );
+    } on MissingPluginException {
+      return AudioSessionState.notNeeded;
+    } on PlatformException catch (e) {
+      return AudioSessionState(
+        granted: true,
+        inputChannels: 0,
+        sampleRate: 0,
+        error: e.message,
+        capturing: true,
+      );
+    }
+  }
+
+  /// Gives the profile back and keeps the session.
+  ///
+  /// Best effort, like [deactivate]: output carries on either way, and the
+  /// worst case is music that stays narrowband until the next transition —
+  /// which is where the app already was before any of this.
+  Future<AudioSessionState> stopCapture() async {
+    if (!isNeeded) return AudioSessionState.notNeeded;
+    try {
+      final r = await _channel.invokeMapMethod<String, dynamic>('stopCapture');
+      return AudioSessionState(
+        granted: true,
+        inputChannels: 0,
+        sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
+        route: (r?['route'] as num?)?.toInt() ?? 0,
+        error: r?['error'] as String?,
+      );
+    } catch (_) {
+      // An older platform side, or a profile that was not ours to release.
+      return AudioSessionState.notNeeded;
     }
   }
 

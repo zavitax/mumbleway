@@ -33,7 +33,14 @@ final class AudioSession {
         // session is being configured.
         let args = call.arguments as? [String: Any]
         self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
-        self.activateForCall(result)
+        // Absent means false, which is today's behaviour: one call, capture
+        // live. Only the tap-driven mode stops at listening.
+        let onDemand = args?["captureOnDemand"] as? Bool ?? false
+        self.activateForCall(captureOnDemand: onDemand, result)
+      case "startCapture":
+        self.startCapture(result)
+      case "stopCapture":
+        self.stopCapture(result)
       case "deactivate":
         self.deactivate(result)
       default:
@@ -121,9 +128,72 @@ final class AudioSession {
   /// negotiate — and it can be refused outright by a phone call or a voice
   /// memo holding a session that will not mix. Both are worth several seconds
   /// of a connect and neither is worth clipping the start of a sentence.
-  private func activateForCall(_ result: @escaping FlutterResult) {
+  private func activateForCall(captureOnDemand: Bool, _ result: @escaping FlutterResult) {
+    if captureOnDemand {
+      // Listening only. No input to report on, and that is expected rather than
+      // a fault — the Dart side reads zero as "nothing to record from" only
+      // when capture was asked for, and `startCapture` is what answers for
+      // readiness in this mode.
+      do {
+        try activateListening()
+        let session = AVAudioSession.sharedInstance()
+        result([
+          "ok": true,
+          "inputChannels": 0,
+          "sampleRate": session.sampleRate,
+          "route": Self.routeCode(),
+        ])
+      } catch {
+        result([
+          "ok": false,
+          "inputChannels": 0,
+          "sampleRate": 0.0,
+          "error": error.localizedDescription,
+        ])
+      }
+      return
+    }
+    captureResult(result)
+  }
+
+  /// Takes the hands-free profile, which is what makes a microphone exist.
+  private func startCapture(_ result: @escaping FlutterResult) {
+    captureResult(result)
+  }
+
+  /// Gives the profile back and keeps the session.
+  ///
+  /// **A category change alone may not be enough**, and which it is has not
+  /// been measured on a real headset yet — `deactivate`'s own comment says
+  /// `.notifyOthersOnDeactivation` is "what lets a headset fall back off the
+  /// hands-free profile", and that is on a full deactivation. So the session is
+  /// put down with that option and brought straight back up as `.playback`,
+  /// which is the version that cannot quietly leave a headset on HFP. The cost
+  /// is a brief gap in output, which is the thing this feature already accepts.
+  private func stopCapture(_ result: @escaping FlutterResult) {
     do {
-      try activate()
+      let session = AVAudioSession.sharedInstance()
+      try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+      try activateListening()
+      result([
+        "ok": true,
+        "inputChannels": 0,
+        "sampleRate": session.sampleRate,
+        "route": Self.routeCode(),
+      ])
+    } catch {
+      result([
+        "ok": false,
+        "inputChannels": 0,
+        "sampleRate": 0.0,
+        "error": error.localizedDescription,
+      ])
+    }
+  }
+
+  private func captureResult(_ result: @escaping FlutterResult) {
+    do {
+      try activateCapturing()
       let session = AVAudioSession.sharedInstance()
       // `inputNumberOfChannels` is not reliable this early. It reports the
       // channels of a route that has *settled*, and immediately after
@@ -216,8 +286,40 @@ final class AudioSession {
   /// Apple's echo cancellation — and what it costs is in `activate` below.
   private var voiceProcessing = false
 
+  /// Whether the hands-free profile is currently held.
+  ///
+  /// Decides which configuration a route change puts back, and nothing else.
+  private var capturing = false
+
+  /// The listening session: output only, and A2DP allowed to carry it.
+  ///
+  /// **`.playback`, not `.playAndRecord` offering A2DP.** The documented fault
+  /// — see the comment in `activateCapturing` — is a `playAndRecord` session
+  /// that lists A2DP and then loses an input it wanted. Here there is no input
+  /// to lose, so the fault has no surface at all; choosing `.playAndRecord` and
+  /// hoping would be walking back into it for no gain.
+  ///
+  /// `.mixWithOthers` and `.duckOthers` carry over unchanged, so music still
+  /// plays and still drops under a voice — at full bandwidth now, which is the
+  /// whole point.
+  private func activateListening() throws {
+    wantedActive = true
+    capturing = false
+    let session = AVAudioSession.sharedInstance()
+    try session.setCategory(
+      .playback,
+      mode: .default,
+      options: [.mixWithOthers, .duckOthers])
+    try session.setActive(true)
+  }
+
+  private func activateCapturing() throws {
+    try activate()
+  }
+
   private func activate() throws {
     wantedActive = true
+    capturing = true
     let session = AVAudioSession.sharedInstance()
     try session.setCategory(
       .playAndRecord,
@@ -364,11 +466,19 @@ final class AudioSession {
       DispatchQueue.main.async { [weak self] in
         guard let self, self.wantedActive else { return }
         let session = AVAudioSession.sharedInstance()
-        if session.inputNumberOfChannels == 0 {
+        // **Only chase the input back when we are supposed to have one.** In
+        // the listening state there is no input by design, and re-activating a
+        // capturing session to "fix" that would drag the headset back onto the
+        // hands-free profile — undoing the whole feature on every route change,
+        // which is a loop a rider would experience as music that keeps going
+        // narrowband by itself.
+        if !self.capturing {
+          try? self.activateListening()
+        } else if session.inputNumberOfChannels == 0 {
           // The input is gone rather than merely different. Re-activating is
           // the only thing that brings it back; setting a preferred input on a
           // session that has none does nothing at all.
-          try? self.activate()
+          try? self.activateCapturing()
         } else {
           self.preferHandsFreeInput()
         }
@@ -430,7 +540,11 @@ final class AudioSession {
       // Reactivating is right even when `shouldResume` is absent. That flag is
       // about resuming *playback*, and this is a conversation the user is in
       // the middle of rather than a track they were listening to.
-      try? activate()
+      //
+      // Whichever configuration was in force, not always the capturing one: a
+      // phone call arriving while the rider was only listening must not hand
+      // the headset back on the hands-free profile.
+      try? (capturing ? activateCapturing() : activateListening())
       channel.invokeMethod("resumed", arguments: nil)
     @unknown default:
       break

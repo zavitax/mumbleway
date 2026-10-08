@@ -3,6 +3,49 @@
 Conventions and hard-won facts that are not visible from the code. Everything
 here was learned by getting it wrong first.
 
+## Search the code before designing against it
+
+**Before planning a feature or a fix, find out what this repository already
+does about it.** Not as diligence — because the answer is frequently already
+here, written down, with the reasoning and often with the measurement that
+settled it. Designing first and searching second produces confident proposals
+that this codebase disproved months ago.
+
+Two from one planning session, 2026-10-08, both caught only because somebody
+looked:
+
+- A plan to hide the Bluetooth profile-switch gap behind `paydown.rs`, treating
+  it as latency debt. `docs/ONSET_LATENCY.md`'s correction had already priced
+  that exact mistake: repayment happens *during* a transmission and p50 of a
+  transmit run is 1.52 s, so a one-second debt would never clear. The proposal
+  was not merely wrong, it was wrong for a reason already measured and recorded.
+- A plan to advertise per-user state in `Version.release` and read it back from
+  `UserStats`. `core/src/session/peers.rs` exists **precisely because that does
+  not work** — the server hands a client's version only to an admin holding Ban
+  on the root channel — and its header says so in the second paragraph.
+
+So, in order:
+
+1. **Grep for the concept, not just the identifier.** `peers.rs` does not
+   contain the word "hello message" in the form anybody would search for; it was
+   found by grepping for `handshake|announce`.
+2. **Read `docs/` for the subject.** The design docs carry retractions as well
+   as designs — `ONSET_LATENCY.md`, `MUSIC_GATE.md`, `VOICE_MODEL.md` and
+   `RELEASING.md` all contain a section that begins by saying the page was wrong.
+   Those sections are the most valuable text in the repository.
+3. **Read the module header before the module.** Headers here state what was
+   tried and rejected, and a function's doc comment often names the bug it
+   exists to prevent.
+4. **Prefer extending a mechanism to adding one.** `peers.rs` says outright that
+   it is "the foundation for anything MumbleWay-specific that clients exchange
+   later"; `render_segments` already generates every cue; `NoiseFloorTracker`
+   already solves "a threshold that must ride a floor which rises with speed".
+
+And when a rule here blocks a reasonable design, **check whether the rule is
+stated more broadly than its reason supports** — see the A2DP entry under
+*Audio: what is load-bearing and not obvious*, which was written as an absolute
+prohibition and had to be narrowed to what it actually meant.
+
 ## "Publish" means trigger `publish.yml`
 
 Not "push to main". Pushing runs `build.yml`, which compiles the matrix and
@@ -573,10 +616,16 @@ one, which is the same reason the app records its own capture input.
   returns bit-exact zero for two seconds. Zero, not "quiet": a real microphone
   in a silent room sits tens of dB above it, so this cannot fire on a quiet
   room.
-- **iOS must not be offered A2DP** on a `playAndRecord` session. A2DP is
-  output-only; offering it lets iOS take it when music starts and tear the input
-  down silently. This was a real bug, reported as "recording only works when
-  music is not playing".
+- **A session that expects input must not be offered A2DP.** A2DP is
+  output-only; offering it on a `playAndRecord` session lets iOS take it when
+  music starts and tear the input down silently. This was a real bug, reported
+  as "recording only works when music is not playing".
+
+  **The scope matters, and this entry used to overstate it.** It is not a ban on
+  ever being in an output-only state. Deliberately choosing `.playback` — no
+  input to lose, so the fault has no surface — is how hi-fi listening works in
+  `docs/CAPTURE_ON_DEMAND.md`. The rule is about a session that *wants* a
+  microphone and silently loses it, not about a session that has asked for none.
 - **A file iOS has no type for cannot be shared.** iOS types a shared item by
   its extension. `.s16` is not a type it knows, so it invents a *dynamic*
   identifier (`dyn.…`), and share targets that accept only declared types
@@ -678,3 +727,96 @@ not a per-block misclassification, and every number the transmit decision uses
 is measured downstream of the suppressor whose error it is supposed to catch.
 What is still missing is speech over the same music: that clip bounds false
 positives and can say nothing about recall.
+
+## Carrying app-specific state between MumbleWay clients
+
+Established 2026-10-08 while specifying `docs/CAPTURE_ON_DEMAND.md`. Three
+plausible carriers do not work, and the reasons are worth keeping because each
+looks fine until it is tried:
+
+- **A custom field on a `UserState` protobuf is dropped.** Murmur parses and
+  reconstructs the message, so unknown fields never reach another client.
+- **`Version.release` is admin-gated on readback.** The server will hand a
+  client's version to the user themselves or to an admin holding Ban on the root
+  channel, and to nobody else — see `core/src/session/quality.rs`, which checked
+  this against `msgUserStats` rather than assuming it.
+- **`plugin_context` and `plugin_identity` are not relayed at all.**
+  `core/proto/Mumble.proto` says so on each field: *"This value is not
+  transmitted to clients."*
+
+**The carrier is `PluginDataTransmission`, through `core/src/session/peers.rs`.**
+It is the one message any client may address to any other without a permission;
+the server stamps the sender's session itself, so it cannot be spoofed; and a
+client that does not know the data ID ignores it, so riders on the official
+client see nothing. That module's header says it is the foundation for exactly
+this, `DATA_ID_PREFIX` reserves the namespace, and `PROTOCOL` is bumped only
+when the shape of a hello changes — **add a capability, or an optional field with
+`#[serde(default)]`, rather than bumping it for a feature.**
+
+Two constraints that shape what belongs where: the server **rate-limits plugin
+messages and drops them silently** when the sender's bucket is empty, so nothing
+that changes often belongs here — put transient per-transition state on a
+standard field like `self_mute` and keep the plugin channel for standing facts.
+And a peer's claims are **a hint, never a credential**: decorate a roster row
+with them, gate nothing.
+
+## Cue machinery, before adding a cue
+
+- **`play_cue` replaces the queue rather than appending** — deliberately, so a
+  flapping connection cannot build a backlog that grows output latency
+  monotonically. The consequence is that two cues within a couple of hundred
+  milliseconds collide and only the later is heard, so **anything that must be
+  heard needs a priority, and anything timed off "the cue finished" needs its own
+  counter instead.**
+- **There is no generic cue FFI.** Dart can trigger participant cues and the test
+  tone and nothing else, so a new cue costs a variant, arms in `segments()` and
+  `amplitude()`, and — if Dart must fire it — a new `#[frb(sync)]` function plus
+  codegen.
+- **The grammar is documented and should be extended, not ignored**: falling
+  means lost, rising means restored, two tones mean microphone, three mean
+  hearing, said twice means urgent.
+- **Cues are mixed before the echo reference is taken**, so the canceller already
+  knows about them and they do not return as echo.
+- **Frequencies must sit inside 300–3400 Hz** if the cue can play while the
+  headset is on HFP. A tone outside that band works on a desk and vanishes on the
+  bike.
+
+## The recorder's rotation is a bundle budget
+
+`ROTATE_BYTES` is checked against **PCM bytes only**, and its 16 MiB was chosen
+as *"below Telegram's 20 MB ceiling with room for the decision log alongside
+it"* — one allowance covering the whole segment, not a per-file cap. Adding a
+track changes that arithmetic, so a third track means deciding between the bundle
+model and a per-file one rather than assuming the constant still means what it
+says. Either way the shared `{stem}-{index:03}` index is what makes a segment a
+coherent slice across tracks, and independent rotation would force every analysis
+to stitch by timestamp first.
+
+## Practices from planning sessions
+
+Earned on the proxy work and the capture-on-demand specification, and generic
+enough to apply again:
+
+- **A pre-existing bug found while planning gets its own commit**, on its own
+  bisect point, ahead of the feature that uncovered it.
+- **`flutter_rust_bridge` mirrors Rust type names verbatim**, so a bridge type
+  must not share a name with a Dart class that any file imports alongside it.
+  `ProxyConfig` already existed in `app/lib/services/proxy.dart`, and a second
+  one would have been a hard import collision in the one file needing both.
+- **A new connection-affecting field must be added to `sameConnection`**, or a
+  change arriving by cloud sync never rebuilds the session and the setting
+  silently does nothing until the next restart.
+- **`copyWith` needs an explicit `clearX` flag** for anything nullable, or
+  "unchanged" and "cleared" are the same call.
+- **One secret per entry reaches the keystore; a second stays in the clear.** The
+  sync machinery lifts exactly one, so an extra per-entry secret left inline
+  travels to iCloud and Android Backup unencrypted.
+- **Do not nest a second timeout budget inside an existing one.** A silent peer
+  would otherwise hold an attempt for longer than the reconnect backoff and the
+  silence rule were tuned for.
+- **Reading an `InheritedNotifier` subscribes the whole subtree**, so a `Watch`
+  around the smallest widget that needs the value is not a style preference.
+- **Equal pixel gaps do not look equal.** 27 px between two padded `IconButton`s
+  reads far smaller than 27 px between bare icons, because the padding is already
+  part of the gap. Spacing is decided by looking on both platforms, not by copying
+  a number from elsewhere in the file.

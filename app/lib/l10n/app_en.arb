@@ -1229,5 +1229,20 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tapToCapture": "Tap the phone to talk",
+  "tapToCaptureBody": "Music stays at full quality while you listen, and the microphone opens when you tap the phone through a pocket or a bag. Tap again to close it.",
+  "tapCount": "Taps",
+  "tapCountBody": "Three is a good default. Two is quicker but easier for a bump in the road to imitate; four is the most deliberate, for rough going.",
+  "autoStopCapture": "Close the microphone after a pause",
+  "autoStopCaptureBody": "Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.",
+  "@autoStopCaptureBody": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "micPushToTalkBlockedByTap": "Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.",
+  "micModeLockedWhileConnected": "The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it."
 }

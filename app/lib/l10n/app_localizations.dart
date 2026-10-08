@@ -3984,6 +3984,54 @@ abstract class L {
   /// In en, this message translates to:
   /// **'{count} held'**
   String accessTokensHeld(int count);
+
+  /// No description provided for @tapToCapture.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the phone to talk'**
+  String get tapToCapture;
+
+  /// No description provided for @tapToCaptureBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Music stays at full quality while you listen, and the microphone opens when you tap the phone through a pocket or a bag. Tap again to close it.'**
+  String get tapToCaptureBody;
+
+  /// No description provided for @tapCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Taps'**
+  String get tapCount;
+
+  /// No description provided for @tapCountBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Three is a good default. Two is quicker but easier for a bump in the road to imitate; four is the most deliberate, for rough going.'**
+  String get tapCountBody;
+
+  /// No description provided for @autoStopCapture.
+  ///
+  /// In en, this message translates to:
+  /// **'Close the microphone after a pause'**
+  String get autoStopCapture;
+
+  /// No description provided for @autoStopCaptureBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.'**
+  String autoStopCaptureBody(int seconds);
+
+  /// No description provided for @micPushToTalkBlockedByTap.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.'**
+  String get micPushToTalkBlockedByTap;
+
+  /// No description provided for @micModeLockedWhileConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it.'**
+  String get micModeLockedWhileConnected;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

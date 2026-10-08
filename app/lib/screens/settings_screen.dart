@@ -189,10 +189,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 32),
           _SectionHeader(l.micMode),
           _Explainer(l.micModeBody),
-          Watch<MicMode>(
-            (state) => state.micMode,
+          Watch<(MicMode, bool, bool)>(
+            (state) => (state.micMode, state.canChangeMicMode, state.tapToCapture),
             (context, state) => RadioGroup<MicMode>(
               groupValue: state.micMode,
+              // Always present, because `RadioGroup` requires it; the lock is
+              // carried by each row's `enabled` below and refused again in
+              // `updateMicMode`, which is the guard that matters.
               onChanged: (v) {
                 if (v != null) state.updateMicMode(v);
               },
@@ -201,13 +204,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   for (final m in MicMode.values)
                     RadioListTile<MicMode>(
                       value: m,
+                      // Push-to-talk is unavailable while the tap gesture is
+                      // on, and the two exclude each other in both directions.
+                      // Push-to-talk exists to put the microphone on the wire
+                      // the instant the button goes down; tap mode means it is
+                      // closed until tapped, so the button would do nothing
+                      // until a gesture had already been performed.
+                      enabled:
+                          state.canChangeMicMode &&
+                          !(m == MicMode.pushToTalk && state.tapToCapture),
                       title: Text(_micTitle(l, m)),
-                      subtitle: Text(_micSubtitle(l, m)),
+                      subtitle: Text(
+                        m == MicMode.pushToTalk && state.tapToCapture
+                            ? l.micPushToTalkBlockedByTap
+                            : _micSubtitle(l, m),
+                      ),
                     ),
                 ],
               ),
             ),
           ),
+          // Said once, under the group, rather than on each row: a mode locked
+          // for the duration of a call is a fact about the call and not about
+          // any one choice. It is locked because the mode is advertised in a
+          // connect-time hello, and letting it change would leave every remote
+          // roster describing something the rider is no longer doing.
+          Watch<bool>(
+            (state) => state.canChangeMicMode,
+            (context, state) => state.canChangeMicMode
+                ? const SizedBox.shrink()
+                : _Explainer(l.micModeLockedWhileConnected),
+          ),
+          const _TapToCaptureTile(),
           // With the microphone's other settings, because it is one: it
           // decides who besides the rider may open it.
           const _AllowRemoteUnmuteTile(),
@@ -599,6 +627,90 @@ class _AllowRemoteUnmuteTile extends StatelessWidget {
         onChanged: (v) => state.setAllowRemoteUnmuteEnabled(value: v),
       );
     });
+  }
+}
+
+/// Tap the phone to start and stop capture, with its tap count and auto-stop.
+///
+/// **Nested, because auto-stop alone is a trap.** On its own it would release
+/// capture after the silence timeout with nothing able to ask for it back, so it
+/// is a sub-setting rather than a sibling — and nesting makes that dependency
+/// visible in the interface rather than enforced by a guard the rider cannot
+/// see. The Network section's proxy tile and its two dependent switches are the
+/// shape this follows.
+class _TapToCaptureTile extends StatelessWidget {
+  const _TapToCaptureTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Watch<(bool, int, bool, int, bool)>(
+      (state) => (
+        state.tapToCapture,
+        state.tapCount,
+        state.autoStopCapture,
+        state.autoStopSeconds,
+        state.canChangeMicMode,
+      ),
+      (context, state) {
+        final l = L.of(context);
+        final on = state.tapToCapture;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.touch_app),
+              title: Text(l.tapToCapture),
+              subtitle: Text(l.tapToCaptureBody),
+              isThreeLine: true,
+              value: on,
+              // Shares the mode's lock, and for the same reason: it changes
+              // what the connect-time hello says about this rider.
+              onChanged: state.canChangeMicMode
+                  ? (v) => state.updateTapToCapture(v)
+                  : null,
+            ),
+            if (on) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 72, right: 16, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(l.tapCount, style: Theme.of(context).textTheme.bodyMedium),
+                    const SizedBox(height: 4),
+                    SegmentedButton<int>(
+                      segments: [
+                        for (final n in [2, 3, 4])
+                          ButtonSegment<int>(value: n, label: Text('$n')),
+                      ],
+                      selected: {state.tapCount},
+                      onSelectionChanged: (s) =>
+                          state.updateTapCount(s.first),
+                    ),
+                    const SizedBox(height: 4),
+                    // Three is the default because it is the first count that
+                    // carries timing evidence at all: two taps give one
+                    // interval, so there is nothing to compare it against.
+                    Text(
+                      l.tapCountBody,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              SwitchListTile(
+                secondary: const SizedBox(width: 24),
+                contentPadding: const EdgeInsets.only(left: 72, right: 16),
+                title: Text(l.autoStopCapture),
+                subtitle: Text(l.autoStopCaptureBody(state.autoStopSeconds)),
+                isThreeLine: true,
+                value: state.autoStopCapture,
+                onChanged: (v) => state.updateAutoStopCapture(v),
+              ),
+            ],
+          ],
+        );
+      },
+    );
   }
 }
 

@@ -44,6 +44,7 @@ pub struct SessionManager {
     client_name: String,
     /// The app's own version, as other MumbleWay clients are told it.
     app_version: String,
+    mic_mode_hint: String,
     events_out: mpsc::Sender<TaggedEvent>,
     max_sessions: usize,
 }
@@ -59,6 +60,7 @@ impl SessionManager {
             identity,
             client_name: client_name.into(),
             app_version: String::new(),
+            mic_mode_hint: String::new(),
             events_out,
             max_sessions: MAX_CONCURRENT_SESSIONS,
         }
@@ -73,6 +75,25 @@ impl SessionManager {
     pub fn with_app_version(mut self, version: impl Into<String>) -> Self {
         self.app_version = version.into();
         self
+    }
+
+    /// Sets the transmission mode advertised to other MumbleWay clients.
+    ///
+    /// **Read when a session is created and never afterwards**, because the
+    /// hello is a connect-time message and is only authoritative if the mode
+    /// cannot change under it. Changing this takes effect on the next connect,
+    /// which is the same guarantee the settings screen gives the rider.
+    ///
+    /// One of `peers::mic_mode`'s constants; empty says nothing, which is what
+    /// a client that predates the field also says.
+    pub fn with_mic_mode_hint(mut self, mode: impl Into<String>) -> Self {
+        self.mic_mode_hint = mode.into();
+        self
+    }
+
+    /// Changes what later sessions will advertise.
+    pub fn set_mic_mode_hint(&mut self, mode: impl Into<String>) {
+        self.mic_mode_hint = mode.into();
     }
 
     /// Overrides the concurrency limit (used by tests).
@@ -133,6 +154,7 @@ impl SessionManager {
             identity: self.identity.clone(),
             client_name: self.client_name.clone(),
             app_version: self.app_version.clone(),
+            mic_mode_hint: self.mic_mode_hint.clone(),
             backoff: BackoffPolicy::default(),
         };
 

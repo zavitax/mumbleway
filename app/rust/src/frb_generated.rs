@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1663812933;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -146881539;
 
 // Section: executor
 
@@ -3208,6 +3208,42 @@ fn wire__crate__api__mumbleway__set_mic_mode_impl(
         },
     )
 }
+fn wire__crate__api__mumbleway__set_mic_mode_hint_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_mic_mode_hint",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_mode = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::mumbleway::set_mic_mode_hint(api_mode).await?;
+                        Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__mumbleway__set_microphone_muted_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -4745,11 +4781,13 @@ impl SseDecode for crate::api::mumbleway::StartupOptions {
         let mut var_noise = <crate::api::mumbleway::NoiseSetting>::sse_decode(deserializer);
         let mut var_micMode = <crate::api::mumbleway::MicMode>::sse_decode(deserializer);
         let mut var_appVersion = <String>::sse_decode(deserializer);
+        let mut var_micModeHint = <String>::sse_decode(deserializer);
         return crate::api::mumbleway::StartupOptions {
             storage_dir: var_storageDir,
             noise: var_noise,
             mic_mode: var_micMode,
             app_version: var_appVersion,
+            mic_mode_hint: var_micModeHint,
         };
     }
 }
@@ -5520,37 +5558,40 @@ fn pde_ffi_dispatcher_primary_impl(
             wire__crate__api__mumbleway__set_default_channel_impl(port, ptr, rust_vec_len, data_len)
         }
         91 => wire__crate__api__mumbleway__set_listening_impl(port, ptr, rust_vec_len, data_len),
-        97 => wire__crate__api__mumbleway__set_priority_speaker_impl(
+        93 => {
+            wire__crate__api__mumbleway__set_mic_mode_hint_impl(port, ptr, rust_vec_len, data_len)
+        }
+        98 => wire__crate__api__mumbleway__set_priority_speaker_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        99 => wire__crate__api__mumbleway__set_self_deaf_impl(port, ptr, rust_vec_len, data_len),
-        100 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
-        103 => {
+        100 => wire__crate__api__mumbleway__set_self_deaf_impl(port, ptr, rust_vec_len, data_len),
+        101 => wire__crate__api__mumbleway__set_self_mute_impl(port, ptr, rust_vec_len, data_len),
+        104 => {
             wire__crate__api__mumbleway__set_user_local_mute_impl(port, ptr, rust_vec_len, data_len)
         }
-        104 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
+        105 => wire__crate__api__mumbleway__set_user_server_deaf_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        105 => wire__crate__api__mumbleway__set_user_server_mute_impl(
+        106 => wire__crate__api__mumbleway__set_user_server_mute_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        108 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
-        111 => wire__crate__api__mumbleway__trigger_context_action_impl(
+        109 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
+        112 => wire__crate__api__mumbleway__trigger_context_action_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        112 => {
+        113 => {
             wire__crate__api__mumbleway__unregister_users_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -5632,25 +5673,25 @@ fn pde_ffi_dispatcher_sync_impl(
             wire__crate__api__mumbleway__set_level_normalisation_impl(ptr, rust_vec_len, data_len)
         }
         92 => wire__crate__api__mumbleway__set_mic_mode_impl(ptr, rust_vec_len, data_len),
-        93 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
-        94 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
-        95 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
-        96 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
-        98 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
-        101 => wire__crate__api__mumbleway__set_simple_model_impl(ptr, rust_vec_len, data_len),
-        102 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
-        106 => {
+        94 => wire__crate__api__mumbleway__set_microphone_muted_impl(ptr, rust_vec_len, data_len),
+        95 => wire__crate__api__mumbleway__set_monitoring_impl(ptr, rust_vec_len, data_len),
+        96 => wire__crate__api__mumbleway__set_noise_impl(ptr, rust_vec_len, data_len),
+        97 => wire__crate__api__mumbleway__set_output_volume_db_impl(ptr, rust_vec_len, data_len),
+        99 => wire__crate__api__mumbleway__set_reverb_impl(ptr, rust_vec_len, data_len),
+        102 => wire__crate__api__mumbleway__set_simple_model_impl(ptr, rust_vec_len, data_len),
+        103 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
+        107 => {
             wire__crate__api__mumbleway__set_voice_communication_impl(ptr, rust_vec_len, data_len)
         }
-        107 => wire__crate__api__mumbleway__start_diagnostic_recording_impl(
+        108 => wire__crate__api__mumbleway__start_diagnostic_recording_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        109 => {
+        110 => {
             wire__crate__api__mumbleway__stop_diagnostic_recording_impl(ptr, rust_vec_len, data_len)
         }
-        110 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        111 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -6127,6 +6168,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::StartupOptions {
             self.noise.into_into_dart().into_dart(),
             self.mic_mode.into_into_dart().into_dart(),
             self.app_version.into_into_dart().into_dart(),
+            self.mic_mode_hint.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -7572,6 +7614,7 @@ impl SseEncode for crate::api::mumbleway::StartupOptions {
         <crate::api::mumbleway::NoiseSetting>::sse_encode(self.noise, serializer);
         <crate::api::mumbleway::MicMode>::sse_encode(self.mic_mode, serializer);
         <String>::sse_encode(self.app_version, serializer);
+        <String>::sse_encode(self.mic_mode_hint, serializer);
     }
 }
 

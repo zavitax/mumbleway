@@ -229,6 +229,16 @@ struct Wire {
     caps: Vec<String>,
     #[serde(default)]
     reply: bool,
+    /// How this rider transmits, so a remote roster can say why they are quiet.
+    ///
+    /// **Absent is "did not say", and that is why no capability is needed for
+    /// it.** The field's own presence is the signal a capability would
+    /// otherwise have encoded, and the rule at [`PROTOCOL`] — add a capability
+    /// rather than bump the number when a feature is added — is satisfied
+    /// without either, because an absent optional field breaks no parser in
+    /// both directions.
+    #[serde(default)]
+    mic_mode: String,
 }
 
 /// A hello, as received.
@@ -237,6 +247,12 @@ pub struct Hello {
     pub version: String,
     pub proto: u32,
     pub caps: Vec<String>,
+    /// What the sender said about how they transmit, or empty for an older
+    /// client that does not say.
+    ///
+    /// **A hint, never a credential**, as everything else a peer claims is: it
+    /// decorates a roster row and gates nothing. See [`MicModeHint`].
+    pub mic_mode: String,
     /// True for an answer to somebody's announcement, which must not itself be
     /// answered.
     pub reply: bool,
@@ -260,15 +276,37 @@ impl Peer {
 
 /// Encodes a hello. Always within [`MAX_DATA_LENGTH`] for any version this app
 /// could carry.
-pub fn encode_hello(version: &str, caps: &[&str], reply: bool) -> Vec<u8> {
+pub fn encode_hello(version: &str, caps: &[&str], reply: bool, mic_mode: &str) -> Vec<u8> {
     let wire = Wire {
         app: APP_NAME.to_string(),
         proto: PROTOCOL,
         version: clean(version, MAX_VERSION_LENGTH),
         caps: caps.iter().map(|c| clean(c, MAX_CAP_LENGTH)).collect(),
         reply,
+        mic_mode: clean(mic_mode, MAX_CAP_LENGTH),
     };
     serde_json::to_vec(&wire).unwrap_or_default()
+}
+
+/// What a peer's advertised transmission mode means on a roster.
+///
+/// **Why the mode and not a tap-mode flag.** What a remote rider wants to know
+/// is *why this person is quiet and what to expect from them*, and push-to-talk
+/// deserves that as much as tap-to-capture does: silence from a rider holding a
+/// button means nothing is wrong, and knowing so saves repeating a question.
+///
+/// The strings are the wire format. They are short because the hello is capped,
+/// and they must not be renamed — an older client sending the old spelling would
+/// read as "did not say".
+pub mod mic_mode {
+    /// Muted between taps; expect a second or two before an answer.
+    pub const TAP: &str = "tap";
+    /// Quiet unless holding a button.
+    pub const PUSH_TO_TALK: &str = "ptt";
+    /// Will answer when they speak.
+    pub const VOICE: &str = "vox";
+    /// Always live.
+    pub const OPEN: &str = "open";
 }
 
 /// Decodes a hello, or `None` for anything that is not one.
@@ -288,6 +326,7 @@ pub fn decode_hello(data: &[u8]) -> Option<Hello> {
     Some(Hello {
         version: clean(&wire.version, MAX_VERSION_LENGTH),
         proto: wire.proto,
+        mic_mode: clean(&wire.mic_mode, MAX_CAP_LENGTH),
         caps: wire
             .caps
             .iter()
@@ -630,6 +669,7 @@ mod tests {
         Hello {
             version: version.into(),
             proto: PROTOCOL,
+            mic_mode: String::new(),
             caps: vec![],
             reply,
         }
@@ -637,7 +677,7 @@ mod tests {
 
     #[test]
     fn a_hello_survives_the_round_trip() {
-        let bytes = encode_hello("1.0.1", &["loss-report"], false);
+        let bytes = encode_hello("1.0.1", &["loss-report"], false, mic_mode::VOICE);
         let h = decode_hello(&bytes).expect("our own hello must decode");
         assert_eq!(h.version, "1.0.1");
         assert_eq!(h.proto, PROTOCOL);
@@ -650,10 +690,33 @@ mod tests {
         // The server drops a plugin message over these limits without telling
         // the sender, so a hello that grew past them would silently stop
         // detecting anybody.
-        let bytes = encode_hello(&"9".repeat(500), &["c"; 64], true);
+        let bytes = encode_hello(&"9".repeat(500), &["c"; 64], true, mic_mode::TAP);
         assert!(bytes.len() <= MAX_DATA_LENGTH, "{} bytes", bytes.len());
         assert!(DATA_ID_HELLO.len() <= MAX_DATA_ID_LENGTH);
         assert!(DATA_ID_HELLO.starts_with(DATA_ID_PREFIX));
+    }
+
+    #[test]
+    fn a_mode_rides_in_the_hello_and_its_absence_is_not_a_failure() {
+        // The claim that justifies putting the mode in the hello rather than in
+        // a message of its own: an absent optional field breaks no parser in
+        // either direction, so no capability and no `PROTOCOL` bump is needed.
+        let with = decode_hello(&encode_hello("1.1.0", &[], false, mic_mode::TAP)).unwrap();
+        assert_eq!(with.mic_mode, mic_mode::TAP);
+
+        // What a client that predates the field sends. It must parse, and it
+        // must say "did not say" rather than guessing at a mode — a roster that
+        // invents one is worse than a roster that stays quiet.
+        let older = decode_hello(br#"{"app":"MumbleWay","proto":1,"version":"1.0.1"}"#).unwrap();
+        assert_eq!(older.mic_mode, "", "an older hello must mean 'did not say'");
+        assert_eq!(older.version, "1.0.1");
+
+        // And an unknown mode is carried through rather than rejected, because
+        // a later release may name one this build has never heard of. It is a
+        // hint on a roster row, so the worst case is a word nobody renders.
+        let future =
+            decode_hello(br#"{"app":"MumbleWay","proto":1,"mic_mode":"telepathy"}"#).unwrap();
+        assert_eq!(future.mic_mode, "telepathy");
     }
 
     #[test]
@@ -914,6 +977,7 @@ mod tests {
         let hello = Hello {
             version: "1.0".into(),
             proto: PROTOCOL,
+            mic_mode: String::new(),
             caps: vec![CAP_MUTE_NOTICE.into()],
             reply: false,
         };
@@ -943,6 +1007,7 @@ mod tests {
             Hello {
                 version: "0.9".into(),
                 proto: PROTOCOL,
+                mic_mode: String::new(),
                 caps: vec![CAP_REMOTE_MUTE.into()],
                 reply: false,
             },
@@ -982,6 +1047,7 @@ mod tests {
             Hello {
                 version: "1.0.2".into(),
                 proto: 1,
+                mic_mode: String::new(),
                 caps: vec![CAP_REMOTE_MUTE.into()],
                 reply: true,
             },
@@ -1150,6 +1216,7 @@ mod tests {
             Hello {
                 version: "2.0".into(),
                 proto: 2,
+                mic_mode: String::new(),
                 caps: vec!["loss-report".into()],
                 reply: true,
             },

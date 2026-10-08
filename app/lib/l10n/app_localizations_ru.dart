@@ -2182,4 +2182,34 @@ class LRu extends L {
   String accessTokensHeld(int count) {
     return 'ключей: $count';
   }
+
+  @override
+  String get tapToCapture => 'Нажать по телефону, чтобы говорить';
+
+  @override
+  String get tapToCaptureBody =>
+      'Пока вы слушаете, музыка звучит в полном качестве, а микрофон открывается, когда вы постукиваете по телефону через карман или сумку. Ещё раз — и он закрывается.';
+
+  @override
+  String get tapCount => 'Постукиваний';
+
+  @override
+  String get tapCountBody =>
+      'Три — хорошее значение по умолчанию. Два быстрее, но их легче повторить ямой на дороге; четыре — самое осознанное действие, для разбитых дорог.';
+
+  @override
+  String get autoStopCapture => 'Закрывать микрофон после паузы';
+
+  @override
+  String autoStopCaptureBody(int seconds) {
+    return 'Прекращает запись через $seconds с, если никто не говорит, чтобы не нужно было помнить про повторное постукивание.';
+  }
+
+  @override
+  String get micPushToTalkBlockedByTap =>
+      'Недоступно, пока включено постукивание: кнопка не может сработать сразу, если микрофон закрыт до постукивания.';
+
+  @override
+  String get micModeLockedWhileConnected =>
+      'Режим микрофона нельзя менять во время разговора: другие участники узнают о нём при подключении. Чтобы изменить, отключитесь.';
 }

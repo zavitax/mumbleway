@@ -666,6 +666,16 @@ void setAudioRoute({required int code}) =>
 void playTestTone({required int millis}) =>
     RustLib.instance.api.crateApiMumblewayPlayTestTone(millis: millis);
 
+/// Changes what later sessions tell other MumbleWay clients about this rider.
+///
+/// **Takes effect on the next connect, not on this one.** The hello is a
+/// connect-time message, so it is only authoritative if the mode cannot change
+/// under it — which is why the settings screen locks the control while a
+/// session is live and says so, rather than letting a roster go stale with no
+/// visible cause.
+Future<void> setMicModeHint({required String mode}) =>
+    RustLib.instance.api.crateApiMumblewaySetMicModeHint(mode: mode);
+
 /// Opens or closes the capture half of the device pair.
 ///
 /// `false` is the listening state of `docs/CAPTURE_ON_DEMAND.md`: output alive
@@ -1358,11 +1368,21 @@ class StartupOptions {
   /// bumped, and is how every server came to be told this was "MumbleWay 0.1".
   final String appVersion;
 
+  /// How the rider transmits, advertised to other MumbleWay clients.
+  ///
+  /// One of `tap`, `ptt`, `vox` or `open`; empty says nothing, which is also
+  /// what a client predating the field says. Read when a session is created
+  /// and not afterwards, because the hello is a connect-time message and the
+  /// mode is locked for a connection's duration — see
+  /// `docs/CAPTURE_ON_DEMAND.md`.
+  final String micModeHint;
+
   const StartupOptions({
     required this.storageDir,
     required this.noise,
     required this.micMode,
     required this.appVersion,
+    required this.micModeHint,
   });
 
   @override
@@ -1370,7 +1390,8 @@ class StartupOptions {
       storageDir.hashCode ^
       noise.hashCode ^
       micMode.hashCode ^
-      appVersion.hashCode;
+      appVersion.hashCode ^
+      micModeHint.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1380,7 +1401,8 @@ class StartupOptions {
           storageDir == other.storageDir &&
           noise == other.noise &&
           micMode == other.micMode &&
-          appVersion == other.appVersion;
+          appVersion == other.appVersion &&
+          micModeHint == other.micModeHint;
 }
 
 /// A status change for one server.

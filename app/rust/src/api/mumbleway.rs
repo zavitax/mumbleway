@@ -728,6 +728,14 @@ pub struct StartupOptions {
     /// this crate's `CARGO_PKG_VERSION` — which is `0.1.0` and has never been
     /// bumped, and is how every server came to be told this was "MumbleWay 0.1".
     pub app_version: String,
+    /// How the rider transmits, advertised to other MumbleWay clients.
+    ///
+    /// One of `tap`, `ptt`, `vox` or `open`; empty says nothing, which is also
+    /// what a client predating the field says. Read when a session is created
+    /// and not afterwards, because the hello is a connect-time message and the
+    /// mode is locked for a connection's duration — see
+    /// `docs/CAPTURE_ON_DEMAND.md`.
+    pub mic_mode_hint: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -972,7 +980,8 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         .trim()
         .to_string();
     let manager = SessionManager::new(identity.clone(), client_name, ev_tx)
-        .with_app_version(options.app_version.clone());
+        .with_app_version(options.app_version.clone())
+        .with_mic_mode_hint(options.mic_mode_hint.clone());
 
     let level_shared = shared.clone();
     // Shared with App so the level task can name the server a stream belongs to.
@@ -3352,6 +3361,20 @@ pub fn set_audio_route(code: u8) -> anyhow::Result<()> {
 #[frb(sync)]
 pub fn play_test_tone(millis: u32) -> anyhow::Result<()> {
     app()?.shared.play_test_tone(millis);
+    Ok(())
+}
+
+/// Changes what later sessions tell other MumbleWay clients about this rider.
+///
+/// **Takes effect on the next connect, not on this one.** The hello is a
+/// connect-time message, so it is only authoritative if the mode cannot change
+/// under it — which is why the settings screen locks the control while a
+/// session is live and says so, rather than letting a roster go stale with no
+/// visible cause.
+pub async fn set_mic_mode_hint(mode: String) -> anyhow::Result<()> {
+    let app = app()?;
+    let mut manager = app.manager.lock().await;
+    manager.set_mic_mode_hint(mode);
     Ok(())
 }
 

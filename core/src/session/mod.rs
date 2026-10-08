@@ -57,6 +57,14 @@ pub struct SessionConfig {
     pub client_name: String,
     /// The app's own version, as other MumbleWay clients are told it.
     pub app_version: String,
+    /// How this rider transmits, advertised to other MumbleWay clients.
+    ///
+    /// **In the config rather than settable mid-session, because the mode is
+    /// locked for the duration of a connection.** The hello is a connect-time
+    /// message, so it is only authoritative if the mode cannot change under it
+    /// — see `docs/CAPTURE_ON_DEMAND.md`. One of `peers::mic_mode`'s constants,
+    /// or empty to say nothing.
+    pub mic_mode_hint: String,
     pub backoff: BackoffPolicy,
 }
 
@@ -80,6 +88,7 @@ struct LiveState {
     plugin_data: bool,
     /// Our own version, for our own roster entry.
     own_version: String,
+    own_mic_mode: String,
     /// When to announce ourselves, and when to stop.
     announcer: peers::Announcer,
     /// The server's measurements of each rider's connection, by session.
@@ -170,6 +179,7 @@ impl LiveState {
             peers: peers::Peers::default(),
             plugin_data: false,
             own_version: String::new(),
+            own_mic_mode: String::new(),
             announcer: peers::Announcer::armed(Instant::now()),
             quality: HashMap::new(),
             quality_fresh: false,
@@ -593,6 +603,7 @@ impl Session {
         self.set_state(ConnectionState::Handshaking).await;
         let mut state = LiveState::new();
         state.own_version = self.config.app_version.clone();
+        state.own_mic_mode = self.config.mic_mode_hint.clone();
 
         // --- handshake -----------------------------------------------------
         let version = mumble::Version {
@@ -996,7 +1007,8 @@ impl Session {
                             .into_iter()
                             .filter(|s| state.users.contains_key(s))
                             .collect();
-                        send_hello(writer, &state.own_version, owed, true).await?;
+                        send_hello(writer, &state.own_version, owed, true, &state.own_mic_mode)
+                            .await?;
 
                         // Say who we are, and say it again to anybody who has
                         // not answered — the server drops a plugin message
@@ -1010,7 +1022,14 @@ impl Session {
                                 // nobody else here at all.
                                 state.announcer.stop();
                             } else {
-                                send_hello(writer, &state.own_version, unheard, false).await?;
+                                send_hello(
+                                    writer,
+                                    &state.own_version,
+                                    unheard,
+                                    false,
+                                    &state.own_mic_mode,
+                                )
+                                .await?;
                                 state.announcer.sent(now);
                             }
                         }
@@ -2294,6 +2313,7 @@ async fn send_hello(
     version: &str,
     receivers: Vec<u32>,
     reply: bool,
+    mic_mode: &str,
 ) -> Result<()> {
     if receivers.is_empty() {
         return Ok(());
@@ -2301,7 +2321,7 @@ async fn send_hello(
     let m = mumble::PluginDataTransmission {
         sender_session: None,
         receiver_sessions: receivers,
-        data: Some(peers::encode_hello(version, peers::CAPABILITIES, reply).into()),
+        data: Some(peers::encode_hello(version, peers::CAPABILITIES, reply, mic_mode).into()),
         data_id: Some(peers::DATA_ID_HELLO.to_string()),
     };
     writer.send(MessageType::PluginDataTransmission, &m).await

@@ -1054,6 +1054,7 @@ class AppState extends ChangeNotifier {
           noise: noise,
           micMode: micMode,
           appVersion: await _appVersion(),
+          micModeHint: _micModeHint,
         ),
       );
 
@@ -1789,13 +1790,24 @@ class AppState extends ChangeNotifier {
       setNoise(noise: noise);
       changed = true;
     }
+    // **Deferred while connected, not applied.** `micMode` is synced, so
+    // another device can change it mid-call — and the mode is advertised in a
+    // connect-time hello, so applying it here would leave every remote roster
+    // describing something this rider is no longer doing, with nothing visible
+    // to explain it. The value stays in the sync payload and arrives on the
+    // next pass, which is the same shape as `canModifyServer` deferring an
+    // edit for a live session.
     if (read<int>('micMode') case final v?
-        when v >= 0 &&
+        when canChangeMicMode &&
+            v >= 0 &&
             v < MicMode.values.length &&
             MicMode.values[v] != micMode) {
       micMode = MicMode.values[v];
       await prefs.setInt(_prefsMic, v);
       setMicMode(mode: micMode);
+      try {
+        await setMicModeHint(mode: _micModeHint);
+      } catch (_) {}
       changed = true;
     }
     if (read<double>('inputGain') case final v? when v != inputGainDbValue) {
@@ -2347,8 +2359,33 @@ class AppState extends ChangeNotifier {
   /// instead do nothing until a gesture had already been performed. Open mic is
   /// *not* excluded — tap to open, tap to close is coherent, and arguably the
   /// clearest use of the feature.
-  bool get _captureOnDemand =>
-      tapToCapture && micMode != MicMode.pushToTalk;
+  bool get _captureOnDemand => tapToCapture && micMode != MicMode.pushToTalk;
+
+  /// What other MumbleWay clients are told about how this rider transmits.
+  ///
+  /// So a remote roster can say *why* somebody is quiet and what to expect from
+  /// them — silence from a rider holding a button means nothing is wrong, and
+  /// knowing that saves repeating a question. The strings are the wire format
+  /// and live in `core/src/session/peers.rs`.
+  String get _micModeHint {
+    if (_captureOnDemand) return 'tap';
+    return switch (micMode) {
+      MicMode.pushToTalk => 'ptt',
+      MicMode.voiceActivity => 'vox',
+      MicMode.continuous => 'open',
+    };
+  }
+
+  /// Whether the transmission mode may be changed right now.
+  ///
+  /// **Locked while anything is connected**, because the mode is advertised in
+  /// a connect-time hello and is only authoritative if it cannot change under
+  /// it. Letting it change would leave a remote roster stale with no visible
+  /// cause, which is worse than not showing the mode at all.
+  ///
+  /// The settings screen disables the control and says why, rather than
+  /// accepting a change that quietly does nothing until the next connect.
+  bool get canChangeMicMode => !_callInProgress;
 
   /// Asks for the microphone.
   ///
@@ -4593,9 +4630,65 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> updateMicMode(MicMode v) async {
+    // Refused rather than deferred while connected. The mode is advertised in a
+    // connect-time hello, so accepting a change here would leave every remote
+    // roster describing something the rider is no longer doing — and the
+    // interface disables the control and says so, so this is a guard rather
+    // than the explanation.
+    if (!canChangeMicMode) return;
     micMode = v;
     setMicMode(mode: v);
     if (v != MicMode.pushToTalk && _transmitting) setTransmit(false);
+    // Takes effect on the next connect, which is exactly what the lock above
+    // guarantees is the only time it can matter.
+    try {
+      await setMicModeHint(mode: _micModeHint);
+    } catch (_) {
+      // No engine yet; `startEngine` carries the hint when one comes up.
+    }
+    await _persist();
+    notifyListeners();
+  }
+
+  /// Turns the tap gesture on or off.
+  ///
+  /// Shares [canChangeMicMode]'s lock, and for the same reason: it changes what
+  /// the hello says.
+  Future<void> updateTapToCapture(bool on) async {
+    if (!canChangeMicMode) return;
+    tapToCapture = on;
+    try {
+      await setMicModeHint(mode: _micModeHint);
+    } catch (_) {}
+    await _persist();
+    notifyListeners();
+  }
+
+  /// How many taps the gesture takes.
+  Future<void> updateTapCount(int taps) async {
+    tapCount = taps.clamp(2, 4);
+    await _persist();
+    notifyListeners();
+  }
+
+  /// Whether capture releases itself after a stretch of silence.
+  Future<void> updateAutoStopCapture(bool on) async {
+    autoStopCapture = on;
+    // Re-armed or cancelled at once, so a rider who switches it off mid-ride is
+    // not released ten seconds later by a timer nobody can see.
+    if (on) {
+      _armCaptureIdle();
+    } else {
+      _captureIdle?.cancel();
+      _captureIdle = null;
+    }
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> updateAutoStopSeconds(int seconds) async {
+    autoStopSeconds = seconds.clamp(5, 300);
+    if (autoStopCapture) _armCaptureIdle();
     await _persist();
     notifyListeners();
   }

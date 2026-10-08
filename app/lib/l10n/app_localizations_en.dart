@@ -2193,4 +2193,34 @@ class LEn extends L {
   String accessTokensHeld(int count) {
     return '$count held';
   }
+
+  @override
+  String get tapToCapture => 'Tap the phone to talk';
+
+  @override
+  String get tapToCaptureBody =>
+      'Music stays at full quality while you listen, and the microphone opens when you tap the phone through a pocket or a bag. Tap again to close it.';
+
+  @override
+  String get tapCount => 'Taps';
+
+  @override
+  String get tapCountBody =>
+      'Three is a good default. Two is quicker but easier for a bump in the road to imitate; four is the most deliberate, for rough going.';
+
+  @override
+  String get autoStopCapture => 'Close the microphone after a pause';
+
+  @override
+  String autoStopCaptureBody(int seconds) {
+    return 'Stops capturing after $seconds seconds with nobody talking, so you do not have to remember to tap again.';
+  }
+
+  @override
+  String get micPushToTalkBlockedByTap =>
+      'Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.';
+
+  @override
+  String get micModeLockedWhileConnected =>
+      'The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it.';
 }

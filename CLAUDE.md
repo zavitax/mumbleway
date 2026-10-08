@@ -250,12 +250,25 @@ build on this platform.
 ## Verification, before saying something works
 
 ```bash
-cd core && cargo fmt --check   # CI runs this first, and it gates every job
-cd core && cargo clippy --all-targets -- -D warnings   # same job, right after
-cd core && cargo test          # 404 tests
-cd app  && flutter analyze     # must be clean
-cd app  && flutter test        # 215 tests
+cd core     && cargo fmt --check   # CI runs this first, and it gates every job
+cd core     && cargo clippy --all-targets -- -D warnings   # same job, right after
+cd core     && cargo test          # 571 tests
+cd app/rust && cargo clippy --all-targets -- -D warnings   # a SECOND crate
+cd app/rust && cargo test          # 13 tests
+cd app      && flutter analyze     # must be clean
+cd app      && flutter test        # 502 tests
 ```
+
+**`app/rust` is a separate crate and a green `core` says nothing about it.**
+Found on 2026-10-08, and it had been true for weeks: two `ServerConfig`
+literals in its tests were missing a field added by the proxy work, so that
+test target had not compiled and its thirteen tests had not run — including the
+ones written to stop `add_server` and the profile path disagreeing, which is the
+bug they exist for. Nothing reported it, because `cargo check` builds the
+library and never looks at the tests, and nobody ran `--all-targets` there.
+The same session shipped an `App` struct missing a field for the same reason:
+`core` built, so it looked verified, and the iOS build on the Mac was the first
+thing to compile the bridge at all.
 
 **Clippy is on this list because leaving it off cost a red build.** It sits in
 the `Tests` job between `fmt` and the engine tests, on the same `needs: test`

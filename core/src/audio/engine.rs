@@ -2276,18 +2276,29 @@ impl AudioShared {
     /// or 48. A profile change therefore invalidates *both* stream
     /// configurations, so both are rebuilt, which is what the device thread
     /// already does for every other reason.
-    pub fn set_capture_wanted(&self, wanted: bool) {
+    /// Returns whether a rebuild was actually started, so a caller knows
+    /// whether there is anything to wait on. [`Self::await_open`] blocks until
+    /// an outcome is published, and publishing one is the device thread's job —
+    /// so waiting when nothing was asked for is a ten-second stall, and reading
+    /// the *previous* open's verdict is the subtler version of the same bug.
+    #[must_use]
+    pub fn set_capture_wanted(&self, wanted: bool) -> bool {
         if self.capture_wanted.swap(wanted, Ordering::AcqRel) == wanted {
-            return;
+            return false;
         }
         // Nothing to rebuild until the devices are wanted at all; the next open
         // reads the flag.
         if !self.audio_wanted() {
-            return;
+            return false;
         }
+        // Cleared before the request rather than after the answer, for the
+        // reason `set_audio_wanted` gives: otherwise the caller can be handed
+        // the verdict on the open before this one.
+        *self.open_outcome.lock() = None;
         let _guard = self.device_wake.lock();
         self.device_generation.fetch_add(1, Ordering::Release);
         self.device_changed.notify_all();
+        true
     }
 
     /// Asks for the devices to be opened or closed.
@@ -5847,8 +5858,15 @@ mod tests {
         // Nothing to rebuild while the devices are not wanted at all: the next
         // open reads the flag, so bumping the generation here would be a
         // reopen of nothing.
+        // The return value is "a rebuild was started", and it is what the
+        // caller waits on: `await_open` blocks until the device thread
+        // publishes an outcome, so waiting when nothing was asked for is a
+        // ten-second stall.
         let idle = shared.device_generation();
-        shared.set_capture_wanted(false);
+        assert!(
+            !shared.set_capture_wanted(false),
+            "a rebuild was claimed while the devices were closed"
+        );
         assert!(!shared.capture_wanted());
         assert_eq!(
             shared.device_generation(),
@@ -5863,7 +5881,10 @@ mod tests {
         // Asking for what is already true must not rebuild the pair: each
         // rebuild renegotiates an SCO link, which is a second or two and is
         // audible in the helmet.
-        shared.set_capture_wanted(false);
+        assert!(
+            !shared.set_capture_wanted(false),
+            "a capture state that had not changed claimed a rebuild"
+        );
         assert_eq!(
             shared.device_generation(),
             open,
@@ -5872,7 +5893,10 @@ mod tests {
 
         // And a real change does, because the two profiles disagree about the
         // sample rate and both streams are built from what the device reports.
-        shared.set_capture_wanted(true);
+        assert!(
+            shared.set_capture_wanted(true),
+            "a transition did not report a rebuild to wait for"
+        );
         assert!(
             shared.device_generation() > open,
             "a transition did not reopen"

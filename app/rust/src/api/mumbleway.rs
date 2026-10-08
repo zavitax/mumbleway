@@ -3306,6 +3306,79 @@ pub fn play_test_tone(millis: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Opens or closes the capture half of the device pair.
+///
+/// `false` is the listening state of `docs/CAPTURE_ON_DEMAND.md`: output alive
+/// so the group and whatever music is playing come through at full bandwidth,
+/// and no input stream at all — which is what lets a Bluetooth headset fall
+/// back off the hands-free profile.
+///
+/// **Call this with the platform session, not instead of it.** The profile is
+/// the platform's to choose; this is the engine's half, and the two have to
+/// agree or the streams are rebuilt against a device that is no longer there.
+///
+/// **Blocks until the streams are back**, like [`set_audio_active`] and for the
+/// same reason: the answer is the point. Both streams are rebuilt on every
+/// transition, because hands-free reports 8 or 16 kHz where A2DP reports 44.1
+/// or 48 and nothing here asks the platform for a rate — so "capture is live"
+/// is only true once the device has answered, and a cue fired before that would
+/// be telling a rider to speak into a stream that does not exist yet.
+///
+/// Returns at once when nothing needed rebuilding.
+pub fn set_capture_wanted(on: bool) -> anyhow::Result<()> {
+    let app = app()?;
+    if app.shared.set_capture_wanted(on) {
+        app.shared
+            .await_open(std::time::Duration::from_secs(10))
+            .map_err(|e| anyhow::anyhow!(e))?;
+    }
+    Ok(())
+}
+
+/// One beat of the countdown while the hands-free profile is negotiated.
+///
+/// Called repeatedly for as long as the wait lasts — see
+/// [`AudioCue::CaptureWaiting`] for why it is a beat rather than a pattern.
+#[frb(sync)]
+pub fn play_capture_waiting_cue() -> anyhow::Result<()> {
+    app()?.shared.play_cue(AudioCue::CaptureWaiting);
+    Ok(())
+}
+
+/// The countdown resolving: capture is live, the rider may speak.
+///
+/// **Only once input is genuinely live**, which is the whole value of it. Fired
+/// on the request instead, it would tell a rider to speak into a microphone
+/// that does not exist yet and cost them a sentence.
+#[frb(sync)]
+pub fn play_capture_live_cue() -> anyhow::Result<()> {
+    app()?.shared.play_cue(AudioCue::CaptureLive);
+    Ok(())
+}
+
+/// Capture released: the microphone is off.
+///
+/// **Only once it is confirmed closed, and never on the request.** The failure
+/// modes are asymmetric — an early live cue costs a sentence, an early stop cue
+/// puts a curse on the channel — so if the transition cannot be confirmed, play
+/// nothing at all. Silence leaves a rider cautious; a false all-clear does the
+/// opposite.
+#[frb(sync)]
+pub fn play_capture_stopped_cue() -> anyhow::Result<()> {
+    app()?.shared.play_cue(AudioCue::CaptureStopped);
+    Ok(())
+}
+
+/// Says on connecting that capture is off until the rider taps, and how often.
+///
+/// Required rather than decorative: in tap mode capture starts off, so without
+/// it the first thing a rider does is talk into a microphone that is not there.
+#[frb(sync)]
+pub fn play_tap_armed_cue(taps: u8) -> anyhow::Result<()> {
+    app()?.shared.play_tap_armed_cue(taps);
+    Ok(())
+}
+
 #[frb(sync)]
 pub fn stop_test_tone() -> anyhow::Result<()> {
     app()?.shared.stop_test_tone();

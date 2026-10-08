@@ -603,6 +603,10 @@ class AppState extends ChangeNotifier {
   static const _prefsKey = 'mumbleway.servers';
   static const _prefsNoise = 'mumbleway.noise';
   static const _prefsMic = 'mumbleway.micMode';
+  static const _prefsTapCapture = 'mumbleway.tapToCapture';
+  static const _prefsTapCount = 'mumbleway.tapCount';
+  static const _prefsAutoStop = 'mumbleway.autoStopCapture';
+  static const _prefsAutoStopSecs = 'mumbleway.autoStopSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
   static const _prefsInputGain = 'mumbleway.inputGain';
@@ -761,6 +765,36 @@ class AppState extends ChangeNotifier {
   /// Only affects a fresh install. Anyone who has already chosen a mode has it
   /// in preferences and keeps it.
   MicMode micMode = MicMode.voiceActivity;
+
+  /// Whether the rider starts and stops capture by tapping the phone.
+  ///
+  /// **Off by default, and with it off nothing changes for anybody**: the
+  /// session takes the hands-free profile on connecting and holds it for the
+  /// call, exactly as it always has. That is the kill switch for
+  /// `docs/CAPTURE_ON_DEMAND.md` expressed as a default rather than as a flag
+  /// somebody has to find — much of that design rests on measurements not yet
+  /// taken, and if any comes back badly there is nothing to unpick.
+  bool tapToCapture = false;
+
+  /// How many taps the gesture takes: 2, 3 or 4.
+  ///
+  /// **Three is the default because it is the first count that carries timing
+  /// evidence.** Two taps give exactly one interval, so there is nothing to
+  /// compare it against and the detector rests on magnitude alone; three give
+  /// two intervals and four give three, and deliberate tapping is
+  /// near-isochronous where road impulses are not. Four is for rough roads: the
+  /// chance of N accidental impulses landing in the right lattice falls
+  /// multiplicatively with N, not incrementally.
+  int tapCount = 3;
+
+  /// Whether capture releases itself after a stretch of silence.
+  ///
+  /// A sub-setting of [tapToCapture], and meaningless without it: on its own it
+  /// would release capture with nothing able to ask for it back.
+  bool autoStopCapture = false;
+
+  /// How long that silence has to be.
+  int autoStopSeconds = 20;
   int maxServers = 2;
 
   /// Chosen interface language. Null follows the system.
@@ -1116,6 +1150,12 @@ class AppState extends ChangeNotifier {
     if (m != null && m >= 0 && m < MicMode.values.length) {
       micMode = MicMode.values[m];
     }
+    tapToCapture = prefs.getBool(_prefsTapCapture) ?? false;
+    // Clamped on the way in rather than trusted. A stored 0 would be a gesture
+    // nobody can perform, and the cue that counts it out would be silence.
+    tapCount = (prefs.getInt(_prefsTapCount) ?? 3).clamp(2, 4);
+    autoStopCapture = prefs.getBool(_prefsAutoStop) ?? false;
+    autoStopSeconds = (prefs.getInt(_prefsAutoStopSecs) ?? 20).clamp(5, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
     selectedOutput = prefs.getString(_prefsOutputDevice);
     inputGainDbValue = prefs.getDouble(_prefsInputGain) ?? 0;
@@ -1276,6 +1316,12 @@ class AppState extends ChangeNotifier {
     );
     await prefs.setInt(_prefsNoise, noise.index);
     await prefs.setInt(_prefsMic, micMode.index);
+    await prefs.setBool(_prefsTapCapture, tapToCapture);
+    // Kept even while tap mode is off, so turning it back on restores what the
+    // rider chose rather than silently resetting to the default.
+    await prefs.setInt(_prefsTapCount, tapCount);
+    await prefs.setBool(_prefsAutoStop, autoStopCapture);
+    await prefs.setInt(_prefsAutoStopSecs, autoStopSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
     await prefs.setDouble(_prefsOutputVolume, outputVolumeDbValue);
     if (selectedInput == null) {
@@ -2106,8 +2152,14 @@ class AppState extends ChangeNotifier {
     // open until the category is live, and the failure it produces otherwise
     // is CoreAudio's, which describes a channel count rather than the phone
     // call that is holding the microphone.
+    // **Only the connect path may stop at listening.** The screens that take
+    // an audio hold do it to show a live meter, and a meter reading nothing is
+    // indistinguishable from a broken one — so they get capture immediately
+    // whatever mode the rider is in.
+    final onDemand = _captureOnDemand && _callInProgress && _audioHolds == 0;
     final session = await AudioSessionBridge.instance.activate(
       voiceProcessing: voiceCommunication,
+      captureOnDemand: onDemand,
     );
     if (!session.usable) {
       // The platform's own wording when there is one — it names the app that
@@ -2148,6 +2200,22 @@ class AppState extends ChangeNotifier {
     }
 
     _audioActive = true;
+    _capturing = !onDemand;
+    // The engine's half has to agree with the platform's, or the streams are
+    // rebuilt against a device that is no longer there.
+    try {
+      await setCaptureWanted(on_: _capturing);
+    } catch (_) {
+      // No engine yet; the flag defaults to capture and the next open reads it.
+    }
+    if (onDemand) {
+      // Required, not decorative: capture starts off, so without this the first
+      // thing a rider does is talk into a microphone that is not there. It
+      // counts out the configured taps, which also says what the gesture is.
+      try {
+        playTapArmedCue(taps: tapCount);
+      } catch (_) {}
+    }
     _syncReliefWatch();
     notifyListeners();
     return null;
@@ -2170,6 +2238,14 @@ class AppState extends ChangeNotifier {
       }
       await AudioSessionBridge.instance.deactivate();
       _audioActive = false;
+      // Back to the default so the next session starts from capture-on, and
+      // no timer survives a session it belonged to.
+      _capturing = true;
+      _captureChanging = false;
+      _captureBeat?.cancel();
+      _captureBeat = null;
+      _captureIdle?.cancel();
+      _captureIdle = null;
       _syncReliefWatch();
       notifyListeners();
     });
@@ -2247,6 +2323,152 @@ class AppState extends ChangeNotifier {
   /// it is handed, and this is the only value that says what that was.
   int get audioRoute => _audioRoute;
   int _audioRoute = 0;
+
+  /// Whether the hands-free profile is held and there is a microphone.
+  ///
+  /// False is the listening state: the group and whatever music is playing come
+  /// through at full bandwidth, and nothing can be transmitted. Always true
+  /// unless [tapToCapture] is on.
+  bool get capturing => _capturing;
+  bool _capturing = true;
+
+  /// Whether a transition is in flight, so the interface can say "wait".
+  bool get captureChanging => _captureChanging;
+  bool _captureChanging = false;
+
+  Timer? _captureBeat;
+  Timer? _captureIdle;
+
+  /// Whether the session should stop at listening and wait to be asked.
+  ///
+  /// Push-to-talk is excluded because it promises immediacy: the button exists
+  /// to put the microphone on the wire the instant it goes down, and it would
+  /// instead do nothing until a gesture had already been performed. Open mic is
+  /// *not* excluded — tap to open, tap to close is coherent, and arguably the
+  /// clearest use of the feature.
+  bool get _captureOnDemand =>
+      tapToCapture && micMode != MicMode.pushToTalk;
+
+  /// Asks for the microphone.
+  ///
+  /// The order matters and is the part most easily assembled wrong: take the
+  /// profile, **assert** the route it landed on, tell the engine, wait for the
+  /// streams, and only then say so. Nothing here is told to the audio chain,
+  /// which never learns whether capture is on — so it will process and transmit
+  /// whatever it is handed, and the assertion is the only guard that exists.
+  Future<String?> requestCapture() async {
+    if (!_audioActive || _capturing || _captureChanging) return null;
+    _captureChanging = true;
+    notifyListeners();
+
+    // The countdown, beaten out for as long as the negotiation takes. An SCO
+    // link has no fixed duration, so this cannot be one rendered pattern — and
+    // a silence of a second or two reads as a fault where a metronome reads as
+    // a wait with an end.
+    try {
+      playCaptureWaitingCue();
+    } catch (_) {}
+    _captureBeat = Timer.periodic(const Duration(milliseconds: 370), (_) {
+      try {
+        playCaptureWaitingCue();
+      } catch (_) {}
+    });
+
+    try {
+      final s = await AudioSessionBridge.instance.startCapture();
+      _captureBeat?.cancel();
+      _captureBeat = null;
+
+      if (!s.usable) {
+        // **No cue at all.** Telling a rider they may speak when they may not
+        // costs them a sentence they believe was heard.
+        _captureChanging = false;
+        notifyListeners();
+        return s.error ?? _strings.micUnavailable;
+      }
+
+      _audioRoute = s.route;
+      setAudioRoute(code: s.route);
+      await setCaptureWanted(on_: true);
+
+      _capturing = true;
+      _captureChanging = false;
+      try {
+        playCaptureLiveCue();
+      } catch (_) {}
+      _armCaptureIdle();
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _captureBeat?.cancel();
+      _captureBeat = null;
+      _captureChanging = false;
+      notifyListeners();
+      return e.toString();
+    }
+  }
+
+  /// Gives the microphone back.
+  ///
+  /// The stop cue fires only once the profile is confirmed released, never on
+  /// the request. The two failure modes are not symmetric: an early live cue
+  /// costs a sentence, an early stop cue puts a curse on the channel.
+  Future<void> releaseCapture() async {
+    if (!_capturing || _captureChanging) return;
+    _captureIdle?.cancel();
+    _captureIdle = null;
+    _captureChanging = true;
+    notifyListeners();
+    try {
+      final s = await AudioSessionBridge.instance.stopCapture();
+      await setCaptureWanted(on_: false);
+      _capturing = false;
+      _audioRoute = s.route;
+      try {
+        setAudioRoute(code: s.route);
+      } catch (_) {}
+      try {
+        playCaptureStoppedCue();
+      } catch (_) {}
+    } catch (_) {
+      // Left as capturing rather than claimed released: the worst case is
+      // music that stays narrowband until the next transition, which is where
+      // the app already was. Claiming otherwise would be the one lie that
+      // matters.
+    }
+    _captureChanging = false;
+    notifyListeners();
+  }
+
+  /// Flips capture, which is what a tap does.
+  Future<String?> toggleCapture() async {
+    if (_capturing) {
+      await releaseCapture();
+      return null;
+    }
+    return requestCapture();
+  }
+
+  /// Starts the silence timer, when the rider has asked for one.
+  void _armCaptureIdle() {
+    _captureIdle?.cancel();
+    _captureIdle = null;
+    if (!autoStopCapture || !_captureOnDemand) return;
+    _captureIdle = Timer(Duration(seconds: autoStopSeconds), () {
+      // Reluctant on purpose. Each transition renegotiates an SCO link, which
+      // is a second or two and audible in the helmet, so flapping through a
+      // conversation would be worse than staying narrowband for all of it.
+      if (_transmitting || _anyoneSpeaking) {
+        _armCaptureIdle();
+        return;
+      }
+      releaseCapture();
+    });
+  }
+
+  /// Whether anybody is being heard right now, on any server.
+  bool get _anyoneSpeaking =>
+      runtimes.values.any((rt) => rt.speakerLevels.isNotEmpty);
 
   /// Whether a diagnostic recording is running.
   ///

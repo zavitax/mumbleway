@@ -629,6 +629,9 @@ pub struct AudioShared {
     /// bandwidth for as long as this app was merely open.
     audio_wanted: AtomicBool,
 
+    /// Whether to open the input half. See [`AudioShared::capture_wanted`].
+    capture_wanted: AtomicBool,
+
     /// A stream has told us it is dead and wants the pair rebuilt.
     ///
     /// Set from cpal's error callback, cleared by the device thread when it
@@ -1148,6 +1151,9 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
+            // True, so every existing caller gets today's behaviour without
+            // asking for it. See `capture_wanted`.
+            capture_wanted: AtomicBool::new(true),
             reopen_pending: AtomicBool::new(false),
             capture_ticks: AtomicU64::new(0),
             playing_speakers: AtomicU32::new(0),
@@ -2070,6 +2076,51 @@ impl AudioShared {
         self.audio_wanted.load(Ordering::Acquire)
     }
 
+    /// Whether the input half of the pair should be opened at all.
+    ///
+    /// **Defaults to true, so nothing changes for a caller that never asks.**
+    /// `false` is the listening state of `docs/CAPTURE_ON_DEMAND.md`: output
+    /// alive so the group and whatever music is playing are audible at full
+    /// bandwidth, and no capture stream, which is what lets a Bluetooth headset
+    /// fall back off the hands-free profile.
+    ///
+    /// **The chain is deliberately not told.** From its side there is simply
+    /// nothing arriving, and every transmission mode then produces nothing
+    /// without a single special case: `Continuous` still computes an open gate
+    /// and encodes no blocks because no blocks come. Starvation does the work a
+    /// mode matrix would otherwise have to.
+    ///
+    /// Not a mute and not silence. Feeding zeros instead would trip the capture
+    /// worker's bit-exact-zero watchdog on every listening stretch — it counts
+    /// zero blocks that were *delivered*, and no delivery is not a delivery of
+    /// zeros.
+    pub fn capture_wanted(&self) -> bool {
+        self.capture_wanted.load(Ordering::Acquire)
+    }
+
+    /// Opens or closes the input half, rebuilding the streams to do it.
+    ///
+    /// A rebuild rather than a pause, because the two profiles do not agree
+    /// about the sample rate: nothing in this project asks the platform for one
+    /// — `default_output_config` is taken as-is and a [`Resampler`] absorbs the
+    /// difference — and hands-free reports 8 or 16 kHz where A2DP reports 44.1
+    /// or 48. A profile change therefore invalidates *both* stream
+    /// configurations, so both are rebuilt, which is what the device thread
+    /// already does for every other reason.
+    pub fn set_capture_wanted(&self, wanted: bool) {
+        if self.capture_wanted.swap(wanted, Ordering::AcqRel) == wanted {
+            return;
+        }
+        // Nothing to rebuild until the devices are wanted at all; the next open
+        // reads the flag.
+        if !self.audio_wanted() {
+            return;
+        }
+        let _guard = self.device_wake.lock();
+        self.device_generation.fetch_add(1, Ordering::Release);
+        self.device_changed.notify_all();
+    }
+
     /// Asks for the devices to be opened or closed.
     ///
     /// Returns at once; the work happens on the device thread, which owns the
@@ -2604,7 +2655,17 @@ impl AudioEngine {
                     // speaking — silence is still samples — so a whole second
                     // without one means the stream is gone, not that the rider
                     // is quiet.
-                    if streams.is_some() && dev_shared.audio_wanted() {
+                    //
+                    // **Only while there is a capture stream to be watching.**
+                    // In the listening state the callbacks are not merely quiet,
+                    // there are none — so this would find no ticks every second
+                    // and rebuild the pair for ever, which is the loop that
+                    // would have made the whole feature look like a device fault.
+                    let capturing = streams
+                        .as_ref()
+                        .map(|(input, _)| input.is_some())
+                        .unwrap_or(false);
+                    if capturing && dev_shared.audio_wanted() {
                         let ticks = dev_shared.capture_ticks.load(Ordering::Relaxed);
                         let settled = opened_at
                             .map(|at| at.elapsed() >= CAPTURE_WATCHDOG)
@@ -2660,27 +2721,28 @@ impl Drop for AudioEngine {
     }
 }
 
-type Streams = (cpal::Stream, cpal::Stream);
+/// The output stream, and the input stream when there is one.
+///
+/// `None` is the listening state: output alive, nothing captured. See
+/// [`AudioShared::capture_wanted`].
+type Streams = (Option<cpal::Stream>, cpal::Stream);
 
-fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Streams> {
+/// Builds the capture half.
+///
+/// **Split out because the *discovery* has to be conditional and not merely the
+/// build.** An iOS session in `.playback` has no input device at all, so
+/// `pick_input` answers `None`; with this inline, that failed the whole open —
+/// output included — before any flag was consulted, and the listening state
+/// would have been unreachable rather than merely unused.
+fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<cpal::Stream> {
     let host = cpal::default_host();
-
     let input = pick_input(&host, config.input_device.as_deref())
         .ok_or_else(|| CoreError::Audio("no input device available".into()))?;
-    let output = pick_output(&host, config.output_device.as_deref())
-        .ok_or_else(|| CoreError::Audio("no output device available".into()))?;
-
     let in_cfg = input
         .default_input_config()
         .map_err(|e| CoreError::Audio(format!("input config: {e}")))?;
-    let out_cfg = output
-        .default_output_config()
-        .map_err(|e| CoreError::Audio(format!("output config: {e}")))?;
-
     let in_rate = in_cfg.sample_rate();
     let in_channels = in_cfg.channels() as usize;
-    let out_rate = out_cfg.sample_rate();
-    let out_channels = out_cfg.channels() as usize;
 
     // What the hardware actually offered, by name and format.
     //
@@ -2689,23 +2751,14 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
     // nothing — and in both cases the app could only say that audio had failed,
     // not what it had been handed. A device name here also settles which of
     // several possible microphones a helmet headset actually attached to.
-    tracing::info!(
-        "input '{}' at {} Hz, {} ch; output '{}' at {} Hz, {} ch",
-        input,
-        in_rate,
-        in_channels,
-        output,
-        out_rate,
-        out_channels,
-    );
+    tracing::info!("input '{}' at {} Hz, {} ch", input, in_rate, in_channels);
 
-    // --- input ------------------------------------------------------------
     let cap_shared = shared.clone();
     let mut in_resampler = Resampler::new(in_rate, SAMPLE_RATE);
     let mut mono_scratch: Vec<f32> = Vec::with_capacity(2048);
     let mut resampled: Vec<f32> = Vec::with_capacity(2048);
 
-    let in_stream = input
+    input
         .build_input_stream(
             in_cfg.config(),
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
@@ -2754,7 +2807,39 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
             },
             None,
         )
-        .map_err(|e| CoreError::Audio(format!("building input stream: {e}")))?;
+        .map_err(|e| CoreError::Audio(format!("building input stream: {e}")))
+}
+
+fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Streams> {
+    let host = cpal::default_host();
+
+    let output = pick_output(&host, config.output_device.as_deref())
+        .ok_or_else(|| CoreError::Audio("no output device available".into()))?;
+    let out_cfg = output
+        .default_output_config()
+        .map_err(|e| CoreError::Audio(format!("output config: {e}")))?;
+
+    let out_rate = out_cfg.sample_rate();
+    let out_channels = out_cfg.channels() as usize;
+
+    tracing::info!(
+        "output '{}' at {} Hz, {} ch",
+        output,
+        out_rate,
+        out_channels,
+    );
+
+    // --- input, when it is wanted at all ----------------------------------
+    //
+    // Opened first so that a capture device which refuses takes the whole open
+    // down with it, as it always has. Only a *deliberately* absent input half
+    // is allowed through.
+    let in_stream = if shared.capture_wanted() {
+        Some(build_input_stream(config, shared)?)
+    } else {
+        tracing::info!("listening only: no capture stream opened");
+        None
+    };
 
     // --- output -----------------------------------------------------------
     let play_shared = shared.clone();
@@ -2871,9 +2956,10 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
         )
         .map_err(|e| CoreError::Audio(format!("building output stream: {e}")))?;
 
-    in_stream
-        .play()
-        .map_err(|e| CoreError::Audio(format!("starting input: {e}")))?;
+    if let Some(s) = in_stream.as_ref() {
+        s.play()
+            .map_err(|e| CoreError::Audio(format!("starting input: {e}")))?;
+    }
     out_stream
         .play()
         .map_err(|e| CoreError::Audio(format!("starting output: {e}")))?;
@@ -5425,6 +5511,51 @@ mod tests {
             shared.device_generation(),
             settled,
             "an already-open device was needlessly reopened"
+        );
+    }
+
+    #[test]
+    fn listening_only_is_asked_for_once_and_never_by_default() {
+        let shared = AudioShared::new();
+
+        // Every caller that never mentions capture gets today's behaviour.
+        assert!(
+            shared.capture_wanted(),
+            "capture has to default on, or every existing caller changes meaning"
+        );
+
+        // Nothing to rebuild while the devices are not wanted at all: the next
+        // open reads the flag, so bumping the generation here would be a
+        // reopen of nothing.
+        let idle = shared.device_generation();
+        shared.set_capture_wanted(false);
+        assert!(!shared.capture_wanted());
+        assert_eq!(
+            shared.device_generation(),
+            idle,
+            "the devices were reopened while they were closed"
+        );
+
+        shared.set_audio_wanted(true);
+        shared.publish_open(Ok(()));
+        let open = shared.device_generation();
+
+        // Asking for what is already true must not rebuild the pair: each
+        // rebuild renegotiates an SCO link, which is a second or two and is
+        // audible in the helmet.
+        shared.set_capture_wanted(false);
+        assert_eq!(
+            shared.device_generation(),
+            open,
+            "a capture state that had not changed still reopened the devices"
+        );
+
+        // And a real change does, because the two profiles disagree about the
+        // sample rate and both streams are built from what the device reports.
+        shared.set_capture_wanted(true);
+        assert!(
+            shared.device_generation() > open,
+            "a transition did not reopen"
         );
     }
 

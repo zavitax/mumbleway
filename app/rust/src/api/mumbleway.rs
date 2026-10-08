@@ -18,11 +18,11 @@ use mumbleway_core::audio::engine::{
     AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode,
 };
 use mumbleway_core::audio::feedback::FeedbackMode;
+use mumbleway_core::audio::tap::TapDetector;
 use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
-use mumbleway_core::audio::tap::TapDetector;
 use mumbleway_core::session::peers::{MuteCueEcho, RemoteMuteDecision, RemoteMuteGuard};
 use mumbleway_core::session::{
     AudioBridge, ConnectionState, ServerProfile, SessionCommand, SessionEvent, Transport,
@@ -388,7 +388,6 @@ pub struct UiChannelRights {
     pub channel_id: u32,
     pub rights: UiRights,
 }
-
 
 /// The server's measurements of one rider's connection.
 #[derive(Debug, Clone, Copy)]
@@ -3624,26 +3623,27 @@ pub fn build_invite_file(
 
 /// Builds a JSON file containing every supplied server, for backup or transfer.
 pub fn export_servers(configs: Vec<ServerConfig>) -> anyhow::Result<String> {
-    let entries: Vec<mumbleway_core::session::profile::ProfileFileEntry> = configs
-        .into_iter()
-        .map(|c| mumbleway_core::session::profile::ProfileFileEntry {
-            host: c.host,
-            name: Some(c.name),
-            port: Some(c.port),
-            username: Some(c.username),
-            password: c.password,
-            channel: c.default_channel,
-            // Pinned fingerprints stay on the device that made the trust
-            // decision; exporting them would launder it onto another machine.
-            cert_fingerprint: None,
-            // The route does travel: an export is the rider's own list coming
-            // back to them on another device, and a server they can only reach
-            // through a proxy is unusable without it.
-            proxy: c.proxy_chain.into_iter().next().map(|p| {
-                mumbleway_core::session::profile::build_proxy_text(&p.into_spec(), true)
-            }),
-        })
-        .collect();
+    let entries: Vec<mumbleway_core::session::profile::ProfileFileEntry> =
+        configs
+            .into_iter()
+            .map(|c| mumbleway_core::session::profile::ProfileFileEntry {
+                host: c.host,
+                name: Some(c.name),
+                port: Some(c.port),
+                username: Some(c.username),
+                password: c.password,
+                channel: c.default_channel,
+                // Pinned fingerprints stay on the device that made the trust
+                // decision; exporting them would launder it onto another machine.
+                cert_fingerprint: None,
+                // The route does travel: an export is the rider's own list coming
+                // back to them on another device, and a server they can only reach
+                // through a proxy is unusable without it.
+                proxy: c.proxy_chain.into_iter().next().map(|p| {
+                    mumbleway_core::session::profile::build_proxy_text(&p.into_spec(), true)
+                }),
+            })
+            .collect();
 
     serde_json::to_string_pretty(&entries)
         .map_err(|e| anyhow::anyhow!("could not build the export: {e}"))
@@ -3661,7 +3661,11 @@ fn config_to_profile(c: ServerConfig) -> ServerProfile {
     p.cert_fingerprint = c.cert_fingerprint;
     p.auto_join_channel = c.default_channel;
     p.access_tokens = c.access_tokens;
-    p.proxy_chain = c.proxy_chain.into_iter().map(ServerProxy::into_spec).collect();
+    p.proxy_chain = c
+        .proxy_chain
+        .into_iter()
+        .map(ServerProxy::into_spec)
+        .collect();
     if !c.id.trim().is_empty() {
         p.id = c.id;
     }
@@ -3727,7 +3731,11 @@ pub fn import_servers(
             // invitation without it. What arrives is shown before it is used:
             // adopting somebody else's route silently is the thing to avoid,
             // not carrying it.
-            proxy_chain: p.proxy_chain.into_iter().map(ServerProxy::from_spec).collect(),
+            proxy_chain: p
+                .proxy_chain
+                .into_iter()
+                .map(ServerProxy::from_spec)
+                .collect(),
         })
         .collect())
 }
@@ -3761,6 +3769,10 @@ mod tests {
             cert_fingerprint: Some("ab:cd".into()),
             default_channel: Some("Garage".into()),
             access_tokens: vec!["vip".into(), "rideboss".into()],
+            // No proxy. Added when `proxy_chain` arrived and these two tests
+            // were not compiled, because nothing ran `--all-targets` in this
+            // crate — see the commit that found it.
+            proxy_chain: vec![],
         };
 
         let p = config_to_profile(config);
@@ -3795,6 +3807,7 @@ mod tests {
             cert_fingerprint: None,
             default_channel: None,
             access_tokens: Vec::new(),
+            proxy_chain: vec![],
         };
         assert_eq!(config_to_profile(config).id, "example.test:64739");
     }

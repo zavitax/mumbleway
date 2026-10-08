@@ -1,9 +1,10 @@
-Fixes the microphone taking the headset anyway when tap-to-talk is on.
+Two fixes, and the gesture should now actually work.
 
-The check that was supposed to defer it tested something that is not yet true at
-the moment a connection is made, so the listening state could never be entered.
-Music should now stay at full quality until you tap.
+The microphone was taking the headset anyway when tap-to-talk was on, because
+the check that defers it tested something not yet true at connect time.
 
-Taps themselves are still being tracked down. If one does nothing, please open
-Diagnostics and read the Motion rows out — the rate, and which rejection
-counter is moving. That says which half is at fault.
+And taps were being detected and then thrown away: the switch that lets a
+gesture act was set before the engine existed, so the call failed silently and
+the flag stayed off for the whole session.
+
+If a tap still does nothing, please read out the Motion rows in Diagnostics.

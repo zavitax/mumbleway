@@ -1066,8 +1066,6 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       };
 
-      _syncTapDetection();
-
       final dir = await getApplicationSupportDirectory();
       await startEngine(
         options: StartupOptions(
@@ -1078,6 +1076,19 @@ class AppState extends ChangeNotifier {
           micModeHint: _micModeHint,
         ),
       );
+
+      // **After the engine, and that is the whole of it.** This used to run
+      // before `startEngine`, where `setTapDetection` has no engine to reach:
+      // the call threw, the `catch` swallowed it, and `tap_enabled` stayed
+      // false for the rest of the session. The sensors started anyway, because
+      // those are a platform channel and need no engine — so samples arrived,
+      // the detector ran, gestures *completed*, and every one was thrown away
+      // on the way out because the flag that lets them act was never set.
+      //
+      // Which is why the diagnostics panel counts gestures separately from
+      // acting on them: that combination — samples arriving, gestures
+      // completing, nothing happening — is this bug and nothing else.
+      _syncTapDetection();
 
       maxServers = maxConcurrentServers();
       gainRange = gainLimits();

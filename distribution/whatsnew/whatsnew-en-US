@@ -1,7 +1,9 @@
-Fixes the tap-to-talk gesture, which did nothing at all in the last build.
+Fixes the microphone taking the headset anyway when tap-to-talk is on.
 
-With the microphone mode set to push to talk, switching the gesture on had no effect and nothing said so. The two now exclude each other visibly.
+The check that was supposed to defer it tested something that is not yet true at
+the moment a connection is made, so the listening state could never be entered.
+Music should now stay at full quality until you tap.
 
-Also: the microphone icon showed open while the microphone was closed, and a recording started while connected came out empty.
-
-Diagnostics has a new Motion section — sensor rate, and why a tap was rejected. Please look there if a tap does nothing.
+Taps themselves are still being tracked down. If one does nothing, please open
+Diagnostics and read the Motion rows out — the rate, and which rejection
+counter is moving. That says which half is at fault.

@@ -10,8 +10,10 @@ two files rather than a fenced block, because the action reads a directory.
 This file is where the text is written and reviewed; those files are what ships.
 Change both, or Play gets last release's notes.
 
-Only Play is uploaded by the workflow. Apple's two fields are scriptable through
-App Store Connect, and Microsoft's through `tool/push_ms_store_listing.py`;
+Only Play is uploaded by the workflow. Apple's two fields are scriptable —
+`tool/push_testflight_notes.mjs` for TestFlight and
+`tool/push_app_store_listing.mjs` for the App Store — and Microsoft's through
+`tool/push_ms_store_listing.py`;
 [the table below](#where-each-one-goes) says which is which, and why keeping
 them out of `publish.yml` is a choice rather than a gap.
 
@@ -138,7 +140,7 @@ only phrase in the notice nobody could say out loud.
 | Store | Field | How it gets there |
 |---|---|---|
 | Google Play | *What's new* | **Automatic.** `distribution/whatsnew/` is uploaded with the bundle by `publish.yml`. |
-| TestFlight | *What to Test* | API: `betaBuildLocalizations.whatsNew`, per build. |
+| TestFlight | *What to Test* | `tool/push_testflight_notes.mjs`, which reads `distribution/whatsnew/` so a tester and a Play tester see the same words. Per build, so there is nothing to create first and nothing to submit. |
 | App Store | *What's New in This Version* | `tool/push_app_store_listing.mjs`, which carries the description with it. **Needs an editable version record** — a released version's notes cannot be changed. |
 | Mac App Store | *What's New in This Version* | Same script, same run, but a separate version record from iOS: two records, and they drift. |
 | Microsoft Store | *What's new in this version* | `tool/push_ms_store_listing.py`, which carries the description with it. Part of a submission, so writing it starts a certification run. |

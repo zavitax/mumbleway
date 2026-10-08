@@ -766,6 +766,14 @@ struct App {
     /// Whether another MumbleWay rider may turn this rider's microphone on.
     /// A setting, on by default; see `set_allow_remote_unmute`.
     allow_remote_unmute: Arc<AtomicBool>,
+    /// Watches the phone's own motion for a deliberate N-tap gesture.
+    ///
+    /// Here rather than on `AudioShared` because it is fed from the platform
+    /// channel's thread and has nothing to do with the audio callback. `None`
+    /// when the rider has not asked for the gesture, which is the default — so
+    /// the sensors can be running for the corpus with nothing watching them for
+    /// a trigger.
+    tap: Arc<Mutex<Option<TapDetector>>>,
 }
 
 /// Decides which audio cue, if any, a status transition should play.

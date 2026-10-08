@@ -919,6 +919,31 @@ pub enum AudioCue {
     ParticipantJoined,
     /// Someone left it.
     ParticipantLeft,
+    /// One beat of the countdown while the hands-free profile is negotiated.
+    ///
+    /// **Re-triggered rather than rendered once**, because an SCO negotiation
+    /// has no fixed duration — the legacy Android path allows up to four
+    /// seconds — so a fixed-length pattern could not possibly end when capture
+    /// becomes live. Playing one beat repeatedly makes the wait legible without
+    /// promising when it ends, which a single long cue would do falsely.
+    /// `play_cue`'s replace-the-queue behaviour is what makes repeating free.
+    CaptureWaiting,
+    /// The countdown resolving: capture is live, speak now.
+    ///
+    /// Ends on `TransmitStart`'s own pitch, so the pattern lands on the tone
+    /// that already means "you are on air" and the grammar extends rather than
+    /// competing with itself.
+    CaptureLive,
+    /// Capture released: the microphone is off, and it is safe to say anything.
+    ///
+    /// The mirror of [`AudioCue::CaptureLive`], descending through the same
+    /// pitches and closing on `TransmitEnd`'s squelch. Short on purpose —
+    /// there is no wait to fill, and the asymmetry carries the meaning: long
+    /// and open-ended is *coming*, brief and decisive is *done*.
+    ///
+    /// **Must never play early.** A premature live cue costs a lost sentence; a
+    /// premature stop cue puts a curse on the channel.
+    CaptureStopped,
     /// Steady tone for checking the chosen output device.
     Test,
 }
@@ -950,6 +975,28 @@ impl AudioCue {
             // same grammar the connection cues use.
             AudioCue::ParticipantJoined => &[(587.33, 55), (0.0, 20), (880.0, 75)],
             AudioCue::ParticipantLeft => &[(880.0, 55), (0.0, 20), (587.33, 75)],
+
+            // The countdown's beat, and its resolution.
+            //
+            // Three pitches, used rising here and falling in `CaptureStopped`,
+            // and all three sit inside the telephone band — this plays while
+            // the headset is on hands-free, where CVSD gives roughly
+            // 300–3400 Hz, so a tone above that would be perfectly audible on
+            // a desk and missing on the bike.
+            AudioCue::CaptureWaiting => &[(660.0, 120), (0.0, 250)],
+            AudioCue::CaptureLive => &[(988.0, 140), (0.0, 20), (1318.5, 230)],
+            AudioCue::CaptureStopped => &[
+                (1318.5, 120),
+                (0.0, 20),
+                (988.0, 120),
+                (0.0, 20),
+                (660.0, 160),
+                (0.0, 15),
+                // The squelch `TransmitEnd` already uses to mean "I have
+                // stopped transmitting". A rider who knows radios needs no
+                // telling what this is.
+                (-1.0, 60),
+            ],
 
             AudioCue::MutedByOther => &[(659.25, 110), (0.0, 30), (440.0, 170)],
             // **The one cue that must never be mistaken for another.** Somebody
@@ -1034,6 +1081,11 @@ impl AudioCue {
             // interrupting a sentence for, and on a busy channel it happens
             // often.
             AudioCue::ParticipantJoined | AudioCue::ParticipantLeft => 0.14,
+            // These fire on every transition, and the waiting beat repeats for
+            // as long as a negotiation takes — the one pattern here with real
+            // potential to wear out a rider, so it sits with the transmit cues
+            // rather than with the status ones.
+            AudioCue::CaptureWaiting | AudioCue::CaptureLive | AudioCue::CaptureStopped => 0.12,
             _ => 0.22,
         }
     }
@@ -1074,6 +1126,14 @@ impl AudioCue {
             | AudioCue::UnmutedByOther
             | AudioCue::DeafenedByOther
             | AudioCue::UndeafenedByOther
+            // The capture cues are the pair this whole mechanism was added
+            // for. `CaptureStopped` has the strongest claim of anything here: a
+            // truncated waiting beat leaves a rider waiting, which is merely
+            // annoying, while a truncated stop cue leaves them unsure whether
+            // the microphone is off — the one question it exists to answer.
+            | AudioCue::CaptureWaiting
+            | AudioCue::CaptureLive
+            | AudioCue::CaptureStopped
             | AudioCue::Test => 2,
             _ => 1,
         }
@@ -1846,6 +1906,45 @@ impl AudioShared {
         q.clear();
         q.extend(pcm);
         self.cue_priority.store(cue.priority(), Ordering::Relaxed);
+    }
+
+    /// Says, on connecting, that capture is off until the rider taps — and how
+    /// many times.
+    ///
+    /// **Required rather than decorative.** In the tap-driven mode capture
+    /// starts off, so without this the first thing a rider does is talk into a
+    /// microphone that is not there.
+    ///
+    /// The pattern is `taps` beats of [`AudioCue::CaptureWaiting`]'s pitch, so
+    /// one cue answers both questions a rider has on connecting — tap mode is
+    /// on, and it is set to three — and rehearses the rhythm they are about to
+    /// perform, which teaches the gesture without a word of documentation.
+    /// Generated rather than written down, because the count is a setting.
+    pub fn play_tap_armed_cue(&self, taps: u8) {
+        // Two to four is what the setting offers; clamped rather than trusted,
+        // because a cue is not the place to discover a bad value and a silent
+        // or endless one would be the result.
+        let taps = taps.clamp(2, 4);
+        let mut segments: Vec<(f32, u32)> = Vec::with_capacity(taps as usize * 2);
+        for i in 0..taps {
+            segments.push((660.0, 120));
+            // No trailing gap: the pattern should end on the sound, so its end
+            // is where the rider hears it rather than 250 ms later.
+            if i + 1 < taps {
+                segments.push((0.0, 250));
+            }
+        }
+        let pcm = render_segments(&segments, AudioCue::CaptureWaiting.amplitude());
+        let mut q = self.cue_queue.lock();
+        if !q.is_empty()
+            && AudioCue::CaptureWaiting.priority() < self.cue_priority.load(Ordering::Relaxed)
+        {
+            return;
+        }
+        q.clear();
+        q.extend(pcm);
+        self.cue_priority
+            .store(AudioCue::CaptureWaiting.priority(), Ordering::Relaxed);
     }
 
     /// Hands the output a stretch of a recording being previewed.
@@ -5581,6 +5680,99 @@ mod tests {
             shared.device_generation(),
             settled,
             "an already-open device was needlessly reopened"
+        );
+    }
+
+    #[test]
+    fn the_capture_cues_stay_inside_the_telephone_band() {
+        // These play while the headset is on hands-free, where CVSD gives
+        // roughly 300–3400 Hz. A tone outside that is perfectly audible on a
+        // desk and simply missing on the bike, which is the worst way for a
+        // cue to be wrong: it would be a rider told nothing, with everything
+        // working in every test anybody would run indoors.
+        for cue in [
+            AudioCue::CaptureWaiting,
+            AudioCue::CaptureLive,
+            AudioCue::CaptureStopped,
+        ] {
+            for (hz, _) in cue.segments() {
+                // 0 is a gap and a negative frequency is a noise burst.
+                if *hz <= 0.0 {
+                    continue;
+                }
+                assert!(
+                    (300.0..=3400.0).contains(hz),
+                    "{cue:?} has a {hz} Hz tone, outside what hands-free carries"
+                );
+            }
+        }
+
+        // The countdown resolves onto the pitch that already means "you are on
+        // air", so the grammar extends rather than competing with itself.
+        let live = AudioCue::CaptureLive.segments();
+        let keyed = AudioCue::TransmitStart.segments();
+        assert_eq!(
+            live.last().map(|(hz, _)| *hz),
+            keyed.first().map(|(hz, _)| *hz),
+            "the live cue should land on the transmit pitch"
+        );
+
+        // And stopping mirrors it, closing on the squelch that already means
+        // "I have stopped transmitting".
+        let stopped = AudioCue::CaptureStopped.segments();
+        assert_eq!(
+            stopped.first().map(|(hz, _)| *hz),
+            live.last().map(|(hz, _)| *hz),
+            "stopping should start from where going live ended"
+        );
+        assert!(
+            stopped.last().map(|(hz, _)| *hz < 0.0).unwrap_or(false),
+            "the stop cue should end in a squelch tail"
+        );
+    }
+
+    #[test]
+    fn the_armed_cue_counts_out_the_taps_it_is_asking_for() {
+        let shared = AudioShared::new();
+        let beat = render_segments(&[(660.0, 120)], AudioCue::CaptureWaiting.amplitude()).len();
+
+        // One beat per tap, with the gaps between them but none on the end: the
+        // pattern should finish on a sound, so its end is where the rider hears
+        // it rather than a quarter-second later.
+        for taps in 2u8..=4 {
+            shared.cue_queue.lock().clear();
+            shared.play_tap_armed_cue(taps);
+            let gaps = render_segments(&[(0.0, 250)], 0.0).len() * (taps as usize - 1);
+            assert_eq!(
+                shared.cue_queue.lock().len(),
+                beat * taps as usize + gaps,
+                "{taps} taps should be counted out as {taps} beats"
+            );
+        }
+
+        // Clamped rather than trusted. A zero would render silence and a large
+        // number would play for minutes, and a cue is the wrong place to
+        // discover a bad setting.
+        shared.cue_queue.lock().clear();
+        shared.play_tap_armed_cue(0);
+        let two = shared.cue_queue.lock().len();
+        shared.cue_queue.lock().clear();
+        shared.play_tap_armed_cue(2);
+        assert_eq!(
+            two,
+            shared.cue_queue.lock().len(),
+            "0 taps should clamp to 2"
+        );
+
+        shared.cue_queue.lock().clear();
+        shared.play_tap_armed_cue(200);
+        let many = shared.cue_queue.lock().len();
+        shared.cue_queue.lock().clear();
+        shared.play_tap_armed_cue(4);
+        assert_eq!(
+            many,
+            shared.cue_queue.lock().len(),
+            "an absurd count should clamp to 4"
         );
     }
 

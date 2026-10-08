@@ -14,6 +14,14 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
 
+    <!-- Tap detection needs the accelerometer faster than 200 Hz, which
+         Android 12 gates behind this. A *normal* permission, so there is
+         nothing to ask a rider — but without it the platform silently caps
+         delivery at 200 Hz, which looks exactly like a phone whose sensors are
+         slow, and the rate is the whole question: a tap's transient runs
+         20–80 ms, so at 100 Hz its onset is a step rather than a slope. -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS"/>
+
     <!-- The floating push-to-talk island draws over the navigation app the
          rider is actually looking at. Granted by the user in system settings;
          the app works without it, just without the island. -->

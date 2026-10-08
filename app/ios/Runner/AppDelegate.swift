@@ -11,6 +11,7 @@ import UIKit
   private var remoteCommands: RemoteCommands?
   private var logSink: EngineLogSink?
   private var identity: DeviceIdentity?
+  private var motionSensors: MotionSensors?
 
   override func application(
     _ application: UIApplication,
@@ -42,6 +43,9 @@ import UIKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayIdentity") {
       identity = DeviceIdentity(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MumbleWayMotion") {
+      motionSensors = MotionSensors(messenger: registrar.messenger())
     }
     // Invitation links. The scene delegate receives them; this end is only
     // where the channel is opened, and it may well happen after a link has

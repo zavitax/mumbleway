@@ -21,6 +21,7 @@ import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/device_identity.dart';
 import '../services/engine_log.dart';
+import '../services/motion.dart';
 import '../services/overlay.dart';
 import '../services/power.dart';
 import '../services/proxy.dart';
@@ -2512,6 +2513,13 @@ class AppState extends ChangeNotifier {
       releaseAudio();
       return e.toString();
     }
+    // **The sensors run for the recording, not for the feature.** Measuring
+    // false positives needs rides with no taps in them, so the negative corpus
+    // can only be gathered while tap detection is off — tying the motion track
+    // to the detector would make the corpus that matters most impossible to
+    // collect. Not awaited and not fatal: a phone with no usable sensors
+    // should still record its audio.
+    MotionBridge.instance.start();
     _diagnosticRecording = true;
     notifyListeners();
     return null;
@@ -2530,6 +2538,9 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // The engine has gone. The hold below still has to be returned.
     }
+    // Stopped unless the tap detector still wants them. Left running, they are
+    // a wake-up a few hundred times a second for the rest of the ride.
+    if (!_captureOnDemand) MotionBridge.instance.stop();
     releaseAudio();
     notifyListeners();
     return dropped;

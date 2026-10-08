@@ -525,7 +525,11 @@ UiRecordingState diagnosticRecordingState() =>
 /// stamp taken here, so the delay between them can be *measured* later instead
 /// of assumed. Ignored when nothing is recording, so the platform may push
 /// without asking first.
-void pushMotion({
+/// **Returns true when this sample completed a tap gesture**, so the caller can
+/// act on it. One return value rather than a second channel: the sample is
+/// already crossing the boundary, and a callback the other way would have to be
+/// marshalled back onto the thread the caller is already on.
+bool pushMotion({
   required BigInt platformNs,
   required List<double> accel,
   required List<double> gravity,
@@ -536,6 +540,19 @@ void pushMotion({
   gravity: gravity,
   rotation: rotation,
 );
+
+/// Switches tap detection on or off, and sets how many taps the gesture takes.
+///
+/// Separate from the recording, deliberately: the motion track is written
+/// whether or not this is on, because measuring how often the detector fires by
+/// mistake needs rides in which nobody tapped at all.
+///
+/// Changing the count discards a half-performed gesture rather than
+/// reinterpreting it as part of the new one.
+void setTapDetection({required bool enabled, required int taps}) => RustLib
+    .instance
+    .api
+    .crateApiMumblewaySetTapDetection(enabled: enabled, taps: taps);
 
 /// Everything the engine has logged so far.
 ///

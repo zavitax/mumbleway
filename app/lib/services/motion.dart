@@ -55,18 +55,14 @@ class MotionBridge {
     }
   }
 
-  /// Called for every sample, after the engine has been given it.
+  /// Called when a sample completed a tap gesture.
   ///
-  /// For the tap detector, once there is one. Deliberately a second consumer
-  /// rather than the only one: the recorder has to get these whether or not
-  /// anything is listening for a gesture.
-  void Function(
-    int platformNanos,
-    List<double> accel,
-    List<double> gravity,
-    List<double> rotation,
-  )?
-  onSample;
+  /// The detection happens in Rust beside the rest of the signal processing —
+  /// see `core/src/audio/tap.rs` — and arrives as the return value of the same
+  /// call that hands the sample over, rather than through a channel of its own:
+  /// the sample is already crossing the boundary, and a callback the other way
+  /// would have to be marshalled back onto the thread this is already on.
+  VoidCallback? onTapGesture;
 
   Future<bool> available() async {
     if (!isSupported) return false;
@@ -111,20 +107,19 @@ class MotionBridge {
       final stamp = (a['t'] as num?)?.toInt() ?? 0;
 
       try {
-        rust.pushMotion(
+        final gesture = rust.pushMotion(
           platformNs: BigInt.from(stamp),
           accel: accel,
           gravity: gravity,
           rotation: rotation,
         );
+        if (gesture) onTapGesture?.call();
       } catch (_) {
         // No engine yet, or it has gone. Counted rather than thrown: this runs
         // at up to 400 Hz and an exception per sample would drown the log in
         // the one situation where the log is what somebody is reading.
         _dropped++;
       }
-
-      onSample?.call(stamp, accel, gravity, rotation);
       return null;
     });
   }

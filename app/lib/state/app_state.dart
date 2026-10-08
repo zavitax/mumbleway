@@ -1035,6 +1035,13 @@ class AppState extends ChangeNotifier {
       // a headset reconnecting mid-ride left every subsequent recording
       // labelled with the microphone the session started on — and that column
       // exists precisely because the audio does not say what captured it.
+      // A tap flips capture. Nothing else: the gesture is the whole interface
+      // here, so it must be the same action in both directions, and a rider who
+      // cannot see a screen has no way to be told which one it would have been.
+      MotionBridge.instance.onTapGesture = () {
+        if (!_captureOnDemand) return;
+        toggleCapture();
+      };
       AudioSessionBridge.instance.onRouteChanged = (session) {
         if (_audioRoute == session.route) return;
         _audioRoute = session.route;
@@ -1046,6 +1053,8 @@ class AppState extends ChangeNotifier {
         }
         notifyListeners();
       };
+
+      _syncTapDetection();
 
       final dir = await getApplicationSupportDirectory();
       await startEngine(
@@ -4639,6 +4648,9 @@ class AppState extends ChangeNotifier {
     micMode = v;
     setMicMode(mode: v);
     if (v != MicMode.pushToTalk && _transmitting) setTransmit(false);
+    // Push-to-talk turns the gesture off by itself, so the detector and the
+    // sensors have to follow the mode as well as the switch.
+    _syncTapDetection();
     // Takes effect on the next connect, which is exactly what the lock above
     // guarantees is the only time it can matter.
     try {
@@ -4657,6 +4669,7 @@ class AppState extends ChangeNotifier {
   Future<void> updateTapToCapture(bool on) async {
     if (!canChangeMicMode) return;
     tapToCapture = on;
+    _syncTapDetection();
     try {
       await setMicModeHint(mode: _micModeHint);
     } catch (_) {}
@@ -4667,8 +4680,28 @@ class AppState extends ChangeNotifier {
   /// How many taps the gesture takes.
   Future<void> updateTapCount(int taps) async {
     tapCount = taps.clamp(2, 4);
+    _syncTapDetection();
     await _persist();
     notifyListeners();
+  }
+
+  /// Keeps the detector and the sensors following the setting.
+  ///
+  /// The sensors are started for the gesture *or* for a recording, and stopped
+  /// only when neither wants them — left running they are a wake-up a few
+  /// hundred times a second for the rest of a ride.
+  void _syncTapDetection() {
+    final want = _captureOnDemand;
+    try {
+      setTapDetection(enabled: want, taps: tapCount);
+    } catch (_) {
+      // No engine yet; `startEngine` is followed by a sync of this.
+    }
+    if (want || _diagnosticRecording) {
+      MotionBridge.instance.start();
+    } else {
+      MotionBridge.instance.stop();
+    }
   }
 
   /// Whether capture releases itself after a stretch of silence.

@@ -22,6 +22,7 @@ use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
+use mumbleway_core::audio::tap::TapDetector;
 use mumbleway_core::session::peers::{MuteCueEcho, RemoteMuteDecision, RemoteMuteGuard};
 use mumbleway_core::session::{
     AudioBridge, ConnectionState, ServerProfile, SessionCommand, SessionEvent, Transport,
@@ -1516,6 +1517,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         last_status,
         identity,
         allow_remote_unmute,
+        tap: Arc::new(Mutex::new(None)),
     });
     Ok(())
 }
@@ -3104,13 +3106,17 @@ pub fn diagnostic_recording_state() -> UiRecordingState {
 /// stamp taken here, so the delay between them can be *measured* later instead
 /// of assumed. Ignored when nothing is recording, so the platform may push
 /// without asking first.
+/// **Returns true when this sample completed a tap gesture**, so the caller can
+/// act on it. One return value rather than a second channel: the sample is
+/// already crossing the boundary, and a callback the other way would have to be
+/// marshalled back onto the thread the caller is already on.
 #[frb(sync)]
 pub fn push_motion(
     platform_ns: u64,
     accel: Vec<f32>,
     gravity: Vec<f32>,
     rotation: Vec<f32>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let three = |v: &Vec<f32>| -> [f32; 3] {
         [
             v.first().copied().unwrap_or(0.0),
@@ -3118,7 +3124,8 @@ pub fn push_motion(
             v.get(2).copied().unwrap_or(0.0),
         ]
     };
-    app()?.shared.push_motion(mumbleway_core::audio::record::MotionSample {
+    let app = app()?;
+    let sample = mumbleway_core::audio::record::MotionSample {
         platform_ns,
         arrival_us: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -3127,7 +3134,39 @@ pub fn push_motion(
         accel: three(&accel),
         gravity: three(&gravity),
         rotation: three(&rotation),
-    });
+    };
+    // The recorder first and unconditionally, so the corpus is gathered whether
+    // or not anything is watching for a gesture. That ordering is the whole
+    // reason false positives can ever be measured.
+    app.shared.push_motion(sample);
+
+    let mut guard = app.tap.lock();
+    match guard.as_mut() {
+        Some(detector) => Ok(detector.push(&sample).is_some()),
+        None => Ok(false),
+    }
+}
+
+/// Switches tap detection on or off, and sets how many taps the gesture takes.
+///
+/// Separate from the recording, deliberately: the motion track is written
+/// whether or not this is on, because measuring how often the detector fires by
+/// mistake needs rides in which nobody tapped at all.
+///
+/// Changing the count discards a half-performed gesture rather than
+/// reinterpreting it as part of the new one.
+#[frb(sync)]
+pub fn set_tap_detection(enabled: bool, taps: u8) -> anyhow::Result<()> {
+    let app = app()?;
+    let mut guard = app.tap.lock();
+    if !enabled {
+        *guard = None;
+        return Ok(());
+    }
+    match guard.as_mut() {
+        Some(d) => d.set_taps_wanted(taps),
+        None => *guard = Some(TapDetector::new(taps)),
+    }
     Ok(())
 }
 

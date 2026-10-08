@@ -21,6 +21,48 @@ serves all four.
 
 ---
 
+## 1.2.0
+
+**A minor bump, for the same reason 1.1.0 was**: it adds a feature rather than
+repairing the last one.
+
+Shipped to **TestFlight and to Google Play's internal and beta tracks only.**
+macOS and the Microsoft Store are deliberately left on 1.1.0 — the change is
+about giving a Bluetooth headset's hands-free profile back while only
+listening, and neither of those platforms has one. Sending them an identical
+build with nothing in it for their users would cost a Mac App Store upload
+against the six-per-hour limit and a Microsoft certification run of hours to
+days, for nothing. The `mac_app_store` input exists for exactly this and
+defaults to true, so only a deliberate dispatch can leave macOS out.
+
+```
+Music at full quality while you listen.
+
+Holding a headset's hands-free profile for a whole call drops everything you
+hear — the group and any music — to telephone bandwidth. MumbleWay now gives it
+back while you are only listening, and takes it again when you want to talk.
+
+Turn on "Tap the phone to talk" in Settings to open the microphone by tapping
+the phone through a pocket or a bag. Off by default, so nothing changes until
+you ask for it.
+```
+
+448 characters against Google Play's 500. The Russian is 360 — shorter, because
+it says the same thing without the clause about what is lost, which Russian
+makes longer than English for no gain.
+
+**What is not in the notes, deliberately.** The tap gesture's thresholds are
+unmeasured: `tools/tap/` exists to settle them against hand-labelled rides and
+has no corpus yet, so the notes describe the feature as something to turn on
+rather than something that works well. The honest claim is the bandwidth, which
+is measurable and certain; the gesture's reliability is not, and promising it
+before `false arms per hour` has a number would be the sort of thing
+`docs/CAPTURE_ON_DEMAND.md` warns about at length.
+
+Also absent: the three route-reporting bugs fixed on the way. A rider cannot act
+on "the diagnostic log labelled recordings with the wrong microphone", and the
+notes are 500 characters shared with the thing they came here for.
+
 ## 1.1.0
 
 The first release since 1.0.1 build 144, published 4 September. **A minor bump

@@ -32,6 +32,21 @@ on:
         required: false
         default: false
         type: boolean
+      # **Default true, unlike the Microsoft one, and the asymmetry is the
+      # point.** An App Store Connect upload is cheap and reversible: it adds a
+      # build, submits nothing and reviews nothing, so including macOS in every
+      # release is the right default. What it is not is free — six uploads per
+      # app per hour, shared with iOS, and each one expires the older TestFlight
+      # builds for that app.
+      #
+      # So there is a way to say no, for a release whose changes do not reach
+      # macOS at all. A tag or a push still takes it, because a tagged release
+      # claims every store got the same build.
+      mac_app_store:
+        description: 'Also upload the macOS build to App Store Connect'
+        required: false
+        default: true
+        type: boolean
 
 env:
   FLUTTER_VERSION: '3.44.8'
@@ -1133,6 +1148,9 @@ jobs:
   mac-app-store:
     name: Mac App Store
     needs: version
+    # Skippable only on a dispatch that says so. A tag claims every store got
+    # the same build, so it must not be able to leave one out quietly.
+    if: github.event_name != 'workflow_dispatch' || inputs.mac_app_store
     runs-on: macos-latest
     env:
       MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}

@@ -1,5 +1,7 @@
-Music at full quality while you listen.
+Fixes the tap-to-talk gesture, which did nothing at all in the last build.
 
-Holding a headset's hands-free profile for a whole call drops everything you hear — the group and any music — to telephone bandwidth. MumbleWay now gives it back while you are only listening, and takes it again when you want to talk.
+With the microphone mode set to push to talk, switching the gesture on had no effect and nothing said so. The two now exclude each other visibly.
 
-Turn on "Tap the phone to talk" in Settings to open the microphone by tapping the phone through a pocket or a bag. Off by default, so nothing changes until you ask for it.
+Also: the microphone icon showed open while the microphone was closed, and a recording started while connected came out empty.
+
+Diagnostics has a new Motion section — sensor rate, and why a tap was rejected. Please look there if a tap does nothing.

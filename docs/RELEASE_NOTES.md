@@ -23,6 +23,40 @@ serves all four.
 
 ---
 
+## 1.2.1
+
+**A patch, not a minor**: it repairs 1.2.0 rather than adding to it, and the
+number should say which before anybody opens the notes.
+
+1.2.0 shipped the tap gesture in a state where it could not work. Four faults,
+reported from one ride as "the feature does not work at all", and the first on
+its own accounts for that:
+
+- **Switching the gesture on while push-to-talk was selected did nothing.**
+  `_captureOnDemand` excludes push-to-talk and the exclusion was enforced in
+  only one direction, so the switch read "on" with nothing behind it. Since
+  `settings.md` recommends push-to-talk at speed, that is the mode a rider
+  following the documentation would have been in.
+- The microphone icon read the *manual* mute, so it drew an open microphone
+  through the whole listening state.
+- A recording started while connected got no capture and came out empty, which
+  is what reached the intake bot.
+- Nothing distinguished "no samples arriving" from "samples arriving and
+  rejected" — opposite fixes, identical from outside.
+
+**Shipped to TestFlight and Play internal.** macOS and the Microsoft Store are
+left on 1.1.0 again, and this time it is not only about relevance: on those
+platforms `AudioSessionBridge.isNeeded` is false, so capture is never released,
+`effectivelyMuted` reduces to `muted` and none of these fixes changes a single
+behaviour. Sending them a build would be an upload against Apple's six-per-hour
+limit and a Microsoft certification run for a byte-identical experience.
+
+The notes tell a tester what to do rather than what was repaired, because the
+remaining unknown needs them: if a tap does nothing, the new **Motion** section
+in diagnostics says whether the sensors are delivering at all, and if they are,
+which rejection counter is moving. `rejected … too long` is the one that means
+the thresholds are wrong rather than the plumbing.
+
 ## 1.2.0
 
 **A minor bump, for the same reason 1.1.0 was**: it adds a feature rather than

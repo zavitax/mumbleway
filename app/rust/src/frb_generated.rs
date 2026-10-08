@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -396600873;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1262900106;
 
 // Section: executor
 
@@ -3904,6 +3904,35 @@ fn wire__crate__api__mumbleway__stop_test_tone_impl(
         },
     )
 }
+fn wire__crate__api__mumbleway__tap_diagnostics_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "tap_diagnostics",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Result::<_, ()>::Ok(crate::api::mumbleway::tap_diagnostics())?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__mumbleway__trigger_context_action_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -3943,6 +3972,39 @@ fn wire__crate__api__mumbleway__trigger_context_action_impl(
                         Ok(output_ok)
                     })(),
                 )
+            }
+        },
+    )
+}
+fn wire__crate__api__mumbleway__ui_tap_stats_default_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "ui_tap_stats_default",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::mumbleway::UiTapStats::default())?;
+                    Ok(output_ok)
+                })())
             }
         },
     )
@@ -5389,6 +5451,38 @@ impl SseDecode for crate::api::mumbleway::UiStats {
     }
 }
 
+impl SseDecode for crate::api::mumbleway::UiTapStats {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_enabled = <bool>::sse_decode(deserializer);
+        let mut var_samples = <u64>::sse_decode(deserializer);
+        let mut var_candidates = <u64>::sse_decode(deserializer);
+        let mut var_discardedLong = <u64>::sse_decode(deserializer);
+        let mut var_discardedMagnitude = <u64>::sse_decode(deserializer);
+        let mut var_discardedInterval = <u64>::sse_decode(deserializer);
+        let mut var_gestures = <u64>::sse_decode(deserializer);
+        let mut var_psiDb = <f32>::sse_decode(deserializer);
+        let mut var_floorDb = <f32>::sse_decode(deserializer);
+        let mut var_peakDb = <f32>::sse_decode(deserializer);
+        let mut var_pending = <u8>::sse_decode(deserializer);
+        let mut var_hz = <f32>::sse_decode(deserializer);
+        return crate::api::mumbleway::UiTapStats {
+            enabled: var_enabled,
+            samples: var_samples,
+            candidates: var_candidates,
+            discarded_long: var_discardedLong,
+            discarded_magnitude: var_discardedMagnitude,
+            discarded_interval: var_discardedInterval,
+            gestures: var_gestures,
+            psi_db: var_psiDb,
+            floor_db: var_floorDb,
+            peak_db: var_peakDb,
+            pending: var_pending,
+            hz: var_hz,
+        };
+    }
+}
+
 impl SseDecode for crate::api::mumbleway::UiUser {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -5619,13 +5713,19 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         110 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
-        113 => wire__crate__api__mumbleway__trigger_context_action_impl(
+        114 => wire__crate__api__mumbleway__trigger_context_action_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        114 => {
+        115 => wire__crate__api__mumbleway__ui_tap_stats_default_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        116 => {
             wire__crate__api__mumbleway__unregister_users_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -5727,6 +5827,7 @@ fn pde_ffi_dispatcher_sync_impl(
             wire__crate__api__mumbleway__stop_diagnostic_recording_impl(ptr, rust_vec_len, data_len)
         }
         112 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        113 => wire__crate__api__mumbleway__tap_diagnostics_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -6827,6 +6928,37 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiStats>
     for crate::api::mumbleway::UiStats
 {
     fn into_into_dart(self) -> crate::api::mumbleway::UiStats {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiTapStats {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.enabled.into_into_dart().into_dart(),
+            self.samples.into_into_dart().into_dart(),
+            self.candidates.into_into_dart().into_dart(),
+            self.discarded_long.into_into_dart().into_dart(),
+            self.discarded_magnitude.into_into_dart().into_dart(),
+            self.discarded_interval.into_into_dart().into_dart(),
+            self.gestures.into_into_dart().into_dart(),
+            self.psi_db.into_into_dart().into_dart(),
+            self.floor_db.into_into_dart().into_dart(),
+            self.peak_db.into_into_dart().into_dart(),
+            self.pending.into_into_dart().into_dart(),
+            self.hz.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mumbleway::UiTapStats
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mumbleway::UiTapStats>
+    for crate::api::mumbleway::UiTapStats
+{
+    fn into_into_dart(self) -> crate::api::mumbleway::UiTapStats {
         self
     }
 }
@@ -7991,6 +8123,24 @@ impl SseEncode for crate::api::mumbleway::UiStats {
         <f32>::sse_encode(self.tcp_ping_ms, serializer);
         <f32>::sse_encode(self.udp_ping_ms, serializer);
         <String>::sse_encode(self.transport, serializer);
+    }
+}
+
+impl SseEncode for crate::api::mumbleway::UiTapStats {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.enabled, serializer);
+        <u64>::sse_encode(self.samples, serializer);
+        <u64>::sse_encode(self.candidates, serializer);
+        <u64>::sse_encode(self.discarded_long, serializer);
+        <u64>::sse_encode(self.discarded_magnitude, serializer);
+        <u64>::sse_encode(self.discarded_interval, serializer);
+        <u64>::sse_encode(self.gestures, serializer);
+        <f32>::sse_encode(self.psi_db, serializer);
+        <f32>::sse_encode(self.floor_db, serializer);
+        <f32>::sse_encode(self.peak_db, serializer);
+        <u8>::sse_encode(self.pending, serializer);
+        <f32>::sse_encode(self.hz, serializer);
     }
 }
 

@@ -4038,6 +4038,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'{count} motion readings lost — storage could not keep up'**
   String diagRecordingDroppedMotion(int count);
+
+  /// No description provided for @tapBlockedByPushToTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.'**
+  String get tapBlockedByPushToTalk;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

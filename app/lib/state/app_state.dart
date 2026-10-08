@@ -898,6 +898,18 @@ class AppState extends ChangeNotifier {
 
   String? get startupError => _startupError;
   bool get muted => _muted;
+
+  /// Whether the microphone is silent, for any reason this rider owns.
+  ///
+  /// **Capture being closed is a mute for every practical purpose**, so it is
+  /// shown as one and sent as one — the interface drew an open microphone while
+  /// the listening state could not transmit a word, which is the worst kind of
+  /// wrong a microphone indicator can be.
+  ///
+  /// Composed rather than merged, which is the bug this avoids by
+  /// construction: taking capture clears only the capture half, so a rider who
+  /// muted themselves deliberately and then taps is not silently unmuted.
+  bool get effectivelyMuted => _muted || !_capturing;
   bool get deafened => _deafened;
   bool get transmitting => _transmitting;
   double get inputLevelDb => _inputLevelDb;
@@ -2165,10 +2177,30 @@ class AppState extends ChangeNotifier {
   /// there is already a wait, behind a connect that takes about as long. A
   /// rider who presses talk and loses the first half of their sentence would
   /// have no idea why.
+  /// Whether something on screen needs a microphone regardless of the mode.
+  ///
+  /// A level meter or a diagnostic recording exists to show what the microphone
+  /// is doing, and one that gets no blocks looks exactly like a broken one.
+  bool get _captureRequiredByHold => _audioHolds > 0 || monitoring;
+
+  /// Set while capture was taken for a hold rather than asked for by the rider,
+  /// so it can be given back when the hold goes.
+  bool _captureForcedByHold = false;
+
   Future<String?> _acquireAudio() async {
     _audioRelease?.cancel();
     _audioRelease = null;
-    if (_audioActive) return null;
+    if (_audioActive) {
+      // **Already live, and possibly only listening.** This early return used
+      // to end the matter, so starting a recording while connected in the
+      // listening state produced a file of nothing — no capture stream, no
+      // blocks, zero duration — and nothing anywhere said why.
+      if (_captureRequiredByHold && !_capturing && !_captureChanging) {
+        _captureForcedByHold = true;
+        return await requestCapture();
+      }
+      return null;
+    }
 
     // The platform session first: on iOS there is nothing for the engine to
     // open until the category is live, and the failure it produces otherwise
@@ -2238,6 +2270,10 @@ class AppState extends ChangeNotifier {
         playTapArmedCue(taps: tapCount);
       } catch (_) {}
     }
+    // **The initial state has to be published too.** Without this the app
+    // connects in the listening state and draws an open microphone — which is
+    // what a rider reported first: unable to transmit, with nothing saying so.
+    _publishMute();
     _syncReliefWatch();
     notifyListeners();
     return null;
@@ -2301,8 +2337,21 @@ class AppState extends ChangeNotifier {
     return error;
   }
 
+  /// Returns capture to the listening state if a hold was the only reason for
+  /// it.
+  ///
+  /// Only when the rider did not ask: a tap during a recording is a decision,
+  /// and ending the recording must not undo it.
+  void _releaseCaptureIfForced() {
+    if (!_captureForcedByHold) return;
+    if (_captureRequiredByHold) return;
+    _captureForcedByHold = false;
+    if (_captureOnDemand && _capturing) releaseCapture();
+  }
+
   void releaseAudio() {
     if (_audioHolds > 0) _audioHolds--;
+    _releaseCaptureIfForced();
     _syncAudioToUse();
   }
 
@@ -2444,7 +2493,10 @@ class AppState extends ChangeNotifier {
         playCaptureLiveCue();
       } catch (_) {}
       _armCaptureIdle();
-      notifyListeners();
+      // The microphone is live now, so say so — to the indicator and to every
+      // server. Clears only the capture half of the mute, leaving a deliberate
+      // one alone.
+      _publishMute();
       return null;
     } catch (e) {
       _captureBeat?.cancel();
@@ -2477,6 +2529,7 @@ class AppState extends ChangeNotifier {
       try {
         playCaptureStoppedCue();
       } catch (_) {}
+      _publishMute();
     } catch (_) {
       // Left as capturing rather than claimed released: the worst case is
       // music that stays narrowband until the next transition, which is where
@@ -4556,6 +4609,16 @@ class AppState extends ChangeNotifier {
   /// who muted themselves and forgot, because nothing said they had.
   void _applyMute(bool muted) {
     _muted = muted;
+    _publishMute();
+  }
+
+  /// Pushes [effectivelyMuted] to the engine and to every live server.
+  ///
+  /// Called by the mute control *and* by a capture transition, because both
+  /// change the same visible fact. Sending `_muted` alone left a rider in the
+  /// listening state advertised as unmuted while unable to transmit.
+  void _publishMute() {
+    final muted = effectivelyMuted;
     try {
       setMicrophoneMuted(muted: muted);
     } catch (_) {}
@@ -4668,6 +4731,12 @@ class AppState extends ChangeNotifier {
   /// the hello says.
   Future<void> updateTapToCapture(bool on) async {
     if (!canChangeMicMode) return;
+    // Refused rather than accepted-and-ignored. `_captureOnDemand` excludes
+    // push-to-talk, so storing `true` here while that mode is selected leaves a
+    // switch reading "on" with nothing behind it — sensors never started, no
+    // gesture ever detected, and no way to tell from the interface. The switch
+    // is disabled for the same reason; this is the guard under it.
+    if (on && micMode == MicMode.pushToTalk) return;
     tapToCapture = on;
     _syncTapDetection();
     try {

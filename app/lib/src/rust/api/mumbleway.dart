@@ -541,6 +541,13 @@ bool pushMotion({
   rotation: rotation,
 );
 
+/// What the tap detector is seeing.
+///
+/// Free to call and safe before the engine is up, like the other panel
+/// readouts: the honest answer before there is an engine is "no samples".
+UiTapStats tapDiagnostics() =>
+    RustLib.instance.api.crateApiMumblewayTapDiagnostics();
+
 /// Switches tap detection on or off, and sets how many taps the gesture takes.
 ///
 /// Separate from the recording, deliberately: the motion track is written
@@ -2848,6 +2855,83 @@ class UiStats {
           tcpPingMs == other.tcpPingMs &&
           udpPingMs == other.udpPingMs &&
           transport == other.transport;
+}
+
+/// What [`tap_diagnostics`] reports.
+class UiTapStats {
+  /// Whether a completed gesture would act. The counters move either way.
+  final bool enabled;
+
+  /// **Zero here means the sensors are not delivering**, which is a platform
+  /// fault and nothing to do with the thresholds.
+  final BigInt samples;
+  final BigInt candidates;
+
+  /// Impulses thrown away for ringing past the pulse-width limit. The number
+  /// to look at when samples arrive and nothing is ever detected.
+  final BigInt discardedLong;
+  final BigInt discardedMagnitude;
+  final BigInt discardedInterval;
+  final BigInt gestures;
+  final double psiDb;
+  final double floorDb;
+  final double peakDb;
+  final int pending;
+
+  /// Delivered sample rate. Android should show 200–500, iOS about 100; well
+  /// under either means the platform is capping it.
+  final double hz;
+
+  const UiTapStats({
+    required this.enabled,
+    required this.samples,
+    required this.candidates,
+    required this.discardedLong,
+    required this.discardedMagnitude,
+    required this.discardedInterval,
+    required this.gestures,
+    required this.psiDb,
+    required this.floorDb,
+    required this.peakDb,
+    required this.pending,
+    required this.hz,
+  });
+
+  static Future<UiTapStats> default_() =>
+      RustLib.instance.api.crateApiMumblewayUiTapStatsDefault();
+
+  @override
+  int get hashCode =>
+      enabled.hashCode ^
+      samples.hashCode ^
+      candidates.hashCode ^
+      discardedLong.hashCode ^
+      discardedMagnitude.hashCode ^
+      discardedInterval.hashCode ^
+      gestures.hashCode ^
+      psiDb.hashCode ^
+      floorDb.hashCode ^
+      peakDb.hashCode ^
+      pending.hashCode ^
+      hz.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiTapStats &&
+          runtimeType == other.runtimeType &&
+          enabled == other.enabled &&
+          samples == other.samples &&
+          candidates == other.candidates &&
+          discardedLong == other.discardedLong &&
+          discardedMagnitude == other.discardedMagnitude &&
+          discardedInterval == other.discardedInterval &&
+          gestures == other.gestures &&
+          psiDb == other.psiDb &&
+          floorDb == other.floorDb &&
+          peakDb == other.peakDb &&
+          pending == other.pending &&
+          hz == other.hz;
 }
 
 class UiUser {

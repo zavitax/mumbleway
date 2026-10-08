@@ -10,6 +10,7 @@ import '../services/engine_log.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'recording_toggle.dart';
+import 'motion_view.dart';
 import 'spectrum_view.dart';
 import 'watch.dart';
 
@@ -358,6 +359,11 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 // next thing anyone wants is that moment on
                                 // disk where it can be looked at properly.
                                 RecordingToggle(),
+                                SizedBox(height: 20),
+                                // Under the recorder because it answers the
+                                // question a recording raises when it turns out
+                                // empty: whether anything was arriving at all.
+                                MotionView(),
                                 SizedBox(height: 16),
                               ],
                             )

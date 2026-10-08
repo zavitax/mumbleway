@@ -167,13 +167,25 @@ class HomeScreen extends StatelessWidget {
             // Kept amber rather than going the usual disabled grey: the reason
             // it cannot be pressed is the thing the colour is saying.
             disabledColor: StatusColors.reconnecting,
+            // **`effectivelyMuted`, not `muted`.** Capture being closed is a
+            // mute for every practical purpose, and this drew an open
+            // microphone through the whole listening state — a rider unable to
+            // transmit a word, with the one indicator that exists to say so
+            // saying the opposite. It was the first thing reported.
             icon: Icon(
-              state.muted || state.silencedByServer ? Icons.mic_off : Icons.mic,
+              state.effectivelyMuted || state.silencedByServer
+                  ? Icons.mic_off
+                  : Icons.mic,
             ),
             color: state.silencedByServer
                 ? StatusColors.reconnecting
                 : state.muted
                 ? StatusColors.failed
+                // Closed because nobody has tapped yet is not a fault and must
+                // not borrow the red that means "you muted yourself". The
+                // ordinary dimmed colour: off, and nothing wrong.
+                : !state.capturing
+                ? Theme.of(context).disabledColor
                 : null,
           ),
           PopupMenuButton<String>(

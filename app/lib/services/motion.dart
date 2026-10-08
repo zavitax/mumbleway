@@ -37,6 +37,21 @@ class MotionBridge {
   bool _handlerInstalled = false;
   bool _running = false;
 
+  /// Whether the sensors have been asked for and not stopped.
+  ///
+  /// Reported to the diagnostics panel so "no samples" can be told apart from
+  /// "nobody asked". Those are different faults and the first report of this
+  /// feature could distinguish neither.
+  bool get running => _running;
+
+  /// What the platform last said about having motion sensors at all.
+  ///
+  /// `null` until asked. On the iOS **simulator** this is false — there is no
+  /// motion hardware — which is worth knowing before concluding anything about
+  /// a device.
+  bool? get availableCached => _available;
+  bool? _available;
+
   /// Readings this process could not hand on, counted rather than hidden.
   ///
   /// A gap nobody counted looks exactly like a stretch of road where nothing
@@ -65,18 +80,25 @@ class MotionBridge {
   VoidCallback? onTapGesture;
 
   Future<bool> available() async {
-    if (!isSupported) return false;
-    try {
-      return await _channel.invokeMethod<bool>('available') ?? false;
-    } catch (_) {
+    if (!isSupported) {
+      _available = false;
       return false;
     }
+    try {
+      _available = await _channel.invokeMethod<bool>('available') ?? false;
+    } catch (_) {
+      // A platform side that does not know the method is the same answer as no
+      // sensors, as far as anything above here is concerned.
+      _available = false;
+    }
+    return _available!;
   }
 
   Future<void> start() async {
     if (!isSupported || _running) return;
     _ensureHandler();
     try {
+      await available();
       await _channel.invokeMethod<bool>('start');
       _running = true;
     } on MissingPluginException {

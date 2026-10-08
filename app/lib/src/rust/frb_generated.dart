@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -396600873;
+  int get rustContentHash => -1262900106;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -437,12 +437,16 @@ abstract class RustLibApi extends BaseApi {
 
   void crateApiMumblewayStopTestTone();
 
+  UiTapStats crateApiMumblewayTapDiagnostics();
+
   Future<void> crateApiMumblewayTriggerContextAction({
     required String serverId,
     required String action,
     int? session,
     int? channelId,
   });
+
+  Future<UiTapStats> crateApiMumblewayUiTapStatsDefault();
 
   Future<void> crateApiMumblewayUnregisterUsers({
     required String serverId,
@@ -3643,6 +3647,32 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "stop_test_tone", argNames: []);
 
   @override
+  UiTapStats crateApiMumblewayTapDiagnostics() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 113,
+          )!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ui_tap_stats,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMumblewayTapDiagnosticsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayTapDiagnosticsConstMeta =>
+      const TaskConstMeta(debugName: "tap_diagnostics", argNames: []);
+
+  @override
   Future<void> crateApiMumblewayTriggerContextAction({
     required String serverId,
     required String action,
@@ -3660,7 +3690,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 113,
+            funcId: 114,
             port: port_,
           );
         },
@@ -3682,6 +3712,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<UiTapStats> crateApiMumblewayUiTapStatsDefault() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 115,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_ui_tap_stats,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiMumblewayUiTapStatsDefaultConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMumblewayUiTapStatsDefaultConstMeta =>
+      const TaskConstMeta(debugName: "ui_tap_stats_default", argNames: []);
+
+  @override
   Future<void> crateApiMumblewayUnregisterUsers({
     required String serverId,
     required List<int> userIds,
@@ -3695,7 +3752,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 114,
+            funcId: 116,
             port: port_,
           );
         },
@@ -4718,6 +4775,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       tcpPingMs: dco_decode_f_32(arr[1]),
       udpPingMs: dco_decode_f_32(arr[2]),
       transport: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  UiTapStats dco_decode_ui_tap_stats(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 12)
+      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
+    return UiTapStats(
+      enabled: dco_decode_bool(arr[0]),
+      samples: dco_decode_u_64(arr[1]),
+      candidates: dco_decode_u_64(arr[2]),
+      discardedLong: dco_decode_u_64(arr[3]),
+      discardedMagnitude: dco_decode_u_64(arr[4]),
+      discardedInterval: dco_decode_u_64(arr[5]),
+      gestures: dco_decode_u_64(arr[6]),
+      psiDb: dco_decode_f_32(arr[7]),
+      floorDb: dco_decode_f_32(arr[8]),
+      peakDb: dco_decode_f_32(arr[9]),
+      pending: dco_decode_u_8(arr[10]),
+      hz: dco_decode_f_32(arr[11]),
     );
   }
 
@@ -6138,6 +6217,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  UiTapStats sse_decode_ui_tap_stats(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_enabled = sse_decode_bool(deserializer);
+    var var_samples = sse_decode_u_64(deserializer);
+    var var_candidates = sse_decode_u_64(deserializer);
+    var var_discardedLong = sse_decode_u_64(deserializer);
+    var var_discardedMagnitude = sse_decode_u_64(deserializer);
+    var var_discardedInterval = sse_decode_u_64(deserializer);
+    var var_gestures = sse_decode_u_64(deserializer);
+    var var_psiDb = sse_decode_f_32(deserializer);
+    var var_floorDb = sse_decode_f_32(deserializer);
+    var var_peakDb = sse_decode_f_32(deserializer);
+    var var_pending = sse_decode_u_8(deserializer);
+    var var_hz = sse_decode_f_32(deserializer);
+    return UiTapStats(
+      enabled: var_enabled,
+      samples: var_samples,
+      candidates: var_candidates,
+      discardedLong: var_discardedLong,
+      discardedMagnitude: var_discardedMagnitude,
+      discardedInterval: var_discardedInterval,
+      gestures: var_gestures,
+      psiDb: var_psiDb,
+      floorDb: var_floorDb,
+      peakDb: var_peakDb,
+      pending: var_pending,
+      hz: var_hz,
+    );
+  }
+
+  @protected
   UiUser sse_decode_ui_user(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_session = sse_decode_u_32(deserializer);
@@ -7362,6 +7472,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_32(self.tcpPingMs, serializer);
     sse_encode_f_32(self.udpPingMs, serializer);
     sse_encode_String(self.transport, serializer);
+  }
+
+  @protected
+  void sse_encode_ui_tap_stats(UiTapStats self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.enabled, serializer);
+    sse_encode_u_64(self.samples, serializer);
+    sse_encode_u_64(self.candidates, serializer);
+    sse_encode_u_64(self.discardedLong, serializer);
+    sse_encode_u_64(self.discardedMagnitude, serializer);
+    sse_encode_u_64(self.discardedInterval, serializer);
+    sse_encode_u_64(self.gestures, serializer);
+    sse_encode_f_32(self.psiDb, serializer);
+    sse_encode_f_32(self.floorDb, serializer);
+    sse_encode_f_32(self.peakDb, serializer);
+    sse_encode_u_8(self.pending, serializer);
+    sse_encode_f_32(self.hz, serializer);
   }
 
   @protected

@@ -2228,4 +2228,8 @@ class LEn extends L {
   String diagRecordingDroppedMotion(int count) {
     return '$count motion readings lost — storage could not keep up';
   }
+
+  @override
+  String get tapBlockedByPushToTalk =>
+      'Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.';
 }

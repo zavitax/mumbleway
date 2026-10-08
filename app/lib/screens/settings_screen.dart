@@ -643,29 +643,40 @@ class _TapToCaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, int, bool, int, bool)>(
+    return Watch<(bool, int, bool, int, bool, MicMode)>(
       (state) => (
         state.tapToCapture,
         state.tapCount,
         state.autoStopCapture,
         state.autoStopSeconds,
         state.canChangeMicMode,
+        state.micMode,
       ),
       (context, state) {
         final l = L.of(context);
-        final on = state.tapToCapture;
+        // **The exclusion has to run both ways, and only one of them was
+        // built.** Push-to-talk was disabled in the radio group while the
+        // gesture was on, but the gesture could still be switched on while
+        // push-to-talk was selected — and then `tapToCapture && micMode !=
+        // pushToTalk` resolved to false, so the switch read "on" and the
+        // feature was inert, with the sensors never started. That is a control
+        // that lies, which is worse than one that refuses.
+        final blocked = state.micMode == MicMode.pushToTalk;
+        final on = state.tapToCapture && !blocked;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SwitchListTile(
               secondary: const Icon(Icons.touch_app),
               title: Text(l.tapToCapture),
-              subtitle: Text(l.tapToCaptureBody),
+              subtitle: Text(
+                blocked ? l.tapBlockedByPushToTalk : l.tapToCaptureBody,
+              ),
               isThreeLine: true,
               value: on,
               // Shares the mode's lock, and for the same reason: it changes
               // what the connect-time hello says about this rider.
-              onChanged: state.canChangeMicMode
+              onChanged: state.canChangeMicMode && !blocked
                   ? (v) => state.updateTapToCapture(v)
                   : null,
             ),

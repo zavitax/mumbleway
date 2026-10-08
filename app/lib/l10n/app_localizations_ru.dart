@@ -2217,4 +2217,8 @@ class LRu extends L {
   String diagRecordingDroppedMotion(int count) {
     return 'Потеряно показаний движения: $count — накопитель не успевал';
   }
+
+  @override
+  String get tapBlockedByPushToTalk =>
+      'Недоступно, пока режим микрофона — «По нажатию»: кнопка не может сработать сразу, если микрофон закрыт до постукивания. Выберите «По голосу» или «Открытый микрофон».';
 }

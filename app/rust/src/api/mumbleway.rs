@@ -772,7 +772,14 @@ struct App {
     /// when the rider has not asked for the gesture, which is the default — so
     /// the sensors can be running for the corpus with nothing watching them for
     /// a trigger.
-    tap: Arc<Mutex<Option<TapDetector>>>,
+    /// **Always present, even with the gesture switched off.** The first field
+    /// report was "taps are not detected" with no way to tell whether samples
+    /// were arriving at all — and those two faults need opposite fixes. Running
+    /// the detector regardless costs a handful of multiplies per sample and
+    /// makes the diagnostics panel able to answer it.
+    tap: Arc<Mutex<TapDetector>>,
+    /// Whether a completed gesture should actually do anything.
+    tap_enabled: Arc<AtomicBool>,
 }
 
 /// Decides which audio cue, if any, a status transition should play.
@@ -1524,7 +1531,8 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         last_status,
         identity,
         allow_remote_unmute,
-        tap: Arc::new(Mutex::new(None)),
+        tap: Arc::new(Mutex::new(TapDetector::new(3))),
+        tap_enabled: Arc::new(AtomicBool::new(false)),
     });
     Ok(())
 }
@@ -3147,11 +3155,75 @@ pub fn push_motion(
     // reason false positives can ever be measured.
     app.shared.push_motion(sample);
 
-    let mut guard = app.tap.lock();
-    match guard.as_mut() {
-        Some(detector) => Ok(detector.push(&sample).is_some()),
-        None => Ok(false),
+    // Pushed whether or not the gesture is switched on, so the panel can show
+    // the signal while somebody is working out why nothing fires. Only the
+    // *acting* on it is gated.
+    let completed = app.tap.lock().push(&sample).is_some();
+    Ok(completed && app.tap_enabled.load(Ordering::Relaxed))
+}
+
+/// What the tap detector is seeing.
+///
+/// Free to call and safe before the engine is up, like the other panel
+/// readouts: the honest answer before there is an engine is "no samples".
+#[frb(sync)]
+pub fn tap_diagnostics() -> UiTapStats {
+    let Ok(app) = app() else {
+        return UiTapStats::default();
+    };
+    let s = app.tap.lock().stats();
+    UiTapStats {
+        enabled: app.tap_enabled.load(Ordering::Relaxed),
+        samples: s.samples,
+        candidates: s.candidates,
+        discarded_long: s.discarded_long,
+        discarded_magnitude: s.discarded_magnitude,
+        discarded_interval: s.discarded_interval,
+        gestures: s.gestures,
+        psi_db: s.psi_db,
+        floor_db: s.floor_db,
+        peak_db: if s.peak_db.is_finite() {
+            s.peak_db
+        } else {
+            0.0
+        },
+        pending: s.pending,
+        // Worked out here rather than in Dart so one definition of "rate"
+        // exists. Zero samples, or all of them in the same microsecond, is
+        // reported as zero rather than as a division.
+        hz: {
+            let span = s.last_us.saturating_sub(s.first_us);
+            if span > 0 && s.samples > 1 {
+                (s.samples - 1) as f32 * 1_000_000.0 / span as f32
+            } else {
+                0.0
+            }
+        },
     }
+}
+
+/// What [`tap_diagnostics`] reports.
+#[derive(Default)]
+pub struct UiTapStats {
+    /// Whether a completed gesture would act. The counters move either way.
+    pub enabled: bool,
+    /// **Zero here means the sensors are not delivering**, which is a platform
+    /// fault and nothing to do with the thresholds.
+    pub samples: u64,
+    pub candidates: u64,
+    /// Impulses thrown away for ringing past the pulse-width limit. The number
+    /// to look at when samples arrive and nothing is ever detected.
+    pub discarded_long: u64,
+    pub discarded_magnitude: u64,
+    pub discarded_interval: u64,
+    pub gestures: u64,
+    pub psi_db: f32,
+    pub floor_db: f32,
+    pub peak_db: f32,
+    pub pending: u8,
+    /// Delivered sample rate. Android should show 200–500, iOS about 100; well
+    /// under either means the platform is capping it.
+    pub hz: f32,
 }
 
 /// Switches tap detection on or off, and sets how many taps the gesture takes.
@@ -3165,15 +3237,10 @@ pub fn push_motion(
 #[frb(sync)]
 pub fn set_tap_detection(enabled: bool, taps: u8) -> anyhow::Result<()> {
     let app = app()?;
-    let mut guard = app.tap.lock();
-    if !enabled {
-        *guard = None;
-        return Ok(());
-    }
-    match guard.as_mut() {
-        Some(d) => d.set_taps_wanted(taps),
-        None => *guard = Some(TapDetector::new(taps)),
-    }
+    app.tap_enabled.store(enabled, Ordering::Relaxed);
+    // The count still applies with the gesture off, so the panel shows what
+    // would have happened rather than what a stale default would have.
+    app.tap.lock().set_taps_wanted(taps);
     Ok(())
 }
 

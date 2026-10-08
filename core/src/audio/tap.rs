@@ -117,6 +117,44 @@ struct Candidate {
     strength_db: f32,
 }
 
+/// What the detector is seeing, for the diagnostics panel and for the rig.
+///
+/// **Exists because the first field report was "taps are not detected" with no
+/// way to tell which half was at fault** — no samples arriving at all, or
+/// samples arriving and the thresholds rejecting them. Those need completely
+/// different fixes and look identical from outside.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TapStats {
+    /// Samples pushed since the detector was made. Zero means the sensors are
+    /// not delivering, which is a platform problem and not a tuning one.
+    pub samples: u64,
+    /// Impulses that passed the pulse-width test.
+    pub candidates: u64,
+    /// Impulses rejected for staying above the floor **too long**.
+    ///
+    /// The single most useful number here. A tap through a padded bag rings,
+    /// and if it rings past [`MAX_PULSE_MS`] every tap is thrown away and the
+    /// feature looks dead while the signal is perfectly good.
+    pub discarded_long: u64,
+    /// Candidates dropped for not matching the one before them in magnitude.
+    pub discarded_magnitude: u64,
+    /// Candidates dropped for an interval unlike the previous one.
+    pub discarded_interval: u64,
+    /// Completed gestures.
+    pub gestures: u64,
+    /// The operator's output for the last sample, in dB.
+    pub psi_db: f32,
+    /// The tracked floor it is measured against.
+    pub floor_db: f32,
+    /// The peak of the candidate in progress, or the last one, above the floor.
+    pub peak_db: f32,
+    /// How many taps of a gesture are banked.
+    pub pending: u8,
+    /// Arrival stamps of the first and last samples, for working out the rate.
+    pub first_us: u64,
+    pub last_us: u64,
+}
+
 /// A completed gesture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TapGesture {
@@ -152,6 +190,7 @@ pub struct TapDetector {
     pending_len: usize,
     /// When the dead time after the last candidate expires.
     latent_until_ms: u64,
+    stats: TapStats,
 }
 
 impl TapDetector {
@@ -166,7 +205,13 @@ impl TapDetector {
             pending: [None; 4],
             pending_len: 0,
             latent_until_ms: 0,
+            stats: TapStats::default(),
         }
+    }
+
+    /// What it is seeing. Cheap; called once a second by the panel.
+    pub fn stats(&self) -> TapStats {
+        self.stats
     }
 
     /// Changes the gesture length, discarding anything half-performed.
@@ -213,6 +258,12 @@ impl TapDetector {
             return None;
         }
 
+        self.stats.samples += 1;
+        if self.stats.first_us == 0 {
+            self.stats.first_us = sample.arrival_us;
+        }
+        self.stats.last_us = sample.arrival_us;
+
         let psi = self.psi();
         // dB on an arbitrary but consistent reference. The floor tracker works
         // in dB because minimum statistics over a logarithmic level is what it
@@ -226,6 +277,8 @@ impl TapDetector {
         let in_candidate = self.above_since_ms.is_some();
         let floor_db = self.floor.update_gated(level_db, in_candidate);
         let over = level_db - floor_db;
+        self.stats.psi_db = level_db;
+        self.stats.floor_db = floor_db;
 
         match self.above_since_ms {
             None => {
@@ -240,6 +293,8 @@ impl TapDetector {
                     // Still above. Too long above is a motion, not a tap.
                     if at_ms.saturating_sub(since) > MAX_PULSE_MS as u64 {
                         self.above_since_ms = None;
+                        self.stats.peak_db = self.peak_db;
+                        self.stats.discarded_long += 1;
                         self.peak_db = f32::NEG_INFINITY;
                     }
                 } else {
@@ -247,8 +302,10 @@ impl TapDetector {
                     let strength_db = self.peak_db;
                     self.above_since_ms = None;
                     self.peak_db = f32::NEG_INFINITY;
+                    self.stats.peak_db = strength_db;
                     if at_ms >= self.latent_until_ms {
                         self.latent_until_ms = at_ms + LATENT_MS as u64;
+                        self.stats.candidates += 1;
                         return self.accept(Candidate {
                             at_ms: since,
                             strength_db,
@@ -273,6 +330,7 @@ impl TapDetector {
         if self.pending_len == 0 {
             self.pending[0] = Some(c);
             self.pending_len = 1;
+            self.stats.pending = 1;
             return None;
         }
 
@@ -291,8 +349,10 @@ impl TapDetector {
             last.strength_db.abs().max(1.0),
         );
         if ratio > MAGNITUDE_TOLERANCE {
+            self.stats.discarded_magnitude += 1;
             self.pending[0] = Some(c);
             self.pending_len = 1;
+            self.stats.pending = 1;
             return None;
         }
 
@@ -302,17 +362,22 @@ impl TapDetector {
             let prev = self.pending[self.pending_len - 2]?;
             let previous_gap = last.at_ms.saturating_sub(prev.at_ms).max(1);
             if ratio_of(gap.max(1) as f32, previous_gap as f32) > INTERVAL_TOLERANCE {
+                self.stats.discarded_interval += 1;
                 self.pending[0] = Some(c);
                 self.pending_len = 1;
+                self.stats.pending = 1;
                 return None;
             }
         }
 
         self.pending[self.pending_len] = Some(c);
         self.pending_len += 1;
+        self.stats.pending = self.pending_len as u8;
 
         if self.pending_len >= self.taps_wanted as usize {
             self.pending_len = 0;
+            self.stats.pending = 0;
+            self.stats.gestures += 1;
             return Some(TapGesture {
                 taps: self.taps_wanted,
                 at_ms: c.at_ms,

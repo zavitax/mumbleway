@@ -995,6 +995,22 @@ class AppState extends ChangeNotifier {
         _micSilenced = silenced;
         notifyListeners();
       };
+      // **The route the engine was told about used to be frozen at the last
+      // activation.** `_acquireAudio` pushes it once and nothing revised it, so
+      // a headset reconnecting mid-ride left every subsequent recording
+      // labelled with the microphone the session started on — and that column
+      // exists precisely because the audio does not say what captured it.
+      AudioSessionBridge.instance.onRouteChanged = (session) {
+        if (_audioRoute == session.route) return;
+        _audioRoute = session.route;
+        try {
+          setAudioRoute(code: session.route);
+        } catch (_) {
+          // No engine behind it yet. `_acquireAudio` carries the route when one
+          // opens, so a label is late rather than wrong.
+        }
+        notifyListeners();
+      };
 
       final dir = await getApplicationSupportDirectory();
       await startEngine(
@@ -2113,6 +2129,7 @@ class AppState extends ChangeNotifier {
 
     // Before the engine opens, so the first block the recorder sees is already
     // labelled with the microphone it came from.
+    _audioRoute = session.route;
     try {
       setAudioRoute(code: session.route);
     } catch (_) {
@@ -2219,6 +2236,17 @@ class AppState extends ChangeNotifier {
   /// chain and has cost this project an investigation before.
   bool get micSilenced => _micSilenced;
   bool _micSilenced = false;
+
+  /// Which microphone the platform currently has us on.
+  ///
+  /// `Recorded::route`'s code — see `core/src/audio/record.rs` for the table,
+  /// whose numbers are a wire format. Kept here as well as pushed to the engine
+  /// so the diagnostics panel can show it without asking the platform again,
+  /// and so a transition can be *asserted* rather than assumed: the chain is
+  /// never told whether capture is on, so it will process and transmit whatever
+  /// it is handed, and this is the only value that says what that was.
+  int get audioRoute => _audioRoute;
+  int _audioRoute = 0;
 
   /// Whether a diagnostic recording is running.
   ///

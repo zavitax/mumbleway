@@ -137,6 +137,26 @@ class MainActivity : FlutterActivity() {
         audioRouting.onSilenced = { silenced ->
             runOnUiThread { sessionChannel.invokeMethod("micSilenced", silenced) }
         }
+        // Same shape, and the same reason: the route moving under a ride is not
+        // something a poll would catch in time, and the Dart side has no way to
+        // ask — `activate` is the only call that reports a route, so without
+        // this the engine's idea of it is frozen at the last connect.
+        audioRouting.onRouteChanged = { route ->
+            runOnUiThread {
+                sessionChannel.invokeMethod(
+                    "routeChanged",
+                    mapOf(
+                        "route" to route,
+                        // Android has never answered a channel count here — it
+                        // reports -1, "not known", for the reason the iOS half
+                        // documents — so it keeps saying so rather than
+                        // inventing a number Dart would believe.
+                        "inputChannels" to -1,
+                        "sampleRate" to 0.0,
+                    ),
+                )
+            }
+        }
         sessionChannel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "prepare" -> requestMicrophone(result)

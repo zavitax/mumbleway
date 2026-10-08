@@ -97,6 +97,20 @@ class AudioSessionBridge {
   /// stage of the chain is working perfectly on the silence it was given.
   void Function(bool silenced)? onMicSilenced;
 
+  /// Called when the platform moves the microphone to a different device.
+  ///
+  /// **This used to be sent and silently dropped.** iOS has always invoked
+  /// `routeChanged`, and the handler below only knew `resumed` and
+  /// `micSilenced` — so a headset reconnecting mid-ride left the route the
+  /// engine was told about frozen at whatever it was during the last
+  /// [activate]. Every recording made afterwards carried the wrong route code,
+  /// which is the one column that exists because audio does not say what
+  /// captured it.
+  ///
+  /// The route is [AudioSessionState.route]; see `Recorded::route` in
+  /// `record.rs` for the table.
+  void Function(AudioSessionState state)? onRouteChanged;
+
   void _ensureHandler() {
     if (_handlerInstalled) return;
     _handlerInstalled = true;
@@ -104,6 +118,18 @@ class AudioSessionBridge {
       if (call.method == 'resumed') onResumed?.call();
       if (call.method == 'micSilenced') {
         onMicSilenced?.call(call.arguments == true);
+      }
+      if (call.method == 'routeChanged') {
+        final a = call.arguments;
+        final m = a is Map ? a : const <Object?, Object?>{};
+        onRouteChanged?.call(
+          AudioSessionState(
+            granted: true,
+            inputChannels: (m['inputChannels'] as num?)?.toInt() ?? -1,
+            sampleRate: (m['sampleRate'] as num?)?.toDouble() ?? 0,
+            route: (m['route'] as num?)?.toInt() ?? 0,
+          ),
+        );
       }
       return null;
     });

@@ -209,6 +209,7 @@ class AudioRouting(private val context: Context) {
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
         active = true
         watchForSilencing()
+        watchForRouteChanges()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             done(chooseCommunicationDevice())
@@ -242,6 +243,7 @@ class AudioRouting(private val context: Context) {
         if (!active) return
         active = false
         stopWatchingForSilencing()
+        stopWatchingForRouteChanges()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audio.clearCommunicationDevice()
@@ -264,6 +266,140 @@ class AudioRouting(private val context: Context) {
         // Last, so music comes back up to a phone that has already stopped
         // being a telephone.
         abandonMusicFocus()
+    }
+
+    /**
+     * Told when the system moves the microphone to a different device.
+     *
+     * **A headset reconnecting mid-ride used to go unreported.** `routeCode` was
+     * written once during [activate] and never again, so every recording made
+     * after a reconnect carried the route the session started on — and the route
+     * column exists precisely because the audio itself does not say what
+     * captured it.
+     *
+     * Carries `Recorded::route`'s code. Fired only when the value actually
+     * changes, because the platform reports device arrivals liberally and a
+     * notification per Bluetooth housekeeping event is noise.
+     */
+    var onRouteChanged: ((Int) -> Unit)? = null
+
+    private var deviceCallback: android.media.AudioDeviceCallback? = null
+    private var commDeviceListener: Any? = null
+
+    /**
+     * `Recorded::route`'s table, which is a wire format — see `record.rs`. The
+     * numbers must not be renumbered and a new route takes the next free one.
+     */
+    private fun codeForType(type: Int): Int =
+        when (type) {
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 3
+            AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+            AudioDeviceInfo.TYPE_BUILTIN_MIC -> 1
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 2
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_USB_HEADSET -> 4
+            else -> 5
+        }
+
+    /**
+     * What the route is *now*, read from the platform rather than remembered.
+     *
+     * Asked rather than inferred for the same reason [usingHeadsetMic] is: a
+     * preference stated at activation is not a promise, and the case worth
+     * catching is a connected helmet unit on output while the recording comes
+     * from a phone in a pocket.
+     */
+    fun currentRouteCode(): Int {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val type = audio.communicationDevice?.type ?: return 0
+            return codeForType(type)
+        }
+        // Below 31 there is no communication device to ask about. SCO being on
+        // is the only signal, and it is the one that matters: it is the
+        // narrowband route whose bandwidth a reader would otherwise have to
+        // infer from a spectrum.
+        @Suppress("DEPRECATION")
+        return if (audio.isBluetoothScoOn) 3 else routeCode
+    }
+
+    private fun reportRouteIfChanged() {
+        if (!active) return
+        val now = currentRouteCode()
+        if (now == routeCode) return
+        Log.i(TAG, "route changed: $routeCode -> $now")
+        routeCode = now
+        onRouteChanged?.invoke(now)
+    }
+
+    /**
+     * Watches for the route moving under us.
+     *
+     * Two listeners, because neither alone is enough. The communication-device
+     * listener is authoritative about what capture is actually on, and exists
+     * only from API 31. `AudioDeviceCallback` reaches back to API 23 and fires
+     * when a headset appears or disappears — which is the event a rider
+     * experiences, and the one that happens while the app is in a pocket.
+     */
+    private fun watchForRouteChanges() {
+        if (deviceCallback != null) return
+        val main = Handler(Looper.getMainLooper())
+
+        val cb =
+            object : android.media.AudioDeviceCallback() {
+                override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
+                    reportRouteIfChanged()
+                }
+
+                override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
+                    reportRouteIfChanged()
+                }
+            }
+        deviceCallback = cb
+        runCatching { audio.registerAudioDeviceCallback(cb, main) }
+            .onFailure { Log.w(TAG, "could not watch for device changes", it) }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            addCommDeviceListener()
+        }
+    }
+
+    /**
+     * Split out, and annotated, for the same reason [chooseCommunicationDevice]
+     * is: the listener *type* is API 31, so naming it inside a version check
+     * still trips lint. The field is `Any?` so the class is not referenced at
+     * all below 31.
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun addCommDeviceListener() {
+        val listener =
+            AudioManager.OnCommunicationDeviceChangedListener { reportRouteIfChanged() }
+        commDeviceListener = listener
+        runCatching {
+            audio.addOnCommunicationDeviceChangedListener(
+                java.util.concurrent.Executor { it.run() },
+                listener,
+            )
+        }
+            .onFailure { Log.w(TAG, "could not watch the communication device", it) }
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun removeCommDeviceListener() {
+        (commDeviceListener as? AudioManager.OnCommunicationDeviceChangedListener)?.let {
+            runCatching { audio.removeOnCommunicationDeviceChangedListener(it) }
+        }
+    }
+
+    private fun stopWatchingForRouteChanges() {
+        deviceCallback?.let { cb ->
+            runCatching { audio.unregisterAudioDeviceCallback(cb) }
+            deviceCallback = null
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            removeCommDeviceListener()
+        }
+        commDeviceListener = null
     }
 
     /** Whether a hands-free microphone is what the route currently uses. */
@@ -299,17 +435,7 @@ class AudioRouting(private val context: Context) {
                 return true
             }
 
-        routeCode =
-            when (target.type) {
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 3
-                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
-                AudioDeviceInfo.TYPE_BUILTIN_MIC -> 1
-                AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 2
-                AudioDeviceInfo.TYPE_USB_DEVICE,
-                AudioDeviceInfo.TYPE_USB_HEADSET -> 4
-                else -> 5
-            }
+        routeCode = codeForType(target.type)
         return try {
             audio.setCommunicationDevice(target)
         } catch (e: Exception) {
@@ -339,9 +465,16 @@ class AudioRouting(private val context: Context) {
                 receiver?.let { runCatching { context.unregisterReceiver(it) } }
                 if (connected) {
                     audio.isBluetoothScoOn = true
+                    // **This was missing.** The pre-31 path set `routeCode = 0`
+                    // and never revised it, so every recording from an older
+                    // device said "not known" even with a headset on the link —
+                    // and 3 is the one code a reader most needs, because it is
+                    // the narrowband route.
+                    routeCode = 3
                 } else {
                     Log.w(TAG, "SCO did not come up in time; using the built-in microphone")
                     audio.isSpeakerphoneOn = true
+                    routeCode = 1
                 }
                 done(true)
             }

@@ -87,6 +87,33 @@ final class AudioSession {
     }
   }
 
+  /// Which microphone the system actually put us on.
+  ///
+  /// **iOS answered 0 — "it did not say" — for the whole of this app's life,
+  /// and that is the half of the route table that was never filled in.** The
+  /// numbers are `Recorded::route`'s and are a wire format: every recording
+  /// already on a rider's phone is read with that meaning, so they must not be
+  /// renumbered and a new route takes the next free one.
+  ///
+  /// Read from `currentRoute` rather than from what was *asked* for.
+  /// `preferHandsFreeInput` states a preference and the system is free to
+  /// ignore it, which is exactly the case this value exists to catch — a
+  /// connected helmet unit on output while the recording comes from a phone in
+  /// a pocket.
+  static func routeCode() -> Int {
+    let session = AVAudioSession.sharedInstance()
+    guard let port = session.currentRoute.inputs.first?.portType else { return 0 }
+    switch port {
+    case .builtInMic: return 1
+    // `.lineIn` beside `.headsetMic` because a wired adapter reports either
+    // depending on the dongle, and both are the same fact to a rider.
+    case .headsetMic, .lineIn: return 2
+    case .bluetoothHFP: return 3
+    case .usbAudio: return 4
+    default: return 5
+    }
+  }
+
   /// Takes the session live for a conversation.
   ///
   /// Called as a call is being set up rather than as the first word is spoken.
@@ -121,6 +148,7 @@ final class AudioSession {
         // engine fail with CoreAudio's wording about channel counts.
         "inputChannels": known ? channels : -1,
         "sampleRate": session.sampleRate,
+        "route": Self.routeCode(),
       ])
     } catch {
       // An answer, not a crash. Something else holds the microphone, and the
@@ -344,7 +372,19 @@ final class AudioSession {
         } else {
           self.preferHandsFreeInput()
         }
-        self.channel.invokeMethod("routeChanged", arguments: nil)
+        // **Carries the new route, rather than merely saying something moved.**
+        // Dart has no way to ask for it — `activate` is the only call that
+        // reports one — so a bare notification left `routeCode` stale until the
+        // next connect, which is the bug this fixes. Sent after the
+        // re-activation above, so it describes where the session actually ended
+        // up rather than where it was a moment ago.
+        self.channel.invokeMethod(
+          "routeChanged",
+          arguments: [
+            "route": Self.routeCode(),
+            "inputChannels": session.inputNumberOfChannels,
+            "sampleRate": session.sampleRate,
+          ])
       }
     default:
       break

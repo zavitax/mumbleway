@@ -45,14 +45,36 @@ use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
 use std::thread;
 
-/// Bytes per file before rotating. Below Telegram's 20 MB ceiling with room
-/// for the decision log alongside it.
-const ROTATE_BYTES: u64 = 16 * 1024 * 1024;
+/// Bytes per file before rotating, applied to **each** file rather than to the
+/// set of them.
+///
+/// **This used to be a bundle budget and is now a per-file cap**, and the
+/// difference matters enough to state: 16 MiB was chosen as "below Telegram's
+/// 20 MB ceiling with room for the decision log alongside it", one allowance
+/// covering a whole segment. With three tracks that arithmetic no longer works,
+/// so each file is now its own message and the limit is what one message may
+/// carry.
+///
+/// And the check is against all three sinks, not only the audio. Audio
+/// dominates today — roughly 96 kB/s against perhaps 40 kB/s of motion at
+/// 400 Hz — so an audio-driven rotation would in fact keep the others under.
+/// But that is a coincidence of present rates: raise the sensor rate or add a
+/// column and a motion file would quietly exceed the cap with nothing
+/// complaining, and the rider would find out from Telegram refusing the upload.
+const ROTATE_BYTES: u64 = 18 * 1024 * 1024;
 
 /// Blocks the writer may fall behind by before the audio thread starts
 /// dropping them. Two seconds at 10 ms a block: long enough to cover a storage
 /// stall, short enough that the memory is unremarkable.
 const QUEUE_BLOCKS: usize = 200;
+
+/// Motion readings the writer may fall behind by.
+///
+/// Two seconds at Android's fastest useful rate, to match the audio queue's
+/// own two seconds: a storage pause long enough to lose audio should lose
+/// motion over the same stretch rather than a different one, or the two tracks
+/// disagree about what happened and the disagreement looks like a finding.
+const MOTION_QUEUE: usize = 800;
 
 /// One block of audio and what the chain made of it.
 /// `Default` is for **tests only**, so that adding a column does not mean
@@ -210,11 +232,46 @@ enum Message {
     Stop,
 }
 
+/// One reading of the phone's own motion, for the third track.
+///
+/// **Recorded whether or not tap detection is switched on**, which is the
+/// requirement that is easy to miss: measuring *false* positives needs rides
+/// with no taps in them, so the negative corpus can only be gathered while the
+/// feature is off. Tying this to the detector would have made the corpus that
+/// matters most impossible to collect.
+///
+/// Gravity-removed acceleration plus the gravity vector, because the pair is
+/// what separates a tap from a pothole: a tap arrives across the world
+/// vertical and road shock along it, and the platform's own sensor fusion does
+/// that decomposition better than anything worth writing here.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MotionSample {
+    /// The platform's own stamp, in its own epoch — nanoseconds since boot on
+    /// Android, seconds since boot on iOS, and neither is the audio clock.
+    ///
+    /// Kept **as given** and alongside [`Self::arrival_us`] rather than
+    /// converted, so the delay between the two can be *measured* instead of
+    /// assumed. Tap tolerances are tens of milliseconds, so arrival stamping is
+    /// good enough to align by — but only if somebody can check that later.
+    pub platform_ns: u64,
+    /// When this reading reached the recorder, on the same monotonic clock the
+    /// rest of the session is written against.
+    pub arrival_us: u64,
+    /// Acceleration with gravity already removed, in m/s².
+    pub accel: [f32; 3],
+    /// The gravity vector, which is what gives the world frame.
+    pub gravity: [f32; 3],
+    /// Angular rate, in rad/s. A tap is linear where a suspension event rotates.
+    pub rotation: [f32; 3],
+}
+
 /// Writes capture and decisions to disk, off the audio thread.
 pub struct DiagnosticRecorder {
     tx: SyncSender<Message>,
+    motion_tx: SyncSender<MotionSample>,
     worker: Option<thread::JoinHandle<()>>,
     dropped: Arc<AtomicU64>,
+    motion_dropped: Arc<AtomicU64>,
     dir: PathBuf,
 }
 
@@ -238,20 +295,50 @@ impl DiagnosticRecorder {
         };
 
         let (tx, rx) = sync_channel(QUEUE_BLOCKS);
+        // **Its own channel, not a variant on the audio one.** At 400 Hz motion
+        // arrives four times as often as a block, so sharing the queue would
+        // let a storage hiccup spend the audio budget on motion and drop the
+        // capture instead — the one thing in a recording that cannot be
+        // reconstructed.
+        let (motion_tx, motion_rx) = sync_channel(MOTION_QUEUE);
         let dropped = Arc::new(AtomicU64::new(0));
+        let motion_dropped = Arc::new(AtomicU64::new(0));
         let dir_owned = dir.to_path_buf();
         let stem_owned = stem.clone();
 
         let worker = thread::Builder::new()
             .name("mumbleway-recorder".into())
-            .spawn(move || write_loop(rx, &dir_owned, &stem_owned, sample_rate))?;
+            .spawn(move || write_loop(rx, motion_rx, &dir_owned, &stem_owned, sample_rate))?;
 
         Ok(Self {
             tx,
+            motion_tx,
             worker: Some(worker),
             dropped,
+            motion_dropped,
             dir: dir.to_path_buf(),
         })
+    }
+
+    /// Hands over a motion reading. Never blocks.
+    pub fn push_motion(&self, sample: MotionSample) {
+        match self.motion_tx.try_send(sample) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                self.motion_dropped.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(TrySendError::Disconnected(_)) => {}
+        }
+    }
+
+    /// Motion readings the writer could not keep up with.
+    ///
+    /// Surfaced beside [`Self::dropped_blocks`] so a truncated motion track is
+    /// *visible*. A gap nobody counted looks exactly like a stretch of road
+    /// where nothing happened, which is the reading a tap detector would be
+    /// scored against.
+    pub fn dropped_motion(&self) -> u64 {
+        self.motion_dropped.load(Ordering::Relaxed)
     }
 
     /// Hands over a block. Never blocks; never allocates beyond the block.
@@ -293,13 +380,43 @@ impl Drop for DiagnosticRecorder {
 struct Sink {
     pcm: BufWriter<File>,
     log: BufWriter<File>,
-    written: u64,
+    motion: BufWriter<File>,
+    pcm_written: u64,
+    log_written: u64,
+    motion_written: u64,
     index: u32,
+}
+
+impl Sink {
+    /// Whether any of the three has reached the per-file cap.
+    fn full(&self) -> bool {
+        self.pcm_written >= ROTATE_BYTES
+            || self.log_written >= ROTATE_BYTES
+            || self.motion_written >= ROTATE_BYTES
+    }
+
+    fn flush(&mut self) {
+        let _ = self.pcm.flush();
+        let _ = self.log.flush();
+        let _ = self.motion.flush();
+    }
 }
 
 fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<Sink> {
     let pcm_path = dir.join(format!("{stem}-{index:03}.s16"));
     let log_path = dir.join(format!("{stem}-{index:03}.csv"));
+    // The third track, under the same stem and the **same index**. That shared
+    // index is what makes a segment a coherent slice: segment 7 of each file
+    // covers the same stretch of the ride, so a rider can send one segment's
+    // three files and the rig has a usable window. Rotating them independently
+    // would force every analysis to stitch by timestamp before it could start.
+    let motion_path = dir.join(format!("{stem}-{index:03}.motion.csv"));
+    let mut motion = BufWriter::new(File::create(motion_path)?);
+    writeln!(
+        motion,
+        "# mumbleway motion track; block is the audio block within THIS segment\n\
+         block,platform_ns,arrival_us,ax,ay,az,gx,gy,gz,rx,ry,rz"
+    )?;
     let mut log = BufWriter::new(File::create(log_path)?);
     // A header, because the alternative is a column order remembered wrongly.
     // New columns go on the end, never in the middle. Readers that find them
@@ -315,12 +432,37 @@ fn open_sink(dir: &Path, stem: &str, index: u32, rate: u32) -> std::io::Result<S
     Ok(Sink {
         pcm: BufWriter::new(File::create(pcm_path)?),
         log,
-        written: 0,
+        motion,
+        pcm_written: 0,
+        log_written: 0,
+        motion_written: 0,
         index,
     })
 }
 
-fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
+/// Closes the current segment and opens the next, all three files together.
+///
+/// `None` means it could not, which ends the session — a recorder that carries
+/// on writing into a full file produces something Telegram will refuse, and the
+/// rider finds that out at the end of a ride rather than now.
+fn rotate(sink: &mut Sink, dir: &Path, stem: &str, rate: u32) -> Option<Sink> {
+    sink.flush();
+    match open_sink(dir, stem, sink.index + 1, rate) {
+        Ok(next) => Some(next),
+        Err(e) => {
+            tracing::error!("could not rotate the diagnostic recording: {e}");
+            None
+        }
+    }
+}
+
+fn write_loop(
+    rx: Receiver<Message>,
+    motion_rx: Receiver<MotionSample>,
+    dir: &Path,
+    stem: &str,
+    rate: u32,
+) {
     let mut sink = match open_sink(dir, stem, 0, rate) {
         Ok(s) => s,
         Err(e) => {
@@ -330,10 +472,58 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
     };
     let mut block_index: u64 = 0;
 
-    while let Ok(msg) = rx.recv() {
+    loop {
+        // **A timeout rather than a plain `recv`, because motion has to be
+        // written when there is no audio at all.** In the listening state of
+        // `docs/CAPTURE_ON_DEMAND.md` there is no capture stream, so no blocks
+        // arrive — and that is exactly the stretch a negative corpus is made
+        // of. Waiting on audio alone would hold every motion reading in the
+        // queue until capture resumed, and then write a burst of them stamped
+        // with the wrong block.
+        let msg = match rx.recv_timeout(std::time::Duration::from_millis(10)) {
+            Ok(m) => Some(m),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+
+        // Drained on every pass, so a reading is never more than a block behind
+        // the index it is stamped with.
+        while let Ok(m) = motion_rx.try_recv() {
+            let line = format!(
+                "{},{},{},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5}\n",
+                block_index,
+                m.platform_ns,
+                m.arrival_us,
+                m.accel[0],
+                m.accel[1],
+                m.accel[2],
+                m.gravity[0],
+                m.gravity[1],
+                m.gravity[2],
+                m.rotation[0],
+                m.rotation[1],
+                m.rotation[2],
+            );
+            if sink.motion.write_all(line.as_bytes()).is_err() {
+                break;
+            }
+            sink.motion_written += line.len() as u64;
+        }
+
         let block = match msg {
-            Message::Block(b) => b,
-            Message::Stop => break,
+            Some(Message::Block(b)) => b,
+            Some(Message::Stop) => break,
+            None => {
+                if sink.full() {
+                    if let Some(next) = rotate(&mut sink, dir, stem, rate) {
+                        sink = next;
+                        block_index = 0;
+                    } else {
+                        break;
+                    }
+                }
+                continue;
+            }
         };
 
         let mut bytes = Vec::with_capacity(block.samples.len() * 2);
@@ -344,12 +534,14 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
         if sink.pcm.write_all(&bytes).is_err() {
             break;
         }
-        sink.written += bytes.len() as u64;
+        sink.pcm_written += bytes.len() as u64;
 
-        let _ = writeln!(
-            sink.log,
+        // Built then written, so the length is exact rather than estimated:
+        // rotation now watches this file too, and `BufWriter` would answer for
+        // its buffer rather than for the file on disk.
+        let line = format!(
             "{},{},{},{},{:.3},{:.1},{:.1},{:.1},{:.3},{:.3},{},{},{:.1},\
-             {},{},{:.1},{:.1},{:.2},{:.1},{},{},{},{}",
+             {},{},{:.1},{:.1},{:.2},{:.1},{},{},{},{}\n",
             block_index,
             block.transmitting as u8,
             block.speaking as u8,
@@ -374,34 +566,55 @@ fn write_loop(rx: Receiver<Message>, dir: &Path, stem: &str, rate: u32) {
             block.profile,
             block.route,
         );
+        if sink.log.write_all(line.as_bytes()).is_err() {
+            break;
+        }
+        sink.log_written += line.len() as u64;
         block_index += 1;
 
-        if sink.written >= ROTATE_BYTES {
-            let _ = sink.pcm.flush();
-            let _ = sink.log.flush();
-            match open_sink(dir, stem, sink.index + 1, rate) {
-                Ok(next) => {
+        if sink.full() {
+            match rotate(&mut sink, dir, stem, rate) {
+                Some(next) => {
                     sink = next;
-                    // Back to zero, because each pair is a recording in its
-                    // own right. Running the counter on made the column mean
-                    // "block within the session", which is a number nothing
-                    // can use: the audio beside it starts at sample zero, so
-                    // every reader that multiplied the column by the block
-                    // size pointed past the end of the file it was reading.
-                    // The listen sheet did exactly that and drew the tail of
-                    // a long ride as if none of it had been transmitted.
+                    // Back to zero, because each segment is a recording in its
+                    // own right — and the motion track shares the convention,
+                    // which is why its header says so. Running the counter on
+                    // made the column mean "block within the session", a number
+                    // nothing can use: the audio beside it starts at sample
+                    // zero, so every reader that multiplied the column by the
+                    // block size pointed past the end of the file it was
+                    // reading. The listen sheet did exactly that and drew the
+                    // tail of a long ride as if none of it had been
+                    // transmitted.
                     block_index = 0;
                 }
-                Err(e) => {
-                    tracing::error!("could not rotate the diagnostic recording: {e}");
-                    break;
-                }
+                None => break,
             }
         }
     }
 
-    let _ = sink.pcm.flush();
-    let _ = sink.log.flush();
+    // Everything in flight, including motion readings that arrived after the
+    // last block. The recorder is joined rather than detached precisely so this
+    // runs before anything offers to share the files.
+    while let Ok(m) = motion_rx.try_recv() {
+        let _ = writeln!(
+            sink.motion,
+            "{},{},{},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5},{:.5}",
+            block_index,
+            m.platform_ns,
+            m.arrival_us,
+            m.accel[0],
+            m.accel[1],
+            m.accel[2],
+            m.gravity[0],
+            m.gravity[1],
+            m.gravity[2],
+            m.rotation[0],
+            m.rotation[1],
+            m.rotation[2],
+        );
+    }
+    sink.flush();
 }
 
 #[cfg(test)]
@@ -508,13 +721,15 @@ mod tests {
         let blocks = (ROTATE_BYTES / per_block) + 4;
         fs::create_dir_all(&dir).unwrap(); // `start` does this; `write_loop` does not
         let (tx, rx) = sync_channel(QUEUE_BLOCKS);
+        let (motion_tx, motion_rx) = sync_channel(MOTION_QUEUE);
         let dir2 = dir.clone();
-        let writer = std::thread::spawn(move || write_loop(rx, &dir2, "rot", 48_000));
+        let writer = std::thread::spawn(move || write_loop(rx, motion_rx, &dir2, "rot", 48_000));
         for i in 0..blocks {
             tx.send(Message::Block(Box::new(block(i % 2 == 0))))
                 .unwrap();
         }
         drop(tx);
+        drop(motion_tx);
         writer.join().unwrap();
 
         let second = fs::read_to_string(dir.join("rot-001.csv")).unwrap();
@@ -534,6 +749,89 @@ mod tests {
             (rows.len() - 1) as u64,
             "one block of audio per row, in the rotated file as much as the first"
         );
+
+        // The third track rotated with them, under the same index. That shared
+        // index is the whole of the alignment story: a rider sends one
+        // segment's three files and the rig has a coherent window, where
+        // independent rotation would make every analysis stitch by timestamp
+        // before it could start.
+        assert!(
+            dir.join("rot-000.motion.csv").exists() && dir.join("rot-001.motion.csv").exists(),
+            "the motion track did not rotate with the other two"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn motion_is_written_with_its_block_and_survives_having_no_audio() {
+        let dir = std::env::temp_dir().join(format!("mw-rec-mot-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let (tx, rx) = sync_channel(QUEUE_BLOCKS);
+        let (motion_tx, motion_rx) = sync_channel(MOTION_QUEUE);
+        let dir2 = dir.clone();
+        let writer = std::thread::spawn(move || write_loop(rx, motion_rx, &dir2, "mot", 48_000));
+
+        // **Before any audio at all**, which is the case that matters: in the
+        // listening state there is no capture stream, and that is exactly the
+        // stretch a negative corpus — rides with no taps in them — is made of.
+        // A writer that only woke for blocks would hold these until capture
+        // resumed and then stamp them all with the wrong one.
+        for i in 0..3u64 {
+            motion_tx
+                .send(MotionSample {
+                    platform_ns: 1_000 + i,
+                    arrival_us: 2_000 + i,
+                    accel: [0.1, 0.2, 0.3],
+                    gravity: [0.0, 0.0, 9.81],
+                    rotation: [0.01, 0.02, 0.03],
+                })
+                .unwrap();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(80));
+
+        tx.send(Message::Block(Box::new(block(true)))).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        motion_tx
+            .send(MotionSample {
+                platform_ns: 9_999,
+                arrival_us: 8_888,
+                accel: [1.0, 0.0, 0.0],
+                gravity: [0.0, 0.0, 9.81],
+                rotation: [0.0; 3],
+            })
+            .unwrap();
+
+        drop(tx);
+        drop(motion_tx);
+        writer.join().unwrap();
+
+        let csv = fs::read_to_string(dir.join("mot-000.motion.csv")).unwrap();
+        // `skip(1)` for the column-name line, which is not a comment — the same
+        // shape the decision log's own test works around.
+        let rows: Vec<&str> = csv
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .skip(1)
+            .collect();
+        assert_eq!(rows.len(), 4, "every reading should be written: {csv}");
+
+        // The first three arrived before any block, so they belong to block 0.
+        for row in &rows[..3] {
+            assert!(row.starts_with("0,"), "expected block 0, got {row}");
+        }
+        // The last arrived after one block had been written.
+        assert!(
+            rows[3].starts_with("1,"),
+            "expected block 1, got {}",
+            rows[3]
+        );
+
+        // Both clocks are kept, so the delay between them can be measured
+        // rather than assumed.
+        assert!(rows[3].contains("9999") && rows[3].contains("8888"));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -556,7 +854,11 @@ mod tests {
             names.iter().all(|n| !n.contains("..") && !n.contains('/')),
             "a path escaped into a filename: {names:?}"
         );
-        assert_eq!(names.len(), 2, "one audio file and one log");
+        assert_eq!(
+            names.len(),
+            3,
+            "one audio file, one log and one motion track"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

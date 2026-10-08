@@ -40,6 +40,7 @@ class _RecordingToggleState extends State<RecordingToggle> {
   UiRecordingState _state = UiRecordingState(
     active: false,
     droppedBlocks: BigInt.zero,
+    droppedMotion: BigInt.zero,
     directory: '',
   );
 

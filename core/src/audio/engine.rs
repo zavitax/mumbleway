@@ -308,6 +308,13 @@ pub struct RecordingState {
     /// recording with gaps in it is still useful, and a recording with gaps
     /// nobody knows about is a measurement waiting to be wrong.
     pub dropped_blocks: u64,
+    /// Motion readings storage could not keep up with.
+    ///
+    /// Reported for the same reason as [`Self::dropped_blocks`], and it matters
+    /// more here: a gap nobody counted in the motion track looks exactly like a
+    /// stretch of road where nothing happened, which is the reading a tap
+    /// detector would then be scored against.
+    pub dropped_motion: u64,
     /// Where the files are being written, for the interface to offer to share.
     pub directory: String,
 }
@@ -1728,6 +1735,30 @@ impl AudioShared {
         self.recording.load(Ordering::Relaxed)
     }
 
+    /// Hands a motion reading to the recorder, if one is running.
+    ///
+    /// **Takes effect whether or not tap detection is switched on**, which is
+    /// the requirement easiest to get wrong and most expensive to discover
+    /// late: measuring *false* positives needs rides with no taps in them, so
+    /// the negative corpus can only be gathered while the feature is off. Tying
+    /// this to the detector would have made the corpus that matters most
+    /// impossible to collect.
+    ///
+    /// Silently ignored when nothing is recording, so the platform may push
+    /// without asking first.
+    pub fn push_motion(&self, sample: super::record::MotionSample) {
+        if !self.recording.load(Ordering::Relaxed) {
+            return;
+        }
+        // `try_lock`, never `lock`: this arrives on the platform channel's
+        // thread and must not queue behind a session being started or stopped.
+        if let Some(slot) = self.recorder.try_lock() {
+            if let Some(rec) = slot.as_ref() {
+                rec.push_motion(sample);
+            }
+        }
+    }
+
     /// Where the recording is and how it is doing, for the diagnostics panel.
     pub fn diagnostic_recording_state(&self) -> RecordingState {
         match self.recorder.try_lock() {
@@ -1735,6 +1766,7 @@ impl AudioShared {
                 Some(rec) => RecordingState {
                     active: true,
                     dropped_blocks: rec.dropped_blocks(),
+                    dropped_motion: rec.dropped_motion(),
                     directory: rec.directory().to_string_lossy().into_owned(),
                 },
                 None => RecordingState::default(),

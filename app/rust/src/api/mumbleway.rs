@@ -3017,6 +3017,13 @@ pub struct UiRecordingState {
     /// recording with gaps is still useful, and a recording with gaps nobody
     /// knows about is a measurement waiting to be wrong.
     pub dropped_blocks: u64,
+    /// Motion readings storage could not keep up with.
+    ///
+    /// Shown for the same reason, and it matters more here: a gap nobody
+    /// counted in the motion track looks exactly like a stretch of road where
+    /// nothing happened, which is the reading a tap detector would then be
+    /// scored against.
+    pub dropped_motion: u64,
     /// Where the files are, so the panel can offer to share them.
     pub directory: String,
 }
@@ -3062,6 +3069,7 @@ pub fn diagnostic_recording_state() -> UiRecordingState {
         return UiRecordingState {
             active: false,
             dropped_blocks: 0,
+            dropped_motion: 0,
             directory: String::new(),
         };
     };
@@ -3069,8 +3077,49 @@ pub fn diagnostic_recording_state() -> UiRecordingState {
     UiRecordingState {
         active: s.active,
         dropped_blocks: s.dropped_blocks,
+        dropped_motion: s.dropped_motion,
         directory: s.directory,
     }
+}
+
+/// Hands one reading of the phone's own motion to the recorder.
+///
+/// **Recorded whether or not tap detection is switched on.** Measuring *false*
+/// positives needs rides with no taps in them, so the negative corpus can only
+/// be gathered while the feature is off — tying this to the detector would make
+/// the corpus that matters most impossible to collect.
+///
+/// `platform_ns` is the platform's own stamp in its own epoch, kept as given
+/// rather than converted: nanoseconds since boot on Android, seconds since boot
+/// on iOS, and neither is the audio clock. It is written beside an arrival
+/// stamp taken here, so the delay between them can be *measured* later instead
+/// of assumed. Ignored when nothing is recording, so the platform may push
+/// without asking first.
+#[frb(sync)]
+pub fn push_motion(
+    platform_ns: u64,
+    accel: Vec<f32>,
+    gravity: Vec<f32>,
+    rotation: Vec<f32>,
+) -> anyhow::Result<()> {
+    let three = |v: &Vec<f32>| -> [f32; 3] {
+        [
+            v.first().copied().unwrap_or(0.0),
+            v.get(1).copied().unwrap_or(0.0),
+            v.get(2).copied().unwrap_or(0.0),
+        ]
+    };
+    app()?.shared.push_motion(mumbleway_core::audio::record::MotionSample {
+        platform_ns,
+        arrival_us: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros() as u64)
+            .unwrap_or(0),
+        accel: three(&accel),
+        gravity: three(&gravity),
+        rotation: three(&rotation),
+    });
+    Ok(())
 }
 
 /// Everything the engine has logged so far.

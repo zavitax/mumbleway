@@ -512,6 +512,31 @@ BigInt stopDiagnosticRecording() =>
 UiRecordingState diagnosticRecordingState() =>
     RustLib.instance.api.crateApiMumblewayDiagnosticRecordingState();
 
+/// Hands one reading of the phone's own motion to the recorder.
+///
+/// **Recorded whether or not tap detection is switched on.** Measuring *false*
+/// positives needs rides with no taps in them, so the negative corpus can only
+/// be gathered while the feature is off — tying this to the detector would make
+/// the corpus that matters most impossible to collect.
+///
+/// `platform_ns` is the platform's own stamp in its own epoch, kept as given
+/// rather than converted: nanoseconds since boot on Android, seconds since boot
+/// on iOS, and neither is the audio clock. It is written beside an arrival
+/// stamp taken here, so the delay between them can be *measured* later instead
+/// of assumed. Ignored when nothing is recording, so the platform may push
+/// without asking first.
+void pushMotion({
+  required BigInt platformNs,
+  required List<double> accel,
+  required List<double> gravity,
+  required List<double> rotation,
+}) => RustLib.instance.api.crateApiMumblewayPushMotion(
+  platformNs: platformNs,
+  accel: accel,
+  gravity: gravity,
+  rotation: rotation,
+);
+
 /// Everything the engine has logged so far.
 ///
 /// The stream only carries lines recorded after the UI attached to it, and the
@@ -2350,18 +2375,30 @@ class UiRecordingState {
   /// knows about is a measurement waiting to be wrong.
   final BigInt droppedBlocks;
 
+  /// Motion readings storage could not keep up with.
+  ///
+  /// Shown for the same reason, and it matters more here: a gap nobody
+  /// counted in the motion track looks exactly like a stretch of road where
+  /// nothing happened, which is the reading a tap detector would then be
+  /// scored against.
+  final BigInt droppedMotion;
+
   /// Where the files are, so the panel can offer to share them.
   final String directory;
 
   const UiRecordingState({
     required this.active,
     required this.droppedBlocks,
+    required this.droppedMotion,
     required this.directory,
   });
 
   @override
   int get hashCode =>
-      active.hashCode ^ droppedBlocks.hashCode ^ directory.hashCode;
+      active.hashCode ^
+      droppedBlocks.hashCode ^
+      droppedMotion.hashCode ^
+      directory.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -2370,6 +2407,7 @@ class UiRecordingState {
           runtimeType == other.runtimeType &&
           active == other.active &&
           droppedBlocks == other.droppedBlocks &&
+          droppedMotion == other.droppedMotion &&
           directory == other.directory;
 }
 

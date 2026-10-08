@@ -396,6 +396,51 @@ plucked notes open the gate. If you ride with music and use the same headset,
 push-to-talk is the reliable answer today.</p>
 </div>
 
+<div class="panel">
+<p><strong>The mode cannot be changed during a call.</strong> Other riders are
+told which one you are using when you connect, so changing it mid-conversation
+would leave their screens describing something you are no longer doing.
+Disconnect to change it, and the control says so while it is locked.</p>
+</div>
+
+### Tap the phone to talk
+
+Off by default, and off it changes nothing: the app takes the headset's
+hands-free profile when you connect and holds it for the call, as it always has.
+
+The cost of holding it is that **everything** you hear drops to telephone
+bandwidth — the group, and any music from another app — because a Bluetooth
+headset carries a microphone only on a profile that sounds like a phone call.
+Most of a ride is listening, so most of a ride pays that for nothing.
+
+With this on, the app gives the profile back while you are only listening, so
+music plays at full quality, and takes it again when you tap the phone — through
+a pocket, or a bag on your thigh. Tap again to close it.
+
+<div class="table-wrap" markdown="1">
+
+| | |
+|---|---|
+| **Taps** | Two, three or four. **Three** is a good default: two is quicker but easier for a bump in the road to imitate, and four is the most deliberate, for rough going. |
+| **Close the microphone after a pause** | Optional. Stops capturing after a set quiet period, so you need not remember to tap again. Only available with tapping on, because on its own there would be nothing left to switch it back. |
+
+</div>
+
+Two things worth knowing before you rely on it:
+
+- **You can hear which state you are in.** Full-quality music means the
+  microphone is off; telephone-quality means it is live. The feature tells you
+  what it is doing as a side effect of being the feature.
+- **Taking the profile is not instant.** A headset takes a second or two to
+  negotiate, so after a tap you hear a short countdown and then a rising
+  two-tone — speak after that. Releasing plays the same tones falling, ending in
+  the squelch a radio makes. Those are the signal; a lost word before the rising
+  tone is expected rather than a fault.
+
+Not available with **push to talk**, and the two switch each other off. A button
+exists to put you on air the instant it goes down, which it cannot do if the
+microphone is closed until you tap.
+
 ### Let MumbleWay users unmute me
 
 On by default. Another rider using MumbleWay can mute your microphone with

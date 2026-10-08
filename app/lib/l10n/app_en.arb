@@ -1244,5 +1244,13 @@
     }
   },
   "micPushToTalkBlockedByTap": "Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.",
-  "micModeLockedWhileConnected": "The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it."
+  "micModeLockedWhileConnected": "The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it.",
+  "diagRecordingDroppedMotion": "{count} motion readings lost — storage could not keep up",
+  "@diagRecordingDroppedMotion": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

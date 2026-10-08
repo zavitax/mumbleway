@@ -438,6 +438,11 @@ class _RecordingToggleState extends State<RecordingToggle> {
     // is the one that must be given back exactly once.
     final active = AppStateScope.of(context).diagnosticRecording;
     final dropped = _state.droppedBlocks.toInt();
+    // Reported separately rather than summed. A gap in the motion track looks
+    // exactly like a stretch of road where nothing happened, which is the
+    // reading a tap detector would then be scored against — and it is a
+    // different fault from losing audio, with a different cause.
+    final droppedMotion = _state.droppedMotion.toInt();
 
     return Card(
       margin: EdgeInsets.zero,
@@ -504,13 +509,15 @@ class _RecordingToggleState extends State<RecordingToggle> {
                     // to be wrong.
                     dropped > 0
                         ? l.diagRecordingDropped(dropped)
+                        : droppedMotion > 0
+                        ? l.diagRecordingDroppedMotion(droppedMotion)
                         : _files == 0
                         ? l.diagRecordingNone
                         : '${l.diagRecordingStopped(_files)} · '
                               '${l.diagRecordingSize(megabytes)}',
                     style: TextStyle(
                       fontSize: 12,
-                      color: dropped > 0
+                      color: dropped > 0 || droppedMotion > 0
                           ? scheme.error
                           : scheme.onSurfaceVariant,
                     ),

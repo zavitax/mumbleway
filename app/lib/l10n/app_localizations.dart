@@ -4032,6 +4032,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it.'**
   String get micModeLockedWhileConnected;
+
+  /// No description provided for @diagRecordingDroppedMotion.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} motion readings lost — storage could not keep up'**
+  String diagRecordingDroppedMotion(int count);
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

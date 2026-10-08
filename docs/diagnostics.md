@@ -354,8 +354,19 @@ of the symptom.
 </div>
 
 Saves your microphone to this device, along with what the chain decided about
-every 10 ms of it. **Off unless you turn it on**, and it says so on screen the
-whole time it is running.
+every 10 ms of it, and **how the phone itself was moving** — the accelerometer,
+the gravity direction and the gyroscope. **Off unless you turn it on**, and it
+says so on screen the whole time it is running.
+
+The motion track is what makes it possible to tell a deliberate tap on the phone
+from a pothole, and it is written whether or not you use the tap gesture:
+measuring how often a detector fires by mistake needs rides in which nobody
+tapped at all. It is movement of the device and not location — there is no GPS
+here. Losses in it are reported separately from audio losses, because a gap in
+the motion track looks exactly like a stretch of road where nothing happened.
+
+All three tracks are cut at the same points, so one segment's three files cover
+the same stretch of the ride and can be read together.
 
 **Share** produces a `.zip` per 18 MB, so a whole ride fits through anything
 that carries files. See [sending a diagnostic

@@ -2223,4 +2223,9 @@ class LEn extends L {
   @override
   String get micModeLockedWhileConnected =>
       'The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it.';
+
+  @override
+  String diagRecordingDroppedMotion(int count) {
+    return '$count motion readings lost — storage could not keep up';
+  }
 }

@@ -171,6 +171,14 @@ storage, along with what the noise suppression decided about each moment of it.
 It exists because faults like "it cut me off mid-sentence" cannot be diagnosed
 from a description.
 
+It also writes, for the same length of time, **how the phone itself was
+moving** — the accelerometer, the gravity direction and the gyroscope. That is
+what makes it possible to tell a deliberate tap on the phone from a pothole, and
+it is recorded whether or not you use the tap gesture, because measuring how
+often a detector fires by mistake needs rides in which nobody tapped at all.
+It is movement of the device, not location: there is no GPS here, and this app
+has never asked for the permission.
+
 - **The app uploads nothing, ever.** Recordings leave only if you choose to
   share them, using your device's normal share sheet, to a destination you
   pick.

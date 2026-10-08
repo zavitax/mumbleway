@@ -2212,4 +2212,9 @@ class LRu extends L {
   @override
   String get micModeLockedWhileConnected =>
       'Режим микрофона нельзя менять во время разговора: другие участники узнают о нём при подключении. Чтобы изменить, отключитесь.';
+
+  @override
+  String diagRecordingDroppedMotion(int count) {
+    return 'Потеряно показаний движения: $count — накопитель не успевал';
+  }
 }

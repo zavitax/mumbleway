@@ -2210,7 +2210,21 @@ class AppState extends ChangeNotifier {
     // an audio hold do it to show a live meter, and a meter reading nothing is
     // indistinguishable from a broken one — so they get capture immediately
     // whatever mode the rider is in.
-    final onDemand = _captureOnDemand && _callInProgress && _audioHolds == 0;
+    //
+    // **This used to also test `_callInProgress`, and that was the bug behind
+    // "the microphone still starts capturing".** `connect` acquires audio
+    // *before* the handshake — deliberately, so a refused microphone is
+    // reported before joining a channel nobody can speak on — and
+    // `_callInProgress` is derived from a runtime being live or busy. So at the
+    // moment this ran it was always false on the one path that was supposed to
+    // defer, capture was taken immediately, and the listening state was
+    // unreachable for the whole of a call.
+    //
+    // The hold test alone is what the condition actually needed, and it does
+    // not depend on when anything else happens: audio is only wanted at all
+    // when there is a call, a meter or a hold, so "not for a hold" means "for
+    // a call".
+    final onDemand = _captureOnDemand && !_captureRequiredByHold;
     final session = await AudioSessionBridge.instance.activate(
       voiceProcessing: voiceCommunication,
       captureOnDemand: onDemand,

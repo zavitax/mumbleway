@@ -1047,7 +1047,6 @@ class _WavePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (wave.isEmpty) return;
     // The waveform keeps everything above the strips, and every vertical
     // measurement below is taken from `waveHeight` rather than `size.height`
     // so that adding a strip could not silently squash it off-centre.
@@ -1056,6 +1055,16 @@ class _WavePainter extends CustomPainter {
     final mid = waveHeight / 2;
     double xOf(double fraction) => (fraction - left) / span * size.width;
     final headX = xOf(progress);
+
+    // **An empty waveform is not an empty recording.** A ride can have motion
+    // and no audio — the microphone held by another app, or an emulator that
+    // has none — and the recorder still writes all three files with the `.s16`
+    // at zero bytes. Returning here would then draw nothing at all on exactly
+    // the recording whose motion is the question being asked.
+    if (wave.isEmpty) {
+      _paintMotion(canvas, size, waveHeight + graphHeight, xOf, headX);
+      return;
+    }
 
     // A hairline at zero, so a stretch the gate closed reads as silence rather
     // than as a gap in the drawing.
@@ -1421,6 +1430,24 @@ class _MotionControls extends StatelessWidget {
           // on it: 50 Hz is an emulator, 100 an iPhone, 200–500 an Android,
           // and a tap is three samples at the first and twenty at the last.
           Text('${track.hz.toStringAsFixed(0)} Hz', style: small),
+          // **Said, not hidden.** With no audio there are no blocks to place
+          // samples against, so the columns are on the sensors' own clock and
+          // do not line up with the waveform. That is still worth drawing —
+          // a ride with no audio is often exactly the one whose motion is in
+          // question — but reading it as aligned would be a wrong answer.
+          if (!track.alignedToAudio) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message:
+                  'No audio in this recording, so the columns are on the '
+                  'sensor clock and are not aligned to the waveform.',
+              child: Icon(
+                Icons.link_off,
+                size: 14,
+                color: StatusColors.reconnecting,
+              ),
+            ),
+          ],
         ],
       ),
     );

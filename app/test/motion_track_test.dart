@@ -116,6 +116,40 @@ void main() {
     expect(t.isEmpty, isTrue);
   });
 
+  test('a recording with no audio falls back to the sensor clock', () async {
+    // Measured on an emulator, which has no microphone: `open_sink` writes all
+    // three files, the `.s16` is zero bytes, and **every motion row carries
+    // block 0**. Keying off the block column would stack the whole ride into
+    // one column, and taking the span from a zero-length audio file would
+    // refuse to draw it at all — on exactly the recording whose motion is the
+    // question.
+    final stem = '${dir.path}${Platform.pathSeparator}noaudio-000';
+    File('$stem.s16').writeAsBytesSync(const []);
+    File('$stem.motion.csv').writeAsStringSync(
+      '# mumbleway motion track\n'
+      'block,platform_ns,arrival_us,ax,ay,az,gx,gy,gz,rx,ry,rz\n'
+      '${[
+        // One second of 100 Hz with block stuck at 0 throughout.
+        for (var i = 0; i < 100; i++)
+          '0,0,${i * 10000},${i % 10 == 0 ? 2.0 : 0.0},'
+              '0.0,0.0,0.0,0.0,9.80665,0.0,0.0,0.0',
+      ].join('\n')}\n',
+    );
+
+    final t = await readMotionTrack(['$stem.s16', 0.0]);
+    expect(t.isEmpty, isFalse, reason: 'a track with no audio still draws');
+    expect(t.alignedToAudio, isFalse, reason: 'and says it is not aligned');
+    expect(t.buckets, greaterThan(1), reason: 'spread over its own clock');
+
+    // The impulses must land in different buckets rather than all in the first.
+    final a = t.series[MotionSeries.accelMagnitude]!;
+    var withPeak = 0;
+    for (var i = 0; i < t.buckets; i++) {
+      if (a.filled[i] == 1 && a.hi[i] > 1.0) withPeak++;
+    }
+    expect(withPeak, greaterThan(1));
+  });
+
   test('columns are found by name, so a new one cannot shift the rest', () async {
     // The decision log grew two columns after recordings were already on
     // people's phones. This reader is written so that the same thing here is

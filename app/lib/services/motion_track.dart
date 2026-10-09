@@ -123,6 +123,7 @@ class MotionTrack {
     required this.seconds,
     required this.samples,
     required this.hz,
+    this.alignedToAudio = true,
   });
 
   final Map<MotionSeries, SeriesBuckets> series;
@@ -134,6 +135,13 @@ class MotionTrack {
   final double seconds;
 
   final int samples;
+
+  /// Whether the columns line up with the waveform above.
+  ///
+  /// False when the recording had no audio to align to and the arrival clock
+  /// was used instead. The drawing says so, because a timeline that silently
+  /// means something else is worse than one that is missing.
+  final bool alignedToAudio;
 
   /// Delivered rate, which is the first thing to check when a picture looks
   /// wrong: iOS gives about 100 Hz, Android 200–500, and an emulator 50.
@@ -167,9 +175,33 @@ Future<MotionTrack> readMotionTrack(List<Object> args) async {
       ? audioPath.substring(0, audioPath.length - 4)
       : audioPath;
   final file = File('$stem.motion.csv');
-  if (!await file.exists() || seconds <= 0) return MotionTrack.none;
+  if (!await file.exists()) return MotionTrack.none;
 
-  final n = math.max(1, (seconds / motionBucketSeconds).ceil());
+  final lines = await file.readAsLines();
+
+  // **Which clock to place samples on is decided before placing any.**
+  //
+  // Normally it is the `block` column — the audio block the sample fell
+  // within, the one timebase shared with the waveform above, and sharing it is
+  // why the column exists. But a recording can have no audio in it: the
+  // microphone can be held by another app, and an emulator has none at all. In
+  // that case `open_sink` still writes all three files, the `.s16` is zero
+  // bytes, and **every motion row carries block 0** — so a block timebase
+  // would stack an entire ride into the first column, and an audio duration of
+  // zero would refuse to draw it at all.
+  //
+  // Measured on an emulator: 2338 rows of good sensor data, `.s16` 0 bytes.
+  // Falling back to the arrival clock keeps that recording readable, which
+  // matters because a ride with no audio is *exactly* the one somebody is
+  // looking at the motion of.
+  final probe = _timebase(lines);
+  final byBlock = probe.blocksAdvance && seconds > 0;
+  final span = byBlock
+      ? seconds
+      : (probe.lastUs - probe.firstUs) / 1e6;
+  if (span <= 0) return MotionTrack.none;
+
+  final n = math.max(1, (span / motionBucketSeconds).ceil());
   final series = {for (final s in MotionSeries.values) s: SeriesBuckets(n)};
   final counts = Int32List(n);
   final sums = {for (final s in MotionSeries.values) s: Float64List(n)};
@@ -193,7 +225,7 @@ Future<MotionTrack> readMotionTrack(List<Object> args) async {
       i >= 0 && i < p.length ? (double.tryParse(p[i]) ?? 0) : 0;
 
   try {
-    for (final line in await file.readAsLines()) {
+    for (final line in lines) {
       if (line.isEmpty || line.startsWith('#')) continue;
       final p = line.split(',');
       if (p.isEmpty) continue;
@@ -236,9 +268,9 @@ Future<MotionTrack> readMotionTrack(List<Object> args) async {
       // above — and sharing it is the whole reason the column exists. The
       // arrival clock is kept for measuring channel jitter, not for placing a
       // sample against audio.
-      final t = blockAt >= 0
+      final t = byBlock
           ? at(p, blockAt) * 0.01
-          : (us - firstUs) / 1e6;
+          : (us - probe.firstUs) / 1e6;
       final b = (t / motionBucketSeconds).floor();
       if (b < 0 || b >= n) continue;
 
@@ -316,8 +348,46 @@ Future<MotionTrack> readMotionTrack(List<Object> args) async {
   return MotionTrack(
     series: series,
     bucketSeconds: motionBucketSeconds,
-    seconds: seconds,
+    seconds: span,
+    alignedToAudio: byBlock,
     samples: samples,
     hz: spanUs > 0 && samples > 1 ? (samples - 1) * 1e6 / spanUs : 0,
   );
+}
+
+/// What the first pass learned about the file's clocks.
+class _Timebase {
+  const _Timebase(this.blocksAdvance, this.firstUs, this.lastUs);
+  final bool blocksAdvance;
+  final int firstUs, lastUs;
+}
+
+/// Reads only the two time columns, to choose a timebase before using one.
+///
+/// Cheap: `readAsLines` has already put the file in memory, so this is a second
+/// walk over the same list rather than a second read.
+_Timebase _timebase(List<String> lines) {
+  var blockAt = -1, arrivalAt = -1;
+  var maxBlock = 0;
+  var firstUs = 0, lastUs = 0;
+  for (final line in lines) {
+    if (line.isEmpty || line.startsWith('#')) continue;
+    final p = line.split(',');
+    if (p.isEmpty) continue;
+    if (int.tryParse(p.first) == null) {
+      blockAt = p.indexOf('block');
+      arrivalAt = p.indexOf('arrival_us');
+      continue;
+    }
+    if (blockAt >= 0 && blockAt < p.length) {
+      final b = int.tryParse(p[blockAt]) ?? 0;
+      if (b > maxBlock) maxBlock = b;
+    }
+    if (arrivalAt >= 0 && arrivalAt < p.length) {
+      final us = int.tryParse(p[arrivalAt]) ?? 0;
+      if (firstUs == 0) firstUs = us;
+      lastUs = us;
+    }
+  }
+  return _Timebase(maxBlock > 0, firstUs, lastUs);
 }

@@ -2269,36 +2269,19 @@ class AppState extends ChangeNotifier {
       // than a wrong answer.
     }
 
-    // **Before the devices open, and that ordering is the whole of it.**
+    // **One call, because two of them had an order and the order was wrong.**
     //
-    // This used to run *after* `setAudioActive`, and the result was that
-    // connecting in the listening state failed outright with
-    //
-    //     channel count must be at least 1
-    //
-    // `activate(captureOnDemand: true)` puts iOS in `.playback`, which has no
-    // input by design and reports zero input channels. The engine then opened
-    // its devices while `capture_wanted` was still at its default of true,
-    // tried to build an input stream against a session with nothing to record
-    // from, and cpal rejected it — accurately, and saying nothing about the
-    // cause. `setAudioActive` threw, the catch below tore the session down,
-    // and the line that would have prevented all of it was two statements too
-    // late to run.
-    //
-    // `Shared::set_capture_wanted` was written for this order: it returns
-    // without rebuilding or waiting when the devices are not open yet,
-    // because "the next open reads the flag". The next open is the one on the
-    // line below.
+    // This was `setCaptureWanted` followed by `setAudioActive`, and in a
+    // shipped build it was the other way round: the devices opened while
+    // `capture_wanted` was still at its default of true, iOS was in
+    // `.playback` with zero input channels, and cpal rejected the input
+    // stream with "channel count must be at least 1". `startAudio` takes the
+    // intent as an argument, so there is no longer a sequence to get wrong —
+    // see its own notes in `app/rust/src/api/mumbleway.rs`.
     _capturing = !onDemand;
-    try {
-      await setCaptureWanted(on_: _capturing);
-    } catch (_) {
-      // No engine at all yet. Nothing has opened either, so there is nothing
-      // to be out of step with.
-    }
 
     try {
-      await setAudioActive(on_: true);
+      await startAudio(capture: _capturing);
     } catch (e) {
       // Never leave the session live with no engine behind it: that is the
       // recording indicator on, for nothing.
@@ -2334,7 +2317,7 @@ class AppState extends ChangeNotifier {
       // a conversation going silent for no reason anybody could see.
       if (_audioNeeded || !_audioActive) return;
       try {
-        await setAudioActive(on_: false);
+        await stopAudio();
       } catch (_) {
         // Already shut, or the engine has gone. Either way there is nothing
         // holding the devices that matters.
@@ -3737,7 +3720,7 @@ class AppState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsVoiceCommunication, value);
     if (_audioActive) {
-      await setAudioActive(on_: false);
+      await stopAudio();
       _audioActive = false;
       await _acquireAudio();
     }

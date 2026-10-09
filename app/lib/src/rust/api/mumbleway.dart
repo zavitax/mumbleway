@@ -366,7 +366,8 @@ Future<UiServerStatus> pingServer({
   port: port,
 );
 
-/// Opens or closes the microphone and speaker.
+/// Opens the microphone and speaker, with `capture` saying whether there is a
+/// microphone to open at all.
 ///
 /// The engine holds no devices until this is called. Ask for them as a call is
 /// being set up, not as the first word is spoken: opening a Bluetooth headset
@@ -375,13 +376,36 @@ Future<UiServerStatus> pingServer({
 /// loses the beginning of what they said. A connect already takes that long,
 /// so asking here costs nothing that is not already being waited for.
 ///
-/// Turning them on blocks until the device answers, because the answer is the
-/// point: no microphone, a refused permission or a headset held by another app
-/// are all things the rider can do something about, and all of them surface
-/// here. Turning them off returns at once — there is nothing to wait for and
-/// nothing that can fail.
-Future<void> setAudioActive({required bool on_}) =>
-    RustLib.instance.api.crateApiMumblewaySetAudioActive(on_: on_);
+/// Blocks until the device answers, because the answer is the point: no
+/// microphone, a refused permission or a headset held by another app are all
+/// things the rider can do something about, and all of them surface here.
+///
+/// # Why `capture` is an argument and not a separate call
+///
+/// **Because it was a separate call, and the order was wrong in a shipped
+/// build.** `set_capture_wanted` after `set_audio_active` is too late — the
+/// devices are already open — and on iOS the listening state is `.playback`
+/// with zero input channels, so the open built an input stream against a
+/// session with nothing to record from and cpal rejected it with "channel
+/// count must be at least 1". The connect failed and the message pointed
+/// nowhere near the cause.
+///
+/// That was the third ordering fault in this feature. Two calls that must
+/// happen in an order nothing enforces will eventually happen in the other
+/// one, and `AppState` reaches these functions directly with no seam, so no
+/// test on the Dart side can observe the sequence. One argument removes the
+/// sequence: there is no longer an order to get wrong.
+///
+/// Changing capture on a *live* session is still [`set_capture_wanted`],
+/// which rebuilds the streams. This is only about what the first open asks
+/// for.
+Future<void> startAudio({required bool capture}) =>
+    RustLib.instance.api.crateApiMumblewayStartAudio(capture: capture);
+
+/// Closes the microphone and speaker.
+///
+/// Returns at once — there is nothing to wait for and nothing that can fail.
+Future<void> stopAudio() => RustLib.instance.api.crateApiMumblewayStopAudio();
 
 /// Selects capture and playback devices. `None` means the system default.
 /// Takes effect within a few hundred milliseconds, without dropping sessions.
@@ -711,7 +735,7 @@ Future<void> setMicModeHint({required String mode}) =>
 /// the platform's to choose; this is the engine's half, and the two have to
 /// agree or the streams are rebuilt against a device that is no longer there.
 ///
-/// **Blocks until the streams are back**, like [`set_audio_active`] and for the
+/// **Blocks until the streams are back**, like [`start_audio`] and for the
 /// same reason: the answer is the point. Both streams are rebuilt on every
 /// transition, because hands-free reports 8 or 16 kHz where A2DP reports 44.1
 /// or 48 and nothing here asks the platform for a rate — so "capture is live"

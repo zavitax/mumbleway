@@ -2269,6 +2269,34 @@ class AppState extends ChangeNotifier {
       // than a wrong answer.
     }
 
+    // **Before the devices open, and that ordering is the whole of it.**
+    //
+    // This used to run *after* `setAudioActive`, and the result was that
+    // connecting in the listening state failed outright with
+    //
+    //     channel count must be at least 1
+    //
+    // `activate(captureOnDemand: true)` puts iOS in `.playback`, which has no
+    // input by design and reports zero input channels. The engine then opened
+    // its devices while `capture_wanted` was still at its default of true,
+    // tried to build an input stream against a session with nothing to record
+    // from, and cpal rejected it — accurately, and saying nothing about the
+    // cause. `setAudioActive` threw, the catch below tore the session down,
+    // and the line that would have prevented all of it was two statements too
+    // late to run.
+    //
+    // `Shared::set_capture_wanted` was written for this order: it returns
+    // without rebuilding or waiting when the devices are not open yet,
+    // because "the next open reads the flag". The next open is the one on the
+    // line below.
+    _capturing = !onDemand;
+    try {
+      await setCaptureWanted(on_: _capturing);
+    } catch (_) {
+      // No engine at all yet. Nothing has opened either, so there is nothing
+      // to be out of step with.
+    }
+
     try {
       await setAudioActive(on_: true);
     } catch (e) {
@@ -2279,14 +2307,6 @@ class AppState extends ChangeNotifier {
     }
 
     _audioActive = true;
-    _capturing = !onDemand;
-    // The engine's half has to agree with the platform's, or the streams are
-    // rebuilt against a device that is no longer there.
-    try {
-      await setCaptureWanted(on_: _capturing);
-    } catch (_) {
-      // No engine yet; the flag defaults to capture and the next open reads it.
-    }
     if (onDemand) {
       // Required, not decorative: capture starts off, so without this the first
       // thing a rider does is talk into a microphone that is not there. It

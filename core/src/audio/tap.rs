@@ -109,14 +109,43 @@ const FLOOR_SUB_BLOCKS: u32 = 25;
 /// this — is unaffected.
 const QUANTISATION_DB: f32 = -70.0;
 
-/// How far above the floor ψ must reach. **Provisional.**
-const MARGIN_DB: f32 = 12.0;
+/// How far above the floor ψ must reach.
+///
+/// **Measured, not provisional.** 2026-10-09, two iPhone recordings with the
+/// taps audible in the audio of the same segment, so the labels are the other
+/// track rather than anybody's recollection: 55 seconds, fourteen three-tap
+/// gestures, 100 Hz.
+///
+/// 12 dB was far too low, and the reason is the one thing a still-phone test
+/// could never show. On a hand-held phone ψ's *median* sits about 15 dB above
+/// its own tracked floor — the floor is a minimum statistic, and real movement
+/// is nowhere near the minimum — so **59% and 69% of the two recordings were
+/// above a 12 dB margin.** The detector was therefore mid-candidate almost
+/// always, every real tap arrived while it was already counting, and the
+/// pulse-width test discarded the pair. It fired 21 and 23 times in 40 and 15
+/// seconds and matched none of the fourteen gestures.
+///
+/// The taps themselves were never faint: every audible one reached 22–60 dB
+/// over the floor. There was never a sensitivity problem, only a margin that
+/// admitted everything.
+///
+/// At 30 dB the two recordings give **ten of fourteen gestures and no false
+/// arms.** 32 scores the same and 28 starts admitting them, so this is the
+/// low end of the shelf — chosen there deliberately, because a tap through a
+/// padded pocket is weaker than a tap on a desk and the headroom belongs on
+/// the recall side.
+const MARGIN_DB: f32 = 30.0;
 
 /// The longest a candidate may stay above the floor and still be a tap.
 ///
-/// **Provisional.** The vendors' "up and back down quickly" test: a thigh
-/// produces large slow motions and this is what rejects them.
-const MAX_PULSE_MS: u32 = 60;
+/// The vendors' "up and back down quickly" test: a thigh produces large slow
+/// motions and this is what rejects them.
+///
+/// **Measured with [`MARGIN_DB`], and 60 ms was too short at 100 Hz** — six
+/// samples, which a real tap's ring outlasts, so the impulse was discarded as
+/// a motion. 150 ms takes the same corpus from eight gestures to ten with no
+/// false arms; 200 ms scores identically, so the tighter value is kept.
+const MAX_PULSE_MS: u32 = 150;
 
 /// Dead time after a candidate, to skip the mechanical ring.
 ///
@@ -129,7 +158,12 @@ const LATENT_MS: u32 = 70;
 /// **Provisional.** Deliberate human tapping sits well inside this; the upper
 /// bound is what stops two unrelated road impulses a second apart pairing up.
 const GAP_MIN_MS: u32 = 80;
-const GAP_MAX_MS: u32 = 400;
+
+/// **Measured.** 400 ms cut off real gestures: tapping a phone held in the
+/// hand came out around 200–330 ms between taps, but a deliberate, spaced-out
+/// three on a desk ran to 570. 600 ms recovers those and costs nothing — no
+/// configuration with it produced a false arm that 400 ms prevented.
+const GAP_MAX_MS: u32 = 600;
 
 /// How unlike each other two taps of one gesture may be, as a ratio.
 ///

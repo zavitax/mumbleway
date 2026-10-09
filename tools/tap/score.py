@@ -53,12 +53,21 @@ from pathlib import Path
 # Mirrors `core/src/audio/tap.rs`. Kept in step by hand, which is a cost worth
 # paying: a rig that imports the shipping code can only ever agree with it, and
 # the point here is to disagree until the constants are right.
+#: Labels closer together than this are one performance. Matches
+#: `label_from_audio.py`, which groups the audible clicks the same way.
+GESTURE_GAP_MS = 700
+
 DEFAULTS = dict(
-    margin_db=12.0,
-    max_pulse_ms=60,
+    # Kept in step with `core/src/audio/tap.rs` by hand, and the whole use of
+    # this file depends on that: a mirror that has drifted scores a detector
+    # nobody ships. These three were measured on 2026-10-09 against two
+    # iPhone recordings whose taps are audible in their own audio — see the
+    # constants' own notes in `tap.rs` for the numbers and the argument.
+    margin_db=30.0,
+    max_pulse_ms=150,
     latent_ms=70,
     gap_min_ms=80,
-    gap_max_ms=400,
+    gap_max_ms=600,
     magnitude_tolerance=2.5,
     interval_tolerance=1.8,
     floor_sub_blocks=25,
@@ -221,8 +230,11 @@ def main() -> int:
                     continue
                 labels.setdefault(int(row[0]), []).append(int(row[1]))
 
+    # Centred on the measured 30 rather than on the 12 that was never
+    # measured: below about 24 a hand-held phone is over the margin most of
+    # the time and the detector is mid-candidate when the real tap lands.
     margins = (
-        [6.0, 9.0, 12.0, 15.0, 18.0, 21.0] if args.sweep else [DEFAULTS["margin_db"]]
+        [20.0, 24.0, 28.0, 30.0, 32.0, 36.0] if args.sweep else [DEFAULTS["margin_db"]]
     )
     print(f"{'margin':>7} {'found':>6} {'missed':>7} {'false':>6} {'false/h':>8}")
     print("-" * 40)
@@ -245,10 +257,34 @@ def main() -> int:
                 at = next((s for s in samples if s.block >= b), None)
                 if at:
                     wanted_ms.append(at.arrival_us // 1000)
+            wanted_ms.sort()
+
+            # **Scored per gesture, not per tap.** One detection answers all
+            # `--taps` labels of the performance it completes, so counting
+            # labels reported two misses for every gesture that was found
+            # perfectly — "9 found, 91 missed" where the truth was ten of
+            # fourteen. A rig that reads far worse than the detector is is
+            # not a conservative rig, it is a broken one, and this is the
+            # number that decides whether the feature ships.
+            #
+            # A performance is a run of labels close enough together to be
+            # one, and it counts as found when a detection lands near its
+            # *last* tap, because that is when a gesture completes.
+            performances = []
+            for w in wanted_ms:
+                if performances and w - performances[-1][-1] <= GESTURE_GAP_MS:
+                    performances[-1].append(w)
+                else:
+                    performances.append([w])
 
             unmatched = list(hits)
-            for w in wanted_ms:
-                near = [h for h in unmatched if abs(h - w) <= args.tolerance_ms]
+            for perf in performances:
+                if len(perf) < args.taps:
+                    # Fewer taps than the gesture asks for: not something the
+                    # detector should fire on, and not a miss when it doesn't.
+                    continue
+                end = perf[-1]
+                near = [h for h in unmatched if abs(h - end) <= args.tolerance_ms]
                 if near:
                     found += 1
                     unmatched.remove(near[0])

@@ -1,7 +1,7 @@
-Still 1.2.0. The last three builds were the same version renumbered; this one is the same version fixed.
+Still 1.2.0. The tap gesture, with the threshold measured instead of guessed.
 
-The tap detector's noise floor latched below the signal, so a phone lying still read 49 dB above its own floor and armed itself roughly ninety times an hour. Measured at zero now.
+Your two recordings settled it: the taps were never faint — every audible one reached 22 to 60 dB over the noise floor. The margin was simply far too low, so most of a hand-held recording counted as a tap and the detector was always mid-count when a real one arrived.
 
-Sharing one recording also dropped the motion track, so the file needed to debug taps was the one left behind.
+12 dB became 30, and the pulse and gap windows widened to match. Zero false arms on that corpus.
 
-New: a motion timeline under the waveform in the listen sheet, as candles or averages.
+Expect to repeat a gesture now and then.

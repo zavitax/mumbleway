@@ -1,5 +1,5 @@
-Still 1.2.0. Fixes the connect failure in build 154.
+Still 1.2.0. Build 155 fixed the connect failure; this one makes it unable to come back.
 
-With tap-to-capture on, connecting reported "channel count must be at least 1" and gave up. The listening state has no microphone by design, but the engine was told that one statement too late — it had already opened the devices and asked for an input that was not there.
+The engine used to be told whether there was a microphone to open in a separate call from the one that opened it, and in build 154 those two happened in the wrong order. They are one call now, so the intent arrives with the request and there is no sequence left to get wrong.
 
-Also in this build: the tap threshold measured from your recordings, 12 dB to 30, with the pulse and gap windows widened to match.
+No behaviour change if 155 worked for you.

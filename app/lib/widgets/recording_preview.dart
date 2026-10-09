@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../l10n/app_localizations.dart';
 import '../services/file_reveal.dart';
 import '../services/recording_archive.dart';
+import '../services/motion_track.dart';
 import '../services/recording_player.dart';
 import '../state/app_state.dart';
 import 'watch.dart';
@@ -78,6 +79,15 @@ class _PreviewSheetState extends State<_PreviewSheet> {
   List<File> _files = const [];
   String? _selected;
   Waveform? _wave;
+
+  /// The third track, when the recording has one.
+  ///
+  /// Null is "this recording has no motion track" — every recording made
+  /// before the recorder grew one, and that has to read as *not recorded*
+  /// rather than as a phone that never moved.
+  MotionTrack? _motion;
+  MotionSeries _series = MotionSeries.psi;
+  MotionDrawMode _motionMode = MotionDrawMode.candles;
   bool _loading = false;
   bool _sharing = false;
   bool _holdingAudio = false;
@@ -179,9 +189,16 @@ class _PreviewSheetState extends State<_PreviewSheet> {
   Future<void> _open(String path) async {
     await _player.open(path);
     final wave = await _player.waveform();
+    // Off this isolate, like the waveform: a half-hour ride is a few hundred
+    // thousand lines of CSV, and parsing it here would stop the playhead.
+    final motion = await compute(readMotionTrack, <Object>[
+      path,
+      _player.duration.inMicroseconds / 1e6,
+    ]);
     if (!mounted) return;
     setState(() {
       _wave = wave;
+      _motion = motion.isEmpty ? null : motion;
       _loading = false;
     });
   }
@@ -507,8 +524,13 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                       // it. Added to the box rather than carved out of it: the
                       // waveform is what this sheet is for, and taking a
                       // quarter of it away to make room for a second graph
-                      // would be paying for the new one with the old.
-                      height: 96.0 + _WavePainter.graphHeight,
+                      // would be paying for the new one with the old. The
+                      // motion strip is added on the same terms, and only when
+                      // there is a track to put in it.
+                      height:
+                          96.0 +
+                          _WavePainter.graphHeight +
+                          (_motion == null ? 0.0 : _WavePainter.motionHeight),
                       child: _loading || wave == null
                           ? Center(
                               child: SizedBox(
@@ -524,8 +546,19 @@ class _PreviewSheetState extends State<_PreviewSheet> {
                               player: _player,
                               wave: wave,
                               onSeek: _player.seekToFraction,
+                              motion: _motion,
+                              motionSeries: _series,
+                              motionMode: _motionMode,
                             ),
                     ),
+                    if (!_loading && _motion != null)
+                      _MotionControls(
+                        track: _motion!,
+                        series: _series,
+                        mode: _motionMode,
+                        onSeries: (v) => setState(() => _series = v),
+                        onMode: (v) => setState(() => _motionMode = v),
+                      ),
                     // Why there is no green, when there is none.
                     //
                     // **A waveform with nothing green in it reads as a fault
@@ -732,18 +765,30 @@ class _ScrubberFollowingPlayhead extends StatelessWidget {
     required this.player,
     required this.wave,
     required this.onSeek,
+    required this.motion,
+    required this.motionSeries,
+    required this.motionMode,
   });
 
   final RecordingPlayer player;
   final Waveform wave;
   final ValueChanged<double> onSeek;
+  final MotionTrack? motion;
+  final MotionSeries motionSeries;
+  final MotionDrawMode motionMode;
 
   @override
   Widget build(BuildContext context) => WhenChanged<double>(
     listenable: player,
     select: () => player.progress,
-    builder: (context) =>
-        _Scrubber(wave: wave, progress: player.progress, onSeek: onSeek),
+    builder: (context) => _Scrubber(
+      wave: wave,
+      progress: player.progress,
+      onSeek: onSeek,
+      motion: motion,
+      motionSeries: motionSeries,
+      motionMode: motionMode,
+    ),
   );
 }
 
@@ -752,11 +797,17 @@ class _Scrubber extends StatefulWidget {
     required this.wave,
     required this.progress,
     required this.onSeek,
+    required this.motion,
+    required this.motionSeries,
+    required this.motionMode,
   });
 
   final Waveform wave;
   final double progress;
   final ValueChanged<double> onSeek;
+  final MotionTrack? motion;
+  final MotionSeries motionSeries;
+  final MotionDrawMode motionMode;
 
   @override
   State<_Scrubber> createState() => _ScrubberState();
@@ -910,6 +961,17 @@ class _ScrubberState extends State<_Scrubber> {
                     Color(0xFF8A8A8A), // Standard
                     Color(0xFFA79A6B), // Helmet
                   ],
+                  motion: widget.motion,
+                  motionSeries: widget.motionSeries,
+                  motionMode: widget.motionMode,
+                  // The trading convention, and deliberately **not** the
+                  // status palette: green here means "this went up in this
+                  // bucket", which has nothing to do with the green on the
+                  // waveform above meaning "this was transmitted". Two greens
+                  // on one drawing had to be told apart, so these are a
+                  // distinctly cooler pair.
+                  rising: const Color(0xFF26A69A),
+                  falling: const Color(0xFFEF5350),
                 ),
                 size: Size.infinite,
               ),
@@ -934,6 +996,11 @@ class _WavePainter extends CustomPainter {
     required this.processedColour,
     required this.processedAhead,
     required this.profileColours,
+    required this.motion,
+    required this.motionSeries,
+    required this.motionMode,
+    required this.rising,
+    required this.falling,
   });
 
   /// Height of the envelope strip under the waveform.
@@ -942,6 +1009,23 @@ class _WavePainter extends CustomPainter {
   /// with the waveform: this answers "how hard was the chain working here",
   /// which is a question asked after the waveform has already been read.
   static const double graphHeight = 30;
+
+  /// Height of the motion strip under that.
+  ///
+  /// Taller than the envelope because it is read for *shape* rather than for a
+  /// level, and because a candle needs room to be a candle. A signed series is
+  /// drawn about a centre line, so half of this is the usable swing.
+  static const double motionHeight = 64;
+
+  /// The motion track, or null when the recording has none — which every older
+  /// recording does, and which must read as "not recorded" rather than as a
+  /// phone that never moved.
+  final MotionTrack? motion;
+  final MotionSeries motionSeries;
+  final MotionDrawMode motionMode;
+
+  /// Up and down, in the convention a trading chart already taught everybody.
+  final Color rising, falling;
 
   /// The bottom of the strip's scale, in dBFS. Below this the chain has
   /// effectively removed everything and the line sits on the floor.
@@ -964,10 +1048,11 @@ class _WavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (wave.isEmpty) return;
-    // The waveform keeps everything above the strip, and every vertical
+    // The waveform keeps everything above the strips, and every vertical
     // measurement below is taken from `waveHeight` rather than `size.height`
-    // so that adding the strip could not silently squash it off-centre.
-    final waveHeight = (size.height - graphHeight).clamp(1.0, size.height);
+    // so that adding a strip could not silently squash it off-centre.
+    final strips = graphHeight + (motion == null ? 0.0 : motionHeight);
+    final waveHeight = (size.height - strips).clamp(1.0, size.height);
     final mid = waveHeight / 2;
     double xOf(double fraction) => (fraction - left) / span * size.width;
     final headX = xOf(progress);
@@ -1035,10 +1120,11 @@ class _WavePainter extends CustomPainter {
     }
 
     _paintEnvelope(canvas, size, waveHeight, first, last, xOf, headX);
+    _paintMotion(canvas, size, waveHeight + graphHeight, xOf, headX);
 
-    // Full height, across both graphs. It is one recording and one moment in
+    // Full height, across every graph. It is one recording and one moment in
     // it, and a playhead that stopped at the waveform's edge would invite the
-    // strip below to be read as a separate timeline.
+    // strips below to be read as separate timelines.
     canvas.drawLine(
       Offset(headX, 0),
       Offset(headX, size.height),
@@ -1117,11 +1203,226 @@ class _WavePainter extends CustomPainter {
     }
   }
 
+  /// The motion track, as candles or as a mean line.
+  ///
+  /// **Scaled to the series' own peak, not to a fixed range.** ψ spans orders
+  /// of magnitude between a still phone and a strike, and a fixed scale would
+  /// draw either a flat line or a solid block for most rides. The peak is
+  /// taken over the whole track rather than over the visible window, so
+  /// zooming in moves the view without silently changing what a given height
+  /// means — which would make two parts of one ride incomparable.
+  void _paintMotion(
+    Canvas canvas,
+    Size size,
+    double top,
+    double Function(double) xOf,
+    double headX,
+  ) {
+    final track = motion;
+    if (track == null || track.isEmpty) return;
+    final b = track.series[motionSeries];
+    if (b == null) return;
+
+    final peak = b.peak;
+    if (peak <= 0) return;
+
+    // A signed series swings about a centre line; an unsigned one grows from
+    // the floor. Drawing an unsigned series about a centre would waste half
+    // the strip and invite the empty half to be read as negative values.
+    final signed = switch (motionSeries) {
+      MotionSeries.psi ||
+      MotionSeries.accelMagnitude ||
+      MotionSeries.acrossGravity ||
+      MotionSeries.rotationMagnitude ||
+      MotionSeries.tiltFromVertical => false,
+      _ => true,
+    };
+    final pad = 4.0;
+    final usable = motionHeight - pad * 2;
+    final base = signed ? top + motionHeight / 2 : top + motionHeight - pad;
+    final scale = signed ? (usable / 2) / peak : usable / peak;
+    double yOf(double v) => base - v * scale;
+
+    canvas.drawLine(
+      Offset(0, base),
+      Offset(size.width, base),
+      Paint()
+        ..color = unplayed.withValues(alpha: 0.5)
+        ..strokeWidth = 1,
+    );
+
+    final n = track.buckets;
+    final first = (left * n).floor().clamp(0, n - 1);
+    final last = ((left + span) * n).ceil().clamp(0, n);
+    final step = size.width / (n * span);
+
+    if (motionMode == MotionDrawMode.average) {
+      // One polyline, and gaps are breaks in it rather than a trip through
+      // zero: an unrecorded stretch is not a still one.
+      final line = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round
+        ..color = processedColour;
+      final ahead = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round
+        ..color = processedAhead;
+      double? prevY;
+      var prevX = 0.0;
+      for (var i = first; i < last; i++) {
+        if (b.filled[i] == 0) {
+          prevY = null;
+          continue;
+        }
+        final x = xOf((i + 0.5) / n);
+        final y = yOf(b.mean[i]);
+        if (prevY != null) {
+          canvas.drawLine(
+            Offset(prevX, prevY),
+            Offset(x, y),
+            x > headX ? ahead : line,
+          );
+        }
+        prevY = y;
+        prevX = x;
+      }
+      return;
+    }
+
+    // Candles. The wick is the bucket's low to high — which is the whole
+    // reason this mode exists, because a tap is two samples in twenty-five and
+    // a mean divides it away. The body is open to close, so the colour says
+    // which way the quantity was travelling when the bucket ended.
+    final width = (step * 0.7).clamp(0.6, 10.0);
+    final wick = Paint()..strokeWidth = math.min(1.2, width);
+    final body = Paint()..style = PaintingStyle.fill;
+
+    for (var i = first; i < last; i++) {
+      if (b.filled[i] == 0) continue;
+      final x = xOf((i + 0.5) / n);
+      final up = b.close[i] >= b.open[i];
+      final c = up ? rising : falling;
+      // Ahead of the playhead is the same picture at lower contrast, matching
+      // every other layer on this drawing.
+      final colour = x > headX ? c.withValues(alpha: 0.45) : c;
+
+      wick.color = colour;
+      canvas.drawLine(Offset(x, yOf(b.hi[i])), Offset(x, yOf(b.lo[i])), wick);
+
+      body.color = colour;
+      final o = yOf(b.open[i]);
+      final cl = yOf(b.close[i]);
+      // A doji — open and close equal — still has to be visible, or a bucket
+      // with no trend reads as a bucket with no data.
+      final yTop = math.min(o, cl);
+      final h = math.max((o - cl).abs(), 1.0);
+      canvas.drawRect(
+        Rect.fromLTWH(x - width / 2, yTop, width, h),
+        body,
+      );
+    }
+  }
+
   @override
   bool shouldRepaint(_WavePainter old) =>
       old.progress != progress ||
       old.left != left ||
       old.span != span ||
       old.profileColours != profileColours ||
+      old.motionSeries != motionSeries ||
+      old.motionMode != motionMode ||
+      !identical(old.motion, motion) ||
       !identical(old.wave, wave);
+}
+
+/// The series picker and the candles/average switch.
+///
+/// Under the drawing rather than over it, and deliberately plain: this is a
+/// diagnostic surface, read by somebody who already knows what ψ is, and the
+/// rest of this sheet is where the care about first-time legibility goes.
+/// It follows `MotionView` in the diagnostics panel by staying in English —
+/// these are symbols and unit names, and a translated «ψ» helps nobody.
+class _MotionControls extends StatelessWidget {
+  const _MotionControls({
+    required this.track,
+    required this.series,
+    required this.mode,
+    required this.onSeries,
+    required this.onMode,
+  });
+
+  final MotionTrack track;
+  final MotionSeries series;
+  final MotionDrawMode mode;
+  final ValueChanged<MotionSeries> onSeries;
+  final ValueChanged<MotionDrawMode> onMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final small = TextStyle(fontSize: 11, color: scheme.onSurfaceVariant);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Icon(Icons.sensors, size: 14, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<MotionSeries>(
+                value: series,
+                isDense: true,
+                isExpanded: true,
+                style: TextStyle(fontSize: 12, color: scheme.onSurface),
+                onChanged: (v) => v == null ? null : onSeries(v),
+                items: [
+                  for (final s in MotionSeries.values)
+                    DropdownMenuItem(
+                      value: s,
+                      child: Text(
+                        '${s.label}  ·  ${s.unit}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Segmented rather than a switch: neither mode is the "on" one, and
+          // a switch would imply candles are a modification of the average
+          // when they are a different question about the same bucket.
+          SegmentedButton<MotionDrawMode>(
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStatePropertyAll(TextStyle(fontSize: 11)),
+            ),
+            segments: const [
+              ButtonSegment(
+                value: MotionDrawMode.candles,
+                label: Text('Candles'),
+                tooltip: 'High and low of each 250 ms, coloured by direction',
+              ),
+              ButtonSegment(
+                value: MotionDrawMode.average,
+                label: Text('Average'),
+                tooltip: 'Mean of each 250 ms — right for the slow series',
+              ),
+            ],
+            selected: {mode},
+            onSelectionChanged: (s) => onMode(s.first),
+          ),
+          const SizedBox(width: 8),
+          // The delivered rate, because every reading of this picture depends
+          // on it: 50 Hz is an emulator, 100 an iPhone, 200–500 an Android,
+          // and a tap is three samples at the first and twenty at the last.
+          Text('${track.hz.toStringAsFixed(0)} Hz', style: small),
+        ],
+      ),
+    );
+  }
 }

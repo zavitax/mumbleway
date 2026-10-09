@@ -93,6 +93,22 @@ reject a build number they have seen before, and the rejection arrives *after*
 the build, so the number has
 to rise on its own — `run_number` only ever goes up.
 
+#### The version in `pubspec.yaml` moves only when the user says so
+
+**Never bump major, minor or patch as part of doing the work.** Not for a
+feature, not for a fix, not to get a build to testers. The number in
+`app/pubspec.yaml` is the user's to set and changing it is an explicit
+instruction, never an inference from what the change contains.
+
+This is here because a run of test builds went out as 1.2.1, 1.2.2 and 1.2.3,
+one patch bump per attempt, when all three were the same unreleased 1.2.0 being
+re-tested. Nothing required it: the build number comes from `run_number` and
+rises on its own, so the bumps bought nothing and moved the TestFlight train
+three times for no one's benefit.
+
+The section below is the one case where the number *must* move — and it is
+still the user's call to make, not something to do unasked.
+
 #### But the *marketing* version has to rise once a version ships
 
 **This section used to say `pubspec.yaml` "does not need bumping to publish",

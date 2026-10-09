@@ -5979,4 +5979,42 @@ mod tests {
         // A large session id must not bleed into the slot bits.
         assert_ne!(stream_key(0, u32::MAX), stream_key(1, 0));
     }
+
+    /// The contract the capture-on-demand call order rests on.
+    ///
+    /// **A connect in the listening state has to say "no capture" *before*
+    /// the devices open, and this is why that is allowed to work.** Said
+    /// afterwards it is too late: the open has already happened, and on iOS
+    /// the session is `.playback` with zero input channels, so building an
+    /// input stream fails inside cpal with "channel count must be at least 1"
+    /// and takes the whole connect down. That shipped in build 154.
+    ///
+    /// Two halves, and the second is the one that makes the first safe:
+    /// setting the flag before the devices are wanted must **not** ask for a
+    /// rebuild — there is nothing to rebuild and the caller would wait on an
+    /// open that never comes — and the flag must still be there for the open
+    /// to read when it happens.
+    #[test]
+    fn capture_can_be_declined_before_the_devices_are_ever_opened() {
+        let shared = AudioShared::new();
+        assert!(
+            shared.capture_wanted(),
+            "the default has to be capture, or every non-on-demand connect              would come up deaf"
+        );
+
+        // No devices yet. Nothing to rebuild, so nothing to wait for.
+        assert!(
+            !shared.set_capture_wanted(false),
+            "asking before the devices are open must not request a rebuild"
+        );
+        assert!(!shared.capture_wanted(), "and the flag must have taken");
+
+        // Which is what the open then reads. `build_streams` consults exactly
+        // this, and skips the input half when it is false.
+        shared.set_audio_wanted(true);
+        assert!(
+            !shared.capture_wanted(),
+            "the open must see the intent that was declared before it"
+        );
+    }
 }

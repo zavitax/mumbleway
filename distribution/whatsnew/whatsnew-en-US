@@ -1,7 +1,5 @@
-Still 1.2.0. The tap gesture, with the threshold measured instead of guessed.
+Still 1.2.0. Fixes the connect failure in build 154.
 
-Your two recordings settled it: the taps were never faint — every audible one reached 22 to 60 dB over the noise floor. The margin was simply far too low, so most of a hand-held recording counted as a tap and the detector was always mid-count when a real one arrived.
+With tap-to-capture on, connecting reported "channel count must be at least 1" and gave up. The listening state has no microphone by design, but the engine was told that one statement too late — it had already opened the devices and asked for an input that was not there.
 
-12 dB became 30, and the pulse and gap windows widened to match. Zero false arms on that corpus.
-
-Expect to repeat a gesture now and then.
+Also in this build: the tap threshold measured from your recordings, 12 dB to 30, with the pulse and gap windows widened to match.

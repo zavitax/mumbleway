@@ -199,16 +199,21 @@ class _PreviewSheetState extends State<_PreviewSheet> {
   /// accepts none of it: the sheet opens, a target is picked, nothing arrives.
   /// The archive also keeps the audio and its decision log together, which is
   /// the same reason the card zips.
+  ///
+  /// **Which files make up a ride is [rideFiles]' business, not this
+  /// function's.** It used to be the pair `[audio, '$stem.csv']` written out
+  /// here, and that list was never updated when the recorder grew a third
+  /// track — so every ride sent from this button arrived without its motion
+  /// data, including the ones sent *to debug the tap gesture*. The card's
+  /// button carried it by accident, because it ships whatever is in the
+  /// directory, which is why nothing caught this until a recording came back
+  /// empty of the only thing being asked about.
   Future<void> _share() async {
     final path = _selected;
     if (path == null) return;
     final l = L.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    final stem = path.substring(0, path.lastIndexOf('.'));
-    final files = [
-      for (final p in [path, '$stem.csv'])
-        if (File(p).existsSync()) p,
-    ];
+    final files = rideFiles(path);
 
     setState(() => _sharing = true);
     try {

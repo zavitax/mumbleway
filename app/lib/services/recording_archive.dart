@@ -33,6 +33,56 @@ const archiveCapBytes = 18 * 1024 * 1024;
 /// the names [packRecordings] writes.
 const archiveStem = 'mumbleway-recordings';
 
+/// The suffixes a recorder segment writes, beyond the `.s16` itself.
+///
+/// **One list, because there used to be two and one of them was wrong.** The
+/// card shared everything in the directory and so carried the motion track by
+/// accident; the listen sheet built its own list of `[audio, '$stem.csv']` and
+/// silently dropped it. A rider sent a ride to debug the tap gesture and it
+/// arrived with no motion in it at all — the one track the question needed, and
+/// nothing on either end said it was missing.
+///
+/// A new track goes here and both share paths pick it up.
+const rideSuffixes = ['.csv', '.motion.csv'];
+
+/// The ride a recorder file belongs to, as the segment stem both share paths
+/// and the intake tool group by.
+///
+/// **Not `lastIndexOf('.')`.** `20261009-1054-000.motion.csv` has two
+/// extensions, so the naive stem is `…-000.motion` — a different ride from
+/// `…-000`, which is how the motion track came to be a "ride" of its own that
+/// the cap could put in a *different archive* from the audio it describes.
+/// That breaks the one guarantee [packRecordings] makes about not splitting a
+/// ride, and it breaks it for the track that is useless without the other two.
+/// **Longest suffix first, or `.motion.csv` is matched as `.csv`** and the stem
+/// comes back as `…-000.motion` — which is the very fault this function exists
+/// to prevent, arrived at from the other direction. Sorted rather than relying
+/// on the order of [rideSuffixes], so adding a track cannot reintroduce it.
+String rideStem(String fileName) {
+  final longestFirst = [...rideSuffixes]
+    ..sort((a, b) => b.length.compareTo(a.length));
+  for (final suffix in longestFirst) {
+    if (fileName.endsWith(suffix)) {
+      return fileName.substring(0, fileName.length - suffix.length);
+    }
+  }
+  final dot = fileName.lastIndexOf('.');
+  return dot < 0 ? fileName : fileName.substring(0, dot);
+}
+
+/// Every file of the ride whose audio is at [audioPath], the ones that exist.
+///
+/// Used by the single-ride share so it cannot disagree with the bulk one about
+/// what a ride is made of.
+List<String> rideFiles(String audioPath, {bool Function(String)? exists}) {
+  final present = exists ?? (p) => File(p).existsSync();
+  final stem = rideStem(audioPath);
+  return [
+    for (final p in [audioPath, for (final s in rideSuffixes) '$stem$s'])
+      if (present(p)) p,
+  ];
+}
+
 /// [args] is the size ceiling, then the directory to write into, then the files
 /// to pack, newest ride first. Returns the archives written.
 ///
@@ -61,9 +111,7 @@ List<String> packRecordings(List<String> args) {
 
   final rides = <String, List<String>>{};
   for (final path in args.skip(2)) {
-    final name = path.split(sep).last;
-    final dot = name.lastIndexOf('.');
-    (rides[dot < 0 ? name : name.substring(0, dot)] ??= []).add(path);
+    (rides[rideStem(path.split(sep).last)] ??= []).add(path);
   }
 
   String pathFor(int i) => '$into$sep$archiveStem-$i.zip';

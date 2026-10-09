@@ -29,13 +29,30 @@ on both sides of it.
 
 ## The move that shrinks the problem
 
-**Split the payload.** A recording is two things and only one of them is a
+**Split the payload.** A recording is three things and only one of them is a
 voice.
 
 | | Contains | Size, 2.5 min ride | Privacy |
 |---|---|---|---|
 | `.csv` decision log | numbers per 10 ms — transmitting, speaking, gate, SNR, level, harmonicity | ~180 KB, compresses hard | **No audio whatsoever** |
+| `.motion.csv` motion track | the three vectors per sample, both clocks, the block index | ~1.5 MB at 100 Hz | **No audio whatsoever** |
 | `.s16` audio | the rider's microphone | ~14 MB | A person's voice, possibly with others in the channel |
+
+**All three share a `{stem}-{index:03}` segment index, and that is what makes a
+slice coherent** — segment 7 of each file covers the same stretch of the ride.
+So they travel together or not at all, which is the rule the share button
+broke: the single-ride share built its own list of two and a ride sent to
+settle whether the tap detector fires arrived with no motion in it. Both share
+paths now go through `rideFiles` in
+`app/lib/services/recording_archive.dart`, and `ride_stem` in
+`tools/vad/telegram_intake.py` is the same function at this end — it has to
+match `.motion.csv` before the `.csv` it ends with, or the track groups under a
+stem of its own and is reported as an orphan log while the ride looks whole.
+
+**A missing track is now said out loud.** Intake reports *"no motion track —
+nothing here can say anything about taps"* rather than accepting the archive
+quietly, because the silent version of that is indistinguishable from a
+detector that found nothing.
 
 Most reports are answerable from the log alone. *Did the gate close? When?
 What was the SNR at that moment? Did `transmitting` drop while `speaking` was

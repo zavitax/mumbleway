@@ -363,6 +363,24 @@ def write_note(root, stem, text, sent_as, chat):
     return path
 
 
+#: What a recorder segment writes besides its `.s16`, longest suffix first so
+#: `.motion.csv` is matched before the `.csv` it ends with.
+RIDE_SUFFIXES = (".motion.csv", ".csv", ".s16")
+
+
+def ride_stem(name):
+    """The ride a recorder file belongs to.
+
+    The app's `rideStem` in `app/lib/services/recording_archive.dart` is the
+    same function, and the two have to agree: it decides what the share button
+    keeps together and this decides what is read as one ride at the other end.
+    """
+    for suffix in RIDE_SUFFIXES:
+        if name.lower().endswith(suffix):
+            return name[: -len(suffix)]
+    return os.path.splitext(name)[0]
+
+
 def unpack(archive, roots, note_text="", sent_as="", chat=""):
     """Take a share-button archive apart and label what is in it.
 
@@ -405,7 +423,12 @@ def unpack(archive, roots, note_text="", sent_as="", chat=""):
     ridden = minutes = 0
     speech = noise = 0
     speech_s = noise_s = 0.0
-    for stem in sorted({os.path.splitext(m)[0] for m in members}):
+    # `os.path.splitext` is wrong for the motion track and wrong in the way that
+    # hides: `X-000.motion.csv` splits to `X-000.motion`, a stem with no `.s16`
+    # beside it, so the third track arrived and was then reported as "a decision
+    # log with no audio" while the ride it belongs to looked complete. Group by
+    # the ride, and let the motion file ride along under it.
+    for stem in sorted({ride_stem(m) for m in members}):
         audio = os.path.join(rides, f"{stem}.s16")
         log = os.path.join(rides, f"{stem}.csv")
         if not os.path.exists(audio):
@@ -424,6 +447,18 @@ def unpack(archive, roots, note_text="", sent_as="", chat=""):
             # the same note. A ride that is later moved or trimmed keeps its
             # explanation because the note travels under the ride's own name.
             write_note(rides, stem, note_text, sent_as or os.path.basename(archive), chat)
+            # **Said out loud, because its absence is what a whole ride was
+            # wasted on.** A recording sent to settle whether the tap detector
+            # fires arrived with no motion in it — the app's single-ride share
+            # built its own file list and had never been taught the third
+            # track — and nothing at either end remarked on it. The ride looked
+            # complete, so the missing half read as a detector that found
+            # nothing rather than as a file that was never sent.
+            if not os.path.exists(os.path.join(rides, f"{stem}.motion.csv")):
+                problems.append(
+                    f"{stem}: no motion track — nothing here can say anything "
+                    f"about taps"
+                )
             if os.path.exists(log):
                 a, b, c, d = split_by_log(raw, log, roots["speech"], roots["noise"], stem)
                 speech, speech_s, noise, noise_s = speech + a, speech_s + b, noise + c, noise_s + d

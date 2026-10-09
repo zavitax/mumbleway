@@ -1,10 +1,7 @@
-Two fixes, and the gesture should now actually work.
+Still 1.2.0. The last three builds were the same version renumbered; this one is the same version fixed.
 
-The microphone was taking the headset anyway when tap-to-talk was on, because
-the check that defers it tested something not yet true at connect time.
+The tap detector's noise floor latched below the signal, so a phone lying still read 49 dB above its own floor and armed itself roughly ninety times an hour. Measured at zero now.
 
-And taps were being detected and then thrown away: the switch that lets a
-gesture act was set before the engine existed, so the call failed silently and
-the flag stayed off for the whole session.
+Sharing one recording also dropped the motion track, so the file needed to debug taps was the one left behind.
 
-If a tap still does nothing, please read out the Motion rows in Diagnostics.
+New: a motion timeline under the waveform in the listen sheet, as candles or averages.

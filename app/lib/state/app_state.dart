@@ -2202,13 +2202,40 @@ class AppState extends ChangeNotifier {
     _audioRelease?.cancel();
     _audioRelease = null;
     if (_audioActive) {
-      // **Already live, and possibly only listening.** This early return used
-      // to end the matter, so starting a recording while connected in the
-      // listening state produced a file of nothing — no capture stream, no
-      // blocks, zero duration — and nothing anywhere said why.
+      // **Already live, and possibly in the wrong state for what is asking.**
+      //
+      // This early return used to end the matter, so starting a recording
+      // while connected in the listening state produced a file of nothing —
+      // no capture stream, no blocks, zero duration — and nothing anywhere
+      // said why. That is the first branch below.
+      //
+      // **It still ended the matter in the other direction, and that was the
+      // second half of the same bug.** Audio can already be live *with capture
+      // on* when a call begins: a screen that holds the devices for a meter
+      // forces capture while it is open, and the ten-second idle grace keeps
+      // the session alive after it closes. Connecting in that window inherited
+      // the hold's capture and never reconsidered it, so a rider with the
+      // gesture on came up live — exactly what tap-to-capture exists to
+      // prevent, and the rider reported it as capture being on at the start.
+      //
+      // So reconcile both ways, against the same `onDemand` the full path
+      // below computes.
       if (_captureRequiredByHold && !_capturing && !_captureChanging) {
         _captureForcedByHold = true;
         return await requestCapture();
+      }
+      if (_captureOnDemand &&
+          !_captureRequiredByHold &&
+          _capturing &&
+          !_captureChanging) {
+        // Not a hold's capture any more; nothing is owed back.
+        _captureForcedByHold = false;
+        await releaseCapture();
+        // The cue the connect path plays, for the same reason: capture is off
+        // and without it the first thing a rider does is talk into nothing.
+        try {
+          playTapArmedCue(taps: tapCount);
+        } catch (_) {}
       }
       return null;
     }

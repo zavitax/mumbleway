@@ -291,6 +291,14 @@ final class AudioSession {
   /// Decides which configuration a route change puts back, and nothing else.
   private var capturing = false
 
+  /// Consecutive attempts to get an input back after finding none.
+  ///
+  /// Reset the moment there is one. See the route-change handler: every
+  /// recovery attempt sets the category and so posts another route change, and
+  /// without a bound a microphone that never comes back is an endless loop
+  /// rather than a failed recovery.
+  private var inputRecoveryAttempts = 0
+
   /// The listening session: output only, and A2DP allowed to carry it.
   ///
   /// **`.playback`, not `.playAndRecord` offering A2DP.** The documented fault
@@ -472,14 +480,48 @@ final class AudioSession {
         // hands-free profile — undoing the whole feature on every route change,
         // which is a loop a rider would experience as music that keeps going
         // narrowband by itself.
+        // **Only if it is actually wrong, and that is what stops a loop.**
+        //
+        // `activateListening` sets the category, and **setting the category
+        // posts a route change of its own** with reason `.categoryChange`.
+        // Called unconditionally from here it therefore re-entered this
+        // handler, found `!capturing` again, and set the category again —
+        // for ever. A rider reported it as the audio switching on and off
+        // endlessly after tapping to stop, which is exactly what it is: each
+        // turn of the loop tears the route down and rebuilds it, and Dart is
+        // told about every one.
+        //
+        // It only bit sometimes because `setCategory` posts nothing when
+        // nothing changes, so whether the first call was a real change —
+        // which depends on the route and the device — decided whether the
+        // loop had a first step to take.
+        //
+        // Asking what the session *is* before setting it makes the handler
+        // idempotent: a notification it did cause finds nothing to do, and
+        // the loop has no way to sustain itself.
         if !self.capturing {
-          try? self.activateListening()
+          if session.category != .playback {
+            try? self.activateListening()
+          }
         } else if session.inputNumberOfChannels == 0 {
           // The input is gone rather than merely different. Re-activating is
           // the only thing that brings it back; setting a preferred input on a
           // session that has none does nothing at all.
-          try? self.activateCapturing()
+          //
+          // **Bounded, for the reason the branch above is guarded.** This also
+          // sets the category, so it also posts a route change, and if
+          // re-activating does not bring an input back — no microphone at all,
+          // or one another app is holding — the retry meets the same zero and
+          // goes round again. A few attempts is a recovery; an unbounded one
+          // is the same loop wearing the other branch's clothes, and this one
+          // would hold the headset on the hands-free profile while it span.
+          if self.inputRecoveryAttempts < 3 {
+            self.inputRecoveryAttempts += 1
+            try? self.activateCapturing()
+          }
         } else {
+          // There is an input, so whatever was being recovered from is over.
+          self.inputRecoveryAttempts = 0
           self.preferHandsFreeInput()
         }
         // **Carries the new route, rather than merely saying something moved.**

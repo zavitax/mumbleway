@@ -1,5 +1,5 @@
-Still 1.2.0. Build 155 fixed the connect failure; this one makes it unable to come back.
+Still 1.2.0. Two faults from build 156.
 
-The engine used to be told whether there was a microphone to open in a separate call from the one that opened it, and in build 154 those two happened in the wrong order. They are one call now, so the intent arrives with the request and there is no sequence left to get wrong.
+Tapping to stop could put the audio into an endless on/off loop. The route-change handler reacted to the change it had just made: switching back to listening sets the audio category, setting the category reports a route change, and round it went. It now checks before it sets.
 
-No behaviour change if 155 worked for you.
+And turning the gesture on in Settings then connecting at once came up with the microphone already live, because the session was still open from the meter.

@@ -74,6 +74,41 @@ use super::record::MotionSample;
 /// Sub-windows of the floor tracker, matching the voice gate's ~1.5 s memory.
 const FLOOR_SUB_BLOCKS: u32 = 25;
 
+/// The lowest ψ the floor is allowed to believe in, in dB.
+///
+/// **This is not a tuning constant and it is not provisional.** It repairs a
+/// design fault that made the detector useless and worse than useless, and the
+/// reasoning is the sensor's, not anybody's taste.
+///
+/// [`NoiseFloorTracker`] is *minimum statistics*, and it was borrowed from the
+/// voice gate, where the quantity it tracks is audio with dither and a real
+/// noise floor under it. ψ is not like that. ψ[x] = x(n)² − x(n+1)·x(n−1) is
+/// **identically zero whenever three consecutive samples are equal**, and a
+/// quantised accelerometer lying still reports runs of equal samples as a
+/// matter of course. So ψ is exactly 0 for much of any stationary stretch,
+/// `10·log10(0 + 1e-12)` is −120 dB, and the minimum statistic parks in a
+/// basement that no real signal ever visits.
+///
+/// From there two documented behaviours of the tracker finish the job:
+/// *down is instant* (`dsp.rs`), so every recurrence of an exact zero yanks the
+/// published floor straight back to the basement, while the climb out is capped
+/// at `MAX_RISE_DB_PER_BLOCK` — 0.06 dB **per sample**, which is a rate meant
+/// for 10 ms audio blocks and is slower still here — and only on the samples
+/// where the candidate gate is not holding it.
+///
+/// The result, measured on a phone lying motionless: `ψ -68.0 dB ·
+/// floor -117.0 dB · over 49.0 dB`. Everything is a candidate for ever, 1626
+/// impulses were discarded as "too long" in 160 seconds, and four of them
+/// lined up well enough to complete **gestures nobody performed** — about
+/// ninety false arms an hour against a target of under one.
+///
+/// −70 dB is one quantisation step. A ±2 g accelerometer over 16 bits has an
+/// LSB near 2.4e-4 m/s²; ψ for a one-LSB dither is about (2.4e-4)² ≈ 6e-8,
+/// which is −72 dB. **Below one LSB there is no signal to measure**, so the
+/// floor has no business going there, and a tap — which runs tens of dB above
+/// this — is unaffected.
+const QUANTISATION_DB: f32 = -70.0;
+
 /// How far above the floor ψ must reach. **Provisional.**
 const MARGIN_DB: f32 = 12.0;
 
@@ -268,13 +303,29 @@ impl TapDetector {
         // dB on an arbitrary but consistent reference. The floor tracker works
         // in dB because minimum statistics over a logarithmic level is what it
         // was built for, and ψ spans orders of magnitude.
-        let level_db = 10.0 * (psi + 1e-12).log10();
+        //
+        // **Clamped at the bottom, and that clamp is load-bearing** — see
+        // [`QUANTISATION_DB`]. Without it the first field test of this detector
+        // read `over 49.0 dB` on a phone lying perfectly still.
+        let level_db = (10.0 * (psi + 1e-12).log10()).max(QUANTISATION_DB);
         let at_ms = sample.arrival_us / 1_000;
 
         // The floor must not learn the tap. `update_gated` already exists for
         // exactly this shape of problem — a held signal pulling the minimum up
         // onto itself — and "a candidate is in progress" is the gate.
-        let in_candidate = self.above_since_ms.is_some();
+        //
+        // **But only while the run could still be a tap.** Gating on
+        // `above_since_ms.is_some()` alone lets anything sustained above the
+        // margin hold the floor down indefinitely, and the floor is the only
+        // thing that would otherwise rise to meet it and end the condition.
+        // That is a latch, and it is the shape of the fault [`QUANTISATION_DB`]
+        // describes — on a bike it would arrive instead as engine vibration
+        // clearing the margin and the detector never recovering for the rest of
+        // the ride. Past [`MAX_PULSE_MS`] the run is by definition not a tap,
+        // so the floor is allowed to learn it.
+        let in_candidate = self
+            .above_since_ms
+            .is_some_and(|since| at_ms.saturating_sub(since) <= MAX_PULSE_MS as u64);
         let floor_db = self.floor.update_gated(level_db, in_candidate);
         let over = level_db - floor_db;
         self.stats.psi_db = level_db;
@@ -534,5 +585,87 @@ mod tests {
         let mut d = TapDetector::new(2);
         d.set_taps_wanted(7);
         assert_eq!(d.taps_wanted, 4);
+    }
+
+    /// A still phone reports **runs of identical samples**, so ψ is exactly 0.
+    ///
+    /// `run` above avoids that on purpose — its comment says a true zero
+    /// "would make every ratio meaningless" — and that is why every test here
+    /// passed while the detector was unusable on a phone lying on a table.
+    /// This is the signal a quantised accelerometer actually produces: a
+    /// constant, with the occasional one-LSB step. `fn run`'s alternating
+    /// ±0.02 is not a quiet sensor, it is a 50 Hz tone.
+    fn quantised_still(i: usize) -> f32 {
+        const LSB: f32 = 2.4e-4;
+        // A step every 40 samples and nothing in between: three equal samples
+        // in a row give ψ = 0, which is the whole point.
+        (i / 40) as f32 % 3.0 * LSB
+    }
+
+    #[test]
+    fn a_motionless_phone_arms_nothing() {
+        let mut d = TapDetector::new(3);
+        for i in 0..4_000 {
+            assert!(
+                d.push(&sample(i as u64, quantised_still(i))).is_none(),
+                "a gesture completed on a phone that was not moving"
+            );
+        }
+        let s = d.stats();
+
+        // The measured failure was `ψ -68.0 dB · floor -117.0 dB · over 49.0`.
+        let over = s.psi_db - s.floor_db;
+        assert!(
+            over < MARGIN_DB,
+            "a still phone sits {over:.1} dB over its own floor, so every \
+             sample is a candidate (ψ {:.1}, floor {:.1})",
+            s.psi_db,
+            s.floor_db
+        );
+        assert_eq!(s.gestures, 0, "false gestures on a motionless phone");
+        // 1626 in 160 s was the measurement. A handful while the floor first
+        // settles is fine; a stream of them means the latch is back.
+        assert!(
+            s.discarded_long < 50,
+            "{} impulses discarded as too long on a still phone — the floor is \
+             latched below the signal again",
+            s.discarded_long
+        );
+    }
+
+    #[test]
+    fn the_floor_recovers_from_a_sustained_shake() {
+        // Engine vibration: well clear of the margin and lasting far longer
+        // than any tap. The floor must rise to meet it rather than being held
+        // down by a candidate that never resolves.
+        let mut d = TapDetector::new(3);
+        for i in 0..6_000 {
+            let a = if i % 2 == 0 { 0.5 } else { -0.5 };
+            d.push(&sample(i as u64, a));
+        }
+        let s = d.stats();
+        let over = s.psi_db - s.floor_db;
+        assert!(
+            over < MARGIN_DB,
+            "a steady shake still reads {over:.1} dB over the floor, so the \
+             floor was frozen by it rather than learning it"
+        );
+    }
+
+    #[test]
+    fn a_tap_still_registers_once_the_floor_is_honest() {
+        // The repair must not have bought quiet by going deaf: the same
+        // gesture the other tests use has to survive a realistic still
+        // background rather than the synthetic dither.
+        let mut d = TapDetector::new(3);
+        let mut gestures = 0;
+        for i in 0..2_000 {
+            let tap = [600usize, 620, 640].contains(&i);
+            let a = if tap { 4.0 } else { quantised_still(i) };
+            if d.push(&sample(i as u64, a)).is_some() {
+                gestures += 1;
+            }
+        }
+        assert_eq!(gestures, 1, "the three-tap gesture was not recognised");
     }
 }

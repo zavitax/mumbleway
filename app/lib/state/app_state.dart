@@ -2229,6 +2229,13 @@ class AppState extends ChangeNotifier {
   bool get _micWanted =>
       CaptureMachine.micWanted(_captureInputs, riderWantsMic: _riderWantsMic);
 
+  /// What the diagnostics panel shows: desired against actual, and who is
+  /// asking. **Every defect in this feature was found by a rider noticing a
+  /// sound**, because a disagreement between these two was invisible.
+  bool get captureDesired => _micWanted;
+  bool get riderWantsMic => _riderWantsMic;
+  Set<CaptureClaim> get captureClaims => _claims;
+
   /// Brings capture to what the facts say it should be.
   ///
   /// **Called from every door, and it reconciles in both directions** — which

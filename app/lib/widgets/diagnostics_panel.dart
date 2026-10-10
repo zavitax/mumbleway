@@ -10,6 +10,7 @@ import '../services/engine_log.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'recording_toggle.dart';
+import 'audio_view.dart';
 import 'motion_view.dart';
 import 'spectrum_view.dart';
 import 'watch.dart';
@@ -363,6 +364,8 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 // Under the recorder because it answers the
                                 // question a recording raises when it turns out
                                 // empty: whether anything was arriving at all.
+                                AudioView(),
+                                SizedBox(height: 10),
                                 MotionView(),
                                 SizedBox(height: 16),
                               ],

@@ -1,8 +1,33 @@
 # Capture on demand, hi-fi output in between
 
-**Status: specified, not yet built.** Written 2026-10-08. The measurements in
-[Measurements](#measurements) have not been taken, and one of them can cancel the
-whole feature — read that section before building anything.
+**Status: built and shipping to TestFlight, and the measurement that can cancel
+it is still untaken.** Written 2026-10-08, this header corrected 2026-10-10.
+
+It said "specified, not yet built" for two days after it was built, across ten
+TestFlight builds — which is the sort of thing a reader plans against and is
+then wrong about. The **Ordered work** section is likewise a record of what was
+intended rather than what exists.
+
+**What it got right, and what it cost to ignore.** The section below says one
+of its measurements can cancel the feature, and that it should be read before
+building anything. It was not. The feature was built, shipped ten times, and
+produced about twenty defects — and **nobody has yet heard music stay
+full-bandwidth while listening and drop to narrowband only while capturing, on
+an actual headset.** Every one of those defects was spent defending a benefit
+that is still assumed.
+
+Two further corrections to that section, both settled by building it:
+
+- *"Does `stopCapture` actually release HFP on iOS without a full deactivate?"*
+  — answered by assuming it does not. `stopCapture` deactivates with
+  `.notifyOthersOnDeactivation` and brings the session straight back up as
+  `.playback`, at the cost of a brief gap in output.
+- The architecture has changed. The decision now lives in
+  `app/lib/state/capture_machine.dart` as a pure reconciler over a tagged claim
+  set, and the iOS half in `app/ios/Runner/CaptureReconciler.swift`, also pure
+  and tested on the simulator. The reason is in `docs/` only here: one fact had
+  been stored in about twelve mutable flags across four runtimes, and nearly
+  every defect was two of them disagreeing.
 
 ## The problem
 

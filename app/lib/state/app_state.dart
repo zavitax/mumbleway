@@ -913,7 +913,30 @@ class AppState extends ChangeNotifier {
   bool get effectivelyMuted => _muted || !_capturing;
   bool get deafened => _deafened;
   bool get transmitting => _transmitting;
-  double get inputLevelDb => _inputLevelDb;
+  /// The microphone's level, or the floor when there is no microphone.
+  ///
+  /// **A frozen meter is indistinguishable from a broken one.** With capture
+  /// off no blocks arrive, so the last value simply stayed on screen — a
+  /// needle resting mid-scale while nothing was being heard, which is the
+  /// exact confusion a meter exists to prevent.
+  ///
+  /// The tempting repair is to feed the chain silence, or very quiet noise, so
+  /// the meter keeps moving. Both are worse than the freeze:
+  ///
+  /// - `run_worker` counts **bit-exact zero** blocks and warns after two
+  ///   seconds, because that is how Android hands a backgrounded app a dead
+  ///   microphone. Silence would trip it on every listening stretch; noise
+  ///   would make sure it could never trip at all.
+  /// - The recorder would write the invention to the `.s16`, and audio carries
+  ///   no record of what captured it. A ride whose quiet stretches are
+  ///   fabricated is a corpus nobody can trust.
+  /// - The chain would spend a ride's worth of battery processing it, and it
+  ///   is deliberately not told whether capture is on, so it would process and
+  ///   could transmit whatever it was handed.
+  ///
+  /// So the meter reads the floor and the interface says the microphone is
+  /// closed, which is true and costs nothing.
+  double get inputLevelDb => _capturing ? _inputLevelDb : -120;
 
   /// Level voice activation opens at. Tracks the background noise, so it rises
   /// with engine and wind — which is what makes it worth showing.

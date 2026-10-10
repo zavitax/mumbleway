@@ -276,7 +276,7 @@ class LevelMeter extends StatelessWidget {
           // fill differently are worse than no meter at all.
           child: VoiceMeter(
             levelDb: state.inputLevelDb,
-            muted: state.muted,
+            muted: state.effectivelyMuted,
             // Colour only while the microphone is actually reaching a server.
             // The meter moves either way, so a rider can still see the
             // microphone is alive; the colour is what says somebody is hearing

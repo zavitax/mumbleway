@@ -92,6 +92,37 @@ enum CaptureReconciler {
     case reportNoInput
   }
 
+  /// How to give the microphone back.
+  enum Release: Equatable {
+    /// Change the category and nothing else. The session stays active, so the
+    /// engine's output stream is never interrupted.
+    case categoryOnly
+    /// Put the session down with `.notifyOthersOnDeactivation` and bring it
+    /// straight back up as `.playback`.
+    case deactivateAndReactivate
+  }
+
+  /// **Only tear the session down when there is a profile to hand back.**
+  ///
+  /// `stopCapture` deactivated the session every time, on the strength of a
+  /// guess the specification admits to: `.notifyOthersOnDeactivation` is "what
+  /// lets a headset fall back off the hands-free profile", and that is on a
+  /// *full* deactivation, so the session was put down and brought back up in
+  /// case a category change alone was not enough.
+  ///
+  /// On a route with no Bluetooth in it that buys nothing and costs
+  /// everything: deactivating stops the audio unit, interrupts the output
+  /// stream the engine has open on it, and posts interruption and route-change
+  /// notifications — on every tap-to-stop. A rider testing on the phone's own
+  /// speaker gets all of the cost and none of the reason.
+  ///
+  /// So the expensive path is kept for exactly the case it was written for and
+  /// nowhere else. Whether even that case needs it is still unmeasured, and
+  /// still noted as such in `docs/CAPTURE_ON_DEMAND.md`.
+  static func release(routeHasBluetooth: Bool) -> Release {
+    routeHasBluetooth ? .deactivateAndReactivate : .categoryOnly
+  }
+
   /// One step. Pure, total, and a fixed point once it answers `.none`.
   static func next(desired: Desired, reading: Reading) -> Action {
     guard desired.active else { return .none }

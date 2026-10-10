@@ -125,6 +125,25 @@ final class CaptureReconcilerTests: XCTestCase {
       .reportNoInput)
   }
 
+  // MARK: - Giving the microphone back
+
+  /// **Shipped, and paid on every tap-to-stop including on the speaker.**
+  ///
+  /// `stopCapture` deactivated the whole session to force a headset off the
+  /// hands-free profile — a guess the specification admits to, and one that
+  /// has still never been measured on a headset. With no Bluetooth on the
+  /// route there is no profile to release, and deactivating stops the audio
+  /// unit and interrupts the stream the engine has open on it.
+  func testGivingTheMicrophoneBackOnASpeakerDoesNotTearTheSessionDown() {
+    XCTAssertEqual(R.release(routeHasBluetooth: false), .categoryOnly)
+  }
+
+  /// And the expensive path survives for the one case it was written for.
+  func testAHeadsetStillGetsTheFullDeactivation() {
+    XCTAssertEqual(
+      R.release(routeHasBluetooth: true), .deactivateAndReactivate)
+  }
+
   // MARK: - The transitions themselves
 
   func testStartingCaptureAsksForPlayAndRecord() {

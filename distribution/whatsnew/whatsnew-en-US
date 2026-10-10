@@ -1,7 +1,5 @@
-Still 1.2.0. A restructure rather than another patch.
+Still 1.2.0. One targeted iOS fix, and the panel to tell me what else is wrong.
 
-Capture-on-demand produced about twenty defects across ten builds, nearly all the same shape: 'is the microphone open' lived in a dozen flags across four runtimes, and two of them disagreed.
+Giving the microphone back tore the whole audio session down every time, to force a headset off the hands-free profile. On the phone's own speaker there is no profile to release, so that bought nothing and cost everything: it stopped the audio unit and interrupted the stream the engine had open on it, on every tap-to-stop.
 
-It is one decision in one place now, from a tagged set of who is asking. The iOS half is a pure function with ten tests that run in milliseconds; it had none before.
-
-New: an Audio block in Diagnostics, showing what was asked for against what happened.
+The teardown is now kept for Bluetooth routes only.

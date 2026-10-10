@@ -173,7 +173,21 @@ final class AudioSession {
   private func stopCapture(_ result: @escaping FlutterResult) {
     do {
       let session = AVAudioSession.sharedInstance()
-      try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+      // **Only when there is a profile to hand back.** See
+      // `CaptureReconciler.release`: deactivating stops the audio unit and
+      // interrupts the stream the engine has open on it, and on a route with
+      // no Bluetooth in it there is no hands-free profile that needed
+      // releasing. That cost was being paid on every tap-to-stop, including
+      // on the phone's own speaker where it buys nothing at all.
+      let bluetooth = session.currentRoute.outputs.contains {
+        $0.portType == .bluetoothHFP || $0.portType == .bluetoothA2DP
+          || $0.portType == .bluetoothLE
+      }
+      if CaptureReconciler.release(routeHasBluetooth: bluetooth)
+        == .deactivateAndReactivate
+      {
+        try? session.setActive(false, options: [.notifyOthersOnDeactivation])
+      }
       try activateListening()
       result([
         "ok": true,

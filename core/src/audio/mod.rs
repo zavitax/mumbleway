@@ -1,5 +1,6 @@
 //! Audio capture, processing, coding and playback.
 
+pub mod acoustic_tap;
 pub mod aec;
 pub mod aec3;
 pub mod bandwidth;
@@ -12,6 +13,7 @@ pub mod denoise;
 pub mod dsp;
 pub mod engine;
 pub mod feedback;
+pub mod gesture;
 pub mod jitter;
 pub mod modulation;
 pub mod paydown;

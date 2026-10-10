@@ -43,7 +43,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: 'core -> target'
+          # **Both crates.** `app/rust` was left out, and so was every check
+          # below that should have covered it — see the second crate's steps.
+          workspaces: |
+            core -> target
+            app/rust -> target
 
       # prost-build shells out to protoc; cpal needs the ALSA headers on Linux.
       - uses: arduino/setup-protoc@v3
@@ -62,9 +66,29 @@ jobs:
 
       # The hardware tests are #[ignore]d and stay excluded: CI runners have no
       # audio devices, so they would fail for reasons unrelated to the code.
+      #
+      # **`--lib` was hiding the integration tests, not just the hardware
+      # ones.** `#[ignore]` already excludes anything needing a device, so the
+      # flag was doing a second job nobody asked for: `core/tests/` was skipped
+      # whole, and `transmission.rs` alone has six tests with no `#[ignore]` on
+      # them. Plain `cargo test` runs the lot and still skips the ignored.
       - name: Engine tests
         working-directory: core
-        run: cargo test --lib
+        run: cargo test
+
+      # **A second crate, and a green `core` says nothing about it.**
+      # `app/rust` owns the FFI — `start_audio`, `set_capture_wanted`,
+      # `push_motion` — and has never been in CI. CLAUDE.md records this
+      # biting once already: two of its test literals were missing a field for
+      # weeks, so its thirteen tests had not compiled, let alone run, and
+      # nothing reported it because `cargo check` never looks at test targets.
+      - name: Clippy (app/rust)
+        working-directory: app/rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: FFI tests
+        working-directory: app/rust
+        run: cargo test
 
       - uses: subosito/flutter-action@v2
         with:
@@ -554,11 +578,34 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter build apk --release --split-per-abi
+          # **cargokit logs a failed Rust build at SEVERE: and gradle carries
+          # on**, packaging whatever `.so` was there from last time and exiting
+          # 0. The APK then installs and dies on the first frame with a
+          # frb content-hash mismatch, which blames hot reload. Reading the
+          # exit code is not enough; the log has to be read. CLAUDE.md records
+          # this costing a debugging session once already.
+          flutter build apk --release --split-per-abi 2>&1 | tee build.log
+          if grep -q 'SEVERE' build.log; then
+            echo '::error::cargokit reported SEVERE — the Rust library did not build and a stale one was packaged'
+            grep -n 'SEVERE' build.log | head -20
+            exit 1
+          fi
 
       - name: Build App Bundle
         working-directory: app
-        run: flutter build appbundle --release
+        run: |
+          # **cargokit logs a failed Rust build at SEVERE: and gradle carries
+          # on**, packaging whatever `.so` was there from last time and exiting
+          # 0. The APK then installs and dies on the first frame with a
+          # frb content-hash mismatch, which blames hot reload. Reading the
+          # exit code is not enough; the log has to be read. CLAUDE.md records
+          # this costing a debugging session once already.
+          flutter build appbundle --release 2>&1 | tee build.log
+          if grep -q 'SEVERE' build.log; then
+            echo '::error::cargokit reported SEVERE — the Rust library did not build and a stale one was packaged'
+            grep -n 'SEVERE' build.log | head -20
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

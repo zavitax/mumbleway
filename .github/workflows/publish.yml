@@ -91,11 +91,72 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
+  # The same gate `build.yml` puts in front of every platform job.
+  #
+  # **This workflow had none, and that is how ten builds in four days reached
+  # testers carrying defects.** Every platform job hung from `version` alone,
+  # which only computes a string — so publishing to real stores ran no
+  # formatting check, no lint, and not one of the thousand-odd tests. A red
+  # suite could not stop a release because nothing asked it.
+  #
+  # It costs a few minutes in front of a job that already takes half an hour,
+  # and it is the cheapest thing in this repository that would have caught the
+  # connect failure, the inherited capture and the thresholds being wrong.
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core -> target
+            app/rust -> target
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install ALSA development headers
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - name: Check formatting
+        working-directory: core
+        run: cargo fmt --check
+      - name: Clippy
+        working-directory: core
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Engine tests
+        working-directory: core
+        run: cargo test
+      - name: Clippy (app/rust)
+        working-directory: app/rust
+        run: cargo clippy --all-targets -- -D warnings
+      - name: FFI tests
+        working-directory: app/rust
+        run: cargo test
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve Dart dependencies
+        working-directory: app
+        run: flutter pub get
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze
+      - name: Widget tests
+        working-directory: app
+        run: flutter test
+
+  # ---------------------------------------------------------------------------
   # Google Play — signed App Bundle to the internal track
   # ---------------------------------------------------------------------------
   google-play:
     name: Google Play
-    needs: version
+    needs: [version, test]
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -198,9 +259,21 @@ jobs:
           # arrives after the build, not before it. run_number only ever goes
           # up, which is the whole requirement — the version in pubspec.yaml
           # stays the human-facing one.
+          # **cargokit logs a failed Rust build at SEVERE: and gradle carries
+          # on**, packaging whatever `.so` was there from last time and exiting
+          # 0. The bundle then installs and dies on the first frame with a frb
+          # content-hash mismatch, which blames hot reload. Reading the exit
+          # code is not enough; the log has to be read. CLAUDE.md records this
+          # costing a debugging session once already.
           flutter build appbundle --release \
             --build-number=${{ github.run_number }} \
-            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }}
+            ${{ needs.version.outputs.full && format('--build-name={0}', needs.version.outputs.full) || '' }} \
+            2>&1 | tee build.log
+          if grep -q 'SEVERE' build.log; then
+            echo '::error::cargokit reported SEVERE — the Rust library did not build and a stale one was packaged'
+            grep -n 'SEVERE' build.log | head -20
+            exit 1
+          fi
 
       - name: Upload to Play
         if: steps.gate.outputs.ready == 'true' && env.PLAY_SERVICE_ACCOUNT != ''
@@ -259,7 +332,7 @@ jobs:
     # rather than an error, so `--build-name` would be silently dropped and the
     # tagged build would upload under whatever pubspec says — which looks like
     # a working release right up until the version is read.
-    needs: version
+    needs: [version, test]
     runs-on: macos-latest
     env:
       APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -434,7 +507,7 @@ jobs:
   # remains a working route.
   msix:
     name: Windows MSIX
-    needs: version
+    needs: [version, test]
     runs-on: windows-latest
     # **Pinned, because the runner's default changed underneath this workflow.**
     #
@@ -1027,7 +1100,7 @@ jobs:
   # Set the repository variable ENABLE_WINDOWS_ARM64 to "true" to run it.
   msix-arm64:
     name: Windows MSIX (ARM64)
-    needs: version
+    needs: [version, test]
     if: vars.ENABLE_WINDOWS_ARM64 == 'true'
     runs-on: windows-11-arm
     # See the `msix` job: the runner's default shell is not something to rely
@@ -1147,7 +1220,7 @@ jobs:
   # package that uploads happily and is rejected some hours later.
   mac-app-store:
     name: Mac App Store
-    needs: version
+    needs: [version, test]
     # Skippable only on a dispatch that says so. A tag claims every store got
     # the same build, so it must not be able to leave one out quietly.
     if: github.event_name != 'workflow_dispatch' || inputs.mac_app_store
@@ -1366,7 +1439,7 @@ jobs:
   release:
     name: GitHub release
     if: always() && startsWith(github.ref, 'refs/tags/v')
-    needs: [version, google-play, testflight, msix, mac-app-store]
+    needs: [version, test, google-play, testflight, msix, mac-app-store]
     runs-on: ubuntu-latest
     permissions:
       contents: write

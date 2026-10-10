@@ -521,6 +521,28 @@ jobs:
             exit 1
           fi
 
+      # **The one job that can run Swift, finally running it.**
+      #
+      # `RunnerTests` has existed since the project was created — wired into
+      # the shared scheme, `TEST_HOST` set — containing a single empty
+      # `testExample()`, and nothing has ever invoked it. Meanwhile the Swift
+      # half of capture-on-demand produced three defects in four days, each
+      # reasoned from the API and each verifiable only by a thirty-minute
+      # round trip through TestFlight and a rider's ear.
+      #
+      # The simulator cannot run this app's *audio* — connecting aborts inside
+      # `AURemoteIO` — but it runs a pure function perfectly well, which is
+      # why `CaptureReconciler` is one.
+      - name: Swift tests
+        working-directory: app/ios
+        run: |
+          xcodebuild test \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -only-testing:RunnerTests \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Package
         working-directory: app/build/ios/iphoneos
         run: ditto -c -k --sequesterRsrc --keepParent Runner.app "$GITHUB_WORKSPACE/mumbleway-ios-unsigned.zip"

@@ -291,14 +291,6 @@ final class AudioSession {
   /// Decides which configuration a route change puts back, and nothing else.
   private var capturing = false
 
-  /// Consecutive attempts to get an input back after finding none.
-  ///
-  /// Reset the moment there is one. See the route-change handler: every
-  /// recovery attempt sets the category and so posts another route change, and
-  /// without a bound a microphone that never comes back is an endless loop
-  /// rather than a failed recovery.
-  private var inputRecoveryAttempts = 0
-
   /// The listening session: output only, and A2DP allowed to carry it.
   ///
   /// **`.playback`, not `.playAndRecord` offering A2DP.** The documented fault
@@ -480,66 +472,43 @@ final class AudioSession {
         // hands-free profile — undoing the whole feature on every route change,
         // which is a loop a rider would experience as music that keeps going
         // narrowband by itself.
-        // **Only if it is actually wrong, and that is what stops a loop.**
+        // **The decision lives in `CaptureReconciler`, which is a pure
+        // function and therefore the only part of this file a test can run.**
         //
-        // `activateListening` sets the category, and **setting the category
-        // posts a route change of its own** with reason `.categoryChange`.
-        // Called unconditionally from here it therefore re-entered this
-        // handler, found `!capturing` again, and set the category again —
-        // for ever. A rider reported it as the audio switching on and off
-        // endlessly after tapping to stop, which is exactly what it is: each
-        // turn of the loop tears the route down and rebuilds it, and Dart is
-        // told about every one.
+        // Three defects shipped out of these few lines in four days, each
+        // reasoned from the API because the simulator cannot run this app's
+        // audio: the handler re-applied a category change and re-triggered
+        // itself for ever; it read a still-settling input count as a lost
+        // microphone; and the bound added to that turned an endless loop into
+        // three audible ones. `CaptureReconcilerTests` now pins all three.
         //
-        // It only bit sometimes because `setCategory` posts nothing when
-        // nothing changes, so whether the first call was a real change —
-        // which depends on the route and the device — decided whether the
-        // loop had a first step to take.
-        //
-        // Asking what the session *is* before setting it makes the handler
-        // idempotent: a notification it did cause finds nothing to do, and
-        // the loop has no way to sustain itself.
-        if !self.capturing {
-          if session.category != .playback {
-            try? self.activateListening()
-          }
-        } else if session.inputNumberOfChannels == 0 && !session.isInputAvailable {
-          // **A zero count is only "the input is gone" when there is no input
-          // to be had.** `captureResult` says why, forty lines up, and this
-          // branch was written without reading it: `inputNumberOfChannels`
-          // reports a route that has *settled*, and immediately after
-          // `setActive(true)` the built-in microphone often has not, so it
-          // answers 0 while the microphone is perfectly fine.
-          //
-          // Taking that zero at face value made the handler re-activate a
-          // session that needed nothing, which set the category, which posted
-          // another route change — heard as the audio going on, off, and on
-          // again when capture started, immediately or after a delay
-          // depending on when the notification landed relative to the route
-          // settling. And it appeared **only without a Bluetooth headset**,
-          // which is the same tell `captureResult` records: negotiating an SCO
-          // link takes long enough that the route has settled by the time any
-          // of this runs.
-          //
-          // `isInputAvailable` is the question actually being asked — is there
-          // any input hardware on this route — and it is answered correctly
-          // straight away. When it is true and the count is zero, the right
-          // thing to do is nothing: the route is still settling and a settled
-          // route posts its own notification.
-          //
-          // Still bounded. Re-activating also sets the category, so a device
-          // that never produces an input would otherwise be the endless loop
-          // again, holding the headset on the hands-free profile while it
-          // span.
-          if self.inputRecoveryAttempts < 3 {
-            self.inputRecoveryAttempts += 1
-            try? self.activateCapturing()
-          }
-        } else if session.inputNumberOfChannels > 0 {
-          // There is an input, so whatever was being recovered from is over.
-          self.inputRecoveryAttempts = 0
+        // The rule the reconciler encodes, and the one that was missing:
+        // **commanded properties may decide, observed ones may not.** The
+        // category is commanded and true the instant its setter returns; the
+        // input count describes a route that has settled, and right after
+        // `setActive(true)` it has not.
+        let desired = CaptureReconciler.Desired(
+          active: self.wantedActive, capturing: self.capturing)
+        let reading = CaptureReconciler.Reading(
+          category: session.category.rawValue,
+          inputChannels: session.inputNumberOfChannels,
+          inputAvailable: session.isInputAvailable)
+
+        switch CaptureReconciler.next(desired: desired, reading: reading) {
+        case .none, .waitForRouteToSettle:
+          // Nothing to do, and in the settling case that is the whole point:
+          // a settled route posts its own notification.
+          break
+        case .setCategory(let capturing):
+          try? capturing ? self.activateCapturing() : self.activateListening()
+        case .preferHandsFreeInput:
           self.preferHandsFreeInput()
+        case .reportNoInput:
+          // Re-activating cannot conjure a microphone that is not there. Say
+          // so once; the route report below carries the zero to Dart.
+          NSLog("MumbleWay: the route has no input available")
         }
+
         // **Carries the new route, rather than merely saying something moved.**
         // Dart has no way to ask for it — `activate` is the only call that
         // reports one — so a bare notification left `routeCode` stale until the

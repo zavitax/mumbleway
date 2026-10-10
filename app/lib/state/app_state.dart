@@ -2516,9 +2516,14 @@ class AppState extends ChangeNotifier {
     // link has no fixed duration, so this cannot be one rendered pattern — and
     // a silence of a second or two reads as a fault where a metronome reads as
     // a wait with an end.
-    try {
-      playCaptureWaitingCue();
-    } catch (_) {}
+    //
+    // **Only the waiting, though.** This used to fire one beat immediately as
+    // well, which on a route that needs no negotiation — the phone's own
+    // speaker — was a single bop that `CaptureLive` then truncated, because
+    // `play_cue` replaces the queue. The countdown now lives inside
+    // `CaptureLive` itself, so a fast route plays it whole and a slow one
+    // gets these beats first, at the same pitch, reading as a longer
+    // countdown into the same resolution.
     _captureBeat = Timer.periodic(const Duration(milliseconds: 370), (_) {
       try {
         playCaptureWaitingCue();

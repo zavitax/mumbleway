@@ -991,13 +991,57 @@ impl AudioCue {
             // 300–3400 Hz, so a tone above that would be perfectly audible on
             // a desk and missing on the bike.
             AudioCue::CaptureWaiting => &[(660.0, 120), (0.0, 250)],
-            AudioCue::CaptureLive => &[(988.0, 140), (0.0, 20), (1318.5, 230)],
+            // **The countdown is part of the cue, not merely what fills the
+            // wait.** It used to be the rising pair alone, with the three
+            // bops left to the waiting beat — which works over Bluetooth,
+            // where negotiating an SCO link gives the beat time to fire, and
+            // produces nothing at all on a phone speaker, where capture
+            // starts in well under one beat. A rider on the speaker heard two
+            // rising tones and reported never hearing the countdown.
+            //
+            // Two rising tones is also exactly what `Reconnected` is, a
+            // perfect fifth lower, so what they did hear was indistinguishable
+            // from the connection cue. The grammar was followed so faithfully
+            // — rising means restored — that the two became the same gesture.
+            // The three bops are what make this one recognisable as itself,
+            // so they belong in the cue rather than in the circumstances.
+            //
+            // Over Bluetooth the waiting beat is the same 660 Hz, so a long
+            // negotiation simply reads as a longer countdown resolving into
+            // this one.
+            AudioCue::CaptureLive => &[
+                (660.0, 120),
+                (0.0, 250),
+                (660.0, 120),
+                (0.0, 250),
+                (660.0, 120),
+                (0.0, 250),
+                (988.0, 140),
+                (0.0, 20),
+                (1318.5, 230),
+            ],
+            // **The mirror of `CaptureLive`, and it has to be.** Three
+            // descending tones plus a squelch was only a fifth longer than
+            // `Disconnected`, which is also a falling figure — close enough
+            // that a rider reported hearing the connection cue when capture
+            // stopped. So this takes the same three-bop signature as its
+            // sibling, reversed: the rise played backwards, then the
+            // countdown walking away.
+            //
+            // The asymmetry the pair was designed around survives in the
+            // rhythm rather than the length. These tones are shorter and the
+            // gaps tighter than the countdown's, so the start reads as open
+            // and waiting and this one as brisk and finished.
             AudioCue::CaptureStopped => &[
-                (1318.5, 120),
+                (1318.5, 140),
                 (0.0, 20),
-                (988.0, 120),
-                (0.0, 20),
-                (660.0, 160),
+                (988.0, 140),
+                (0.0, 120),
+                (660.0, 100),
+                (0.0, 120),
+                (660.0, 100),
+                (0.0, 120),
+                (660.0, 100),
                 (0.0, 15),
                 // The squelch `TransmitEnd` already uses to mean "I have
                 // stopped transmitting". A rider who knows radios needs no
@@ -1092,7 +1136,16 @@ impl AudioCue {
             // as long as a negotiation takes — the one pattern here with real
             // potential to wear out a rider, so it sits with the transmit cues
             // rather than with the status ones.
-            AudioCue::CaptureWaiting | AudioCue::CaptureLive | AudioCue::CaptureStopped => 0.12,
+            // Quiet, because it repeats for as long as a negotiation lasts
+            // and is the one cue with real potential to irritate.
+            AudioCue::CaptureWaiting => 0.12,
+            // **Not quiet.** These fire once per transition and each answers
+            // the only question the feature raises — am I live, am I off — so
+            // they have to be heard over music and wind. They were 0.12,
+            // little more than half the level of everything else, which is a
+            // poor property for the two cues that most need to be unmistakable
+            // and contributed to their being taken for the connection cues.
+            AudioCue::CaptureLive | AudioCue::CaptureStopped => 0.22,
             _ => 0.22,
         }
     }
@@ -5165,6 +5218,49 @@ mod tests {
 
         s.stop_test_tone();
         assert!(!s.test_tone_active());
+    }
+
+    /// Capture and connection are different facts and must not sound alike.
+    ///
+    /// **A rider reported hearing the connection cues when capture switched.**
+    /// They were not: `CaptureLive` was a rising pair and so is `Reconnected`,
+    /// a fifth apart, and two rising tones is two rising tones in a helmet at
+    /// speed. The documented grammar — rising means restored — had been
+    /// followed so faithfully by both that it stopped telling them apart.
+    ///
+    /// What separates them now is rhythm rather than pitch: the capture cues
+    /// carry the three-bop countdown and the connection cues do not. Length is
+    /// the cheap, robust proxy for that, so this asserts the thing a listener
+    /// actually uses.
+    #[test]
+    fn capture_cues_do_not_sound_like_connection_cues() {
+        let live = render_cue(AudioCue::CaptureLive);
+        let stopped = render_cue(AudioCue::CaptureStopped);
+        let reconnected = render_cue(AudioCue::Reconnected);
+        let disconnected = render_cue(AudioCue::Disconnected);
+
+        for (name, capture, connection) in [
+            ("live/reconnected", &live, &reconnected),
+            ("stopped/disconnected", &stopped, &disconnected),
+        ] {
+            assert_ne!(capture, connection, "{name}: identical renders");
+            // The countdown makes the capture cue markedly the longer of the
+            // pair. Half as long again is well past anything a listener would
+            // hear as the same gesture, and it is what caught this.
+            assert!(
+                capture.len() > connection.len() * 3 / 2,
+                "{name}: capture cue is {} samples against the connection                  cue's {} — too close to be told apart by ear",
+                capture.len(),
+                connection.len()
+            );
+        }
+
+        // And the two that must be heard over music are not the quietest
+        // things in the grammar, which they were.
+        assert!(AudioCue::CaptureLive.amplitude() >= AudioCue::Reconnected.amplitude());
+        assert!(AudioCue::CaptureStopped.amplitude() >= AudioCue::Disconnected.amplitude());
+        // The repeated one stays out of the way; that is why it is separate.
+        assert!(AudioCue::CaptureWaiting.amplitude() < AudioCue::CaptureLive.amplitude());
     }
 
     #[test]

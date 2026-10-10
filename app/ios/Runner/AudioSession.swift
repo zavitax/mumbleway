@@ -503,23 +503,39 @@ final class AudioSession {
           if session.category != .playback {
             try? self.activateListening()
           }
-        } else if session.inputNumberOfChannels == 0 {
-          // The input is gone rather than merely different. Re-activating is
-          // the only thing that brings it back; setting a preferred input on a
-          // session that has none does nothing at all.
+        } else if session.inputNumberOfChannels == 0 && !session.isInputAvailable {
+          // **A zero count is only "the input is gone" when there is no input
+          // to be had.** `captureResult` says why, forty lines up, and this
+          // branch was written without reading it: `inputNumberOfChannels`
+          // reports a route that has *settled*, and immediately after
+          // `setActive(true)` the built-in microphone often has not, so it
+          // answers 0 while the microphone is perfectly fine.
           //
-          // **Bounded, for the reason the branch above is guarded.** This also
-          // sets the category, so it also posts a route change, and if
-          // re-activating does not bring an input back — no microphone at all,
-          // or one another app is holding — the retry meets the same zero and
-          // goes round again. A few attempts is a recovery; an unbounded one
-          // is the same loop wearing the other branch's clothes, and this one
-          // would hold the headset on the hands-free profile while it span.
+          // Taking that zero at face value made the handler re-activate a
+          // session that needed nothing, which set the category, which posted
+          // another route change — heard as the audio going on, off, and on
+          // again when capture started, immediately or after a delay
+          // depending on when the notification landed relative to the route
+          // settling. And it appeared **only without a Bluetooth headset**,
+          // which is the same tell `captureResult` records: negotiating an SCO
+          // link takes long enough that the route has settled by the time any
+          // of this runs.
+          //
+          // `isInputAvailable` is the question actually being asked — is there
+          // any input hardware on this route — and it is answered correctly
+          // straight away. When it is true and the count is zero, the right
+          // thing to do is nothing: the route is still settling and a settled
+          // route posts its own notification.
+          //
+          // Still bounded. Re-activating also sets the category, so a device
+          // that never produces an input would otherwise be the endless loop
+          // again, holding the headset on the hands-free profile while it
+          // span.
           if self.inputRecoveryAttempts < 3 {
             self.inputRecoveryAttempts += 1
             try? self.activateCapturing()
           }
-        } else {
+        } else if session.inputNumberOfChannels > 0 {
           // There is an input, so whatever was being recovered from is over.
           self.inputRecoveryAttempts = 0
           self.preferHandsFreeInput()

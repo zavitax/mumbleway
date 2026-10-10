@@ -1,5 +1,5 @@
-Still 1.2.0. Two faults from build 156.
+Still 1.2.0. Two fixes, both about what you hear.
 
-Tapping to stop could put the audio into an endless on/off loop. The route-change handler reacted to the change it had just made: switching back to listening sets the audio category, setting the category reports a route change, and round it went. It now checks before it sets.
+Starting capture could make the audio go on-off-on. A route change arriving before the microphone had settled reported no input channels, which was read as the microphone being gone, so the session was re-activated for nothing. It only happened without a headset: a Bluetooth link takes long enough to settle first.
 
-And turning the gesture on in Settings then connecting at once came up with the microphone already live, because the session was still open from the meter.
+And the capture cues were transpositions of the connect cues. They now carry the three-bop countdown, and are no longer the quietest in the app.

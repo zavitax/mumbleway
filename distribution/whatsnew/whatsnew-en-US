@@ -1,5 +1,5 @@
-Still 1.2.0. A measurement, because the honest answer was 'probably'.
+Still 1.2.0. A tick for every tap, as a development aid.
 
-Can a tap be felt with the phone in a pocket and the app in the background? Core Motion delivers only while the app is running. The audio background mode should keep it running, but in the listening state this app's own output is mostly silence, and whether iOS counts that as playing is not worth taking on trust.
+The capture cues tell you three taps were heard. They cannot tell you that two were heard and the third was not — which is the difference between the feature being broken and needing a firmer tap, and several rides have gone into telling those apart by ear.
 
-Diagnostics now shows the longest the sensors have gone quiet.
+Each tap that lands now makes a short click, including a tap that starts a new run instead of joining the one you were performing. That last case is the diagnosis.

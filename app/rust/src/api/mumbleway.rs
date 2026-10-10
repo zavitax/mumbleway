@@ -456,6 +456,12 @@ pub enum AppEvent {
         message: String,
     },
     Stats(UiStats),
+    /// The rider performed the tap gesture.
+    ///
+    /// Detected in the engine, from whichever microphone is open, and
+    /// reported here rather than returned from a call: nothing on the Dart
+    /// side is driving the audio thread that heard it.
+    TapGesture,
     /// Microphone level and speech detection, for the input meter.
     InputLevel {
         level_db: f32,
@@ -1417,6 +1423,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         // Starts spent: until somebody speaks there is nothing to fade out, so
         // the first report goes out only when there is one to make.
         let mut silent_ticks = SILENT_LEVEL_TAIL;
+        let mut last_gestures = 0u64;
         loop {
             tick.tick().await;
 
@@ -1427,6 +1434,15 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
             if !level_shared.audio_wanted() {
                 silent_ticks = SILENT_LEVEL_TAIL;
                 continue;
+            }
+
+            // A gesture completed on the audio thread, which is no place to
+            // reach for an event sink. A count rather than a flag, so a
+            // missed tick still reports both of two gestures.
+            let gestures = level_shared.tap_gesture_count();
+            if gestures != last_gestures {
+                last_gestures = gestures;
+                emit(AppEvent::TapGesture);
             }
 
             emit(AppEvent::InputLevel {
@@ -3254,6 +3270,68 @@ pub fn tap_diagnostics() -> UiTapStats {
     }
 }
 
+/// What the microphone's tap detector is hearing.
+///
+/// **The one that decides now.** The motion detector still runs and still
+/// fills the recorder's third track, because the corpus is worth gathering,
+/// but it no longer acts: at iOS's 100 Hz a tap is four samples where the
+/// microphone gives forty.
+pub struct UiAcousticStats {
+    /// Whether a completed gesture would act.
+    pub enabled: bool,
+    /// One-millisecond frames examined. Zero means no microphone is open,
+    /// which while listening is a session problem rather than a tuning one.
+    pub frames: u64,
+    /// Impulses that arrived sharply and died away in time.
+    pub candidates: u64,
+    /// Arrived sharply and did not die away. A sound, not a strike.
+    pub discarded_long: u64,
+    /// Taps banked towards a gesture. One tick is played per tap, so this is
+    /// what a rider hears.
+    pub banked: u64,
+    pub gestures: u64,
+    /// The last frame's level, and the trailing average it is measured
+    /// against. If these sit on top of each other no strike can stand out.
+    pub level_db: f32,
+    pub floor_db: f32,
+    /// How far over the last candidate reached.
+    pub peak_db: f32,
+    /// Taps banked towards the gesture in progress.
+    pub run: u8,
+}
+
+/// What the microphone's tap detector is hearing.
+#[frb(sync)]
+pub fn acoustic_diagnostics() -> UiAcousticStats {
+    let Ok(app) = app() else {
+        return UiAcousticStats {
+            enabled: false,
+            frames: 0,
+            candidates: 0,
+            discarded_long: 0,
+            banked: 0,
+            gestures: 0,
+            level_db: 0.0,
+            floor_db: 0.0,
+            peak_db: 0.0,
+            run: 0,
+        };
+    };
+    let s = app.shared.tap_stats();
+    UiAcousticStats {
+        enabled: app.shared.tap_detection_enabled(),
+        frames: s.frames,
+        candidates: s.candidates,
+        discarded_long: s.discarded_long,
+        banked: s.banked,
+        gestures: s.gestures,
+        level_db: s.level_db,
+        floor_db: s.floor_db,
+        peak_db: s.peak_db,
+        run: s.run,
+    }
+}
+
 /// What [`tap_diagnostics`] reports.
 #[derive(Default)]
 pub struct UiTapStats {
@@ -3295,9 +3373,14 @@ pub struct UiTapStats {
 #[frb(sync)]
 pub fn set_tap_detection(enabled: bool, taps: u8) -> anyhow::Result<()> {
     let app = app()?;
+    // **The engine's detector, which hears whichever microphone is open.**
+    //
+    // The accelerometer one is still fed by `push_motion` and still fills the
+    // recorder's third track, because the motion corpus is worth gathering
+    // either way — but it no longer decides anything. It could not: at iOS's
+    // 100 Hz a tap is four samples, where the microphone gives forty.
+    app.shared.set_tap_detection(enabled, taps);
     app.tap_enabled.store(enabled, Ordering::Relaxed);
-    // The count still applies with the gesture off, so the panel shows what
-    // would have happened rather than what a stale default would have.
     app.tap.lock().set_taps_wanted(taps);
     Ok(())
 }

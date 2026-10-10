@@ -320,11 +320,63 @@ final class AudioSession {
     wantedActive = true
     capturing = false
     let session = AVAudioSession.sharedInstance()
+    // **`.playAndRecord` with A2DP, not `.playback`, and the microphone is
+    // the point.**
+    //
+    // The listening state used to have no input at all, deliberately: there
+    // was nothing to record with and so nothing to lose. The tap gesture
+    // changed what this state is for. The accelerometer could not feel a tap
+    // at the 100 Hz iOS delivers — four samples where the microphone gives
+    // forty — so the gesture is heard instead, and while listening the
+    // phone's own microphone is the only one there is.
+    //
+    // **The risk is written down and taken knowingly.** `CLAUDE.md` records
+    // that offering A2DP to a session that wants input lets iOS take the
+    // input away when music starts, reported once as "recording only works
+    // when music is not playing". That is still true, and the consequence
+    // here is bounded: the gesture stops being felt, which the panel's frame
+    // counter shows, rather than a call losing its microphone.
+    //
+    // No HFP option, which is the part that preserves the whole feature:
+    // output stays on A2DP at full bandwidth and the input comes from the
+    // phone, so a rider's music is untouched while they are only listening.
+    //
+    // **And a live input is what iOS does not suspend.** The gesture dying a
+    // minute after the screen locked was the app being suspended; an app
+    // holding a microphone is one the system keeps running, which is a larger
+    // problem solved by the same change.
     try session.setCategory(
-      .playback,
+      .playAndRecord,
       mode: .default,
-      options: [.mixWithOthers, .duckOthers])
+      options: [
+        .mixWithOthers,
+        .duckOthers,
+        .allowBluetoothA2DP,
+        .defaultToSpeaker,
+      ])
     try session.setActive(true)
+    preferBuiltInInput()
+  }
+
+  /// Keeps the phone's own microphone for the listening state.
+  ///
+  /// The counterpart to `preferHandsFreeInput`: there, the helmet is wanted
+  /// because the rider is talking; here the phone is, because what is being
+  /// listened for is a tap on the phone itself. Stating the preference also
+  /// keeps iOS from reaching for a headset microphone and dragging the route
+  /// onto the hands-free profile, which would undo the feature.
+  private func preferBuiltInInput() {
+    let session = AVAudioSession.sharedInstance()
+    guard
+      let built = session.availableInputs?.first(where: { $0.portType == .builtInMic })
+    else {
+      return
+    }
+    do {
+      try session.setPreferredInput(built)
+    } catch {
+      NSLog("MumbleWay: could not prefer the built-in input: \(error)")
+    }
   }
 
   private func activateCapturing() throws {
@@ -505,6 +557,7 @@ final class AudioSession {
           active: self.wantedActive, capturing: self.capturing)
         let reading = CaptureReconciler.Reading(
           category: session.category.rawValue,
+          options: session.categoryOptions.rawValue,
           inputChannels: session.inputNumberOfChannels,
           inputAvailable: session.isInputAvailable)
 

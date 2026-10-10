@@ -1074,10 +1074,14 @@ class AppState extends ChangeNotifier {
       // A tap flips capture. Nothing else: the gesture is the whole interface
       // here, so it must be the same action in both directions, and a rider who
       // cannot see a screen has no way to be told which one it would have been.
-      MotionBridge.instance.onTapGesture = () {
-        if (!_captureOnDemand) return;
-        toggleCapture();
-      };
+      // **Nothing.** The accelerometer still feeds `push_motion`, which still
+      // fills the recorder's third track, because a motion corpus is worth
+      // gathering whether or not anything acts on it. But it no longer
+      // decides: at iOS's 100 Hz a tap is four samples, which the original
+      // specification flagged as the first question for the rig and which the
+      // field answered. The microphone gives forty, and the engine listens to
+      // it directly — see `AppEvent_TapGesture`.
+      MotionBridge.instance.onTapGesture = null;
       AudioSessionBridge.instance.onRouteChanged = (session) {
         if (_audioRoute == session.route) return;
         _audioRoute = session.route;
@@ -5104,6 +5108,16 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   void onEvent(AppEvent event) {
     switch (event) {
+      // **The gesture, heard rather than felt.**
+      //
+      // Detected in the engine from whichever microphone is open — the
+      // helmet's while capturing, the phone's own while listening — and
+      // reported as an event because nothing on this side is driving the
+      // audio thread that heard it. The accelerometer path still fills the
+      // recorder's motion track and no longer decides anything.
+      case AppEvent_TapGesture():
+        if (_captureOnDemand) unawaited(toggleCapture());
+
       case AppEvent_Status(:final field0):
         final rt = runtimeFor(field0.serverId);
         final wasLive = rt.isLive;

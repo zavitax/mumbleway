@@ -15,14 +15,19 @@ final class CaptureReconcilerTests: XCTestCase {
 
   typealias R = CaptureReconciler
 
+  /// The listening session: `.playAndRecord` so the gesture can be heard,
+  /// but **without** the hands-free option, so output stays on A2DP.
   private func listening(channels: Int = 0, inputAvailable: Bool = true) -> R.Reading {
     R.Reading(
-      category: R.playback, inputChannels: channels, inputAvailable: inputAvailable)
+      category: R.playAndRecord, options: 0x1 | 0x2,
+      inputChannels: channels, inputAvailable: inputAvailable)
   }
 
+  /// The capturing session: the same category, with hands-free offered.
   private func capturing(channels: Int, inputAvailable: Bool = true) -> R.Reading {
     R.Reading(
-      category: R.playAndRecord, inputChannels: channels, inputAvailable: inputAvailable)
+      category: R.playAndRecord, options: 0x1 | 0x2 | R.allowBluetoothHFP,
+      inputChannels: channels, inputAvailable: inputAvailable)
   }
 
   // MARK: - The endless loop
@@ -54,6 +59,7 @@ final class CaptureReconcilerTests: XCTestCase {
         switch action {
         case .setCategory(let c):
           reading.category = R.category(forCapturing: c)
+          reading.options = c ? (0x1 | 0x2 | R.allowBluetoothHFP) : (0x1 | 0x2)
           // A real route takes a moment; the count stays 0 for now.
           reading.inputChannels = 0
         case .waitForRouteToSettle:
@@ -146,14 +152,17 @@ final class CaptureReconcilerTests: XCTestCase {
 
   // MARK: - The transitions themselves
 
-  func testStartingCaptureAsksForPlayAndRecord() {
+  /// Starting capture is now a change of *options* rather than category:
+  /// both states are `.playAndRecord` since the listening one gained a
+  /// microphone for the gesture.
+  func testStartingCaptureAsksForHandsFree() {
     XCTAssertEqual(
       R.next(
         desired: R.Desired(active: true, capturing: true), reading: listening()),
       .setCategory(capturing: true))
   }
 
-  func testStoppingCaptureAsksForPlayback() {
+  func testStoppingCaptureGivesBackHandsFree() {
     XCTAssertEqual(
       R.next(
         desired: R.Desired(active: true, capturing: false),
@@ -180,19 +189,20 @@ final class CaptureReconcilerTests: XCTestCase {
   func testCommandedChangesOnlyFollowCommandedDifferences() {
     for active in [true, false] {
       for wantCapture in [true, false] {
-        for category in [R.playback, R.playAndRecord] {
+        for options in [UInt(0x1 | 0x2), UInt(0x1 | 0x2 | R.allowBluetoothHFP)] {
           for channels in [0, 1, 2] {
             for available in [true, false] {
               let desired = R.Desired(active: active, capturing: wantCapture)
               let reading = R.Reading(
-                category: category, inputChannels: channels, inputAvailable: available)
+                category: R.playAndRecord, options: options,
+                inputChannels: channels, inputAvailable: available)
               guard case .setCategory = R.next(desired: desired, reading: reading) else {
                 continue
               }
               XCTAssertTrue(active, "commanded a change on an inactive session")
               XCTAssertNotEqual(
-                category, R.category(forCapturing: wantCapture),
-                "commanded a category that was already set — this is the loop")
+                R.offersHandsFree(options), wantCapture,
+                "commanded a configuration that was already set — this is the loop")
             }
           }
         }

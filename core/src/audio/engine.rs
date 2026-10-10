@@ -635,6 +635,20 @@ pub struct AudioShared {
     /// so music played through a helmet intercom dropped to telephone
     /// bandwidth for as long as this app was merely open.
     audio_wanted: AtomicBool,
+    /// Listens for the tap gesture in whichever microphone is open.
+    ///
+    /// **Fed from the input callback, so it hears the raw device** — the
+    /// helmet while capturing, the phone's own while listening — before any
+    /// of the chain and whether or not the chain runs at all.
+    tap: Mutex<crate::audio::acoustic_tap::AcousticTapDetector>,
+    /// Whether a completed gesture should act. The counters move either way,
+    /// so the panel can show the signal while somebody works out why nothing
+    /// fires.
+    tap_enabled: AtomicBool,
+    /// Completed gestures, counting up. Polled rather than pushed: the
+    /// detection happens on the audio thread, which is no place to reach for
+    /// an event sink.
+    tap_gestures: AtomicU64,
 
     /// Whether to open the input half. See [`AudioShared::capture_wanted`].
     capture_wanted: AtomicBool,
@@ -1344,6 +1358,9 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
+            tap: Mutex::new(crate::audio::acoustic_tap::AcousticTapDetector::new(3)),
+            tap_enabled: AtomicBool::new(false),
+            tap_gestures: AtomicU64::new(0),
             // True, so every existing caller gets today's behaviour without
             // asking for it. See `capture_wanted`.
             capture_wanted: AtomicBool::new(true),
@@ -2380,6 +2397,29 @@ impl AudioShared {
         self.capture_wanted.load(Ordering::Acquire)
     }
 
+    /// Turns the gesture on or off and sets how many taps it takes.
+    pub fn set_tap_detection(&self, enabled: bool, taps: u8) {
+        self.tap.lock().set_taps_wanted(taps);
+        self.tap_enabled.store(enabled, Ordering::Release);
+    }
+
+    pub fn tap_detection_enabled(&self) -> bool {
+        self.tap_enabled.load(Ordering::Acquire)
+    }
+
+    pub fn tap_stats(&self) -> crate::audio::acoustic_tap::AcousticStats {
+        self.tap.lock().stats()
+    }
+
+    /// How many gestures have completed since the engine started.
+    ///
+    /// A count rather than a flag, so a poller that misses a tick still sees
+    /// both of two gestures rather than one — the same reason the recorder
+    /// counts dropped blocks instead of setting a boolean.
+    pub fn tap_gesture_count(&self) -> u64 {
+        self.tap_gestures.load(Ordering::Acquire)
+    }
+
     /// Opens or closes the input half, rebuilding the streams to do it.
     ///
     /// A rebuild rather than a pause, because the two profiles do not agree
@@ -3088,6 +3128,42 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 resampled.clear();
                 in_resampler.process(&mono_scratch, &mut resampled);
 
+                // **The gesture listens here, before the chain and whether or
+                // not the chain runs.**
+                //
+                // Which microphone this is depends on the state, and that is
+                // the whole design: the helmet's while capturing — a rider can
+                // tap their helmet to stop talking without a hand off the bars
+                // — and the phone's own while listening, which is the only
+                // microphone there is in that state.
+                //
+                // Cheap enough for the audio thread: a peak over each
+                // millisecond, one multiply to move a trailing average, and a
+                // comparison. The lock is uncontended but for a panel reading
+                // the counters once a second.
+                if cap_shared.tap_detection_enabled() {
+                    let mut banked = false;
+                    let gesture = cap_shared.tap.lock().push(&resampled, &mut banked);
+                    if banked {
+                        // One tick per tap, which is the only signal that can
+                        // say *which* tap of three went unheard.
+                        cap_shared.play_cue(AudioCue::TapTick);
+                    }
+                    if gesture.is_some() {
+                        cap_shared.tap_gestures.fetch_add(1, Ordering::Release);
+                    }
+                }
+
+                // **Only what the chain asked for reaches it.** In the
+                // listening state this callback is hearing the phone's own
+                // microphone purely to feel taps; none of it is transmitted,
+                // recorded or processed, and the worker is simply not fed —
+                // which keeps the bit-exact-zero watchdog meaning what it has
+                // always meant, since it counts blocks that were *delivered*.
+                if !cap_shared.capture_wanted() {
+                    return;
+                }
+
                 let ready = {
                     let mut q = cap_shared.capture_queue.lock();
                     // Drop the oldest audio rather than growing without bound if the
@@ -3150,11 +3226,24 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
     // Opened first so that a capture device which refuses takes the whole open
     // down with it, as it always has. Only a *deliberately* absent input half
     // is allowed through.
-    let in_stream = if shared.capture_wanted() {
-        Some(build_input_stream(config, shared)?)
-    } else {
-        tracing::info!("listening only: no capture stream opened");
-        None
+    // **An input is opened whenever there is a session, in either state.**
+    //
+    // It used to be opened only when the chain wanted it, because capture off
+    // meant no input stream at all. The tap gesture changed that: in the
+    // listening state the phone's own microphone is the only one there is, and
+    // feeling a tap means hearing it.
+    //
+    // What distinguishes the states is now what the input is *for* rather than
+    // whether it exists — see the callback. A device with no input at all is
+    // still not an error while listening, because there is nothing the rider
+    // needs from it but the gesture.
+    let in_stream = match build_input_stream(config, shared) {
+        Ok(stream) => Some(stream),
+        Err(e) if !shared.capture_wanted() => {
+            tracing::info!("listening with no input available: {e}");
+            None
+        }
+        Err(e) => return Err(e),
     };
 
     // --- output -----------------------------------------------------------

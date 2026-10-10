@@ -572,6 +572,10 @@ bool pushMotion({
 UiTapStats tapDiagnostics() =>
     RustLib.instance.api.crateApiMumblewayTapDiagnostics();
 
+/// What the microphone's tap detector is hearing.
+UiAcousticStats acousticDiagnostics() =>
+    RustLib.instance.api.crateApiMumblewayAcousticDiagnostics();
+
 /// Switches tap detection on or off, and sets how many taps the gesture takes.
 ///
 /// Separate from the recording, deliberately: the motion track is written
@@ -997,6 +1001,13 @@ sealed class AppEvent with _$AppEvent {
     required String message,
   }) = AppEvent_Text;
   const factory AppEvent.stats(UiStats field0) = AppEvent_Stats;
+
+  /// The rider performed the tap gesture.
+  ///
+  /// Detected in the engine, from whichever microphone is open, and
+  /// reported here rather than returned from a call: nothing on the Dart
+  /// side is driving the audio thread that heard it.
+  const factory AppEvent.tapGesture() = AppEvent_TapGesture;
 
   /// Microphone level and speech detection, for the input meter.
   const factory AppEvent.inputLevel({
@@ -1588,6 +1599,85 @@ class UiAclRule {
           group == other.group &&
           grant == other.grant &&
           deny == other.deny;
+}
+
+/// What the microphone's tap detector is hearing.
+///
+/// **The one that decides now.** The motion detector still runs and still
+/// fills the recorder's third track, because the corpus is worth gathering,
+/// but it no longer acts: at iOS's 100 Hz a tap is four samples where the
+/// microphone gives forty.
+class UiAcousticStats {
+  /// Whether a completed gesture would act.
+  final bool enabled;
+
+  /// One-millisecond frames examined. Zero means no microphone is open,
+  /// which while listening is a session problem rather than a tuning one.
+  final BigInt frames;
+
+  /// Impulses that arrived sharply and died away in time.
+  final BigInt candidates;
+
+  /// Arrived sharply and did not die away. A sound, not a strike.
+  final BigInt discardedLong;
+
+  /// Taps banked towards a gesture. One tick is played per tap, so this is
+  /// what a rider hears.
+  final BigInt banked;
+  final BigInt gestures;
+
+  /// The last frame's level, and the trailing average it is measured
+  /// against. If these sit on top of each other no strike can stand out.
+  final double levelDb;
+  final double floorDb;
+
+  /// How far over the last candidate reached.
+  final double peakDb;
+
+  /// Taps banked towards the gesture in progress.
+  final int run;
+
+  const UiAcousticStats({
+    required this.enabled,
+    required this.frames,
+    required this.candidates,
+    required this.discardedLong,
+    required this.banked,
+    required this.gestures,
+    required this.levelDb,
+    required this.floorDb,
+    required this.peakDb,
+    required this.run,
+  });
+
+  @override
+  int get hashCode =>
+      enabled.hashCode ^
+      frames.hashCode ^
+      candidates.hashCode ^
+      discardedLong.hashCode ^
+      banked.hashCode ^
+      gestures.hashCode ^
+      levelDb.hashCode ^
+      floorDb.hashCode ^
+      peakDb.hashCode ^
+      run.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UiAcousticStats &&
+          runtimeType == other.runtimeType &&
+          enabled == other.enabled &&
+          frames == other.frames &&
+          candidates == other.candidates &&
+          discardedLong == other.discardedLong &&
+          banked == other.banked &&
+          gestures == other.gestures &&
+          levelDb == other.levelDb &&
+          floorDb == other.floorDb &&
+          peakDb == other.peakDb &&
+          run == other.run;
 }
 
 /// One entry of the server's ban list.

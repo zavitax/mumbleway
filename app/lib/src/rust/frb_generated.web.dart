@@ -234,6 +234,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiAclRule dco_decode_ui_acl_rule(dynamic raw);
 
   @protected
+  UiAcousticStats dco_decode_ui_acoustic_stats(dynamic raw);
+
+  @protected
   UiBan dco_decode_ui_ban(dynamic raw);
 
   @protected
@@ -559,6 +562,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiAclRule sse_decode_ui_acl_rule(SseDeserializer deserializer);
+
+  @protected
+  UiAcousticStats sse_decode_ui_acoustic_stats(SseDeserializer deserializer);
 
   @protected
   UiBan sse_decode_ui_ban(SseDeserializer deserializer);
@@ -961,6 +967,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_acl_rule(UiAclRule self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_ui_acoustic_stats(
+    UiAcousticStats self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_ui_ban(UiBan self, SseSerializer serializer);

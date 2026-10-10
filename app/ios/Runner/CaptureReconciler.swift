@@ -55,13 +55,23 @@ enum CaptureReconciler {
   struct Reading: Equatable {
     /// `AVAudioSession.Category.rawValue`. Commanded, so safe to compare.
     var category: String
+    /// `AVAudioSession.CategoryOptions.rawValue`. Also commanded.
+    ///
+    /// **This is what tells the two states apart now.** Both listen and
+    /// capture in `.playAndRecord` — the listening state gained a microphone
+    /// so the tap gesture could be *heard* rather than felt — so the category
+    /// alone no longer distinguishes them. What differs is whether
+    /// hands-free Bluetooth is offered, which is exactly the thing that
+    /// decides whether a rider's music stays at full bandwidth.
+    var options: UInt
     /// Observed. Only ever used to tell *settled* from *settling*.
     var inputChannels: Int
     /// Answered immediately, unlike the count.
     var inputAvailable: Bool
 
-    init(category: String, inputChannels: Int, inputAvailable: Bool) {
+    init(category: String, options: UInt, inputChannels: Int, inputAvailable: Bool) {
       self.category = category
+      self.options = options
       self.inputChannels = inputChannels
       self.inputAvailable = inputAvailable
     }
@@ -71,9 +81,26 @@ enum CaptureReconciler {
   static let playAndRecord = "AVAudioSessionCategoryPlayAndRecord"
 
   /// The category this app wants for a given intent.
-  static func category(forCapturing capturing: Bool) -> String {
-    capturing ? playAndRecord : playback
+  ///
+  /// The same one either way now. See `Reading.options`.
+  static func category(forCapturing _: Bool) -> String {
+    playAndRecord
   }
+
+  /// Whether a set of category options offers hands-free Bluetooth.
+  ///
+  /// The one bit that separates the states: with it, a headset goes to the
+  /// hands-free profile and everything the rider hears drops to telephone
+  /// bandwidth; without it, output stays on A2DP and the microphone is the
+  /// phone's own, which is all the gesture needs.
+  static func offersHandsFree(_ options: UInt) -> Bool {
+    options & allowBluetoothHFP != 0
+  }
+
+  /// `AVAudioSession.CategoryOptions.allowBluetooth`, which is the hands-free
+  /// one despite the name. Spelled as a number because this type is pure and
+  /// deliberately does not import AVFoundation.
+  static let allowBluetoothHFP: UInt = 0x4
 
   enum Action: Equatable {
     /// Already as asked. **The route change this app caused lands here**, which
@@ -127,8 +154,9 @@ enum CaptureReconciler {
   static func next(desired: Desired, reading: Reading) -> Action {
     guard desired.active else { return .none }
 
-    let wanted = category(forCapturing: desired.capturing)
-    if reading.category != wanted {
+    if reading.category != category(forCapturing: desired.capturing)
+      || offersHandsFree(reading.options) != desired.capturing
+    {
       return .setCategory(capturing: desired.capturing)
     }
 

@@ -1,5 +1,5 @@
-Still 1.2.0. Two things, both about the screen lock.
+Still 1.2.0. The tap is heard now, not felt.
 
-The output now carries a noise floor around -70 dBFS: barely there, inaudible under anything else. iOS suspends an app that stops playing, and the listening state is exactly where this app plays nothing for minutes — which is why the tap gesture died about a minute after the screen locked. Whether this is enough is what the Motion panel's longest-gap row is for.
+The accelerometer was always the fallback, chosen because iOS exposes one input at a time, and at the 100 Hz it delivers a tap is four samples. A microphone gives forty. On the recording you made with audible taps the new detector finds seven gestures of seven with no false arms; the old one managed five.
 
-And the level meter reads the floor instead of freezing when capture is off.
+While capturing it listens to the helmet, so you can tap the helmet to stop talking. While listening it uses the phone's own.

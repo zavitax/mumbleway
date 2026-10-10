@@ -1,5 +1,7 @@
-Still 1.2.0. Two fixes, both about what you hear.
+Still 1.2.0. A restructure rather than another patch.
 
-Starting capture could make the audio go on-off-on. A route change arriving before the microphone had settled reported no input channels, which was read as the microphone being gone, so the session was re-activated for nothing. It only happened without a headset.
+Capture-on-demand produced about twenty defects across ten builds, nearly all the same shape: 'is the microphone open' lived in a dozen flags across four runtimes, and two of them disagreed.
 
-And the capture cues were transpositions of the connect cues. They now carry the three-bop countdown, and are no longer the quietest in the app.
+It is one decision in one place now, from a tagged set of who is asking. The iOS half is a pure function with ten tests that run in milliseconds; it had none before.
+
+New: an Audio block in Diagnostics, showing what was asked for against what happened.

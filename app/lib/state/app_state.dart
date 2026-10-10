@@ -28,6 +28,7 @@ import '../services/proxy.dart';
 import '../services/server_proxy.dart';
 import '../services/store_links.dart';
 import '../src/rust/api/mumbleway.dart';
+import 'capture_machine.dart';
 import 'server_sync.dart';
 import '../widgets/voice_meter.dart';
 
@@ -2188,15 +2189,61 @@ class AppState extends ChangeNotifier {
   /// there is already a wait, behind a connect that takes about as long. A
   /// rider who presses talk and loses the first half of their sentence would
   /// have no idea why.
+  /// Everyone currently asking for the devices, as tags rather than flags.
+  ///
+  /// **One derivation, where there were four.** `_audioNeeded` and
+  /// `_captureRequiredByHold` used to be independent expressions over
+  /// `_audioHolds`, `monitoring` and `_callInProgress`, and
+  /// `_captureForcedByHold` was a fifth flag trying to answer a question
+  /// neither of them asked: who is this microphone *for*, and do they get it
+  /// back? Nearly every defect in this feature was two such expressions
+  /// disagreeing.
+  ///
+  /// They are all views of this set now, and the policy that reads it lives in
+  /// [CaptureMachine], which is exhaustively tested.
+  Set<CaptureClaim> get _claims => {
+    if (_callInProgress) CaptureClaim.call,
+    if (_audioHolds > 0) CaptureClaim.meter,
+    if (monitoring) CaptureClaim.monitor,
+    if (_diagnosticRecording) CaptureClaim.recorder,
+  };
+
+  CaptureInputs get _captureInputs =>
+      CaptureInputs(claims: _claims, tapMode: _captureOnDemand);
+
   /// Whether something on screen needs a microphone regardless of the mode.
   ///
   /// A level meter or a diagnostic recording exists to show what the microphone
   /// is doing, and one that gets no blocks looks exactly like a broken one.
-  bool get _captureRequiredByHold => _audioHolds > 0 || monitoring;
+  bool get _captureRequiredByHold => _captureInputs.holdWantsMic;
 
-  /// Set while capture was taken for a hold rather than asked for by the rider,
-  /// so it can be given back when the hold goes.
-  bool _captureForcedByHold = false;
+  /// Whether the rider has asked for the microphone with the gesture.
+  ///
+  /// **The only memory in the decision**, and it replaces
+  /// `_captureForcedByHold`, which held the same fact inverted and lost it in
+  /// one direction. Ownership is now a question the claim set answers: a
+  /// meter closing removes the meter's claim and cannot touch this.
+  bool _riderWantsMic = false;
+
+  /// Whether the microphone should be open, from the facts and nothing else.
+  bool get _micWanted =>
+      CaptureMachine.micWanted(_captureInputs, riderWantsMic: _riderWantsMic);
+
+  /// Brings capture to what the facts say it should be.
+  ///
+  /// **Called from every door, and it reconciles in both directions** — which
+  /// is the whole fix. `_acquireAudio`'s early return used to hand-write the
+  /// forward case and not the reverse, so connecting while a meter held the
+  /// microphone came up live with the gesture on.
+  Future<void> _reconcileCapture() async {
+    if (!_audioActive || _captureChanging) return;
+    if (_micWanted == _capturing) return;
+    if (_micWanted) {
+      await requestCapture();
+    } else {
+      await releaseCapture();
+    }
+  }
 
   Future<String?> _acquireAudio() async {
     _audioRelease?.cancel();
@@ -2220,17 +2267,9 @@ class AppState extends ChangeNotifier {
       //
       // So reconcile both ways, against the same `onDemand` the full path
       // below computes.
-      if (_captureRequiredByHold && !_capturing && !_captureChanging) {
-        _captureForcedByHold = true;
-        return await requestCapture();
-      }
-      if (_captureOnDemand &&
-          !_captureRequiredByHold &&
-          _capturing &&
-          !_captureChanging) {
-        // Not a hold's capture any more; nothing is owed back.
-        _captureForcedByHold = false;
-        await releaseCapture();
+      final wasCapturing = _capturing;
+      await _reconcileCapture();
+      if (wasCapturing && !_capturing && _captureOnDemand) {
         // The cue the connect path plays, for the same reason: capture is off
         // and without it the first thing a rider does is talk into nothing.
         try {
@@ -2355,6 +2394,8 @@ class AppState extends ChangeNotifier {
       // no timer survives a session it belonged to.
       _capturing = true;
       _captureChanging = false;
+      // The gesture's latch belongs to the session it was performed in.
+      _riderWantsMic = false;
       _captureBeat?.cancel();
       _captureBeat = null;
       _captureIdle?.cancel();
@@ -2396,12 +2437,11 @@ class AppState extends ChangeNotifier {
   /// it.
   ///
   /// Only when the rider did not ask: a tap during a recording is a decision,
-  /// and ending the recording must not undo it.
+  /// and ending the recording must not undo it. That is no longer a special
+  /// case — [_micWanted] keeps the rider's claim and the hold's apart, so this
+  /// is the ordinary reconcile.
   void _releaseCaptureIfForced() {
-    if (!_captureForcedByHold) return;
-    if (_captureRequiredByHold) return;
-    _captureForcedByHold = false;
-    if (_captureOnDemand && _capturing) releaseCapture();
+    unawaited(_reconcileCapture());
   }
 
   void releaseAudio() {
@@ -2426,7 +2466,7 @@ class AppState extends ChangeNotifier {
   /// listening to themselves through it. That needs the devices exactly as
   /// much as a conversation does, and leaving it out would have turned a
   /// switch that works into one that silently does nothing.
-  bool get _audioNeeded => _callInProgress || monitoring || _audioHolds > 0;
+  bool get _audioNeeded => _captureInputs.audioWanted;
 
   /// Whether another app has taken the microphone and left us silence.
   ///
@@ -2601,12 +2641,16 @@ class AppState extends ChangeNotifier {
   }
 
   /// Flips capture, which is what a tap does.
+  ///
+  /// **The latch moves first and the action follows from it.** Flipping the
+  /// action directly meant a tap arriving mid-transition was dropped on
+  /// `_captureChanging` and simply lost — the same family as the gestures that
+  /// completed and were thrown away. The intent is recorded whatever the
+  /// machinery is doing, and the reconcile honours it when it can.
   Future<String?> toggleCapture() async {
-    if (_capturing) {
-      await releaseCapture();
-      return null;
-    }
-    return requestCapture();
+    _riderWantsMic = !_riderWantsMic;
+    await _reconcileCapture();
+    return null;
   }
 
   /// Starts the silence timer, when the rider has asked for one.
@@ -2622,7 +2666,11 @@ class AppState extends ChangeNotifier {
         _armCaptureIdle();
         return;
       }
-      releaseCapture();
+      // Through the latch, like the gesture. Calling `releaseCapture` directly
+      // closed the microphone while the rider's claim still said they wanted
+      // it, so the next reconcile from any other door would open it again.
+      _riderWantsMic = false;
+      unawaited(_reconcileCapture());
     });
   }
 

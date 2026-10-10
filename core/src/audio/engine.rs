@@ -2682,6 +2682,29 @@ impl Default for AudioConfig {
 /// far-end signal, and an adaptive filter told that the person at the
 /// microphone is the echo will duly learn to remove them — heard as one's own
 /// voice disappearing under a howl, which is the opposite of a microphone test.
+/// A noise floor mixed into everything this app plays, as an amplitude.
+///
+/// About −70 dBFS: barely there on a phone speaker, inaudible under anything
+/// else. **The point is not that anybody hears it.**
+///
+/// iOS suspends an app holding the `audio` background mode once it stops
+/// actually playing, and the listening state this feature exists to create is
+/// exactly a state where this app plays nothing for minutes together — the
+/// music belongs to whatever the rider has open, and MumbleWay's own output is
+/// silence until somebody speaks. A suspended app receives no Core Motion, so
+/// the tap gesture dies with the screen, which is what a rider found about a
+/// minute after locking the phone.
+///
+/// **What this does not know.** iOS does not inspect sample values, so whether
+/// a stream of very quiet noise is treated differently from a stream of zeros
+/// is not something this comment can promise. It is cheap, it is well worn,
+/// and `longest_gap_ms` in the Motion panel is how it gets judged. The
+/// sanctioned fix for a voice app that must outlive a screen lock is CallKit,
+/// and this does not replace it.
+///
+/// Set to 0.0 to turn it off.
+const OUTPUT_FLOOR_NOISE: f32 = 3.0e-4;
+
 fn fill_output_block(shared: &AudioShared, want: usize, out: &mut Vec<f32>) -> usize {
     out.clear();
     {
@@ -3146,6 +3169,10 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
     //
     // `u64` at 48 kHz overflows after six million years, so neither wraps.
     let (mut played, mut referenced) = (0u64, 0u64);
+    // The output callback's own generator for `OUTPUT_FLOOR_NOISE`. Owned by
+    // the closure so it needs no lock and no allocation on a path that runs
+    // for every block of every ride.
+    let mut noise_seed: u32 = 0x9E37_79B9;
 
     let out_stream = output
         .build_output_stream(
@@ -3186,6 +3213,31 @@ fn build_streams(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result<Stre
                     peak = peak.max(s.abs());
                     for ch in frame.iter_mut() {
                         *ch = s;
+                    }
+                    // **A floor of noise, so the device is never handed pure
+                    // silence.** See `OUTPUT_FLOOR_NOISE`.
+                    //
+                    // Added here, at the very end, rather than in the mixer:
+                    // `fill_output_block`'s length is how the caller knows
+                    // whether anything played, and the echo reference's
+                    // timekeeping is built on that. Filling the mix instead
+                    // broke six tests about exactly that bookkeeping, which
+                    // was the right answer from them.
+                    //
+                    // It is also below anything the canceller could use — some
+                    // sixty decibels under a cue — so unlike the cues it does
+                    // not belong in the echo reference, and putting it after
+                    // the volume control is deliberate: a rider turning the
+                    // volume down must not turn this off.
+                    if OUTPUT_FLOOR_NOISE > 0.0 {
+                        noise_seed = noise_seed
+                            .wrapping_mul(1_664_525)
+                            .wrapping_add(1_013_904_223);
+                        let n = (noise_seed >> 8) as f32 / (1u32 << 24) as f32 - 0.5;
+                        let dither = n * OUTPUT_FLOOR_NOISE;
+                        for ch in frame.iter_mut() {
+                            *ch = (*ch + dither).clamp(-1.0, 1.0);
+                        }
                     }
                 }
                 // Only a gap if somebody's audio was actually playing.

@@ -1,5 +1,5 @@
-Still 1.2.0. A tick for every tap, as a development aid.
+Still 1.2.0. Two things, both about the screen lock.
 
-The capture cues tell you three taps were heard. They cannot tell you that two were heard and the third was not — which is the difference between the feature being broken and needing a firmer tap, and several rides have gone into telling those apart by ear.
+The output now carries a noise floor around -70 dBFS: barely there, inaudible under anything else. iOS suspends an app that stops playing, and the listening state is exactly where this app plays nothing for minutes — which is why the tap gesture died about a minute after the screen locked. Whether this is enough is what the Motion panel's longest-gap row is for.
 
-Each tap that lands now makes a short click, including a tap that starts a new run instead of joining the one you were performing. That last case is the diagnosis.
+And the level meter reads the floor instead of freezing when capture is off.

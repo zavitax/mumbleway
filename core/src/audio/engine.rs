@@ -926,6 +926,14 @@ pub enum AudioCue {
     ParticipantJoined,
     /// Someone left it.
     ParticipantLeft,
+    /// A single tap was heard and banked.
+    ///
+    /// **Acknowledges one tap, which no other cue can.** The gesture cues say
+    /// three taps were heard; they cannot say that two were and the third was
+    /// not — and that is the difference between "the feature is broken" and
+    /// "tap a little harder", which has cost this project several rides to
+    /// tell apart.
+    TapTick,
     /// One beat of the countdown while the hands-free profile is negotiated.
     ///
     /// **Re-triggered rather than rendered once**, because an SCO negotiation
@@ -990,6 +998,17 @@ impl AudioCue {
             // the headset is on hands-free, where CVSD gives roughly
             // 300–3400 Hz, so a tone above that would be perfectly audible on
             // a desk and missing on the bike.
+            // **One tap, acknowledged.** A gesture cue says three taps were
+            // heard; it cannot say that two were and the third was not, which
+            // is the thing a rider actually needs while learning the gesture
+            // or while somebody is working out why it does not fire. This is
+            // the smallest sound that says "that one counted".
+            //
+            // Deliberately a click rather than a tone: it has to be able to
+            // land three times in six hundred milliseconds without the three
+            // running together, and a pitched blip at that spacing reads as a
+            // chirp rather than as three separate acknowledgements.
+            AudioCue::TapTick => &[(2000.0, 18)],
             AudioCue::CaptureWaiting => &[(660.0, 120), (0.0, 250)],
             // **The countdown is part of the cue, not merely what fills the
             // wait.** It used to be the rising pair alone, with the three
@@ -1136,6 +1155,10 @@ impl AudioCue {
             // as long as a negotiation takes — the one pattern here with real
             // potential to wear out a rider, so it sits with the transmit cues
             // rather than with the status ones.
+            // Quieter than anything else here. It fires per tap, so it is the
+            // most frequent sound the app makes, and it is an acknowledgement
+            // rather than an announcement.
+            AudioCue::TapTick => 0.08,
             // Quiet, because it repeats for as long as a negotiation lasts
             // and is the one cue with real potential to irritate.
             AudioCue::CaptureWaiting => 0.12,
@@ -1175,7 +1198,12 @@ impl AudioCue {
     fn priority(self) -> u8 {
         match self {
             // Informational, and the only things that should ever lose.
-            AudioCue::ParticipantJoined | AudioCue::ParticipantLeft => 0,
+            //
+            // `TapTick` is here for a reason worth stating: it fires while a
+            // gesture is being performed, which is exactly when the capture
+            // cues are about to play. At any higher level the last tick would
+            // cut off the countdown it was leading into.
+            AudioCue::ParticipantJoined | AudioCue::ParticipantLeft | AudioCue::TapTick => 0,
             // Losing the group, or having the microphone taken, is not
             // something to miss because somebody joined — and each is paired
             // with the cue that says it is over. `Test` is here because a rider

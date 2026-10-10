@@ -211,6 +211,12 @@ pub struct TapStats {
     pub discarded_interval: u64,
     /// Completed gestures.
     pub gestures: u64,
+    /// Taps banked towards a gesture, counting up and never reset.
+    ///
+    /// Distinct from [`Self::pending`], which is how many are banked *now*:
+    /// this is what the tick cue is fired from, so a rider hears each tap
+    /// land rather than only hearing whether three of them did.
+    pub banked: u64,
     /// The operator's output for the last sample, in dB.
     pub psi_db: f32,
     /// The tracked floor it is measured against.
@@ -438,6 +444,7 @@ impl TapDetector {
             self.pending[0] = Some(c);
             self.pending_len = 1;
             self.stats.pending = 1;
+            self.stats.banked += 1;
             return None;
         }
 
@@ -460,6 +467,9 @@ impl TapDetector {
             self.pending[0] = Some(c);
             self.pending_len = 1;
             self.stats.pending = 1;
+            // Still a tap that was heard — it starts a new run rather than
+            // joining this one, and the rider should hear that it landed.
+            self.stats.banked += 1;
             return None;
         }
 
@@ -473,6 +483,7 @@ impl TapDetector {
                 self.pending[0] = Some(c);
                 self.pending_len = 1;
                 self.stats.pending = 1;
+                self.stats.banked += 1;
                 return None;
             }
         }
@@ -480,6 +491,7 @@ impl TapDetector {
         self.pending[self.pending_len] = Some(c);
         self.pending_len += 1;
         self.stats.pending = self.pending_len as u8;
+        self.stats.banked += 1;
 
         if self.pending_len >= self.taps_wanted as usize {
             self.pending_len = 0;
@@ -743,5 +755,30 @@ mod tests {
             "a thirty-second silence was not noticed: {} ms",
             d.stats().longest_gap_ms
         );
+    }
+
+    #[test]
+    fn every_tap_that_lands_is_counted_for_the_tick() {
+        // The tick fires per banked tap, so this is what a rider hears. Three
+        // taps must count three times even though only the third completes a
+        // gesture — hearing two ticks and no gesture is the whole diagnostic.
+        let mut d = TapDetector::new(3);
+        let gestures = run(&mut d, 500, &[100, 120, 140]);
+        assert_eq!(gestures.len(), 1);
+        assert_eq!(
+            d.stats().banked,
+            3,
+            "a tick for each tap, not one for the gesture"
+        );
+    }
+
+    #[test]
+    fn a_tap_that_restarts_the_run_is_still_heard() {
+        // A tap too far from the last one begins a new run. It landed, so it
+        // ticks: the rider needs to know it was felt even though it did not
+        // join the gesture they were performing.
+        let mut d = TapDetector::new(3);
+        run(&mut d, 500, &[100, 180]);
+        assert_eq!(d.stats().banked, 2);
     }
 }

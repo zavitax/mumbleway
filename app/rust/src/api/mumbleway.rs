@@ -3186,8 +3186,31 @@ pub fn push_motion(
     // Pushed whether or not the gesture is switched on, so the panel can show
     // the signal while somebody is working out why nothing fires. Only the
     // *acting* on it is gated.
-    let completed = app.tap.lock().push(&sample).is_some();
-    Ok(completed && app.tap_enabled.load(Ordering::Relaxed))
+    let (completed, banked) = {
+        let mut tap = app.tap.lock();
+        let before = tap.stats().banked;
+        let completed = tap.push(&sample).is_some();
+        (completed, tap.stats().banked > before)
+    };
+
+    let enabled = app.tap_enabled.load(Ordering::Relaxed);
+
+    // **A tick for each tap, and it is the only thing that can say which one
+    // failed.** The gesture cues report that three taps were heard; they
+    // cannot report that two were and the third was not, and telling those
+    // apart is the difference between "the feature is broken" and "tap a
+    // little harder". It has cost several rides to establish that difference
+    // by ear.
+    //
+    // Fired here rather than from Dart because the decision is already here
+    // and the sample is already across the boundary. It is the lowest
+    // priority cue there is, so the last tick of a gesture cannot cut off the
+    // countdown it leads into.
+    if banked && enabled {
+        app.shared.play_cue(AudioCue::TapTick);
+    }
+
+    Ok(completed && enabled)
 }
 
 /// What the tap detector is seeing.

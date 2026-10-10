@@ -5489,6 +5489,7 @@ impl SseDecode for crate::api::mumbleway::UiTapStats {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_enabled = <bool>::sse_decode(deserializer);
+        let mut var_longestGapMs = <u64>::sse_decode(deserializer);
         let mut var_samples = <u64>::sse_decode(deserializer);
         let mut var_candidates = <u64>::sse_decode(deserializer);
         let mut var_discardedLong = <u64>::sse_decode(deserializer);
@@ -5502,6 +5503,7 @@ impl SseDecode for crate::api::mumbleway::UiTapStats {
         let mut var_hz = <f32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiTapStats {
             enabled: var_enabled,
+            longest_gap_ms: var_longestGapMs,
             samples: var_samples,
             candidates: var_candidates,
             discarded_long: var_discardedLong,
@@ -6971,6 +6973,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiTapStats {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.enabled.into_into_dart().into_dart(),
+            self.longest_gap_ms.into_into_dart().into_dart(),
             self.samples.into_into_dart().into_dart(),
             self.candidates.into_into_dart().into_dart(),
             self.discarded_long.into_into_dart().into_dart(),
@@ -8165,6 +8168,7 @@ impl SseEncode for crate::api::mumbleway::UiTapStats {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.enabled, serializer);
+        <u64>::sse_encode(self.longest_gap_ms, serializer);
         <u64>::sse_encode(self.samples, serializer);
         <u64>::sse_encode(self.candidates, serializer);
         <u64>::sse_encode(self.discarded_long, serializer);

@@ -2886,6 +2886,13 @@ class UiTapStats {
   /// Whether a completed gesture would act. The counters move either way.
   final bool enabled;
 
+  /// The longest the sensors have gone quiet, in milliseconds.
+  ///
+  /// **Says whether the gesture can work in a pocket at all.** Core Motion
+  /// delivers only while the app is running, and an average rate hides a
+  /// suspension completely; a maximum cannot.
+  final BigInt longestGapMs;
+
   /// **Zero here means the sensors are not delivering**, which is a platform
   /// fault and nothing to do with the thresholds.
   final BigInt samples;
@@ -2908,6 +2915,7 @@ class UiTapStats {
 
   const UiTapStats({
     required this.enabled,
+    required this.longestGapMs,
     required this.samples,
     required this.candidates,
     required this.discardedLong,
@@ -2927,6 +2935,7 @@ class UiTapStats {
   @override
   int get hashCode =>
       enabled.hashCode ^
+      longestGapMs.hashCode ^
       samples.hashCode ^
       candidates.hashCode ^
       discardedLong.hashCode ^
@@ -2945,6 +2954,7 @@ class UiTapStats {
       other is UiTapStats &&
           runtimeType == other.runtimeType &&
           enabled == other.enabled &&
+          longestGapMs == other.longestGapMs &&
           samples == other.samples &&
           candidates == other.candidates &&
           discardedLong == other.discardedLong &&

@@ -4811,21 +4811,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiTapStats dco_decode_ui_tap_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 12)
-      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return UiTapStats(
       enabled: dco_decode_bool(arr[0]),
-      samples: dco_decode_u_64(arr[1]),
-      candidates: dco_decode_u_64(arr[2]),
-      discardedLong: dco_decode_u_64(arr[3]),
-      discardedMagnitude: dco_decode_u_64(arr[4]),
-      discardedInterval: dco_decode_u_64(arr[5]),
-      gestures: dco_decode_u_64(arr[6]),
-      psiDb: dco_decode_f_32(arr[7]),
-      floorDb: dco_decode_f_32(arr[8]),
-      peakDb: dco_decode_f_32(arr[9]),
-      pending: dco_decode_u_8(arr[10]),
-      hz: dco_decode_f_32(arr[11]),
+      longestGapMs: dco_decode_u_64(arr[1]),
+      samples: dco_decode_u_64(arr[2]),
+      candidates: dco_decode_u_64(arr[3]),
+      discardedLong: dco_decode_u_64(arr[4]),
+      discardedMagnitude: dco_decode_u_64(arr[5]),
+      discardedInterval: dco_decode_u_64(arr[6]),
+      gestures: dco_decode_u_64(arr[7]),
+      psiDb: dco_decode_f_32(arr[8]),
+      floorDb: dco_decode_f_32(arr[9]),
+      peakDb: dco_decode_f_32(arr[10]),
+      pending: dco_decode_u_8(arr[11]),
+      hz: dco_decode_f_32(arr[12]),
     );
   }
 
@@ -6249,6 +6250,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiTapStats sse_decode_ui_tap_stats(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_enabled = sse_decode_bool(deserializer);
+    var var_longestGapMs = sse_decode_u_64(deserializer);
     var var_samples = sse_decode_u_64(deserializer);
     var var_candidates = sse_decode_u_64(deserializer);
     var var_discardedLong = sse_decode_u_64(deserializer);
@@ -6262,6 +6264,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_hz = sse_decode_f_32(deserializer);
     return UiTapStats(
       enabled: var_enabled,
+      longestGapMs: var_longestGapMs,
       samples: var_samples,
       candidates: var_candidates,
       discardedLong: var_discardedLong,
@@ -7507,6 +7510,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_ui_tap_stats(UiTapStats self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.enabled, serializer);
+    sse_encode_u_64(self.longestGapMs, serializer);
     sse_encode_u_64(self.samples, serializer);
     sse_encode_u_64(self.candidates, serializer);
     sse_encode_u_64(self.discardedLong, serializer);

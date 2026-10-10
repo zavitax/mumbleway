@@ -1,5 +1,5 @@
-Still 1.2.0. One targeted iOS fix, and the panel to tell me what else is wrong.
+Still 1.2.0. A measurement, because the honest answer was 'probably'.
 
-Giving the microphone back tore the whole audio session down every time, to force a headset off the hands-free profile. On the phone's own speaker there is no profile to release, so that bought nothing and cost everything: it stopped the audio unit and interrupted the stream the engine had open on it, on every tap-to-stop.
+Can a tap be felt with the phone in a pocket and the app in the background? Core Motion delivers only while the app is running. The audio background mode should keep it running, but in the listening state this app's own output is mostly silence, and whether iOS counts that as playing is not worth taking on trust.
 
-The teardown is now kept for Bluetooth routes only.
+Diagnostics now shows the longest the sensors have gone quiet.

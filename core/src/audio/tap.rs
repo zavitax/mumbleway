@@ -222,6 +222,25 @@ pub struct TapStats {
     /// Arrival stamps of the first and last samples, for working out the rate.
     pub first_us: u64,
     pub last_us: u64,
+    /// The longest the sensors have ever gone quiet, in milliseconds.
+    ///
+    /// **This is the number that says whether the gesture can work at all on
+    /// a ride.** A rider's phone is in a pocket with the screen off and the
+    /// app behind whatever they are navigating with, and `CMMotionManager`
+    /// delivers only while the app is *running*: iOS suspends it otherwise,
+    /// and a suspended app cannot feel a tap.
+    ///
+    /// The `audio` background mode is what should prevent that, because the
+    /// engine holds an output stream that renders continuously. But in the
+    /// listening state this app's own output is mostly silence — the music
+    /// belongs to another app — and whether iOS counts a running audio unit
+    /// rendering silence as "playing" is not something to take on trust. It
+    /// has been wrong before.
+    ///
+    /// So it is measured. A rate averaged over a session hides a gap; a
+    /// maximum cannot. Seconds here mean the feature does not work in a
+    /// pocket, whatever the average says.
+    pub longest_gap_ms: u64,
 }
 
 /// A completed gesture.
@@ -330,6 +349,9 @@ impl TapDetector {
         self.stats.samples += 1;
         if self.stats.first_us == 0 {
             self.stats.first_us = sample.arrival_us;
+        } else {
+            let gap = sample.arrival_us.saturating_sub(self.stats.last_us) / 1_000;
+            self.stats.longest_gap_ms = self.stats.longest_gap_ms.max(gap);
         }
         self.stats.last_us = sample.arrival_us;
 
@@ -701,5 +723,25 @@ mod tests {
             }
         }
         assert_eq!(gestures, 1, "the three-tap gesture was not recognised");
+    }
+
+    #[test]
+    fn a_gap_in_delivery_is_remembered() {
+        // The sensors going quiet is what a suspended app looks like from in
+        // here, and an average rate would hide it completely.
+        let mut d = TapDetector::new(3);
+        for i in 0..100 {
+            d.push(&sample(i as u64, quantised_still(i)));
+        }
+        // Thirty seconds of nothing, then delivery resumes.
+        let after = 100 + 3_000;
+        for i in after..after + 100 {
+            d.push(&sample(i as u64, quantised_still(i)));
+        }
+        assert!(
+            d.stats().longest_gap_ms >= 29_000,
+            "a thirty-second silence was not noticed: {} ms",
+            d.stats().longest_gap_ms
+        );
     }
 }

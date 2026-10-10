@@ -3219,6 +3219,7 @@ pub fn tap_diagnostics() -> UiTapStats {
         // Worked out here rather than in Dart so one definition of "rate"
         // exists. Zero samples, or all of them in the same microsecond, is
         // reported as zero rather than as a division.
+        longest_gap_ms: s.longest_gap_ms,
         hz: {
             let span = s.last_us.saturating_sub(s.first_us);
             if span > 0 && s.samples > 1 {
@@ -3235,6 +3236,12 @@ pub fn tap_diagnostics() -> UiTapStats {
 pub struct UiTapStats {
     /// Whether a completed gesture would act. The counters move either way.
     pub enabled: bool,
+    /// The longest the sensors have gone quiet, in milliseconds.
+    ///
+    /// **Says whether the gesture can work in a pocket at all.** Core Motion
+    /// delivers only while the app is running, and an average rate hides a
+    /// suspension completely; a maximum cannot.
+    pub longest_gap_ms: u64,
     /// **Zero here means the sensors are not delivering**, which is a platform
     /// fault and nothing to do with the thresholds.
     pub samples: u64,

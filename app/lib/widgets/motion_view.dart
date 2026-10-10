@@ -43,6 +43,7 @@ class _MotionViewState extends State<MotionView> {
     peakDb: 0,
     pending: 0,
     hz: 0,
+    longestGapMs: BigInt.zero,
   );
 
   @override
@@ -130,6 +131,26 @@ class _MotionViewState extends State<MotionView> {
               : '${_s.hz.toStringAsFixed(0)} Hz · $samples samples',
           bad: dead,
         ),
+        // **The row that says whether a tap can be felt in a pocket.**
+        //
+        // Core Motion delivers only while the app is *running*; iOS suspends
+        // it otherwise, and a suspended app cannot feel anything. The audio
+        // background mode is what should prevent that — but in the listening
+        // state this app's own output is mostly silence, the music being
+        // another app's, and whether iOS counts a running audio unit
+        // rendering silence as "playing" is not something to take on trust.
+        //
+        // An average rate hides a suspension completely. A maximum cannot.
+        // Background the app for half a minute and come back: anything here
+        // near that long means the gesture does not work on a ride, whatever
+        // the rate says.
+        if (!dead)
+          _line(
+            context,
+            'longest gap',
+            _gap(_s.longestGapMs.toInt()),
+            bad: _s.longestGapMs.toInt() >= 2000,
+          ),
         if (!dead) ...[
           // ψ against the floor it has to clear. If these two sit on top of
           // each other no impulse can ever stand out, which is a different
@@ -172,6 +193,14 @@ class _MotionViewState extends State<MotionView> {
         ],
       ],
     );
+  }
+
+
+  /// A gap, in the units it is worth reading in.
+  static String _gap(int ms) {
+    if (ms < 1000) return '$ms ms — the sensors have not stopped';
+    final s = (ms / 1000).toStringAsFixed(1);
+    return '$s s without a sample — the app was not running';
   }
 
   Widget _line(

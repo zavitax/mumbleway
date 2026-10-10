@@ -43,7 +43,7 @@
 /// case reachable in a unit test in microseconds.
 library;
 
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart' show immutable;
 
 /// Where the session and the microphone have actually got to.
 enum CaptureState {
@@ -208,7 +208,7 @@ final class StartSession extends CaptureAction {
   const StartSession({required this.capture});
   final bool capture;
   @override
-  bool operator ==(Object o) => o is StartSession && o.capture == capture;
+  bool operator ==(Object other) => other is StartSession && other.capture == capture;
   @override
   int get hashCode => capture.hashCode;
   @override
@@ -219,7 +219,7 @@ final class StartSession extends CaptureAction {
 final class StopSession extends CaptureAction {
   const StopSession();
   @override
-  bool operator ==(Object o) => o is StopSession;
+  bool operator ==(Object other) => other is StopSession;
   @override
   int get hashCode => 1;
   @override
@@ -230,7 +230,7 @@ final class StopSession extends CaptureAction {
 final class StartCapture extends CaptureAction {
   const StartCapture();
   @override
-  bool operator ==(Object o) => o is StartCapture;
+  bool operator ==(Object other) => other is StartCapture;
   @override
   int get hashCode => 2;
   @override
@@ -241,7 +241,7 @@ final class StartCapture extends CaptureAction {
 final class StopCapture extends CaptureAction {
   const StopCapture();
   @override
-  bool operator ==(Object o) => o is StopCapture;
+  bool operator ==(Object other) => other is StopCapture;
   @override
   int get hashCode => 3;
   @override
@@ -266,7 +266,7 @@ final class PlayCue extends CaptureAction {
   const PlayCue(this.kind);
   final CaptureCueKind kind;
   @override
-  bool operator ==(Object o) => o is PlayCue && o.kind == kind;
+  bool operator ==(Object other) => other is PlayCue && other.kind == kind;
   @override
   int get hashCode => kind.hashCode;
   @override
@@ -279,7 +279,7 @@ final class PublishMute extends CaptureAction {
   const PublishMute({required this.muted});
   final bool muted;
   @override
-  bool operator ==(Object o) => o is PublishMute && o.muted == muted;
+  bool operator ==(Object other) => other is PublishMute && other.muted == muted;
   @override
   int get hashCode => muted.hashCode;
   @override
@@ -299,6 +299,10 @@ class CaptureStep {
 
 /// The machine. Holds the two things that are genuinely its own.
 class CaptureMachine {
+  // The fields are private and the parameters are not, which is deliberate:
+  // callers name the concept, not the storage. An initializing formal would
+  // put `_state` in the public signature.
+  // ignore_for_file: prefer_initializing_formals
   CaptureMachine({
     CaptureState state = CaptureState.closed,
     bool riderWantsMic = false,

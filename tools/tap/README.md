@@ -1,57 +1,47 @@
 # Scoring the tap detector
 
-`score.py` runs a tap detector over the recorder's **motion track** and reports
-what it found, what it missed, and — the number that actually decides anything —
-**false arms per hour**.
+**The tap is heard, not felt.** The accelerometer detector and its motion
+track were removed: at the 100 Hz iOS delivers, a tap is four samples, where a
+microphone gives forty. What remains is `label_from_audio.py`, which finds the
+taps in a recording's own audio, and `core/tests/acoustic_tap_corpus.rs`, which
+scores the shipping detector against them:
 
 ```bash
-python tools/tap/score.py <ride-dir> --taps 3
-python tools/tap/score.py <ride-dir> --taps 4 --sweep
+python tools/tap/label_from_audio.py <ride-dir>      # what it hears
+cd core && MW_TAP_CORPUS=<ride-dir> cargo test --test acoustic_tap_corpus -- --ignored --nocapture
 ```
 
-## What it has already found
+Use forward slashes in the path; Git Bash eats backslashes before Python sees
+them.
 
-**First corpus, 2026-10-09: two iPhone recordings, 55 seconds, 100 Hz, taps
-audible in the audio of the same segment.** It settled three constants that
-had been guessed, and the first one was wrong by eighteen decibels.
+## What it has found
 
-| | was | now |
-|---|---|---|
-| `MARGIN_DB` | 12 | **30** |
-| `MAX_PULSE_MS` | 60 | **150** |
-| `GAP_MAX_MS` | 400 | **600** |
+| recording | performed | found | false |
+|---|---|---|---|
+| 2026-10-09, taps in the hand | 7 | **7** | **0** |
+| 2026-10-11, taps on the phone | 10 | 8 | 10 |
 
-The failure the guess produced is worth keeping, because no amount of staring
-at a still phone would have shown it. On a hand-held phone ψ's *median* sits
-about 15 dB above its own tracked floor — the floor is a minimum statistic and
-real movement is nowhere near the minimum — so **59% and 69% of the two
-recordings were above a 12 dB margin.** The detector was mid-candidate almost
-always, every real tap arrived while it was already counting, and the
-pulse-width test threw the pair away. It fired 21 and 23 times in 40 and 15
-seconds and matched not one of the gestures.
+**The second row's "false" is not what it looks like.** That rider tapped 148
+times in 36 seconds, so where the labeller sees one performance of six taps the
+detector reasonably sees two gestures of three. The corpus cannot tell those
+apart, and until a ride is recorded with taps *and* road the false-arm figure
+is measuring the labelling rather than the detector.
 
-The taps were never faint: every audible one reached 22–60 dB over the floor.
-There was no sensitivity problem, only a margin that admitted everything.
+## A proposal that did not survive measurement
 
-At 30 dB the corpus gives **zero false arms**, and it is the only margin tried
-that does. Recall is about two thirds — a gesture sometimes needs repeating,
-which is the right way round for this trade.
+A tap was described as punchy — a sharp rise followed by a drop in volume
+**and frequency** — and a frequency test was going to be added for it. It was
+measured first, twice, on the 2026-10-11 recording:
 
-**What 55 seconds cannot tell you**: both recordings are a phone in a hand and
-on a desk, indoors, stationary. The target below is per hour and this is a
-sixty-fifth of one. Nothing here says anything about a bike.
+- zero crossings per millisecond: **4 at onset, 4 mid-decay**, ratio 1.00 at
+  both quartiles;
+- high-against-low band energy, onset against mid-decay: **median 1.02×**, and
+  only 14% of taps got duller as they decayed.
 
-## Why this exists before the detector ships
-
-`core/src/audio/tap.rs` had a threshold, a pulse width, a dead time, a gap
-window and two tolerances, and **every one of them was marked provisional** in
-that file. None was chosen by argument, because none can be: whether a
-deliberate tap through a padded bag can be told from a pothole at 100 km/h is a
-question about signals nobody in this project had looked at.
-
-That is the same position the voice gate was in, and `tools/vad/` is how it got
-out of it — a corpus, hand labels, and candidates scored against both. The
-retraction at the top of `tools/vad/README.md` is what happens without it.
+Volume, over the same window, falls about **25×**. So the punch is in the
+envelope — a very fast attack and a fast decay, both of which the detector
+already tests — and not in the spectrum. A frequency test would have rejected
+roughly 85% of real taps.
 
 ## The ride that matters most has no taps in it
 

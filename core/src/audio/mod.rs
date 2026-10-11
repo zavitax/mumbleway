@@ -26,7 +26,6 @@ pub mod relief;
 pub mod resample;
 pub mod spectrum;
 pub mod stretch;
-pub mod tap;
 pub mod testsig;
 pub mod timing;
 pub mod waveform;

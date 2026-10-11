@@ -18,7 +18,6 @@ use mumbleway_core::audio::engine::{
     AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode,
 };
 use mumbleway_core::audio::feedback::FeedbackMode;
-use mumbleway_core::audio::tap::TapDetector;
 use mumbleway_core::audio::{NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};
 use mumbleway_core::net::tls::Identity;
@@ -771,21 +770,6 @@ struct App {
     /// Whether another MumbleWay rider may turn this rider's microphone on.
     /// A setting, on by default; see `set_allow_remote_unmute`.
     allow_remote_unmute: Arc<AtomicBool>,
-    /// Watches the phone's own motion for a deliberate N-tap gesture.
-    ///
-    /// Here rather than on `AudioShared` because it is fed from the platform
-    /// channel's thread and has nothing to do with the audio callback. `None`
-    /// when the rider has not asked for the gesture, which is the default — so
-    /// the sensors can be running for the corpus with nothing watching them for
-    /// a trigger.
-    /// **Always present, even with the gesture switched off.** The first field
-    /// report was "taps are not detected" with no way to tell whether samples
-    /// were arriving at all — and those two faults need opposite fixes. Running
-    /// the detector regardless costs a handful of multiplies per sample and
-    /// makes the diagnostics panel able to answer it.
-    tap: Arc<Mutex<TapDetector>>,
-    /// Whether a completed gesture should actually do anything.
-    tap_enabled: Arc<AtomicBool>,
 }
 
 /// Decides which audio cue, if any, a status transition should play.
@@ -1547,8 +1531,6 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         last_status,
         identity,
         allow_remote_unmute,
-        tap: Arc::new(Mutex::new(TapDetector::new(3))),
-        tap_enabled: Arc::new(AtomicBool::new(false)),
     });
     Ok(())
 }
@@ -3087,13 +3069,6 @@ pub struct UiRecordingState {
     /// recording with gaps is still useful, and a recording with gaps nobody
     /// knows about is a measurement waiting to be wrong.
     pub dropped_blocks: u64,
-    /// Motion readings storage could not keep up with.
-    ///
-    /// Shown for the same reason, and it matters more here: a gap nobody
-    /// counted in the motion track looks exactly like a stretch of road where
-    /// nothing happened, which is the reading a tap detector would then be
-    /// scored against.
-    pub dropped_motion: u64,
     /// Where the files are, so the panel can offer to share them.
     pub directory: String,
 }
@@ -3139,7 +3114,6 @@ pub fn diagnostic_recording_state() -> UiRecordingState {
         return UiRecordingState {
             active: false,
             dropped_blocks: 0,
-            dropped_motion: 0,
             directory: String::new(),
         };
     };
@@ -3147,139 +3121,36 @@ pub fn diagnostic_recording_state() -> UiRecordingState {
     UiRecordingState {
         active: s.active,
         dropped_blocks: s.dropped_blocks,
-        dropped_motion: s.dropped_motion,
         directory: s.directory,
     }
 }
 
-/// Hands one reading of the phone's own motion to the recorder.
+
+/// Switches tap detection on or off, and sets how many taps the gesture takes.
 ///
-/// **Recorded whether or not tap detection is switched on.** Measuring *false*
-/// positives needs rides with no taps in them, so the negative corpus can only
-/// be gathered while the feature is off — tying this to the detector would make
-/// the corpus that matters most impossible to collect.
+/// Separate from the recording, deliberately: the motion track is written
+/// whether or not this is on, because measuring how often the detector fires by
+/// mistake needs rides in which nobody tapped at all.
 ///
-/// `platform_ns` is the platform's own stamp in its own epoch, kept as given
-/// rather than converted: nanoseconds since boot on Android, seconds since boot
-/// on iOS, and neither is the audio clock. It is written beside an arrival
-/// stamp taken here, so the delay between them can be *measured* later instead
-/// of assumed. Ignored when nothing is recording, so the platform may push
-/// without asking first.
-/// **Returns true when this sample completed a tap gesture**, so the caller can
-/// act on it. One return value rather than a second channel: the sample is
-/// already crossing the boundary, and a callback the other way would have to be
-/// marshalled back onto the thread the caller is already on.
+/// Changing the count discards a half-performed gesture rather than
+/// reinterpreting it as part of the new one.
 #[frb(sync)]
-pub fn push_motion(
-    platform_ns: u64,
-    accel: Vec<f32>,
-    gravity: Vec<f32>,
-    rotation: Vec<f32>,
-) -> anyhow::Result<bool> {
-    let three = |v: &Vec<f32>| -> [f32; 3] {
-        [
-            v.first().copied().unwrap_or(0.0),
-            v.get(1).copied().unwrap_or(0.0),
-            v.get(2).copied().unwrap_or(0.0),
-        ]
-    };
+pub fn set_tap_detection(enabled: bool, taps: u8) -> anyhow::Result<()> {
     let app = app()?;
-    let sample = mumbleway_core::audio::record::MotionSample {
-        platform_ns,
-        arrival_us: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_micros() as u64)
-            .unwrap_or(0),
-        accel: three(&accel),
-        gravity: three(&gravity),
-        rotation: three(&rotation),
-    };
-    // The recorder first and unconditionally, so the corpus is gathered whether
-    // or not anything is watching for a gesture. That ordering is the whole
-    // reason false positives can ever be measured.
-    app.shared.push_motion(sample);
-
-    // Pushed whether or not the gesture is switched on, so the panel can show
-    // the signal while somebody is working out why nothing fires. Only the
-    // *acting* on it is gated.
-    let (completed, banked) = {
-        let mut tap = app.tap.lock();
-        let before = tap.stats().banked;
-        let completed = tap.push(&sample).is_some();
-        (completed, tap.stats().banked > before)
-    };
-
-    let enabled = app.tap_enabled.load(Ordering::Relaxed);
-
-    // **A tick for each tap, and it is the only thing that can say which one
-    // failed.** The gesture cues report that three taps were heard; they
-    // cannot report that two were and the third was not, and telling those
-    // apart is the difference between "the feature is broken" and "tap a
-    // little harder". It has cost several rides to establish that difference
-    // by ear.
-    //
-    // Fired here rather than from Dart because the decision is already here
-    // and the sample is already across the boundary. It is the lowest
-    // priority cue there is, so the last tick of a gesture cannot cut off the
-    // countdown it leads into.
-    if banked && enabled {
-        app.shared.play_cue(AudioCue::TapTick);
-    }
-
-    Ok(completed && enabled)
-}
-
-/// What the tap detector is seeing.
-///
-/// Free to call and safe before the engine is up, like the other panel
-/// readouts: the honest answer before there is an engine is "no samples".
-#[frb(sync)]
-pub fn tap_diagnostics() -> UiTapStats {
-    let Ok(app) = app() else {
-        return UiTapStats::default();
-    };
-    let s = app.tap.lock().stats();
-    UiTapStats {
-        enabled: app.tap_enabled.load(Ordering::Relaxed),
-        samples: s.samples,
-        candidates: s.candidates,
-        discarded_long: s.discarded_long,
-        discarded_magnitude: s.discarded_magnitude,
-        discarded_interval: s.discarded_interval,
-        gestures: s.gestures,
-        psi_db: s.psi_db,
-        floor_db: s.floor_db,
-        peak_db: if s.peak_db.is_finite() {
-            s.peak_db
-        } else {
-            0.0
-        },
-        pending: s.pending,
-        // Worked out here rather than in Dart so one definition of "rate"
-        // exists. Zero samples, or all of them in the same microsecond, is
-        // reported as zero rather than as a division.
-        longest_gap_ms: s.longest_gap_ms,
-        hz: {
-            let span = s.last_us.saturating_sub(s.first_us);
-            if span > 0 && s.samples > 1 {
-                (s.samples - 1) as f32 * 1_000_000.0 / span as f32
-            } else {
-                0.0
-            }
-        },
-    }
+    // The engine's detector, which hears whichever microphone is open — the
+    // helmet's while capturing, the phone's own while listening.
+    app.shared.set_tap_detection(enabled, taps);
+    Ok(())
 }
 
 /// What the microphone's tap detector is hearing.
 ///
-/// **The one that decides now.** The motion detector still runs and still
-/// fills the recorder's third track, because the corpus is worth gathering,
-/// but it no longer acts: at iOS's 100 Hz a tap is four samples where the
-/// microphone gives forty.
+/// The only tap detector there is. The accelerometer one was removed: at the
+/// 100 Hz iOS delivers, a tap is four samples, where a microphone gives forty.
 pub struct UiAcousticStats {
     /// Whether a completed gesture would act.
     pub enabled: bool,
-    /// One-millisecond frames examined. Zero means no microphone is open,
+    /// One-millisecond frames examined. **Zero means no microphone is open**,
     /// which while listening is a session problem rather than a tuning one.
     pub frames: u64,
     /// Impulses that arrived sharply and died away in time.
@@ -3287,7 +3158,8 @@ pub struct UiAcousticStats {
     /// Arrived sharply and did not die away. A sound, not a strike.
     pub discarded_long: u64,
     /// Taps banked towards a gesture. One tick is played per tap, so this is
-    /// what a rider hears.
+    /// what a rider hears — and the only thing that can say *which* tap of
+    /// three went unheard.
     pub banked: u64,
     pub gestures: u64,
     /// The last frame's level, and the trailing average it is measured
@@ -3330,59 +3202,6 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
         peak_db: s.peak_db,
         run: s.run,
     }
-}
-
-/// What [`tap_diagnostics`] reports.
-#[derive(Default)]
-pub struct UiTapStats {
-    /// Whether a completed gesture would act. The counters move either way.
-    pub enabled: bool,
-    /// The longest the sensors have gone quiet, in milliseconds.
-    ///
-    /// **Says whether the gesture can work in a pocket at all.** Core Motion
-    /// delivers only while the app is running, and an average rate hides a
-    /// suspension completely; a maximum cannot.
-    pub longest_gap_ms: u64,
-    /// **Zero here means the sensors are not delivering**, which is a platform
-    /// fault and nothing to do with the thresholds.
-    pub samples: u64,
-    pub candidates: u64,
-    /// Impulses thrown away for ringing past the pulse-width limit. The number
-    /// to look at when samples arrive and nothing is ever detected.
-    pub discarded_long: u64,
-    pub discarded_magnitude: u64,
-    pub discarded_interval: u64,
-    pub gestures: u64,
-    pub psi_db: f32,
-    pub floor_db: f32,
-    pub peak_db: f32,
-    pub pending: u8,
-    /// Delivered sample rate. Android should show 200–500, iOS about 100; well
-    /// under either means the platform is capping it.
-    pub hz: f32,
-}
-
-/// Switches tap detection on or off, and sets how many taps the gesture takes.
-///
-/// Separate from the recording, deliberately: the motion track is written
-/// whether or not this is on, because measuring how often the detector fires by
-/// mistake needs rides in which nobody tapped at all.
-///
-/// Changing the count discards a half-performed gesture rather than
-/// reinterpreting it as part of the new one.
-#[frb(sync)]
-pub fn set_tap_detection(enabled: bool, taps: u8) -> anyhow::Result<()> {
-    let app = app()?;
-    // **The engine's detector, which hears whichever microphone is open.**
-    //
-    // The accelerometer one is still fed by `push_motion` and still fills the
-    // recorder's third track, because the motion corpus is worth gathering
-    // either way — but it no longer decides anything. It could not: at iOS's
-    // 100 Hz a tap is four samples, where the microphone gives forty.
-    app.shared.set_tap_detection(enabled, taps);
-    app.tap_enabled.store(enabled, Ordering::Relaxed);
-    app.tap.lock().set_taps_wanted(taps);
-    Ok(())
 }
 
 /// Everything the engine has logged so far.

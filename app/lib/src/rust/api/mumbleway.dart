@@ -536,46 +536,6 @@ BigInt stopDiagnosticRecording() =>
 UiRecordingState diagnosticRecordingState() =>
     RustLib.instance.api.crateApiMumblewayDiagnosticRecordingState();
 
-/// Hands one reading of the phone's own motion to the recorder.
-///
-/// **Recorded whether or not tap detection is switched on.** Measuring *false*
-/// positives needs rides with no taps in them, so the negative corpus can only
-/// be gathered while the feature is off — tying this to the detector would make
-/// the corpus that matters most impossible to collect.
-///
-/// `platform_ns` is the platform's own stamp in its own epoch, kept as given
-/// rather than converted: nanoseconds since boot on Android, seconds since boot
-/// on iOS, and neither is the audio clock. It is written beside an arrival
-/// stamp taken here, so the delay between them can be *measured* later instead
-/// of assumed. Ignored when nothing is recording, so the platform may push
-/// without asking first.
-/// **Returns true when this sample completed a tap gesture**, so the caller can
-/// act on it. One return value rather than a second channel: the sample is
-/// already crossing the boundary, and a callback the other way would have to be
-/// marshalled back onto the thread the caller is already on.
-bool pushMotion({
-  required BigInt platformNs,
-  required List<double> accel,
-  required List<double> gravity,
-  required List<double> rotation,
-}) => RustLib.instance.api.crateApiMumblewayPushMotion(
-  platformNs: platformNs,
-  accel: accel,
-  gravity: gravity,
-  rotation: rotation,
-);
-
-/// What the tap detector is seeing.
-///
-/// Free to call and safe before the engine is up, like the other panel
-/// readouts: the honest answer before there is an engine is "no samples".
-UiTapStats tapDiagnostics() =>
-    RustLib.instance.api.crateApiMumblewayTapDiagnostics();
-
-/// What the microphone's tap detector is hearing.
-UiAcousticStats acousticDiagnostics() =>
-    RustLib.instance.api.crateApiMumblewayAcousticDiagnostics();
-
 /// Switches tap detection on or off, and sets how many taps the gesture takes.
 ///
 /// Separate from the recording, deliberately: the motion track is written
@@ -588,6 +548,10 @@ void setTapDetection({required bool enabled, required int taps}) => RustLib
     .instance
     .api
     .crateApiMumblewaySetTapDetection(enabled: enabled, taps: taps);
+
+/// What the microphone's tap detector is hearing.
+UiAcousticStats acousticDiagnostics() =>
+    RustLib.instance.api.crateApiMumblewayAcousticDiagnostics();
 
 /// Everything the engine has logged so far.
 ///
@@ -1603,15 +1567,13 @@ class UiAclRule {
 
 /// What the microphone's tap detector is hearing.
 ///
-/// **The one that decides now.** The motion detector still runs and still
-/// fills the recorder's third track, because the corpus is worth gathering,
-/// but it no longer acts: at iOS's 100 Hz a tap is four samples where the
-/// microphone gives forty.
+/// The only tap detector there is. The accelerometer one was removed: at the
+/// 100 Hz iOS delivers, a tap is four samples, where a microphone gives forty.
 class UiAcousticStats {
   /// Whether a completed gesture would act.
   final bool enabled;
 
-  /// One-millisecond frames examined. Zero means no microphone is open,
+  /// One-millisecond frames examined. **Zero means no microphone is open**,
   /// which while listening is a session problem rather than a tuning one.
   final BigInt frames;
 
@@ -1622,7 +1584,8 @@ class UiAcousticStats {
   final BigInt discardedLong;
 
   /// Taps banked towards a gesture. One tick is played per tap, so this is
-  /// what a rider hears.
+  /// what a rider hears — and the only thing that can say *which* tap of
+  /// three went unheard.
   final BigInt banked;
   final BigInt gestures;
 
@@ -2535,30 +2498,18 @@ class UiRecordingState {
   /// knows about is a measurement waiting to be wrong.
   final BigInt droppedBlocks;
 
-  /// Motion readings storage could not keep up with.
-  ///
-  /// Shown for the same reason, and it matters more here: a gap nobody
-  /// counted in the motion track looks exactly like a stretch of road where
-  /// nothing happened, which is the reading a tap detector would then be
-  /// scored against.
-  final BigInt droppedMotion;
-
   /// Where the files are, so the panel can offer to share them.
   final String directory;
 
   const UiRecordingState({
     required this.active,
     required this.droppedBlocks,
-    required this.droppedMotion,
     required this.directory,
   });
 
   @override
   int get hashCode =>
-      active.hashCode ^
-      droppedBlocks.hashCode ^
-      droppedMotion.hashCode ^
-      directory.hashCode;
+      active.hashCode ^ droppedBlocks.hashCode ^ directory.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -2567,7 +2518,6 @@ class UiRecordingState {
           runtimeType == other.runtimeType &&
           active == other.active &&
           droppedBlocks == other.droppedBlocks &&
-          droppedMotion == other.droppedMotion &&
           directory == other.directory;
 }
 
@@ -2969,93 +2919,6 @@ class UiStats {
           tcpPingMs == other.tcpPingMs &&
           udpPingMs == other.udpPingMs &&
           transport == other.transport;
-}
-
-/// What [`tap_diagnostics`] reports.
-class UiTapStats {
-  /// Whether a completed gesture would act. The counters move either way.
-  final bool enabled;
-
-  /// The longest the sensors have gone quiet, in milliseconds.
-  ///
-  /// **Says whether the gesture can work in a pocket at all.** Core Motion
-  /// delivers only while the app is running, and an average rate hides a
-  /// suspension completely; a maximum cannot.
-  final BigInt longestGapMs;
-
-  /// **Zero here means the sensors are not delivering**, which is a platform
-  /// fault and nothing to do with the thresholds.
-  final BigInt samples;
-  final BigInt candidates;
-
-  /// Impulses thrown away for ringing past the pulse-width limit. The number
-  /// to look at when samples arrive and nothing is ever detected.
-  final BigInt discardedLong;
-  final BigInt discardedMagnitude;
-  final BigInt discardedInterval;
-  final BigInt gestures;
-  final double psiDb;
-  final double floorDb;
-  final double peakDb;
-  final int pending;
-
-  /// Delivered sample rate. Android should show 200–500, iOS about 100; well
-  /// under either means the platform is capping it.
-  final double hz;
-
-  const UiTapStats({
-    required this.enabled,
-    required this.longestGapMs,
-    required this.samples,
-    required this.candidates,
-    required this.discardedLong,
-    required this.discardedMagnitude,
-    required this.discardedInterval,
-    required this.gestures,
-    required this.psiDb,
-    required this.floorDb,
-    required this.peakDb,
-    required this.pending,
-    required this.hz,
-  });
-
-  static Future<UiTapStats> default_() =>
-      RustLib.instance.api.crateApiMumblewayUiTapStatsDefault();
-
-  @override
-  int get hashCode =>
-      enabled.hashCode ^
-      longestGapMs.hashCode ^
-      samples.hashCode ^
-      candidates.hashCode ^
-      discardedLong.hashCode ^
-      discardedMagnitude.hashCode ^
-      discardedInterval.hashCode ^
-      gestures.hashCode ^
-      psiDb.hashCode ^
-      floorDb.hashCode ^
-      peakDb.hashCode ^
-      pending.hashCode ^
-      hz.hashCode;
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is UiTapStats &&
-          runtimeType == other.runtimeType &&
-          enabled == other.enabled &&
-          longestGapMs == other.longestGapMs &&
-          samples == other.samples &&
-          candidates == other.candidates &&
-          discardedLong == other.discardedLong &&
-          discardedMagnitude == other.discardedMagnitude &&
-          discardedInterval == other.discardedInterval &&
-          gestures == other.gestures &&
-          psiDb == other.psiDb &&
-          floorDb == other.floorDb &&
-          peakDb == other.peakDb &&
-          pending == other.pending &&
-          hz == other.hz;
 }
 
 class UiUser {

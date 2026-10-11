@@ -40,27 +40,7 @@ void main() {
   }
 
   group('what a ride is made of', () {
-    test('the motion track belongs to its segment, not to a ride of its own', () {
-      // The naive stem is `lastIndexOf('.')`, which answers `…-000.motion`
-      // here — a separate ride, which the cap could then put in a different
-      // archive from the audio it describes.
-      expect(rideStem('20261009-1054-000.motion.csv'), '20261009-1054-000');
-      expect(rideStem('20261009-1054-000.csv'), '20261009-1054-000');
-      expect(rideStem('20261009-1054-000.s16'), '20261009-1054-000');
-    });
 
-    test('a single-ride share carries all three tracks', () {
-      final audio = write('r-000.s16', 16);
-      write('r-000.csv', 16);
-      write('r-000.motion.csv', 16);
-
-      // This is the exact assertion the listen sheet failed: its list was
-      // `[audio, '$stem.csv']` and the third track was never in it.
-      expect(
-        rideFiles(audio).map((p) => p.split(Platform.pathSeparator).last),
-        containsAll(['r-000.s16', 'r-000.csv', 'r-000.motion.csv']),
-      );
-    });
 
     test('a track that was never written is left out rather than named', () {
       final audio = write('r-000.s16', 16);
@@ -79,7 +59,7 @@ void main() {
         .map((f) => f.name)
         .toList();
 
-    test('all three tracks reach the archive', () {
+    test('a ride and its decision log reach the archive together', () {
       final files = [
         write('r-000.s16', 2048),
         write('r-000.csv', 512),
@@ -93,7 +73,7 @@ void main() {
       expect(archives, hasLength(1));
       expect(
         namesIn(archives.single),
-        containsAll(['r-000.s16', 'r-000.csv', 'r-000.motion.csv']),
+        containsAll(['r-000.s16', 'r-000.csv']),
       );
     });
 
@@ -106,7 +86,6 @@ void main() {
         for (final stem in ['b-000', 'a-000']) ...[
           write('$stem.s16', 64 * 1024),
           write('$stem.csv', 1024),
-          write('$stem.motion.csv', 1024),
         ],
       ];
       final archives = packRecordings(['70000', dir.path, ...files]);
@@ -119,7 +98,7 @@ void main() {
         expect(holding, hasLength(1), reason: '$stem should be in exactly one');
         expect(
           namesIn(holding.single),
-          containsAll(['$stem.csv', '$stem.motion.csv']),
+          containsAll(['$stem.csv']),
           reason: "$stem's own tracks must be beside its audio",
         );
       }

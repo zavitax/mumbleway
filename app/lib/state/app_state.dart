@@ -21,7 +21,6 @@ import '../services/button_controller.dart';
 import '../services/cloud_sync.dart';
 import '../services/device_identity.dart';
 import '../services/engine_log.dart';
-import '../services/motion.dart';
 import '../services/overlay.dart';
 import '../services/power.dart';
 import '../services/proxy.dart';
@@ -1066,22 +1065,6 @@ class AppState extends ChangeNotifier {
         _micSilenced = silenced;
         notifyListeners();
       };
-      // **The route the engine was told about used to be frozen at the last
-      // activation.** `_acquireAudio` pushes it once and nothing revised it, so
-      // a headset reconnecting mid-ride left every subsequent recording
-      // labelled with the microphone the session started on — and that column
-      // exists precisely because the audio does not say what captured it.
-      // A tap flips capture. Nothing else: the gesture is the whole interface
-      // here, so it must be the same action in both directions, and a rider who
-      // cannot see a screen has no way to be told which one it would have been.
-      // **Nothing.** The accelerometer still feeds `push_motion`, which still
-      // fills the recorder's third track, because a motion corpus is worth
-      // gathering whether or not anything acts on it. But it no longer
-      // decides: at iOS's 100 Hz a tap is four samples, which the original
-      // specification flagged as the first question for the rig and which the
-      // field answered. The microphone gives forty, and the engine listens to
-      // it directly — see `AppEvent_TapGesture`.
-      MotionBridge.instance.onTapGesture = null;
       AudioSessionBridge.instance.onRouteChanged = (session) {
         if (_audioRoute == session.route) return;
         _audioRoute = session.route;
@@ -2754,13 +2737,6 @@ class AppState extends ChangeNotifier {
       releaseAudio();
       return e.toString();
     }
-    // **The sensors run for the recording, not for the feature.** Measuring
-    // false positives needs rides with no taps in them, so the negative corpus
-    // can only be gathered while tap detection is off — tying the motion track
-    // to the detector would make the corpus that matters most impossible to
-    // collect. Not awaited and not fatal: a phone with no usable sensors
-    // should still record its audio.
-    MotionBridge.instance.start();
     _diagnosticRecording = true;
     notifyListeners();
     return null;
@@ -2781,7 +2757,6 @@ class AppState extends ChangeNotifier {
     }
     // Stopped unless the tap detector still wants them. Left running, they are
     // a wake-up a few hundred times a second for the rest of the ride.
-    if (!_captureOnDemand) MotionBridge.instance.stop();
     releaseAudio();
     notifyListeners();
     return dropped;
@@ -4907,11 +4882,6 @@ class AppState extends ChangeNotifier {
       setTapDetection(enabled: want, taps: tapCount);
     } catch (_) {
       // No engine yet; `startEngine` is followed by a sync of this.
-    }
-    if (want || _diagnosticRecording) {
-      MotionBridge.instance.start();
-    } else {
-      MotionBridge.instance.stop();
     }
   }
 

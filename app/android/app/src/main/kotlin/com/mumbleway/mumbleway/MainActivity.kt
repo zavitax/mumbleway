@@ -26,7 +26,6 @@ class MainActivity : FlutterActivity() {
     /// Lazily built: it reaches for the audio service, and there is no need to
     /// do that on an activity that never makes a call.
     private val audioRouting by lazy { AudioRouting(applicationContext) }
-    private val motionSensors by lazy { MotionSensors(applicationContext) }
 
     /// A `mumble://` link the app was launched with, held until Dart asks.
     ///
@@ -215,36 +214,6 @@ class MainActivity : FlutterActivity() {
             MethodChannel(
                 flutterEngine.dartExecutor.binaryMessenger,
                 "mumbleway/motion",
-            )
-        motionSensors.onSample = { stamp, accel, gravity, rotation ->
-            // Straight to Dart on the platform thread. The samples are small
-            // and the rate is bounded by the sensor, so there is nothing to
-            // batch — and batching would cost exactly the timing resolution
-            // the detector depends on.
-            motionChannel.invokeMethod(
-                "sample",
-                mapOf(
-                    "t" to stamp,
-                    "a" to accel.toList(),
-                    "g" to gravity.toList(),
-                    "r" to rotation.toList(),
-                ),
-            )
-        }
-        motionChannel.setMethodCallHandler { call, result ->
-            when (call.method) {
-                "available" -> result.success(motionSensors.available())
-                "start" -> {
-                    motionSensors.start()
-                    result.success(true)
-                }
-                "stop" -> {
-                    motionSensors.stop()
-                    result.success(true)
-                }
-                else -> result.notImplemented()
-            }
-        }
 
         // A name to connect under, taken from the device rather than from
         // whoever's QR code was scanned. See DeviceIdentity on the Dart side

@@ -43,7 +43,7 @@ const archiveStem = 'mumbleway-recordings';
 /// nothing on either end said it was missing.
 ///
 /// A new track goes here and both share paths pick it up.
-const rideSuffixes = ['.csv', '.motion.csv'];
+const rideSuffixes = ['.csv'];
 
 /// The ride a recorder file belongs to, as the segment stem both share paths
 /// and the intake tool group by.

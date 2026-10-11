@@ -365,7 +365,7 @@ def write_note(root, stem, text, sent_as, chat):
 
 #: What a recorder segment writes besides its `.s16`, longest suffix first so
 #: `.motion.csv` is matched before the `.csv` it ends with.
-RIDE_SUFFIXES = (".motion.csv", ".csv", ".s16")
+RIDE_SUFFIXES = (".csv", ".s16")
 
 
 def ride_stem(name):
@@ -447,18 +447,6 @@ def unpack(archive, roots, note_text="", sent_as="", chat=""):
             # the same note. A ride that is later moved or trimmed keeps its
             # explanation because the note travels under the ride's own name.
             write_note(rides, stem, note_text, sent_as or os.path.basename(archive), chat)
-            # **Said out loud, because its absence is what a whole ride was
-            # wasted on.** A recording sent to settle whether the tap detector
-            # fires arrived with no motion in it — the app's single-ride share
-            # built its own file list and had never been taught the third
-            # track — and nothing at either end remarked on it. The ride looked
-            # complete, so the missing half read as a detector that found
-            # nothing rather than as a file that was never sent.
-            if not os.path.exists(os.path.join(rides, f"{stem}.motion.csv")):
-                problems.append(
-                    f"{stem}: no motion track — nothing here can say anything "
-                    f"about taps"
-                )
             if os.path.exists(log):
                 a, b, c, d = split_by_log(raw, log, roots["speech"], roots["noise"], stem)
                 speech, speech_s, noise, noise_s = speech + a, speech_s + b, noise + c, noise_s + d

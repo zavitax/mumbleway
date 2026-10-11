@@ -297,9 +297,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   UiStats dco_decode_ui_stats(dynamic raw);
 
   @protected
-  UiTapStats dco_decode_ui_tap_stats(dynamic raw);
-
-  @protected
   UiUser dco_decode_ui_user(dynamic raw);
 
   @protected
@@ -625,9 +622,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   UiStats sse_decode_ui_stats(SseDeserializer deserializer);
-
-  @protected
-  UiTapStats sse_decode_ui_tap_stats(SseDeserializer deserializer);
 
   @protected
   UiUser sse_decode_ui_user(SseDeserializer deserializer);
@@ -1051,9 +1045,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_ui_stats(UiStats self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_ui_tap_stats(UiTapStats self, SseSerializer serializer);
 
   @protected
   void sse_encode_ui_user(UiUser self, SseSerializer serializer);

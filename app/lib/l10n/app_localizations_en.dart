@@ -2299,13 +2299,6 @@ class LEn extends L {
   String get pocketTutorialStart => 'Start pocket mode';
 
   @override
-  String get resumeMusic => 'Start my music again after talking';
-
-  @override
-  String get resumeMusicBody =>
-      'Talking through the helmet stops your music, and nothing starts it again. This presses play once the helmet gives the good audio back. Apple Music only — it cannot reach Spotify or anything else — and it asks permission for your music when you switch it on.';
-
-  @override
   String get autoStopCapture => 'Close the microphone after a pause';
 
   @override

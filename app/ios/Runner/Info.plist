@@ -98,12 +98,6 @@
 	<string>MumbleWay uses the camera to scan a QR code containing a server invitation. It is not used for anything else.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MumbleWay uses your microphone so you can talk to other riders.</string>
-	<!-- Asked for only when the rider switches on "resume music after talking",
-	     and used for exactly one thing: noticing that the Music app was playing
-	     before the helmet took the hands-free profile, and pressing play again
-	     afterwards. Nothing is read from the library and nothing is stored. -->
-	<key>NSAppleMusicUsageDescription</key>
-	<string>MumbleWay can start your music playing again after you finish talking, because switching to the helmet microphone stops it. It never reads your library.</string>
 	<!-- Voice must keep flowing with the screen locked and the phone in a
 	     pocket or handlebar mount, so the app runs as background audio. -->
 	<key>UIBackgroundModes</key>

@@ -643,14 +643,13 @@ class _TapToCaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, bool, int, bool, MicMode, bool)>(
+    return Watch<(bool, bool, int, bool, MicMode)>(
       (state) => (
         state.pocketMode,
         state.autoStopCapture,
         state.autoStopSeconds,
         state.canChangeMicMode,
         state.micMode,
-        state.resumeMusic,
       ),
       (context, state) {
         final l = L.of(context);
@@ -684,7 +683,7 @@ class _TapToCaptureTile extends StatelessWidget {
                   ? (v) => state.updatePocketMode(v)
                   : null,
             ),
-            if (on) ...[
+            if (on)
               SwitchListTile(
                 secondary: const SizedBox(width: 24),
                 contentPadding: const EdgeInsets.only(left: 72, right: 16),
@@ -694,22 +693,6 @@ class _TapToCaptureTile extends StatelessWidget {
                 value: state.autoStopCapture,
                 onChanged: (v) => state.updateAutoStopCapture(v),
               ),
-              // **Off by default, and it asks for the media library when it
-              // goes on.** Taking the hands-free profile does not narrow a
-              // rider's music, it stops it, and nothing brings it back — see
-              // `docs/CAPTURE_ON_DEMAND.md`. This is the one lever there is,
-              // and it reaches Apple Music only, which the wording says
-              // rather than leaving a rider to discover.
-              SwitchListTile(
-                secondary: const SizedBox(width: 24),
-                contentPadding: const EdgeInsets.only(left: 72, right: 16),
-                title: Text(l.resumeMusic),
-                subtitle: Text(l.resumeMusicBody),
-                isThreeLine: true,
-                value: state.resumeMusic,
-                onChanged: (v) => state.updateResumeMusic(v),
-              ),
-            ],
           ],
         );
       },

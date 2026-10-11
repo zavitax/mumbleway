@@ -2290,13 +2290,6 @@ class LRu extends L {
   String get pocketTutorialStart => 'Включить карманный режим';
 
   @override
-  String get resumeMusic => 'Снова включать музыку после разговора';
-
-  @override
-  String get resumeMusicBody =>
-      'Разговор через шлем останавливает музыку, и сама она не возобновится. Этот переключатель нажимает «играть», когда шлем вернёт хороший звук. Работает только с Apple Music — до Spotify и остальных дотянуться нечем — и при включении запросит доступ к вашей музыке.';
-
-  @override
   String get autoStopCapture => 'Закрывать микрофон после паузы';
 
   @override

@@ -278,27 +278,6 @@ class AudioSessionBridge {
     }
   }
 
-  /// Asks the platform to press play on the Music app after talking.
-  ///
-  /// **Returns whether it will actually be able to.** Switching this on is
-  /// what triggers the media-library prompt, and a rider who declines gets
-  /// `false` rather than a setting that reads "on" and does nothing — which
-  /// is the kind of control this repository has already shipped once and
-  /// written down under the tap gesture.
-  ///
-  /// Apple Music only. `systemMusicPlayer` drives that one app, so a rider on
-  /// anything else gains nothing, and the setting's own wording says so.
-  Future<bool> setResumeMusic(bool on) async {
-    if (!isNeeded) return false;
-    try {
-      final ok = await _channel.invokeMethod<bool>('setResumeMusic', on);
-      return ok ?? false;
-    } catch (_) {
-      // An older platform side, or a system that has no Music app to drive.
-      return false;
-    }
-  }
-
   /// Gives the profile back and keeps the session.
   ///
   /// Best effort, like [deactivate]: output carries on either way, and the

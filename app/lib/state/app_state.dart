@@ -606,7 +606,6 @@ class AppState extends ChangeNotifier {
   static const _prefsMic = 'mumbleway.micMode';
   static const _prefsPocketMode = 'mumbleway.pocketMode';
   static const _prefsPocketTutorial = 'mumbleway.pocketTutorialSeen';
-  static const _prefsResumeMusic = 'mumbleway.resumeMusic';
   static const _prefsAutoStop = 'mumbleway.autoStopCapture';
   static const _prefsAutoStopSecs = 'mumbleway.autoStopSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
@@ -800,20 +799,6 @@ class AppState extends ChangeNotifier {
 
   /// Whether the rider has ever armed it, so the explanation is shown once.
   bool pocketTutorialSeen = false;
-
-  /// Whether to press play on the Music app after the helmet gives A2DP back.
-  ///
-  /// **Off by default, and it has to be**: switching it on asks for the media
-  /// library, which is a prompt no rider should meet without having asked for
-  /// something first. It also only works for Apple Music, because the API that
-  /// can do this — `MPMusicPlayerController.systemMusicPlayer` — drives that
-  /// one app and nothing else.
-  ///
-  /// It exists because taking the hands-free profile does not merely narrow a
-  /// rider's music, it stops it, and nothing brings it back: see
-  /// `docs/CAPTURE_ON_DEMAND.md` for why no amount of care on this side can
-  /// resume an app we never interrupted.
-  bool resumeMusic = false;
 
   /// Whether capture releases itself after a stretch of silence.
   ///
@@ -1092,24 +1077,6 @@ class AppState extends ChangeNotifier {
         _micSilenced = silenced;
         notifyListeners();
       };
-      // **Pushed at startup, or a stored "on" is a control that lies.** The
-      // platform side starts every launch with this off, so a rider who
-      // switched it on last week would find it reading on and doing nothing.
-      // Only when already granted: this must never be the thing that raises a
-      // media-library prompt at a connect nobody asked a question during.
-      if (resumeMusic) {
-        unawaited(
-          AudioSessionBridge.instance.setResumeMusic(true).then((granted) {
-            if (granted) return;
-            // Authorisation was taken away in Settings since. Follow it rather
-            // than keep claiming the feature.
-            resumeMusic = false;
-            unawaited(_persist());
-            notifyListeners();
-          }),
-        );
-      }
-
       // Into the engine's log, where the panel already draws every other
       // line and a shared recording already carries them.
       AudioSessionBridge.instance.onSessionEvent = (line) {
@@ -1252,7 +1219,6 @@ class AppState extends ChangeNotifier {
     }
     pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
     pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
-    resumeMusic = prefs.getBool(_prefsResumeMusic) ?? false;
     autoStopCapture = prefs.getBool(_prefsAutoStop) ?? false;
     autoStopSeconds = (prefs.getInt(_prefsAutoStopSecs) ?? 20).clamp(5, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
@@ -1417,7 +1383,6 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_prefsMic, micMode.index);
     await prefs.setBool(_prefsPocketMode, pocketMode);
     await prefs.setBool(_prefsPocketTutorial, pocketTutorialSeen);
-    await prefs.setBool(_prefsResumeMusic, resumeMusic);
     await prefs.setBool(_prefsAutoStop, autoStopCapture);
     await prefs.setInt(_prefsAutoStopSecs, autoStopSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
@@ -4976,19 +4941,6 @@ class AppState extends ChangeNotifier {
     try {
       await setMicModeHint(mode: _micModeHint);
     } catch (_) {}
-    notifyListeners();
-  }
-
-  /// Turns the Music-app resume on or off.
-  ///
-  /// **Refused rather than accepted-and-ignored.** Switching it on asks for
-  /// the media library, and a rider who declines would otherwise be left with
-  /// a switch reading "on" and nothing behind it — the exact fault this
-  /// repository already shipped once on the tap gesture and wrote down for it.
-  Future<void> updateResumeMusic(bool on) async {
-    final granted = await AudioSessionBridge.instance.setResumeMusic(on);
-    resumeMusic = on && granted;
-    await _persist();
     notifyListeners();
   }
 

@@ -1,5 +1,5 @@
-Still 1.2.0. The choppy music with the oscillating volume was my doing.
+Still 1.2.0. The tick was coming back through the helmet and counting itself.
 
-The previous build asked the engine to rebuild its audio whenever the microphone went quiet — including the moment just after a rebuild, before the new stream has delivered anything. So it rebuilt, and rebuilt. Each one re-engages ducking, which fades over a few hundred milliseconds: that oscillation was the loop, heard.
+It crosses to the helmet, out of its speaker, into its own microphone and back — two or three hundred milliseconds, where the detector stopped listening for 120. No delay fixes that: taps arrive 200 to 330 ms apart, so any wait long enough to ignore the tick swallows the next tap. No tick through a headset now; three dots above the slider instead.
 
-Also: disarming pocket mode now really does hand the microphone back to the helmet.
+Speaking no longer counts as tapping.

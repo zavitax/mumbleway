@@ -18,6 +18,22 @@ DOCS = Path(__file__).resolve().parent.parent / "docs"
 LISTING = DOCS / "STORE_LISTING.md"
 DESCRIPTION = DOCS / "STORE_DESCRIPTION.md"
 
+#: Where the release notes live, as files rather than as blocks in a document.
+WHATSNEW = Path(__file__).resolve().parent.parent / "distribution" / "whatsnew"
+
+#: What a release note may be, in characters.
+#:
+#: **Google Play's 500 is the one that binds**, and it was not being checked at
+#: all: TestFlight allows 4000 for the same text, so notes written against that
+#: fit everywhere except the store they are also sent to. This file reported
+#: "every field is inside its limit" over a Russian note of 518 characters,
+#: because it only ever read the two listing documents.
+#:
+#: The Russian half is why it matters. English at 479 characters translated to
+#: 518 — the same meaning, 8% longer, which is the general case for these two
+#: languages and is already recorded against every other field here.
+NOTE_LIMIT = 500
+
 # The per-field variants live in one document and the two pieces of prose in
 # another, because the description is the thing people copy and it should not
 # have to be found among the field limits.
@@ -107,6 +123,23 @@ def main() -> int:
             failures += 1
         label = fragment.replace("## ", "")
         print(f"{label:<42} {n:>6} {limit:>6}  {status}   ({stores})")
+
+    # The release notes, which go out with every publish and are the only
+    # listing text that changes per build.
+    notes = sorted(WHATSNEW.glob("whatsnew-*")) if WHATSNEW.is_dir() else []
+    if not notes:
+        print(f"\nno release notes found in {WHATSNEW}")
+        failures += 1
+    for note in notes:
+        n = len(note.read_text(encoding="utf-8").strip())
+        ok = n <= NOTE_LIMIT
+        if not ok:
+            failures += 1
+        status = "ok" if ok else f"OVER by {n - NOTE_LIMIT}"
+        print(
+            f"{'notes: ' + note.name:<42} {n:>6} {NOTE_LIMIT:>6}  "
+            f"{status}   (Google Play; TestFlight allows 4000)"
+        )
 
     # Apple counts keywords including the separators; a trailing comma or a
     # stray space is wasted budget rather than an error, so it is only noted.

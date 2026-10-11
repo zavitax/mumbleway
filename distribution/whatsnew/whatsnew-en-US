@@ -1,5 +1,5 @@
-Still 1.2.0. The tap is heard now, not felt.
+Still 1.2.0. Pocket mode, and the tap detector rebuilt around a measurement.
 
-The accelerometer was always the fallback, chosen because iOS exposes one input at a time, and at the 100 Hz it delivers a tap is four samples. A microphone gives forty. On the recording you made with audible taps the new detector finds seven gestures of seven with no false arms; the old one managed five.
+Settings keeps one switch. A green slider at the bottom arms it: the screen locks and the microphone closes. Three taps on the phone within three seconds open it, three more close it. The red slider unlocks.
 
-While capturing it listens to the helmet, so you can tap the helmet to stop talking. While listening it uses the phone's own.
+Frequency turned out not to tell a tap from music, whatever the band — attack does. Real music went from 52 false triggers an hour to none, and your phone-tap recording now scores ten of ten.

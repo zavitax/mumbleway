@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'dart:async';
+
 import '../l10n/app_localizations.dart';
+import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'watch.dart';
@@ -75,6 +78,8 @@ class PocketPanel extends StatelessWidget {
                 onConfirmed: () => _confirm(context, active: active),
               ),
               if (active) ...[
+                const SizedBox(height: 10),
+                const _TapPips(),
                 const SizedBox(height: 8),
                 // **The anti-panic line.** Every other control on the screen
                 // has just stopped working, which from the outside is exactly
@@ -203,6 +208,88 @@ class _StateLine extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
         ),
+      ],
+    );
+  }
+}
+
+/// One pip per tap of the gesture, filling as they are counted.
+///
+/// **This is what the tick used to do, moved to where it can work.** The
+/// acknowledging tick is a sound played into the rider's ears, and on a helmet
+/// it comes back through the helmet's own microphone a round trip later and
+/// registers as the next tap — a rider reported exactly that. There is no tail
+/// that fixes it: taps arrive 200 to 330 ms apart and the round trip is of the
+/// same order, so any delay long enough to ignore the tick is long enough to
+/// swallow a tap.
+///
+/// So the per-tap feedback is drawn instead of sounded. A rider with the phone
+/// in a pocket cannot see it, which is the honest limitation — but it is
+/// exactly what is wanted while testing the gesture, and the gesture's
+/// completion is still announced by the capture cue, which is one sound rather
+/// than three and lands after the detector has stopped caring.
+class _TapPips extends StatefulWidget {
+  const _TapPips();
+
+  @override
+  State<_TapPips> createState() => _TapPipsState();
+}
+
+class _TapPipsState extends State<_TapPips> {
+  /// Ten a second: a tap is counted in about a millisecond and the rider is
+  /// performing a rhythm, so anything slower reads as the pips lagging the
+  /// hand. Only runs while pocket mode is armed, which is the only time this
+  /// widget is built at all.
+  static const _period = Duration(milliseconds: 100);
+
+  Timer? _tick;
+  int _run = 0;
+  int _taps = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(_period, (_) => _poll());
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  void _poll() {
+    try {
+      final s = acousticDiagnostics();
+      final run = s.run;
+      final taps = s.banked.toInt();
+      if (run == _run && taps == _taps) return;
+      setState(() {
+        _run = run;
+        _taps = taps;
+      });
+    } catch (_) {
+      // No engine; nothing to draw and nothing to report.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < 3; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: i < _run ? 16 : 10,
+            height: i < _run ? 16 : 10,
+            margin: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: i < _run ? StatusColors.talking : scheme.outlineVariant,
+            ),
+          ),
       ],
     );
   }

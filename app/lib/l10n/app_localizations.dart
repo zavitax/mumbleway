@@ -4138,7 +4138,7 @@ abstract class L {
   /// No description provided for @pocketTutorialTapsBody.
   ///
   /// In en, this message translates to:
-  /// **'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. You will hear a tick for each tap that was counted, so you know where you are without looking.'**
+  /// **'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. Three dots above the slider fill as each tap is counted, and on the phone\'s own speaker you will hear a tick for each one as well.'**
   String get pocketTutorialTapsBody;
 
   /// No description provided for @pocketTutorialLockTitle.
@@ -4162,7 +4162,7 @@ abstract class L {
   /// No description provided for @pocketTutorialSoundBody.
   ///
   /// In en, this message translates to:
-  /// **'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. If you hear ticks but no tones, a tap was counted but the three did not arrive in time — try again, a little harder.'**
+  /// **'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. There is no per-tap tick through a headset, because a helmet hears it through its own microphone and counts it as the next tap — so on a headset, watch the dots or just listen for the two tones.'**
   String get pocketTutorialSoundBody;
 
   /// No description provided for @pocketTutorialNext.

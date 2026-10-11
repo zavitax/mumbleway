@@ -856,6 +856,22 @@ pub struct AudioShared {
     /// stream that has stopped rather than a quiet room. See the input
     /// callback for what it recovers from.
     dead_input_frames: AtomicU64,
+    /// Whether the chain heard speech in the block it last finished.
+    ///
+    /// **Read by the tap detector, which is why it is an atomic and not the
+    /// chain status behind its mutex.** A rider talking into a boom microphone
+    /// two centimetres from their mouth produces plosives with onsets as sharp
+    /// as a tap on a phone's body — /p/, /t/ and /k/ are, acoustically, small
+    /// impacts — and a rider reported exactly that: speaking on the helmet
+    /// registered as tapping it.
+    ///
+    /// One block late by construction, since the worker runs behind the
+    /// callback, and that is enough: the gesture needs three taps inside three
+    /// seconds, so the first plosive of an utterance may arm a candidate but
+    /// everything after it is suppressed and no gesture can complete. Tapping
+    /// while talking is not a thing a rider does — they stop talking and then
+    /// tap — so nothing real is lost.
+    speech_now: AtomicBool,
     /// Whether the input stream now open has ever delivered a non-zero sample.
     ///
     /// The guard that keeps [`Self::watch_for_dead_input`] from rebuilding in
@@ -1433,6 +1449,7 @@ impl AudioShared {
             input_rate: AtomicU32::new(0),
             dead_input_frames: AtomicU64::new(0),
             input_ever_delivered: AtomicBool::new(false),
+            speech_now: AtomicBool::new(false),
             chain: Mutex::new(ChainStatus::default()),
             stage_timings: Mutex::new(StageTimings::default()),
             reset_stage_timings: AtomicBool::new(false),
@@ -1797,6 +1814,11 @@ impl AudioShared {
             self.input_clipped
                 .fetch_add(clipped as u64, Ordering::Relaxed);
         }
+    }
+
+    /// Whether the chain heard speech in the block it last finished.
+    pub fn speech_now(&self) -> bool {
+        self.speech_now.load(Ordering::Relaxed)
     }
 
     /// Rebuilds the streams if the input has stopped delivering anything.
@@ -3282,6 +3304,17 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 // the counters once a second.
                 if cap_shared.tap_detection_enabled() {
                     let mut banked = false;
+                    // **Not while the rider is talking.** A boom microphone
+                    // hears a plosive as a small impact, so speech on a helmet
+                    // arms the detector. See `AudioShared::speech_now`.
+                    if cap_shared.speech_now() {
+                        cap_shared.tap.lock().hear_speech();
+                    }
+                    // Route 3 is Bluetooth hands-free; see `record::Recorded`.
+                    // Our own sound comes back through the helmet's microphone
+                    // a round trip later, which changes both of the decisions
+                    // below.
+                    let bluetooth = cap_shared.route() == 3;
                     // **What this app is playing, so the detector can stop
                     // listening while it plays it.** The detector sits before
                     // the canceller — in the listening state there is no
@@ -3291,11 +3324,24 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                     cap_shared
                         .tap
                         .lock()
-                        .hear_own_output(cap_shared.output_level_db());
+                        .hear_own_output(cap_shared.output_level_db(), bluetooth);
                     let gesture = cap_shared.tap.lock().push(&resampled, &mut banked);
-                    if banked {
-                        // One tick per tap, which is the only signal that can
-                        // say *which* tap of three went unheard.
+                    if banked && !bluetooth {
+                        // **One tick per tap, and never into a helmet.**
+                        //
+                        // The tick is the only signal that can say *which* tap
+                        // of three went unheard, so it is kept where it works:
+                        // the phone's own speaker and microphone, where the
+                        // round trip is a handful of milliseconds and the
+                        // self-noise gate covers it.
+                        //
+                        // Over Bluetooth it cannot work, and not for want of
+                        // tuning. Taps arrive 200 to 330 ms apart and the round
+                        // trip is of the same order, so any tail long enough to
+                        // ignore the tick is long enough to swallow the next
+                        // tap. A rider reported the tick registering as a tap,
+                        // and that is the arithmetic behind it. The pips on the
+                        // pocket panel carry the per-tap feedback instead.
                         cap_shared.play_cue(AudioCue::TapTick);
                     }
                     if gesture.is_some() {
@@ -4252,6 +4298,10 @@ where
             let aec_align = processor.aec_alignment();
             let restore_cost = processor.restore_cost_ms();
             was_speaking = analysis.speaking;
+            // For the tap detector, which cannot wait on the mutex below.
+            shared
+                .speech_now
+                .store(analysis.speaking, Ordering::Relaxed);
             shared.publish_chain_status(ChainStatus {
                 warming_up: analysis.warming_up,
                 vad_says_speech: analysis.vad_says_speech,

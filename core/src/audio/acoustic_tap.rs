@@ -121,11 +121,34 @@ const BAND_HIGH_HZ: f32 = 4_000.0;
 /// coming out of the speaker as well as our own cues.
 const SELF_NOISE_GATE_DBFS: f32 = -60.0;
 
+/// The same, on a Bluetooth route, where our own sound comes back late.
+///
+/// **A round trip, not a cue length.** A cue is mixed into the output, crosses
+/// the link to the helmet, comes out of its speaker, is picked up by its own
+/// microphone and crosses back: two hops of a hundred-odd milliseconds, plus
+/// whatever the helmet rings for. The 120 ms that covers a phone's own speaker
+/// has expired long before any of it arrives, so the detector was listening
+/// again exactly in time to hear itself — which a rider reported as the
+/// acknowledging tick registering as a tap.
+///
+/// It is also why no tick is played into a helmet at all; see the engine's
+/// input callback. A tail this long is longer than the gap between two taps,
+/// so a per-tap tick and tap detection cannot both be had on one link.
+const SELF_NOISE_TAIL_BLUETOOTH_MS: u32 = 600;
+
 /// How long after this app's own sound the detector stays deaf, in frames.
 ///
 /// A cue is 18 ms to one and a half seconds; this covers the ringing after
 /// the longest of them and the room's own tail.
 const SELF_NOISE_TAIL_MS: u32 = 120;
+
+/// How long after speech the detector stays deaf, in frames.
+///
+/// Short, because speech is reported per block and the flag is already one
+/// block behind the callback: this only has to bridge the gaps *within* an
+/// utterance, not outlast it. A rider who stops talking to tap is heard a
+/// tenth of a second later.
+const SPEECH_TAIL_MS: u32 = 100;
 
 /// The lowest level the floor may believe in, in dBFS.
 ///
@@ -305,10 +328,30 @@ impl AcousticTapDetector {
     /// Tells the detector how loud this app's own output is, so it can stop
     /// listening while the phone is making a noise. See
     /// [`SELF_NOISE_GATE_DBFS`].
-    pub fn hear_own_output(&mut self, level_dbfs: f32) {
+    pub fn hear_own_output(&mut self, level_dbfs: f32, bluetooth: bool) {
         if level_dbfs > SELF_NOISE_GATE_DBFS {
-            self.deaf_frames = SELF_NOISE_TAIL_MS;
+            self.deaf_frames = self.deaf_frames.max(if bluetooth {
+                SELF_NOISE_TAIL_BLUETOOTH_MS
+            } else {
+                SELF_NOISE_TAIL_MS
+            });
         }
+    }
+
+    /// Tells the detector the chain is hearing speech, so it should not look.
+    ///
+    /// **A plosive is a small impact.** /p/, /t/ and /k/ at a boom microphone
+    /// two centimetres from a mouth have onsets as sharp as a fingertip on a
+    /// phone's case, which is what the attack test measures — so a rider
+    /// talking on a helmet was tapping it, as far as this could tell.
+    ///
+    /// Suppressed rather than filtered, because there is nothing in the sound
+    /// to filter on: the two really are the same kind of event, and what tells
+    /// them apart is that one happens while somebody is talking. Tapping
+    /// mid-word is not a thing a rider does — they stop, then tap — so the
+    /// gesture loses nothing it was going to get.
+    pub fn hear_speech(&mut self) {
+        self.deaf_frames = self.deaf_frames.max(SPEECH_TAIL_MS);
     }
 
     pub fn stats(&self) -> AcousticStats {
@@ -640,6 +683,87 @@ mod tests {
         );
     }
 
+    /// **Speaking on a helmet was tapping it.**
+    ///
+    /// A plosive at a boom microphone is a small impact and the attack test
+    /// cannot tell it from a fingertip, because acoustically it is the same
+    /// kind of event. What tells them apart is that one happens while somebody
+    /// is talking, so the chain's own speech decision is what suppresses it.
+    #[test]
+    fn taps_are_not_looked_for_while_the_rider_is_talking() {
+        let mut d = AcousticTapDetector::new();
+        let mut banked = false;
+        let mut quiet_audio = Vec::new();
+        quiet(&mut quiet_audio, 400);
+        d.push(&quiet_audio, &mut banked);
+
+        // Three plosives on a beat, each announced as speech the way the
+        // worker announces it.
+        for _ in 0..3 {
+            d.hear_speech();
+            let mut audio = Vec::new();
+            tap(&mut audio, 0.4);
+            quiet(&mut audio, 160);
+            d.push(&audio, &mut banked);
+        }
+        assert_eq!(
+            d.stats().gestures,
+            0,
+            "speech completed a gesture: {:?}",
+            d.stats()
+        );
+    }
+
+    /// **A helmet hears this app's own cue a round trip later.**
+    ///
+    /// The 120 ms tail covers a phone's own speaker. Over Bluetooth the sound
+    /// crosses the link, comes out of the helmet, is picked up by the helmet's
+    /// microphone and crosses back, so it lands after the detector has started
+    /// listening again — which a rider reported as the acknowledging tick
+    /// registering as a tap.
+    #[test]
+    fn a_helmet_does_not_hear_this_app_a_round_trip_later() {
+        let mut d = AcousticTapDetector::new();
+        let mut banked = false;
+        let mut quiet_audio = Vec::new();
+        quiet(&mut quiet_audio, 400);
+        d.push(&quiet_audio, &mut banked);
+
+        for _ in 0..3 {
+            // The cue is mixed now, and arrives at the microphone 300 ms
+            // later, which the phone-sized tail would have let through.
+            d.hear_own_output(-20.0, true);
+            let mut audio = Vec::new();
+            quiet(&mut audio, 300);
+            tap(&mut audio, 0.5);
+            quiet(&mut audio, 100);
+            d.push(&audio, &mut banked);
+        }
+        assert_eq!(
+            d.stats().gestures,
+            0,
+            "the app heard its own cue through the helmet: {:?}",
+            d.stats()
+        );
+
+        // And the phone-sized tail really is too short for that, so the test
+        // above is testing the Bluetooth tail and not the margin.
+        let mut p = AcousticTapDetector::new();
+        p.push(&quiet_audio, &mut banked);
+        for _ in 0..3 {
+            p.hear_own_output(-20.0, false);
+            let mut audio = Vec::new();
+            quiet(&mut audio, 300);
+            tap(&mut audio, 0.5);
+            quiet(&mut audio, 100);
+            p.push(&audio, &mut banked);
+        }
+        assert!(
+            p.stats().candidates > 0,
+            "nothing got through even on the short tail, so this proves nothing"
+        );
+    }
+
     /// **The feedback loop this nearly shipped with.** The tick played to
     /// acknowledge a tap is a 2 kHz click, which is exactly the band a tap on
     /// the phone's body occupies, and the detector runs on the raw microphone
@@ -656,7 +780,7 @@ mod tests {
         for _ in 0..3 {
             // The engine says it is playing, loudly, as it would while a cue
             // sounds.
-            d.hear_own_output(-20.0);
+            d.hear_own_output(-20.0, false);
             let mut audio = Vec::new();
             tap(&mut audio, 0.4);
             quiet(&mut audio, 160);

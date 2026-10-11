@@ -92,6 +92,21 @@ alongside the **phone's own** microphone is allowed, and that is exactly the
 listening state — which is why music stays whole while pocket mode waits for a
 tap, and it is the one configuration that gets both.
 
+**Measured afterwards, and the premise was wrong.** The research above was
+commissioned because a rider's music was not coming back. On the build that
+first released the profile cleanly it *did* come back, by itself, with no help
+from this app: Spotify resumes on its own once A2DP returns. So the pause is
+real and the non-resumption was not — it was a symptom of the profile never
+being released properly, which is a fault that has since been fixed.
+
+`MPMusicPlayerController.systemMusicPlayer` was built to press play for the
+rider, and then reverted: it cost a media-library prompt, an `Info.plist`
+usage string and two privacy pages, worked for Apple Music alone, and solved
+nothing that was still broken. Worth recording rather than quietly dropping,
+because the next person to watch music stop will have the same idea — the
+answer is that the music comes back on its own, provided the headset is
+actually let off the hands-free profile.
+
 So the only lever is **time spent holding HFP**, which makes pocket mode better
 motivated than it was: the argument was bandwidth, and the real argument is
 that every second of HFP risks silencing the rider's music until they reach for

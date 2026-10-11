@@ -95,7 +95,7 @@ fn it_finds_the_taps_a_rider_can_hear() {
             // tap in which the next one cannot be heard, which is exactly the
             // window a rider tapping quickly uses.
             if banked {
-                d.hear_own_output(-20.0);
+                d.hear_own_output(-20.0, false);
             }
         }
 

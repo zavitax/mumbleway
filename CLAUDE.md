@@ -681,6 +681,24 @@ one, which is the same reason the app records its own capture input.
   input to lose, so the fault has no surface — is how hi-fi listening works in
   `docs/CAPTURE_ON_DEMAND.md`. The rule is about a session that *wants* a
   microphone and silently loses it, not about a session that has asked for none.
+
+  **And the cost of the rule is worse than "narrowband", which is how it was
+  written down.** `AudioSession.swift` says the price of HFP-only capture is
+  that "music plays at telephone bandwidth for the duration of a call". On a
+  real helmet intercom, 2026-10-11, another app's music **stops** instead:
+  taking the hands-free profile pulls the headset off A2DP, the music app sees
+  its output route disappear, and it pauses itself exactly as it would if the
+  headphones had been unplugged. Nothing in this app interrupts it — every
+  `setCategory` here carries `.mixWithOthers` and every deactivation carries
+  `.notifyOthersOnDeactivation` — so there is nothing to fix on this side, and
+  the three alternatives are all worse: offering A2DP is the silent-input bug
+  above, and capturing from the phone instead of the helmet gives up the
+  microphone the feature exists for.
+
+  What follows for design is that **taking the profile is expensive to the
+  rider, not merely lossy**, so anything that takes it more often than the
+  rider asked for is a fault and not a nuisance. That is the argument for
+  pocket mode holding HFP only while actually transmitting.
 - **A file iOS has no type for cannot be shared.** iOS types a shared item by
   its extension. `.s16` is not a type it knows, so it invents a *dynamic*
   identifier (`dyn.…`), and share targets that accept only declared types

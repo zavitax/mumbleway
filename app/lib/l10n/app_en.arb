@@ -1307,9 +1307,8 @@
   "pocketMicHelmet": "Helmet microphone",
   "pocketMicWired": "Wired headset",
   "pocketMicUsb": "USB microphone",
-  "pocketMicNone": "No microphone open",
-  "@pocketMicNone": {
-    "description": "Which microphone is recording right now. Shown beside the capture state so a rider can tell the helmet is really being used rather than the phone in their pocket"
+  "@pocketMicPhone": {
+    "description": "Which microphone is open right now, shown beside the capture state so a rider can tell the helmet is really in use rather than the phone in their pocket. With capture off the phone's own is open and listening for taps, which is not nothing and must not say so"
   },
   "pocketTutorialTitle": "Riding with the phone away",
   "pocketTutorialTapsTitle": "Three taps, within three seconds",

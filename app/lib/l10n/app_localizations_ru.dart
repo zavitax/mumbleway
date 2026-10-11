@@ -2260,9 +2260,6 @@ class LRu extends L {
   String get pocketMicUsb => 'USB-микрофон';
 
   @override
-  String get pocketMicNone => 'Микрофон не открыт';
-
-  @override
   String get pocketTutorialTitle => 'Когда телефон убран';
 
   @override

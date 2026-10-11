@@ -2269,9 +2269,6 @@ class LEn extends L {
   String get pocketMicUsb => 'USB microphone';
 
   @override
-  String get pocketMicNone => 'No microphone open';
-
-  @override
   String get pocketTutorialTitle => 'Riding with the phone away';
 
   @override

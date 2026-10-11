@@ -135,8 +135,21 @@ class _StateLine extends StatelessWidget {
   /// already on a rider's phone, so these cases are not free to be renumbered.
   static bool _external(int route) => route == 2 || route == 3 || route == 4;
 
+  /// Which microphone is open, which is not the same as which one is being
+  /// transmitted.
+  ///
+  /// **This used to answer "none" whenever capture was off, and that was
+  /// wrong.** Pocket mode spends its time with capture off and a microphone
+  /// very much open: the phone's own, which is the only one a tap on the phone
+  /// can reach and the entire basis of the gesture. So the line sat on a false
+  /// value for the whole of the state it mattered in, which a rider reported
+  /// as the microphone never seeming to update.
+  ///
+  /// Capture off is the phone's own by construction — `activateListening`
+  /// asks for the built-in input explicitly — so the route is only consulted
+  /// for the capturing case, where it names the port that was taken.
   static String _mic(L l, int route, bool capturing) {
-    if (!capturing) return l.pocketMicNone;
+    if (!capturing) return l.pocketMicPhone;
     return switch (route) {
       2 => l.pocketMicWired,
       3 => l.pocketMicHelmet,

@@ -4099,7 +4099,7 @@ abstract class L {
   /// **'Microphone closed — tap the phone three times to talk'**
   String get pocketClosedTapPhone;
 
-  /// No description provided for @pocketMicPhone.
+  /// Which microphone is open right now, shown beside the capture state so a rider can tell the helmet is really in use rather than the phone in their pocket. With capture off the phone's own is open and listening for taps, which is not nothing and must not say so
   ///
   /// In en, this message translates to:
   /// **'Phone microphone'**
@@ -4122,12 +4122,6 @@ abstract class L {
   /// In en, this message translates to:
   /// **'USB microphone'**
   String get pocketMicUsb;
-
-  /// Which microphone is recording right now. Shown beside the capture state so a rider can tell the helmet is really being used rather than the phone in their pocket
-  ///
-  /// In en, this message translates to:
-  /// **'No microphone open'**
-  String get pocketMicNone;
 
   /// No description provided for @pocketTutorialTitle.
   ///

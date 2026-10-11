@@ -606,9 +606,11 @@ fn the_decay_ratio_on_its_own() {
     }
     let load = |stem: &str| {
         let p = dir.join(format!("{stem}.s16"));
-        p.exists()
-            .then(|| decays(&read_s16(&p)))
-            .unwrap_or_default()
+        if p.exists() {
+            decays(&read_s16(&p))
+        } else {
+            Vec::new()
+        }
     };
     let helmet = load("20261011-1638-000");
     let phone = load("20261011-1109-000");

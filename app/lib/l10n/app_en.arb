@@ -648,6 +648,14 @@
   "@diagTapLastImpulse": {
     "description": "How fast the last candidate sound arrived, in dB per millisecond, and how far above the average it reached. A tap on the phone's body measures about 23 dB/ms; music about 8. This is the line that says why a tap was not registered"
   },
+  "diagTapDecay": "Last sharp sound: tail drop",
+  "@diagTapDecay": {
+    "description": "How far the last candidate's tail had fallen 15 to 30 ms after its peak, and how many impulses were rejected for not falling away. A tap has nothing behind it and reads well under -10 dB; a spoken consonant has a vowel behind it and reads above it. This is the line that says whether speech is being taken for tapping"
+  },
+  "diagTapSpeechBlocks": "Blocks skipped for speech",
+  "@diagTapSpeechBlocks": {
+    "description": "How many 10 ms blocks the detector skipped because the chain reported speech. Zero while the rider is talking means that gate never engaged at all, which is a different fault from it being too weak"
+  },
   "diagTapCandidates": "Sounds shaped like a tap",
   "@diagTapCandidates": {
     "description": "Impulses that arrived sharply and died away in time"

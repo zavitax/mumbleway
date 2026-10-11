@@ -502,6 +502,8 @@
   "diagTapFrames": "Просмотрено миллисекунд",
   "diagTapLevel": "Уровень / скользящее среднее",
   "diagTapLastImpulse": "Последний резкий звук: нарастание · превышение",
+  "diagTapDecay": "Последний резкий звук: спад хвоста",
+  "diagTapSpeechBlocks": "Блоков пропущено из-за речи",
   "diagTapCandidates": "Звуки, похожие на постукивание",
   "diagTapDiscardedLong": "Слишком долгие для постукивания",
   "diagTapBanked": "Засчитано постукиваний",

@@ -150,6 +150,63 @@ const SELF_NOISE_TAIL_MS: u32 = 120;
 /// tenth of a second later.
 const SPEECH_TAIL_MS: u32 = 100;
 
+/// How far an impulse must have fallen 15 to 30 ms after its peak, in dB.
+///
+/// **What separates a plosive from a tap, measured.** /p/, /t/ and /k/ at a
+/// boom microphone two centimetres from a mouth are small impacts: the attack
+/// test cannot tell them from a fingertip and should not be expected to,
+/// because acoustically there is no difference. What differs is what follows —
+/// a tap is followed by nothing, a consonant by its vowel.
+///
+/// Measured 2026-10-12 as the tail-to-peak energy ratio of every transient in
+/// the corpus, which is the one feature of a proposed classifier that scored
+/// well on helmet taps:
+///
+/// | | p5 / median / p95 |
+/// |---|---|
+/// | taps on the helmet | 0.001 / **0.002** / **0.006** |
+/// | taps on the phone body | 0.000 / 0.001 / 0.149 |
+/// | voice with motor noise | **0.055** / 0.098 / 0.195 |
+/// | voice over motorcycle noise | 0.000 / 0.105 / 0.454 |
+///
+/// Helmet taps are an order of magnitude tighter than speech, which is the
+/// case this exists for.
+///
+/// **Those are energy ratios and this constant is a peak-level drop, which is
+/// not the same unit.** A 10 dB drop in level is about a tenth in amplitude
+/// and a hundredth in energy, so −10 dB here lands near 0.01 as a ratio —
+/// between the helmet taps at 0.002 and the voice median at 0.098, which is
+/// where it belongs. Worth saying because the two numbers look comparable and
+/// are not.
+///
+/// Swept in the detector rather than inferred from the table, because the
+/// band-pass and the windows differ from the harness the table came from:
+///
+/// | drop | phone taps | helmet | hand | corpus false arms |
+/// |---|---|---|---|---|
+/// | off | 10/10 | 5/7 | 5/7 | 152/h |
+/// | **−10 dB** | **10/10** | **4/7** | 2/7 | **60/h** |
+/// | −14 dB | 10/10 | 4/7 | 0/7 | 57/h |
+/// | −18 dB | 9/10 | 3/7 | 0/7 | 57/h |
+///
+/// −10 dB keeps every phone-body gesture and removes three fifths of the false
+/// arms. What it costs is the hand-held recording, which is a thud under
+/// 500 Hz rather than the gesture this ships — a phone tapped through a
+/// pocket, or a helmet. Below −10 the cost rises and nothing more is bought.
+///
+/// **The first attempt at this failed and the difference is instructive.** It
+/// required the level never to come back over the margin for 90 ms, and real
+/// taps ring: the ringing crosses the margin and recall on two of three tap
+/// recordings went to zero. A maximum over a window ignores the bumps that a
+/// never-exceeds test trips on.
+///
+/// `MW_TAP_DECAY_DROP_DB` overrides it; 0 disables the test.
+const DECAY_DROP_DB: f32 = -10.0;
+
+/// The window the drop is measured over, after the peak, in frames.
+const DECAY_FROM_MS: u64 = 15;
+const DECAY_TO_MS: u64 = 30;
+
 /// The lowest level the floor may believe in, in dBFS.
 ///
 /// One least-significant bit of sixteen-bit audio. See the note where it is
@@ -238,6 +295,13 @@ pub struct AcousticStats {
     pub candidates: u64,
     /// Impulses that arrived sharply but never fell back in time.
     pub discarded_long: u64,
+    /// Impulses whose tail did not fall away — a consonant with its vowel
+    /// behind it, rather than a tap. See `DECAY_DROP_DB`.
+    pub discarded_ringing: u64,
+    /// Blocks in which the chain reported speech, so the detector did not
+    /// look. **Zero while a rider is talking means the gate never engaged**,
+    /// which is a different fault from the gate being too weak.
+    pub speech_blocks: u64,
     pub banked: u64,
     pub gestures: u64,
     pub level_db: f32,
@@ -248,8 +312,18 @@ pub struct AcousticStats {
     /// [`MARGIN_DB`] against real recordings rather than against a generator.
     pub impulse_attack_db: f32,
     pub impulse_over_db: f32,
+    /// How far the last impulse's tail had fallen 15 to 30 ms after its peak.
+    pub impulse_decay_db: f32,
     pub peak_db: f32,
     pub run: u8,
+}
+
+/// An impulse that has peaked and is having its tail measured.
+struct Held {
+    candidate: Candidate,
+    peak_db: f32,
+    peak_at_ms: u64,
+    tail_db: f32,
 }
 
 /// Listens for N taps in whatever microphone it is given.
@@ -268,12 +342,20 @@ pub struct AcousticTapDetector {
     /// and the audio callback reads no environment.
     margin_db: f32,
     attack_db: f32,
+    decay_drop_db: f32,
     pattern: GesturePattern,
     previous_db: f32,
     /// When the frame that started a candidate arrived, and how loud it was.
     rising_at_ms: Option<u64>,
     peak_db: f32,
+    /// The absolute level at the peak, and when it was, for the tail measure.
+    peak_level_db: f32,
+    peak_at_ms: u64,
     latent_until_ms: u64,
+    /// An impulse waiting for its tail to be measured: the candidate, the peak
+    /// level it reached, when that peak was, and the loudest frame seen so far
+    /// in the tail window.
+    held: Option<Held>,
     frame_ms: u64,
     stats: AcousticStats,
 }
@@ -296,10 +378,14 @@ impl AcousticTapDetector {
             reference_db: f32::NEG_INFINITY,
             margin_db: Self::tuned("MW_TAP_MARGIN_DB", MARGIN_DB),
             attack_db: Self::tuned("MW_TAP_ATTACK_DB", ATTACK_DB),
+            decay_drop_db: Self::tuned("MW_TAP_DECAY_DROP_DB", DECAY_DROP_DB),
+            held: None,
             pattern: GesturePattern::new(),
             previous_db: f32::NEG_INFINITY,
             rising_at_ms: None,
             peak_db: f32::NEG_INFINITY,
+            peak_level_db: f32::NEG_INFINITY,
+            peak_at_ms: 0,
             latent_until_ms: 0,
             frame_ms: 0,
             stats: AcousticStats::default(),
@@ -351,6 +437,7 @@ impl AcousticTapDetector {
     /// mid-word is not a thing a rider does — they stop, then tap — so the
     /// gesture loses nothing it was going to get.
     pub fn hear_speech(&mut self) {
+        self.stats.speech_blocks += 1;
         self.deaf_frames = self.deaf_frames.max(SPEECH_TAIL_MS);
     }
 
@@ -408,6 +495,7 @@ impl AcousticTapDetector {
         // raise the bar for the tap that follows it.
         if self.deaf_frames > 0 {
             self.deaf_frames -= 1;
+            self.held = None;
             self.rising_at_ms = None;
             self.peak_db = f32::NEG_INFINITY;
             self.previous_db = (20.0 * (peak + 1e-7).log10()).max(QUANTISATION_DBFS);
@@ -446,6 +534,29 @@ impl AcousticTapDetector {
         self.stats.level_db = level_db;
         self.stats.floor_db = floor_db;
 
+        // A held impulse gathers the loudest frame in its tail window and is
+        // judged at the end of it. A maximum rather than a never-exceeds test:
+        // taps ring, and the first version of this tripped on the ringing and
+        // threw away every tap on two of three recordings.
+        if let Some(h) = self.held.as_mut() {
+            let since_peak = at_ms.saturating_sub(h.peak_at_ms);
+            if since_peak >= DECAY_FROM_MS {
+                h.tail_db = h.tail_db.max(level_db);
+            }
+            if since_peak >= DECAY_TO_MS {
+                let held = self.held.take().expect("just matched");
+                let drop = held.tail_db - held.peak_db;
+                self.stats.impulse_decay_db = drop;
+                if drop <= self.decay_drop_db {
+                    if let Some(g) = self.offer(held.candidate, banked) {
+                        return Some(g);
+                    }
+                } else {
+                    self.stats.discarded_ringing += 1;
+                }
+            }
+        }
+
         match self.rising_at_ms {
             None => {
                 // **Both tests, and the attack is the one doing the work.**
@@ -457,10 +568,16 @@ impl AcousticTapDetector {
                     self.stats.impulse_over_db = over;
                     self.rising_at_ms = Some(at_ms);
                     self.peak_db = over;
+                    self.peak_level_db = level_db;
+                    self.peak_at_ms = at_ms;
                 }
             }
             Some(since) => {
-                self.peak_db = self.peak_db.max(over);
+                if over > self.peak_db {
+                    self.peak_db = over;
+                    self.peak_level_db = level_db;
+                    self.peak_at_ms = at_ms;
+                }
                 if over >= self.margin_db {
                     if at_ms.saturating_sub(since) > MAX_DECAY_MS as u64 {
                         // Still loud long after a tap would have died away.
@@ -480,13 +597,22 @@ impl AcousticTapDetector {
                     }
                     self.latent_until_ms = at_ms + LATENT_MS as u64;
                     self.stats.candidates += 1;
-                    return self.offer(
-                        Candidate {
-                            at_ms: since,
-                            strength_db,
-                        },
-                        banked,
-                    );
+                    let candidate = Candidate {
+                        at_ms: since,
+                        strength_db,
+                    };
+                    if self.decay_drop_db >= 0.0 {
+                        return self.offer(candidate, banked);
+                    }
+                    // Held while its tail is measured. See `DECAY_DROP_DB`: a
+                    // vowel arriving behind this is what says it was a
+                    // consonant and not a tap.
+                    self.held = Some(Held {
+                        candidate,
+                        peak_db: self.peak_level_db,
+                        peak_at_ms: self.peak_at_ms,
+                        tail_db: f32::NEG_INFINITY,
+                    });
                 }
             }
         }
@@ -679,6 +805,59 @@ mod tests {
             d.stats().gestures,
             0,
             "music on a beat completed a gesture: {:?}",
+            d.stats()
+        );
+    }
+
+    /// **A consonant with its vowel behind it is not a tap.**
+    ///
+    /// The onset of /p/ is an impact and the attack test cannot tell it from a
+    /// fingertip, because there is nothing to tell: acoustically they are the
+    /// same event. What differs is the next thirty milliseconds — a tap has
+    /// nothing in them, a consonant has a vowel. Measured on the corpus at
+    /// 0.002 against 0.098 as an energy ratio; see `DECAY_DROP_DB`.
+    ///
+    /// **It needs a real noise floor to be a fair test**, which took one
+    /// failure to notice. Over near-silence the two tests cannot both be
+    /// reached: the margin is eighteen decibels over the floor, so a tail
+    /// quiet enough to fall under it is necessarily more than ten decibels
+    /// below any loud peak, and the decay gate never gets a say. A room at
+    /// −40 dBFS is where both are live, and it is also where a rider is.
+    #[test]
+    fn an_impulse_with_a_vowel_behind_it_is_not_a_tap() {
+        // A floor the margin is measurable against: −40 dBFS, so an impulse
+        // at −16 is 24 dB over it and a tail at −24 is under the 18 dB margin
+        // while being only 8 dB below the peak.
+        fn room(into: &mut Vec<f32>, ms: usize, level: f32) {
+            for m in 0..ms {
+                for i in 0..FRAME {
+                    let t = (m * FRAME + i) as f32;
+                    into.push(level * ((t * 0.37).sin() + (t * 1.1).sin()) * 0.5);
+                }
+            }
+        }
+
+        let mut audio = Vec::new();
+        room(&mut audio, 1_500, 0.01);
+        for _ in 0..3 {
+            room(&mut audio, 3, 0.158);
+            room(&mut audio, 57, 0.063);
+            room(&mut audio, 160, 0.01);
+        }
+        room(&mut audio, 400, 0.01);
+
+        let mut d = AcousticTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+        assert_eq!(
+            d.stats().gestures,
+            0,
+            "speech completed a gesture on its onsets: {:?}",
+            d.stats()
+        );
+        assert!(
+            d.stats().discarded_ringing > 0,
+            "rejected for some other reason, so this proves nothing: {:?}",
             d.stats()
         );
     }

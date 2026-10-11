@@ -1241,6 +1241,12 @@ class LEn extends L {
   String get diagTapLastImpulse => 'Last sharp sound: rise · height';
 
   @override
+  String get diagTapDecay => 'Last sharp sound: tail drop';
+
+  @override
+  String get diagTapSpeechBlocks => 'Blocks skipped for speech';
+
+  @override
   String get diagTapCandidates => 'Sounds shaped like a tap';
 
   @override

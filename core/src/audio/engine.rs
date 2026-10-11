@@ -2593,6 +2593,16 @@ impl AudioShared {
     /// the *previous* open's verdict is the subtler version of the same bug.
     #[must_use]
     pub fn set_capture_wanted(&self, wanted: bool) -> bool {
+        // **Cleared here or it is stale for ever.** `speech_now` is written by
+        // the worker, and the worker is not fed while listening — so a rider
+        // who was talking when capture stopped left the flag reading true with
+        // nothing able to clear it, the tap detector deaf on every block, and
+        // taps on the phone simply not registering. Reported as phone
+        // recognition becoming "very bad", which is what a detector that never
+        // listens looks like from outside.
+        if !wanted {
+            self.speech_now.store(false, Ordering::Relaxed);
+        }
         if self.capture_wanted.swap(wanted, Ordering::AcqRel) == wanted {
             return false;
         }
@@ -3307,7 +3317,12 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                     // **Not while the rider is talking.** A boom microphone
                     // hears a plosive as a small impact, so speech on a helmet
                     // arms the detector. See `AudioShared::speech_now`.
-                    if cap_shared.speech_now() {
+                    //
+                    // Only while capturing, which is both where the fault is
+                    // and the only state the flag means anything in: the
+                    // worker that writes it does not run while listening, so
+                    // consulting it there reads a value from the last call.
+                    if cap_shared.capture_wanted() && cap_shared.speech_now() {
                         cap_shared.tap.lock().hear_speech();
                     }
                     // Route 3 is Bluetooth hands-free; see `record::Recorded`.

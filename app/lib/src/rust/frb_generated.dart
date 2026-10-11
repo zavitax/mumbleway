@@ -4437,8 +4437,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiAcousticStats dco_decode_ui_acoustic_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 12)
-      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
     return UiAcousticStats(
       enabled: dco_decode_bool(arr[0]),
       frames: dco_decode_u_64(arr[1]),
@@ -4451,7 +4451,10 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       peakDb: dco_decode_f_32(arr[8]),
       impulseAttackDb: dco_decode_f_32(arr[9]),
       impulseOverDb: dco_decode_f_32(arr[10]),
-      run: dco_decode_u_8(arr[11]),
+      impulseDecayDb: dco_decode_f_32(arr[11]),
+      discardedRinging: dco_decode_u_64(arr[12]),
+      speechBlocks: dco_decode_u_64(arr[13]),
+      run: dco_decode_u_8(arr[14]),
     );
   }
 
@@ -5804,6 +5807,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_peakDb = sse_decode_f_32(deserializer);
     var var_impulseAttackDb = sse_decode_f_32(deserializer);
     var var_impulseOverDb = sse_decode_f_32(deserializer);
+    var var_impulseDecayDb = sse_decode_f_32(deserializer);
+    var var_discardedRinging = sse_decode_u_64(deserializer);
+    var var_speechBlocks = sse_decode_u_64(deserializer);
     var var_run = sse_decode_u_8(deserializer);
     return UiAcousticStats(
       enabled: var_enabled,
@@ -5817,6 +5823,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       peakDb: var_peakDb,
       impulseAttackDb: var_impulseAttackDb,
       impulseOverDb: var_impulseOverDb,
+      impulseDecayDb: var_impulseDecayDb,
+      discardedRinging: var_discardedRinging,
+      speechBlocks: var_speechBlocks,
       run: var_run,
     );
   }
@@ -7235,6 +7244,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_32(self.peakDb, serializer);
     sse_encode_f_32(self.impulseAttackDb, serializer);
     sse_encode_f_32(self.impulseOverDb, serializer);
+    sse_encode_f_32(self.impulseDecayDb, serializer);
+    sse_encode_u_64(self.discardedRinging, serializer);
+    sse_encode_u_64(self.speechBlocks, serializer);
     sse_encode_u_8(self.run, serializer);
   }
 

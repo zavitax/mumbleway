@@ -5020,6 +5020,9 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
         let mut var_peakDb = <f32>::sse_decode(deserializer);
         let mut var_impulseAttackDb = <f32>::sse_decode(deserializer);
         let mut var_impulseOverDb = <f32>::sse_decode(deserializer);
+        let mut var_impulseDecayDb = <f32>::sse_decode(deserializer);
+        let mut var_discardedRinging = <u64>::sse_decode(deserializer);
+        let mut var_speechBlocks = <u64>::sse_decode(deserializer);
         let mut var_run = <u8>::sse_decode(deserializer);
         return crate::api::mumbleway::UiAcousticStats {
             enabled: var_enabled,
@@ -5033,6 +5036,9 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
             peak_db: var_peakDb,
             impulse_attack_db: var_impulseAttackDb,
             impulse_over_db: var_impulseOverDb,
+            impulse_decay_db: var_impulseDecayDb,
+            discarded_ringing: var_discardedRinging,
+            speech_blocks: var_speechBlocks,
             run: var_run,
         };
     }
@@ -6442,6 +6448,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiAcousticStats {
             self.peak_db.into_into_dart().into_dart(),
             self.impulse_attack_db.into_into_dart().into_dart(),
             self.impulse_over_db.into_into_dart().into_dart(),
+            self.impulse_decay_db.into_into_dart().into_dart(),
+            self.discarded_ringing.into_into_dart().into_dart(),
+            self.speech_blocks.into_into_dart().into_dart(),
             self.run.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -7900,6 +7909,9 @@ impl SseEncode for crate::api::mumbleway::UiAcousticStats {
         <f32>::sse_encode(self.peak_db, serializer);
         <f32>::sse_encode(self.impulse_attack_db, serializer);
         <f32>::sse_encode(self.impulse_over_db, serializer);
+        <f32>::sse_encode(self.impulse_decay_db, serializer);
+        <u64>::sse_encode(self.discarded_ringing, serializer);
+        <u64>::sse_encode(self.speech_blocks, serializer);
         <u8>::sse_encode(self.run, serializer);
     }
 }

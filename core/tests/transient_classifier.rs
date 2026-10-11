@@ -637,3 +637,64 @@ fn the_decay_ratio_on_its_own() {
         );
     }
 }
+
+/// Does the decay ratio separate speech from taps?
+///
+/// **The question report 4 turns on.** A plosive at a boom microphone is an
+/// impact — the attack test cannot see a difference and should not be expected
+/// to, because there is none. What differs is what follows: a tap is followed
+/// by nothing, a consonant by its vowel.
+///
+/// The first attempt at that was "the level must not come back over the margin
+/// for 90 ms", and the corpus threw it out: real taps ring, the ringing crosses
+/// the margin, and recall on two of the three tap recordings went to zero. So
+/// the question becomes whether the *ratio* of tail energy to peak energy —
+/// the one feature of the proposed classifier that scored well, 21 of 21 on
+/// helmet taps — separates speech too, rather than only music.
+#[test]
+#[ignore = "needs MW_TAP_CORPUS pointing at recordings with audible taps"]
+fn whether_decay_separates_speech_from_taps() {
+    let dir = PathBuf::from(std::env::var("MW_TAP_CORPUS").expect("MW_TAP_CORPUS"));
+    fn decays(pcm: &[f32]) -> Vec<f32> {
+        let mut a = StreamingAnalyzer::new(48_000, 480);
+        let mut out = Vec::new();
+        for packet in pcm.chunks(480) {
+            if a.process_packet(packet) != TransientClass::None {
+                out.push(a.last_decay);
+            }
+        }
+        out
+    }
+    let spread = |v: &[f32]| {
+        if v.is_empty() {
+            return "none".to_string();
+        }
+        let mut v = v.to_vec();
+        v.sort_by(|x, y| x.partial_cmp(y).unwrap());
+        let at = |q: f64| v[((v.len() - 1) as f64 * q) as usize];
+        format!(
+            "n {:>4}  p5 {:.3}  med {:.3}  p95 {:.3}",
+            v.len(),
+            at(0.05),
+            at(0.50),
+            at(0.95)
+        )
+    };
+
+    println!("decay ratio: tail energy over peak energy, per transient\n");
+    for (stem, what) in [
+        ("20261011-1109-000", "TAPS on the phone body"),
+        ("20261011-1638-000", "TAPS on the helmet"),
+        ("20261009-1609-000", "TAPS in the hand"),
+        ("20260815-0622-000", "voice with motor noise"),
+        ("20260814-2149-000", "singing"),
+        ("20260815-2155-000", "voice, low room noise"),
+        ("20260815-2156-000", "voice over motorcycle noise"),
+        ("20260809-1201-000", "voice"),
+    ] {
+        let p = dir.join(format!("{stem}.s16"));
+        if p.exists() {
+            println!("  {:<30} {}", what, spread(&decays(&read_s16(&p))));
+        }
+    }
+}

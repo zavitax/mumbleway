@@ -2347,6 +2347,18 @@ abstract class L {
   /// **'Last sharp sound: rise · height'**
   String get diagTapLastImpulse;
 
+  /// How far the last candidate's tail had fallen 15 to 30 ms after its peak, and how many impulses were rejected for not falling away. A tap has nothing behind it and reads well under -10 dB; a spoken consonant has a vowel behind it and reads above it. This is the line that says whether speech is being taken for tapping
+  ///
+  /// In en, this message translates to:
+  /// **'Last sharp sound: tail drop'**
+  String get diagTapDecay;
+
+  /// How many 10 ms blocks the detector skipped because the chain reported speech. Zero while the rider is talking means that gate never engaged at all, which is a different fault from it being too weak
+  ///
+  /// In en, this message translates to:
+  /// **'Blocks skipped for speech'**
+  String get diagTapSpeechBlocks;
+
   /// Impulses that arrived sharply and died away in time
   ///
   /// In en, this message translates to:

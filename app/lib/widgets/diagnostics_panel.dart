@@ -768,6 +768,28 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 l.diagTapDiscardedLong,
                                 '${_tap!.discardedLong}',
                               ),
+                              // **The two lines report 4 turns on.** A rider
+                              // said speaking on the helmet fired the gesture.
+                              // A plosive is an impact and the attack test
+                              // cannot see a difference; what differs is the
+                              // tail. Under −10 dB is a tap, above it is a
+                              // consonant with a vowel behind it.
+                              //
+                              // And `speech_blocks` says whether the chain's
+                              // own speech gate ever engaged at all, which is
+                              // a different fault from it being too weak: zero
+                              // while talking means it never fired.
+                              _Row(
+                                l.diagTapDecay,
+                                _tap!.impulseDecayDb == 0
+                                    ? '—'
+                                    : '${_tap!.impulseDecayDb.toStringAsFixed(0)} dB'
+                                          ' · ${_tap!.discardedRinging} rejected',
+                              ),
+                              _Row(
+                                l.diagTapSpeechBlocks,
+                                '${_tap!.speechBlocks}',
+                              ),
                               _Row(
                                 l.diagTapBanked,
                                 '${_tap!.banked}'

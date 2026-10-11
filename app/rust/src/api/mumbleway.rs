@@ -3199,6 +3199,19 @@ pub struct UiAcousticStats {
     /// this panel distinguishes those from a microphone that never opened.
     pub impulse_attack_db: f32,
     pub impulse_over_db: f32,
+    /// How far that impulse's tail had fallen 15 to 30 ms after its peak.
+    ///
+    /// A tap has nothing behind it and reads well under −10 dB; a consonant
+    /// has a vowel and reads above it. The one number that says whether a
+    /// rider's speech is being taken for tapping.
+    pub impulse_decay_db: f32,
+    /// Impulses thrown away because their tail did not fall away.
+    pub discarded_ringing: u64,
+    /// Blocks in which the chain reported speech, so the detector did not
+    /// look. **Zero while a rider is talking means that gate never engaged**,
+    /// which is a different fault from it being too weak — and it is the
+    /// reading that decides which.
+    pub speech_blocks: u64,
     /// Taps banked towards the gesture in progress.
     pub run: u8,
 }
@@ -3219,6 +3232,9 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
             peak_db: 0.0,
             impulse_attack_db: 0.0,
             impulse_over_db: 0.0,
+            impulse_decay_db: 0.0,
+            discarded_ringing: 0,
+            speech_blocks: 0,
             run: 0,
         };
     };
@@ -3235,6 +3251,9 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
         peak_db: s.peak_db,
         impulse_attack_db: s.impulse_attack_db,
         impulse_over_db: s.impulse_over_db,
+        impulse_decay_db: s.impulse_decay_db,
+        discarded_ringing: s.discarded_ringing,
+        speech_blocks: s.speech_blocks,
         run: s.run,
     }
 }

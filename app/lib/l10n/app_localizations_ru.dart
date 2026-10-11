@@ -1241,6 +1241,12 @@ class LRu extends L {
       'Последний резкий звук: нарастание · превышение';
 
   @override
+  String get diagTapDecay => 'Последний резкий звук: спад хвоста';
+
+  @override
+  String get diagTapSpeechBlocks => 'Блоков пропущено из-за речи';
+
+  @override
   String get diagTapCandidates => 'Звуки, похожие на постукивание';
 
   @override

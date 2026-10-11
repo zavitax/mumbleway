@@ -1639,6 +1639,22 @@ class UiAcousticStats {
   final double impulseAttackDb;
   final double impulseOverDb;
 
+  /// How far that impulse's tail had fallen 15 to 30 ms after its peak.
+  ///
+  /// A tap has nothing behind it and reads well under −10 dB; a consonant
+  /// has a vowel and reads above it. The one number that says whether a
+  /// rider's speech is being taken for tapping.
+  final double impulseDecayDb;
+
+  /// Impulses thrown away because their tail did not fall away.
+  final BigInt discardedRinging;
+
+  /// Blocks in which the chain reported speech, so the detector did not
+  /// look. **Zero while a rider is talking means that gate never engaged**,
+  /// which is a different fault from it being too weak — and it is the
+  /// reading that decides which.
+  final BigInt speechBlocks;
+
   /// Taps banked towards the gesture in progress.
   final int run;
 
@@ -1654,6 +1670,9 @@ class UiAcousticStats {
     required this.peakDb,
     required this.impulseAttackDb,
     required this.impulseOverDb,
+    required this.impulseDecayDb,
+    required this.discardedRinging,
+    required this.speechBlocks,
     required this.run,
   });
 
@@ -1670,6 +1689,9 @@ class UiAcousticStats {
       peakDb.hashCode ^
       impulseAttackDb.hashCode ^
       impulseOverDb.hashCode ^
+      impulseDecayDb.hashCode ^
+      discardedRinging.hashCode ^
+      speechBlocks.hashCode ^
       run.hashCode;
 
   @override
@@ -1688,6 +1710,9 @@ class UiAcousticStats {
           peakDb == other.peakDb &&
           impulseAttackDb == other.impulseAttackDb &&
           impulseOverDb == other.impulseOverDb &&
+          impulseDecayDb == other.impulseDecayDb &&
+          discardedRinging == other.discardedRinging &&
+          speechBlocks == other.speechBlocks &&
           run == other.run;
 }
 

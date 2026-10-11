@@ -1,7 +1,5 @@
-Still 1.2.0. The helmet microphone was silent two thirds of the time.
+Still 1.2.0. The microphone never followed the route — your words exactly.
 
-Your recording of taps on the helmet was 66.9% digital zero — nothing at all — in bursts of about 120 ms. A tap landing in one of those does not exist, and nor did two thirds of your speech.
+Switching between the helmet and the phone wrote a number to the recorder's log and told the audio engine nothing, so its input stayed on whichever microphone it opened with. Pocket mode then left it on a device that had gone: tapping the phone went unheard because the phone was not being listened to, and the helmet because it was gone.
 
-The session kept asking for an input it had already asked for, and each request interrupted the microphone. Fixed, with the test that accepted the loop.
-
-The panel now shows microphone silence; above 0% is a fault.
+The panel now shows the rate the engine opened: 16 kHz helmet, 48 kHz phone.

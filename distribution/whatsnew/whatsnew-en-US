@@ -1,5 +1,5 @@
-Still 1.2.0. Stopping capture on a headset was killing the microphone and the speaker.
+Still 1.2.0. The choppy music with the oscillating volume was my doing.
 
-Handing the hands-free profile back deactivates the phone's audio session, which stops the audio unit the engine has both its streams open on. So capture stopped and then nothing happened: no cue to say so, no taps heard on either microphone. The phone's own speaker never showed it, needing no profile handed back.
+The previous build asked the engine to rebuild its audio whenever the microphone went quiet — including the moment just after a rebuild, before the new stream has delivered anything. So it rebuilt, and rebuilt. Each one re-engages ducking, which fades over a few hundred milliseconds: that oscillation was the loop, heard.
 
-The session now reports that and the engine rebuilds. Its decisions go to the log.
+Also: disarming pocket mode now really does hand the microphone back to the helmet.

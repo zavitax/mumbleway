@@ -204,13 +204,6 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // The phone's own motion. Pushed rather than polled, because a tap is a
-        // transient a poll would step straight over.
-        val motionChannel =
-            MethodChannel(
-                flutterEngine.dartExecutor.binaryMessenger,
-                "mumbleway/motion",
-
         // A name to connect under, taken from the device rather than from
         // whoever's QR code was scanned. See DeviceIdentity on the Dart side
         // for why an invitation no longer carries one.

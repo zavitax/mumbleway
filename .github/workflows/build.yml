@@ -56,6 +56,29 @@ jobs:
       - name: Install ALSA development headers
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
+      # **A stale file reference costs a 24-minute build to discover.**
+      # Removing a Swift file without removing its four lines from
+      # `project.pbxproj` leaves a project that archives no more: Xcode fails
+      # with "Build input file cannot be found", and it fails in the iOS job,
+      # after the whole matrix has got that far. It happened to
+      # `MotionSensors.swift`, and the commit that deleted it was never pushed,
+      # so nothing compiled the project until a publish did.
+      #
+      # Checked here instead, on Linux, in a second, before any job that
+      # builds. Cheap enough that it never needs thinking about again.
+      - name: Every file the Xcode project references exists
+        working-directory: app/ios
+        run: |
+          missing=0
+          refs=$(grep -oE 'path = [A-Za-z0-9_.+-]+\.(swift|m|h|plist|entitlements)' Runner.xcodeproj/project.pbxproj | sed 's/path = //' | sort -u)
+          for f in $refs; do
+            if [ -z "$(find . -name "$f" -not -path './Pods/*' | head -1)" ]; then
+              echo "::error::project.pbxproj references $f, which does not exist"
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Check formatting
         working-directory: core
         run: cargo fmt --check

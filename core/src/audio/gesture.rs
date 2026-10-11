@@ -57,8 +57,6 @@ pub enum Banked {
     /// Banked, but it began a new run because it did not match the last in
     /// strength. The tap still landed and the rider should still hear it.
     RestartedOnMagnitude,
-    /// The same, for a beat the run could not accept.
-    RestartedOnInterval,
     /// The gesture is complete.
     Completed(TapGesture),
 }
@@ -70,39 +68,56 @@ pub enum Banked {
 /// other.
 const MAGNITUDE_TOLERANCE: f32 = 2.5;
 
-/// How much the intervals of a gesture may differ, as a ratio.
+/// How long the whole gesture may take, from its first tap to its last.
 ///
-/// **Provisional, and only meaningful from three taps up.** Two taps give one
-/// interval, which has nothing to be compared against.
-const INTERVAL_TOLERANCE: f32 = 1.8;
+/// **One budget for the gesture rather than a limit on each gap**, which is
+/// the rule as the rider stated it: three taps within at most three seconds.
+/// It replaced a 600 ms per-gap window and an even-beat test, and the two are
+/// not the same shape — a rider tapping a phone through a jacket pocket does
+/// not keep time, and the beat test was rejecting the irregular middle tap and
+/// starting the run again from there. A total budget cannot do that: it only
+/// ever asks whether all three arrived in time.
+///
+/// Three seconds is also long enough to be a deliberate act. Nothing that
+/// happens by accident on a bike produces three separate strikes inside three
+/// seconds and then stops.
+const GESTURE_WINDOW_MS: u32 = 3_000;
 
-/// The window in which the next tap of the gesture must arrive.
+/// How long after a tap another one cannot be counted, in ms.
 ///
-/// **Measured.** 400 ms cut off real gestures: tapping a phone held in the
-/// hand came out around 200–330 ms between taps, but a deliberate, spaced-out
-/// three on a desk ran to 570.
+/// **Not a tuning knob — without it a single strike is a whole gesture.** A
+/// tap on a phone's body rings, and the ringing crosses the detector's
+/// threshold again on the way down, so one strike offers three candidates a
+/// few tens of milliseconds apart. This is the dead time that makes a tap one
+/// tap.
 const GAP_MIN_MS: u32 = 80;
-const GAP_MAX_MS: u32 = 600;
+
+/// How many taps a gesture is.
+///
+/// **Fixed, where it used to be a setting offering two, three or four.** Two
+/// carries no timing evidence at all and four is a chore; the setting existed
+/// because nobody had measured which was right, and it was one more thing that
+/// could disagree with what the detector was actually counting.
+pub const TAPS_WANTED: u8 = 3;
 
 /// The run of matched impulses in progress.
 pub struct GesturePattern {
-    taps_wanted: u8,
-    /// Four is the most ever wanted, so there is nothing to allocate.
-    pending: [Option<Candidate>; 4],
+    pending: [Option<Candidate>; TAPS_WANTED as usize],
     pending_len: usize,
 }
 
+impl Default for GesturePattern {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GesturePattern {
-    pub fn new(taps_wanted: u8) -> Self {
+    pub fn new() -> Self {
         Self {
-            taps_wanted: taps_wanted.clamp(2, 4),
-            pending: [None; 4],
+            pending: [None; TAPS_WANTED as usize],
             pending_len: 0,
         }
-    }
-
-    pub fn taps_wanted(&self) -> u8 {
-        self.taps_wanted
     }
 
     /// How many are banked right now.
@@ -110,25 +125,18 @@ impl GesturePattern {
         self.pending_len as u8
     }
 
-    /// Changes the gesture length, discarding anything half-performed.
-    pub fn set_taps_wanted(&mut self, taps: u8) {
-        let taps = taps.clamp(2, 4);
-        if taps == self.taps_wanted {
-            return;
-        }
-        self.taps_wanted = taps;
-        self.pending_len = 0;
-    }
-
     pub fn reset(&mut self) {
         self.pending_len = 0;
     }
 
     pub fn offer(&mut self, c: Candidate) -> Banked {
-        // Anything too old to be part of this gesture is dropped first, so a
-        // candidate an hour later starts a gesture rather than completing one.
-        if let Some(last) = self.pending[self.pending_len.saturating_sub(1)] {
-            if self.pending_len > 0 && c.at_ms.saturating_sub(last.at_ms) > GAP_MAX_MS as u64 {
+        // **The budget is measured from the first tap, not the last.** Checked
+        // before anything else, so a tap arriving late does not complete a
+        // gesture that began four seconds ago — it begins a new one, which is
+        // almost certainly what the rider meant by it.
+        if self.pending_len > 0 {
+            let first = self.pending[0].map(|f| f.at_ms).unwrap_or(c.at_ms);
+            if c.at_ms.saturating_sub(first) > GESTURE_WINDOW_MS as u64 {
                 self.pending_len = 0;
             }
         }
@@ -142,10 +150,8 @@ impl GesturePattern {
         let Some(last) = self.pending[self.pending_len - 1] else {
             return Banked::Ignored;
         };
-        let gap = c.at_ms.saturating_sub(last.at_ms);
-        if gap < GAP_MIN_MS as u64 {
-            // Too soon even for the dead time to have caught: part of the same
-            // strike rather than a new tap.
+        if c.at_ms.saturating_sub(last.at_ms) < GAP_MIN_MS as u64 {
+            // The same strike still ringing, not a new tap. See `GAP_MIN_MS`.
             return Banked::Ignored;
         }
 
@@ -161,27 +167,13 @@ impl GesturePattern {
             return Banked::RestartedOnMagnitude;
         }
 
-        // Consistent intervals, once there is more than one to compare. This
-        // is the evidence two taps cannot carry at all.
-        if self.pending_len >= 2 {
-            let Some(prev) = self.pending[self.pending_len - 2] else {
-                return Banked::Ignored;
-            };
-            let previous_gap = last.at_ms.saturating_sub(prev.at_ms).max(1);
-            if ratio_of(gap.max(1) as f32, previous_gap as f32) > INTERVAL_TOLERANCE {
-                self.pending[0] = Some(c);
-                self.pending_len = 1;
-                return Banked::RestartedOnInterval;
-            }
-        }
-
         self.pending[self.pending_len] = Some(c);
         self.pending_len += 1;
 
-        if self.pending_len >= self.taps_wanted as usize {
+        if self.pending_len >= TAPS_WANTED as usize {
             self.pending_len = 0;
             return Banked::Completed(TapGesture {
-                taps: self.taps_wanted,
+                taps: TAPS_WANTED,
                 at_ms: c.at_ms,
             });
         }
@@ -212,8 +204,8 @@ mod tests {
     }
 
     #[test]
-    fn three_matched_impulses_on_a_beat_are_a_gesture() {
-        let mut p = GesturePattern::new(3);
+    fn three_matched_impulses_inside_the_window_are_a_gesture() {
+        let mut p = GesturePattern::new();
         assert_eq!(p.offer(c(0, 40.0)), Banked::Added { run: 1 });
         assert_eq!(p.offer(c(200, 40.0)), Banked::Added { run: 2 });
         assert!(matches!(p.offer(c(400, 40.0)), Banked::Completed(_)));
@@ -221,35 +213,55 @@ mod tests {
 
     #[test]
     fn an_impulse_that_does_not_match_begins_a_new_run() {
-        let mut p = GesturePattern::new(3);
+        let mut p = GesturePattern::new();
         p.offer(c(0, 40.0));
         // Ten times the strength is a road feature beside a tap, not a pair.
         assert_eq!(p.offer(c(200, 4.0)), Banked::RestartedOnMagnitude);
         assert_eq!(p.run(), 1, "it still banked, as the start of a new run");
     }
 
+    /// **This used to be asserted the other way round.** The pattern required
+    /// an even beat, so a rider whose middle tap landed late had the run
+    /// restarted from it — two taps heard, nothing happening, which is exactly
+    /// the complaint the gesture kept producing. Nobody taps a phone through a
+    /// jacket in time.
     #[test]
-    fn an_off_beat_impulse_begins_a_new_run() {
-        let mut p = GesturePattern::new(3);
+    fn taps_do_not_have_to_be_evenly_spaced() {
+        let mut p = GesturePattern::new();
         p.offer(c(0, 40.0));
         p.offer(c(150, 40.0));
-        assert_eq!(p.offer(c(550, 40.0)), Banked::RestartedOnInterval);
-    }
-
-    #[test]
-    fn impulses_too_far_apart_are_not_one_gesture() {
-        let mut p = GesturePattern::new(2);
-        p.offer(c(0, 40.0));
-        assert_eq!(
-            p.offer(c(1_000, 40.0)),
-            Banked::Added { run: 1 },
-            "past the window, so it starts over rather than completing"
+        assert!(
+            matches!(p.offer(c(1_400, 40.0)), Banked::Completed(_)),
+            "an uneven three inside the window is still three taps"
         );
     }
 
     #[test]
+    fn three_taps_spread_over_more_than_the_window_are_not_a_gesture() {
+        let mut p = GesturePattern::new();
+        p.offer(c(0, 40.0));
+        p.offer(c(1_500, 40.0));
+        assert_eq!(
+            p.offer(c(3_400, 40.0)),
+            Banked::Added { run: 1 },
+            "past the budget, so it starts over rather than completing"
+        );
+    }
+
+    /// The budget runs from the first tap, so a gesture cannot be assembled
+    /// out of taps that were never close together — each pair being inside
+    /// three seconds is not the same as all three being.
+    #[test]
+    fn the_window_is_measured_from_the_first_tap() {
+        let mut p = GesturePattern::new();
+        p.offer(c(0, 40.0));
+        assert_eq!(p.offer(c(2_900, 40.0)), Banked::Added { run: 2 });
+        assert_eq!(p.offer(c(5_000, 40.0)), Banked::Added { run: 1 });
+    }
+
+    #[test]
     fn a_second_strike_of_the_same_tap_is_ignored() {
-        let mut p = GesturePattern::new(3);
+        let mut p = GesturePattern::new();
         p.offer(c(0, 40.0));
         assert_eq!(p.offer(c(20, 40.0)), Banked::Ignored);
     }

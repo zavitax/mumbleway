@@ -1351,7 +1351,7 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
-            tap: Mutex::new(crate::audio::acoustic_tap::AcousticTapDetector::new(3)),
+            tap: Mutex::new(crate::audio::acoustic_tap::AcousticTapDetector::new()),
             tap_enabled: AtomicBool::new(false),
             tap_gestures: AtomicU64::new(0),
             // True, so every existing caller gets today's behaviour without
@@ -2365,9 +2365,11 @@ impl AudioShared {
         self.capture_wanted.load(Ordering::Acquire)
     }
 
-    /// Turns the gesture on or off and sets how many taps it takes.
-    pub fn set_tap_detection(&self, enabled: bool, taps: u8) {
-        self.tap.lock().set_taps_wanted(taps);
+    /// Turns the gesture on or off.
+    ///
+    /// The length is no longer a parameter: it is always three taps, inside
+    /// three seconds. See `gesture::TAPS_WANTED`.
+    pub fn set_tap_detection(&self, enabled: bool) {
         self.tap_enabled.store(enabled, Ordering::Release);
     }
 
@@ -3088,6 +3090,16 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 // the counters once a second.
                 if cap_shared.tap_detection_enabled() {
                     let mut banked = false;
+                    // **What this app is playing, so the detector can stop
+                    // listening while it plays it.** The detector sits before
+                    // the canceller — in the listening state there is no
+                    // chain at all — so our own tick, a 2 kHz click in the
+                    // middle of the band a phone-body tap occupies, would
+                    // otherwise be heard as the next tap.
+                    cap_shared
+                        .tap
+                        .lock()
+                        .hear_own_output(cap_shared.output_level_db());
                     let gesture = cap_shared.tap.lock().push(&resampled, &mut banked);
                     if banked {
                         // One tick per tap, which is the only signal that can

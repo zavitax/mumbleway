@@ -57,6 +57,76 @@ use super::gesture::{Banked, Candidate, GesturePattern, TapGesture};
 /// millions.
 pub const FRAME: usize = 48;
 
+/// The band a tap actually lives in, measured rather than assumed.
+///
+/// **Two recordings, two completely different spectra**, which is the finding
+/// that shaped this. A fingernail on the phone's body rings at 1–4 kHz — 93%
+/// of its energy — while the same gesture with the phone held in a hand is a
+/// thud, 87% of it under 500 Hz. There is no narrow band that catches both.
+///
+/// What they agree on is that **neither has anything above 4 kHz** — 0.3% of
+/// the energy on one, 2.2% on the other — so cutting there throws away none of
+/// the signal. It earns its place on *recall* rather than on rejection: at the
+/// attack threshold below, the band finds 8 of 10 phone-tap gestures against 6
+/// of 10 wideband, and narrowing it further to 2 kHz drops back to 6. The top
+/// corner is where the measurement put it.
+///
+/// The high-pass end is cheaper to justify: engine rumble, wind and the
+/// handling noise of a phone moving in a pocket are all below 100 Hz, and the
+/// hand-held taps keep 87% of their energy above it.
+///
+/// # What this band does *not* do, and what was tried
+///
+/// **Band-limiting is not what keeps music out, and a band ratio is not
+/// either.** Both were tried on 2026-10-11, against the request that "hi-hats
+/// or high-mid / high frequencies coming out of the phone's speaker or
+/// external music" must not register, and the measurement refused both.
+///
+/// A steeper band first. That fails because the detector arms on a margin
+/// above its own *trailing average*: on a quiet floor anything audible clears
+/// it, so a hi-hat 22 dB down — what three poles buy at 9 kHz — still stands
+/// some 37 dB over a floor at one quantisation step, against a margin of 18.
+/// Each pole bought 7 dB and the margin was never the binding constraint.
+///
+/// Then a scale-free ratio between the band and everything above it, on the
+/// reasoning that a strike puts its energy in the band and a cymbal above it.
+/// **Measured against `music_shipping/music_only__input.wav` — real music
+/// through a real microphone — it is backwards.** Music's armed impulses are
+/// the *most* in-band things in the corpus, median +34 dB, because what clears
+/// an 18 dB margin in a dense mix is the kick and the snare, not the hi-hat.
+/// The real taps are the lowest ratios measured anywhere: median +0.8 dB held
+/// in a hand and +15.9 dB on the phone body, because a contact click is
+/// broadband. A 6 dB gate would have kept 100% of the music and thrown away
+/// half the taps.
+///
+/// What separates them is [`ATTACK_DB`] — contact against airborne — and that
+/// is where the rule now lives. `core/tests/acoustic_tap_corpus.rs` prints
+/// both distributions and is how either claim can be re-checked.
+const BAND_LOW_HZ: f32 = 100.0;
+const BAND_HIGH_HZ: f32 = 4_000.0;
+
+/// How loud this app's own output has to be before the detector stops
+/// listening, in dBFS.
+///
+/// **The detector runs on the raw microphone, before the canceller**, so
+/// everything the phone plays reaches it — including its own tick, which is a
+/// 2 kHz click sitting dead centre in the band a phone-body tap occupies. Tap,
+/// tick, tick heard as a tap, tick: a feedback loop, and it was found by
+/// measuring where taps live rather than by hearing it.
+///
+/// The canceller cannot help here: in the listening state there is no chain
+/// running at all. So the rule is blunt and reliable — while this app is
+/// making a noise, it is not listening for taps. It costs nothing, because a
+/// rider is not tapping during a cue, and it covers other riders' voices
+/// coming out of the speaker as well as our own cues.
+const SELF_NOISE_GATE_DBFS: f32 = -60.0;
+
+/// How long after this app's own sound the detector stays deaf, in frames.
+///
+/// A cue is 18 ms to one and a half seconds; this covers the ringing after
+/// the longest of them and the room's own tail.
+const SELF_NOISE_TAIL_MS: u32 = 120;
+
 /// The lowest level the floor may believe in, in dBFS.
 ///
 /// One least-significant bit of sixteen-bit audio. See the note where it is
@@ -92,11 +162,42 @@ const REFERENCE_ALPHA: f32 = 0.001;
 /// sweep it.
 const MARGIN_DB: f32 = 18.0;
 
-/// How sharply it must arrive: this frame against the one before.
+/// How sharply it must arrive: this frame against the one before, in dB.
 ///
-/// Measured at threefold, which is ~9.5 dB. The test is what separates a tap
-/// from speech — a voice rises over tens of milliseconds, a strike inside one.
-const ATTACK_DB: f32 = 7.0;
+/// **This is the test that rejects music, and it is the only one that does.**
+/// It separates *contact* from *airborne*, which turns out to be the real
+/// distinction: a fingertip on the phone's body is coupled to the microphone
+/// through the case, so the level steps up inside a single millisecond, while
+/// anything arriving through air has its onset shaped by the speaker, the room
+/// and the distance. No amount of filtering finds that difference, because it
+/// is not in the spectrum — see [`BAND_LOW_HZ`] for the two attempts that were
+/// measured and abandoned.
+///
+/// Measured 2026-10-11 over 1175 s of corpus, as p5 / median / p95 of the
+/// attack of every impulse sharp enough to be judged:
+///
+/// | | attack, dB |
+/// |---|---|
+/// | taps held in a hand | +10.8 / **+25.1** / +34.5 |
+/// | taps on the phone body | +9.2 / **+23.4** / +29.1 |
+/// | real music, real microphone | +7.0 / **+7.9** / +11.6 |
+/// | every road and voice ride | ~+7.1 / +8…+13 / — |
+///
+/// Twelve decibels of daylight between music's p95 and the taps' median, so
+/// the threshold goes in the gap rather than on either edge. Swept against
+/// both halves: at 7 dB real music completes **52 gestures an hour**; at 12 it
+/// completes none; at 14 it still completes none while phone-tap recall is at
+/// its best measured value, 8 of 10. Above 16 recall starts falling without
+/// buying anything, since music is already at zero.
+///
+/// It costs the "taps on a desk" recording, which goes from 3 of 7 to none —
+/// a desk is a surface the phone is resting *on* rather than a body being
+/// struck, so the coupling is the airborne kind. That gesture is not the one
+/// the feature is for and it is not worth 52 false arms an hour.
+///
+/// Override with `MW_TAP_ATTACK_DB` to re-sweep; the rig is
+/// `core/tests/acoustic_tap_corpus.rs`.
+const ATTACK_DB: f32 = 14.0;
 
 /// The longest a tap may take to fall back below the margin.
 ///
@@ -118,14 +219,32 @@ pub struct AcousticStats {
     pub gestures: u64,
     pub level_db: f32,
     pub floor_db: f32,
+    /// The last impulse that arrived sharply enough to be judged, as its
+    /// attack and its height over the floor — the two numbers the decision is
+    /// actually made on, kept so the rig can sweep [`ATTACK_DB`] and
+    /// [`MARGIN_DB`] against real recordings rather than against a generator.
+    pub impulse_attack_db: f32,
+    pub impulse_over_db: f32,
     pub peak_db: f32,
     pub run: u8,
 }
 
 /// Listens for N taps in whatever microphone it is given.
 pub struct AcousticTapDetector {
+    /// A band-pass built from one-poles: three for the upper skirt, one for
+    /// the lower.
+    low: [f32; 3],
+    high: f32,
+    low_coeff: f32,
+    high_coeff: f32,
+    /// Frames remaining in which this app's own output is still sounding.
+    deaf_frames: u32,
     /// The trailing average the margin is measured against.
     reference_db: f32,
+    /// [`MARGIN_DB`] and [`ATTACK_DB`], read once so a sweep costs no rebuild
+    /// and the audio callback reads no environment.
+    margin_db: f32,
+    attack_db: f32,
     pattern: GesturePattern,
     previous_db: f32,
     /// When the frame that started a candidate arrived, and how loud it was.
@@ -136,11 +255,25 @@ pub struct AcousticTapDetector {
     stats: AcousticStats,
 }
 
+impl Default for AcousticTapDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AcousticTapDetector {
-    pub fn new(taps_wanted: u8) -> Self {
+    pub fn new() -> Self {
         Self {
+            low: [0.0; 3],
+            high: 0.0,
+            // One-pole coefficients for a 48 kHz frame rate.
+            low_coeff: Self::coeff(Self::tuned("MW_TAP_BAND_HIGH_HZ", BAND_HIGH_HZ)),
+            high_coeff: Self::coeff(Self::tuned("MW_TAP_BAND_LOW_HZ", BAND_LOW_HZ)),
+            deaf_frames: 0,
             reference_db: f32::NEG_INFINITY,
-            pattern: GesturePattern::new(taps_wanted),
+            margin_db: Self::tuned("MW_TAP_MARGIN_DB", MARGIN_DB),
+            attack_db: Self::tuned("MW_TAP_ATTACK_DB", ATTACK_DB),
+            pattern: GesturePattern::new(),
             previous_db: f32::NEG_INFINITY,
             rising_at_ms: None,
             peak_db: f32::NEG_INFINITY,
@@ -150,12 +283,36 @@ impl AcousticTapDetector {
         }
     }
 
-    pub fn stats(&self) -> AcousticStats {
-        self.stats
+    /// A threshold, with an environment override for sweeping it.
+    ///
+    /// **Read here rather than where it is used**, so the audio callback never
+    /// touches the environment. A sweep is a rig concern; a bad value in the
+    /// environment of a shipped app would be a silent behaviour change, so an
+    /// unparseable one is ignored rather than honoured.
+    fn tuned(name: &str, default: f32) -> f32 {
+        std::env::var(name)
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(default)
     }
 
-    pub fn set_taps_wanted(&mut self, taps: u8) {
-        self.pattern.set_taps_wanted(taps);
+    fn coeff(hz: f32) -> f32 {
+        let x = (-2.0 * std::f32::consts::PI * hz / 48_000.0).exp();
+        1.0 - x
+    }
+
+    /// Tells the detector how loud this app's own output is, so it can stop
+    /// listening while the phone is making a noise. See
+    /// [`SELF_NOISE_GATE_DBFS`].
+    pub fn hear_own_output(&mut self, level_dbfs: f32) {
+        if level_dbfs > SELF_NOISE_GATE_DBFS {
+            self.deaf_frames = SELF_NOISE_TAIL_MS;
+        }
+    }
+
+    pub fn stats(&self) -> AcousticStats {
+        self.stats
     }
 
     /// Feeds a block of 48 kHz mono audio, however long it happens to be.
@@ -179,7 +336,40 @@ impl AcousticTapDetector {
         self.frame_ms += 1;
         self.stats.frames += 1;
 
-        let peak = frame.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        // Band-limited first, and only then measured. The band is for recall
+        // — see `BAND_LOW_HZ`, which also records the two ways band-limiting
+        // was tried as a way of rejecting music, and why neither worked.
+        let mut peak = 0.0f32;
+        for &sample in frame {
+            let mut v = sample;
+            for pole in self.low.iter_mut() {
+                *pole += (v - *pole) * self.low_coeff;
+                v = *pole;
+            }
+            self.high += (v - self.high) * self.high_coeff;
+            peak = peak.max((v - self.high).abs());
+        }
+
+        // While this app is making a noise it is not listening for taps.
+        //
+        // **It keeps tracking the level, though, and that is not a detail.**
+        // This block used to set `previous_db` to minus infinity, which made
+        // the attack of the first frame after hearing resumed *infinite* — so
+        // every recovery from a cue armed a candidate, whatever the audio was
+        // doing. The rig found it the moment it began simulating the engine's
+        // own ticks: false arms went from 184 an hour to 233, with the only
+        // change being that the detector could now hear itself.
+        //
+        // The trailing reference is deliberately left alone: our own cue is
+        // forty decibels over the room, and letting it into the floor would
+        // raise the bar for the tap that follows it.
+        if self.deaf_frames > 0 {
+            self.deaf_frames -= 1;
+            self.rising_at_ms = None;
+            self.peak_db = f32::NEG_INFINITY;
+            self.previous_db = (20.0 * (peak + 1e-7).log10()).max(QUANTISATION_DBFS);
+            return None;
+        }
         // Clamped at one quantisation step, and this is load-bearing.
         //
         // **The accelerometer detector shipped the identical fault and this
@@ -215,17 +405,20 @@ impl AcousticTapDetector {
 
         match self.rising_at_ms {
             None => {
-                // **Both tests, and the attack is the one that rejects
-                // speech.** A voice crosses the margin too, over tens of
-                // milliseconds; a strike crosses it inside one.
-                if over >= MARGIN_DB && attack >= ATTACK_DB {
+                // **Both tests, and the attack is the one doing the work.**
+                // Speech and music both cross the margin; neither crosses it
+                // inside a millisecond, because only contact with the phone
+                // does. See `ATTACK_DB` for the measurement.
+                if over >= self.margin_db && attack >= self.attack_db {
+                    self.stats.impulse_attack_db = attack;
+                    self.stats.impulse_over_db = over;
                     self.rising_at_ms = Some(at_ms);
                     self.peak_db = over;
                 }
             }
             Some(since) => {
                 self.peak_db = self.peak_db.max(over);
-                if over >= MARGIN_DB {
+                if over >= self.margin_db {
                     if at_ms.saturating_sub(since) > MAX_DECAY_MS as u64 {
                         // Still loud long after a tap would have died away.
                         self.rising_at_ms = None;
@@ -266,7 +459,7 @@ impl AcousticTapDetector {
                 *banked = true;
                 None
             }
-            Banked::RestartedOnMagnitude | Banked::RestartedOnInterval => {
+            Banked::RestartedOnMagnitude => {
                 self.stats.banked += 1;
                 self.stats.run = 1;
                 *banked = true;
@@ -287,15 +480,28 @@ impl AcousticTapDetector {
 mod tests {
     use super::*;
 
-    /// A tap as it was measured: a sharp frame, then a decay to a tenth in
-    /// about forty milliseconds.
+    /// A tap as it was measured: full level in the first frame, then a decay
+    /// to a tenth in about forty milliseconds, in the band taps occupy.
+    ///
+    /// **The frequencies here used to be wrong, and wrong in the direction
+    /// that mattered.** This generator ran at `2.399` and `7.13` radians a
+    /// sample, which is 18.3 kHz and — past Nyquist — an aliased 6.5 kHz. So
+    /// for as long as it existed, the fixture proving taps are *found* was
+    /// spectrally a cymbal, and the fixture proving a hi-hat is *rejected* was
+    /// the same signal with a different name. No rule could ever have
+    /// separated them, which is why one of the two tests always failed.
+    ///
+    /// 1.6 kHz and 3.1 kHz are inside the measured band — see `BAND_LOW_HZ`,
+    /// where a phone-body tap is 93% between 1 and 4 kHz. The lesson is the
+    /// one in `CLAUDE.md`: a synthetic signal agrees with whoever wrote it,
+    /// and this one was agreeing with a spectrum nobody had checked.
     fn tap(into: &mut Vec<f32>, peak: f32) {
         for ms in 0..60 {
             let a = peak * (-(ms as f32) / 14.0).exp();
             for i in 0..FRAME {
-                // Broadband, which is what a strike is.
+                // Broadband within the band, which is what a strike is.
                 let t = (ms * FRAME + i) as f32;
-                into.push(a * ((t * 2.399).sin() + (t * 7.13).sin()) * 0.5);
+                into.push(a * ((t * 0.209).sin() + (t * 0.406).sin()) * 0.5);
             }
         }
     }
@@ -319,7 +525,7 @@ mod tests {
         }
         quiet(&mut audio, 200);
 
-        let mut d = AcousticTapDetector::new(3);
+        let mut d = AcousticTapDetector::new();
         let mut banked = false;
         let g = d.push(&audio, &mut banked);
         assert!(g.is_some(), "no gesture: {:?}", d.stats());
@@ -331,7 +537,7 @@ mod tests {
     fn a_quiet_microphone_hears_nothing() {
         let mut audio = Vec::new();
         quiet(&mut audio, 4_000);
-        let mut d = AcousticTapDetector::new(3);
+        let mut d = AcousticTapDetector::new();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
         assert_eq!(d.stats().gestures, 0);
@@ -347,12 +553,12 @@ mod tests {
         for m in 0..800 {
             for i in 0..FRAME {
                 let t = (m * FRAME + i) as f32;
-                audio.push(0.3 * ((t * 2.399).sin() + (t * 7.13).sin()) * 0.5);
+                audio.push(0.3 * ((t * 0.209).sin() + (t * 0.406).sin()) * 0.5);
             }
         }
         quiet(&mut audio, 400);
 
-        let mut d = AcousticTapDetector::new(3);
+        let mut d = AcousticTapDetector::new();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
         assert_eq!(
@@ -372,14 +578,96 @@ mod tests {
             let a = 0.4 * (m as f32 / 300.0);
             for i in 0..FRAME {
                 let t = (m * FRAME + i) as f32;
-                audio.push(a * (t * 2.399).sin());
+                audio.push(a * (t * 0.209).sin());
             }
         }
         quiet(&mut audio, 400);
 
-        let mut d = AcousticTapDetector::new(3);
+        let mut d = AcousticTapDetector::new();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
+        assert_eq!(d.stats().gestures, 0);
+    }
+
+    /// Music on a beat, which is the false arm that matters.
+    ///
+    /// **This replaces a test that asserted something untrue.** The old one
+    /// synthesised a 9 kHz hi-hat and claimed the band-pass rejected it; it
+    /// could not, for a reason that is now written up under `BAND_LOW_HZ`, and
+    /// it was never going to, because the `tap()` fixture beside it was
+    /// generating 18 kHz and the two signals were the same kind of thing.
+    ///
+    /// What is true, and measured on real music through a real microphone, is
+    /// that a drum is **struck somewhere else and arrives through air**: its
+    /// onset is shaped by the speaker, the room and the distance, and comes
+    /// out at a median of 7.9 dB a millisecond against 23–25 for a fingertip
+    /// on the phone's own body. So the envelope here ramps over 8 ms — fast
+    /// for anything acoustic, ten times slower than contact.
+    ///
+    /// Three of them on an even beat, because that is the hard case and the
+    /// reason the gesture pattern cannot carry this alone: **a bar of music is
+    /// matched impulses at matched intervals**, which is exactly what the
+    /// pattern is looking for, and better matched than a human hand manages.
+    /// The attack is the only thing standing between a backbeat and a stop
+    /// command.
+    #[test]
+    fn music_on_a_beat_is_not_a_gesture() {
+        let mut audio = Vec::new();
+        quiet(&mut audio, 400);
+        for _ in 0..3 {
+            for ms in 0..200 {
+                // Up over 8 ms, then a drum's own decay. In band, loud, and
+                // on time — everything but the onset of a strike.
+                let a =
+                    0.5 * (ms as f32 / 8.0).min(1.0) * (-(ms as f32 - 8.0).max(0.0) / 40.0).exp();
+                for i in 0..FRAME {
+                    let t = (ms * FRAME + i) as f32;
+                    audio.push(a * ((t * 0.209).sin() + (t * 0.406).sin()) * 0.5);
+                }
+            }
+            quiet(&mut audio, 100);
+        }
+        quiet(&mut audio, 400);
+
+        let mut d = AcousticTapDetector::new();
+        let mut banked = false;
+        assert!(d.push(&audio, &mut banked).is_none());
+        assert_eq!(
+            d.stats().gestures,
+            0,
+            "music on a beat completed a gesture: {:?}",
+            d.stats()
+        );
+    }
+
+    /// **The feedback loop this nearly shipped with.** The tick played to
+    /// acknowledge a tap is a 2 kHz click, which is exactly the band a tap on
+    /// the phone's body occupies, and the detector runs on the raw microphone
+    /// before any canceller. Without the gate, the acknowledgement is heard
+    /// as the next tap and acknowledged in turn.
+    #[test]
+    fn the_app_does_not_hear_its_own_noise() {
+        let mut d = AcousticTapDetector::new();
+        let mut banked = false;
+        let mut quiet_audio = Vec::new();
+        quiet(&mut quiet_audio, 400);
+        d.push(&quiet_audio, &mut banked);
+
+        for _ in 0..3 {
+            // The engine says it is playing, loudly, as it would while a cue
+            // sounds.
+            d.hear_own_output(-20.0);
+            let mut audio = Vec::new();
+            tap(&mut audio, 0.4);
+            quiet(&mut audio, 160);
+            d.push(&audio, &mut banked);
+        }
+        assert_eq!(
+            d.stats().candidates,
+            0,
+            "the app heard itself: {:?}",
+            d.stats()
+        );
         assert_eq!(d.stats().gestures, 0);
     }
 }

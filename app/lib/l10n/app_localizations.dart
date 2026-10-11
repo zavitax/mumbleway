@@ -4177,6 +4177,18 @@ abstract class L {
   /// **'Start pocket mode'**
   String get pocketTutorialStart;
 
+  /// Pocket-mode sub-setting. Switching to the helmet microphone stops the rider's music and nothing brings it back, so this presses play afterwards. Apple Music only, and it asks for the media library when switched on
+  ///
+  /// In en, this message translates to:
+  /// **'Start my music again after talking'**
+  String get resumeMusic;
+
+  /// No description provided for @resumeMusicBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Talking through the helmet stops your music, and nothing starts it again. This presses play once the helmet gives the good audio back. Apple Music only — it cannot reach Spotify or anything else — and it asks permission for your music when you switch it on.'**
+  String get resumeMusicBody;
+
   /// No description provided for @autoStopCapture.
   ///
   /// In en, this message translates to:

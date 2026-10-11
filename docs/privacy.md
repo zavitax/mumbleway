@@ -155,6 +155,14 @@ No other network connections are made.
 - **Local network** (iOS) — so you can reach a Mumble server running at home or
   at a club, which is where many of them are.
 - **Bluetooth** — to use your intercom headset's microphone and speakers.
+- **Media and Apple Music** (iOS, optional) — *only* if you switch on "start my
+  music again after talking". Talking through a helmet intercom stops whatever
+  was playing, and nothing starts it again; with this on, the app notices that
+  the Music app was playing and presses play once the headset gives the good
+  audio back. That is all it does with the permission: it reads whether music
+  is playing and it presses play. Your library is never read, never stored and
+  never transmitted, and the app does not ask for this permission unless you
+  turn the setting on.
 - **Display over other apps** (Android, optional) — for the floating call
   window over a navigation app.
 - **Notifications / foreground service** (Android) — to keep audio running while

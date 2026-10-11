@@ -1,5 +1,6 @@
 import AVFoundation
 import Flutter
+import MediaPlayer
 
 /// The iOS audio session, which has to be told what this app is for before
 /// there is any microphone to open.
@@ -34,6 +35,25 @@ final class AudioSession {
         let args = call.arguments as? [String: Any]
         self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
         self.activateForCall(result)
+      case "setResumeMusic":
+        // **Authorisation is asked for here and nowhere else**, which is the
+        // point of making this a setting: the prompt arrives when a rider has
+        // just asked for the feature and can see why, rather than at a connect
+        // they were trying to make.
+        let on = call.arguments as? Bool ?? false
+        self.resumeMusicWanted = on
+        if on, MPMediaLibrary.authorizationStatus() == .notDetermined {
+          MPMediaLibrary.requestAuthorization { status in
+            DispatchQueue.main.async {
+              self.channel.invokeMethod(
+                "sessionEvent",
+                arguments: "media library authorisation: \(status.rawValue)")
+              result(status == .authorized)
+            }
+          }
+        } else {
+          result(!on || MPMediaLibrary.authorizationStatus() == .authorized)
+        }
       case "startCapture":
         self.startCapture(result)
       case "stopCapture":
@@ -104,6 +124,47 @@ final class AudioSession {
   /// ignore it, which is exactly the case this value exists to catch — a
   /// connected helmet unit on output while the recording comes from a phone in
   /// a pocket.
+  /// Remembers whether the Music app was playing, before the profile is taken.
+  ///
+  /// Called on the way *into* capture, because by the time the headset has
+  /// switched to hands-free the music has already been paused and there is
+  /// nothing left to observe.
+  private func noteMusicBeforeCapture() {
+    guard resumeMusicWanted else { return }
+    guard MPMediaLibrary.authorizationStatus() == .authorized else {
+      musicWasPlaying = false
+      return
+    }
+    musicWasPlaying =
+      MPMusicPlayerController.systemMusicPlayer.playbackState == .playing
+  }
+
+  /// Presses play on the Music app, once the route is genuinely off hands-free.
+  ///
+  /// **Timing is the whole difficulty.** Releasing the profile is not
+  /// instantaneous, and pressing play while the headset is still in hands-free
+  /// would resume the music into the narrowband profile — the very thing being
+  /// escaped. So this is driven from the route-change handler rather than from
+  /// a timer: when a route arrives with no hands-free port in it and a resume
+  /// is owed, that is the moment.
+  ///
+  /// **It only ever works for the Music app.** `systemMusicPlayer` drives
+  /// Apple Music and nothing else, so a rider on Spotify gets no benefit from
+  /// this at all — which is why it is a setting rather than behaviour, and why
+  /// the setting says so.
+  private func resumeMusicIfOwed() {
+    guard resumeMusicWanted, musicWasPlaying else { return }
+    let session = AVAudioSession.sharedInstance()
+    let stillHandsFree = session.currentRoute.outputs.contains {
+      $0.portType == .bluetoothHFP
+    }
+    if stillHandsFree || capturing { return }
+    musicWasPlaying = false
+    guard MPMediaLibrary.authorizationStatus() == .authorized else { return }
+    channel.invokeMethod("sessionEvent", arguments: "resuming the Music app")
+    MPMusicPlayerController.systemMusicPlayer.play()
+  }
+
   /// A route-change reason as something a reader can act on.
   static func reasonName(_ reason: AVAudioSession.RouteChangeReason) -> String {
     switch reason {
@@ -219,6 +280,7 @@ final class AudioSession {
 
   private func captureResult(_ result: @escaping FlutterResult) {
     do {
+      noteMusicBeforeCapture()
       try activateCapturing()
       let session = AVAudioSession.sharedInstance()
       // `inputNumberOfChannels` is not reliable this early. It reports the
@@ -325,6 +387,19 @@ final class AudioSession {
   /// refuses to let two apps record at once, so what it buys instead is
   /// Apple's echo cancellation — and what it costs is in `activate` below.
   private var voiceProcessing = false
+
+  /// Whether to press play on the Music app once the helmet gives A2DP back.
+  ///
+  /// **Off unless the rider asks**, because it costs a media-library prompt
+  /// and only works for one app. See `resumeMusicIfOwed`.
+  private var resumeMusicWanted = false
+
+  /// Whether the Music app was playing when this app took the profile.
+  ///
+  /// The whole safety of the feature is in this flag: music that was not
+  /// playing is never started. Pressing play on a rider who had deliberately
+  /// stopped their music would be worse than the fault being fixed.
+  private var musicWasPlaying = false
 
   /// Whether a retry of [preferHandsFreeInput] is already scheduled.
   ///
@@ -662,6 +737,11 @@ final class AudioSession {
         // next connect, which is the bug this fixes. Sent after the
         // re-activation above, so it describes where the session actually ended
         // up rather than where it was a moment ago.
+        // The profile may have just been given back. See `resumeMusicIfOwed`:
+        // this is the only moment at which pressing play lands on A2DP rather
+        // than on the narrowband profile being escaped.
+        self.resumeMusicIfOwed()
+
         self.channel.invokeMethod(
           "routeChanged",
           arguments: [

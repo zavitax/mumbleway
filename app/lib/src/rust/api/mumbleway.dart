@@ -673,7 +673,39 @@ void setVoiceCommunication({required bool on_}) =>
 /// Called when the session comes up and again whenever the route changes under
 /// it, because a headset connected mid-ride is a different microphone from the
 /// one the recording started on.
-void setAudioRoute({required int code}) =>
+/// Records what the platform's audio session just did, in the engine's log.
+///
+/// **The iOS session's decisions were invisible, and that is why every fault
+/// in this feature cost a device round trip and a recording.** It logs with
+/// `NSLog`, which reaches the Mac's console and nothing a rider can read or
+/// send — so "the microphone didn't switch" could be reported but not
+/// explained, and three successive diagnoses were made by reasoning about an
+/// API rather than by reading what it had answered.
+///
+/// Routed into the engine's ring rather than a channel of its own so it lands
+/// where every other line already does: the log view in the diagnostics panel,
+/// and the copy that travels with a shared recording.
+void noteSessionEvent({required String message}) =>
+    RustLib.instance.api.crateApiMumblewayNoteSessionEvent(message: message);
+
+/// Tells the engine the platform rebuilt its audio session underneath it.
+///
+/// **The streams do not survive a deactivation**, and `AudioSession.swift`
+/// says so in a comment that nothing acted on: deactivating stops the audio
+/// unit and interrupts the streams the engine has open on it. Stopping capture
+/// on a Bluetooth route does exactly that, so a rider was left with a dead
+/// microphone *and* a dead speaker — capture stopped, no cue, and taps heard
+/// on neither microphone.
+///
+/// Commanded rather than inferred. The platform deactivated the session, so it
+/// knows for certain; the route code it reports in the same breath is read
+/// before the route has settled, which is why watching that change was not
+/// enough. The engine's own dead-input backstop would catch this half a second
+/// later — this is the half-second.
+void audioSessionRebuilt() =>
+    RustLib.instance.api.crateApiMumblewayAudioSessionRebuilt();
+
+Future<void> setAudioRoute({required int code}) =>
     RustLib.instance.api.crateApiMumblewaySetAudioRoute(code: code);
 
 /// Plays a tone on the output device, to check the speaker choice.

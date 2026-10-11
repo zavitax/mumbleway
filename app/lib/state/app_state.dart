@@ -1077,6 +1077,16 @@ class AppState extends ChangeNotifier {
         _micSilenced = silenced;
         notifyListeners();
       };
+      // Into the engine's log, where the panel already draws every other
+      // line and a shared recording already carries them.
+      AudioSessionBridge.instance.onSessionEvent = (line) {
+        try {
+          noteSessionEvent(message: line);
+        } catch (_) {
+          // No engine yet; the session can be configured before it starts.
+        }
+      };
+
       AudioSessionBridge.instance.onRouteChanged = (session) {
         if (_audioRoute == session.route) return;
         _audioRoute = session.route;
@@ -2653,6 +2663,18 @@ class AppState extends ChangeNotifier {
       try {
         setAudioRoute(code: s.route);
       } catch (_) {}
+      // **Before the cue, because the cue needs a speaker.** Handing the
+      // hands-free profile back on a Bluetooth route deactivates the platform
+      // session, which stops the audio unit and takes both of the engine's
+      // streams with it. Without this the microphone and the speaker were both
+      // dead from here on: a rider armed pocket mode, capture stopped, and
+      // then nothing happened at all — no cue to say so, and no taps heard on
+      // either microphone.
+      if (s.sessionRebuilt) {
+        try {
+          audioSessionRebuilt();
+        } catch (_) {}
+      }
       try {
         playCaptureStoppedCue();
       } catch (_) {}

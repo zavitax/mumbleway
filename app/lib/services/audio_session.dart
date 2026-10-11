@@ -12,7 +12,23 @@ class AudioSessionState {
     this.route = 0,
     this.error,
     this.capturing = true,
+    this.sessionRebuilt = false,
   });
+
+  /// Whether the platform tore its session down and built it again.
+  ///
+  /// **The engine's streams do not survive that**, and `AudioSession.swift`
+  /// has said so in a comment all along: deactivating stops the audio unit and
+  /// interrupts the stream the engine has open on it. Nothing acted on it, so
+  /// stopping capture on a Bluetooth route left a rider with a dead microphone
+  /// *and* a dead speaker — reported as capture stopping and then nothing
+  /// happening at all: no cue, and no taps heard on either microphone.
+  ///
+  /// Commanded rather than observed, which is the point of carrying it: the
+  /// platform deactivated the session, so it knows. The route code in the same
+  /// reply is read immediately afterwards, when the route has by definition
+  /// not settled, so keying the rebuild on that changing missed it.
+  final bool sessionRebuilt;
 
   /// Whether the user has allowed recording.
   final bool granted;
@@ -130,6 +146,15 @@ class AudioSessionBridge {
   /// `record.rs` for the table.
   void Function(AudioSessionState state)? onRouteChanged;
 
+  /// What the platform's audio session just decided, as a line for the log.
+  ///
+  /// **Because none of it was visible.** The iOS side logs with `NSLog`, which
+  /// reaches a Mac's console and nothing a rider can read or send — so every
+  /// fault in capture-on-demand was diagnosed from a recording and a guess
+  /// about what the session had done, three times in a row, and twice the
+  /// guess was right about a real bug and wrong about the one being reported.
+  void Function(String line)? onSessionEvent;
+
   void _ensureHandler() {
     if (_handlerInstalled) return;
     _handlerInstalled = true;
@@ -137,6 +162,12 @@ class AudioSessionBridge {
       if (call.method == 'resumed') onResumed?.call();
       if (call.method == 'micSilenced') {
         onMicSilenced?.call(call.arguments == true);
+      }
+      // The platform session saying what it just did and why. Forwarded to a
+      // sink the app can show and a rider can send; see `onSessionEvent`.
+      if (call.method == 'sessionEvent') {
+        final text = call.arguments;
+        if (text is String) onSessionEvent?.call(text);
       }
       if (call.method == 'routeChanged') {
         final a = call.arguments;
@@ -261,6 +292,7 @@ class AudioSessionBridge {
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
         route: (r?['route'] as num?)?.toInt() ?? 0,
         error: r?['error'] as String?,
+        sessionRebuilt: r?['sessionRebuilt'] == true,
       );
     } catch (_) {
       // An older platform side, or a profile that was not ours to release.

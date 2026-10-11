@@ -104,6 +104,21 @@ final class AudioSession {
   /// ignore it, which is exactly the case this value exists to catch — a
   /// connected helmet unit on output while the recording comes from a phone in
   /// a pocket.
+  /// A route-change reason as something a reader can act on.
+  static func reasonName(_ reason: AVAudioSession.RouteChangeReason) -> String {
+    switch reason {
+    case .newDeviceAvailable: return "new device"
+    case .oldDeviceUnavailable: return "device gone"
+    case .categoryChange: return "category"
+    case .override: return "override"
+    case .wakeFromSleep: return "wake"
+    case .noSuitableRouteForCategory: return "no route"
+    case .routeConfigurationChange: return "reconfigured"
+    case .unknown: return "unknown"
+    @unknown default: return "other"
+    }
+  }
+
   static func routeCode() -> Int {
     let session = AVAudioSession.sharedInstance()
     guard let port = session.currentRoute.inputs.first?.portType else { return 0 }
@@ -166,9 +181,10 @@ final class AudioSession {
         $0.portType == .bluetoothHFP || $0.portType == .bluetoothA2DP
           || $0.portType == .bluetoothLE
       }
-      if CaptureReconciler.release(routeHasBluetooth: bluetooth)
+      let rebuilt =
+        CaptureReconciler.release(routeHasBluetooth: bluetooth)
         == .deactivateAndReactivate
-      {
+      if rebuilt {
         try? session.setActive(false, options: [.notifyOthersOnDeactivation])
       }
       try activateListening()
@@ -177,6 +193,19 @@ final class AudioSession {
         "inputChannels": 0,
         "sampleRate": session.sampleRate,
         "route": Self.routeCode(),
+        // **Reported because the comment above is true and nothing acted on
+        // it.** Deactivating stops the audio unit and interrupts the streams
+        // the engine has open — *both* of them — and the engine was never
+        // told, so a rider stopping capture on a Bluetooth route was left with
+        // a dead microphone and a dead speaker. They reported it as capture
+        // stopping and then nothing at all: no cue, and taps heard on neither
+        // microphone.
+        //
+        // This is commanded, not observed: we deactivated, so we know. The
+        // route code beside it is read a line after `activateListening`, when
+        // the route has by definition not settled, which is why keying the
+        // rebuild on *that* changing was not enough.
+        "sessionRebuilt": rebuilt,
       ])
     } catch {
       result([
@@ -282,6 +311,12 @@ final class AudioSession {
   /// refuses to let two apps record at once, so what it buys instead is
   /// Apple's echo cancellation — and what it costs is in `activate` below.
   private var voiceProcessing = false
+
+  /// Whether a retry of [preferHandsFreeInput] is already scheduled.
+  ///
+  /// One at a time, which is what keeps a retry from becoming the fourth
+  /// self-sustaining loop out of this file.
+  private var handsFreeRetryPending = false
 
   /// Whether the hands-free profile is currently held.
   ///
@@ -474,6 +509,33 @@ final class AudioSession {
         $0.portType == .bluetoothHFP
       })
     else {
+      // **The port can lag the notification that announced the device.**
+      // A rider connected a headset during a call and the input stayed on the
+      // phone: `.newDeviceAvailable` arrives, this runs, and the hands-free
+      // port is not in `availableInputs` yet — so it returned, nothing was
+      // preferred, and no further notification came because nothing had
+      // changed. One microphone, wrong one, for the rest of the call.
+      //
+      // Retried once, and only while a Bluetooth *output* says a headset is
+      // genuinely attached, so a phone on its own never schedules anything.
+      // Bounded by a flag rather than a count: this cannot become the
+      // self-sustaining loop that three earlier defects in this file were.
+      let headsetPresent = session.currentRoute.outputs.contains {
+        $0.portType == .bluetoothHFP || $0.portType == .bluetoothA2DP
+          || $0.portType == .bluetoothLE
+      }
+      if headsetPresent && !handsFreeRetryPending {
+        handsFreeRetryPending = true
+        channel.invokeMethod(
+          "sessionEvent",
+          arguments: "hands-free port not listed yet; retrying in 700 ms")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+          guard let self else { return }
+          self.handsFreeRetryPending = false
+          guard self.wantedActive, self.capturing else { return }
+          self.preferHandsFreeInput()
+        }
+      }
       return
     }
     do {
@@ -548,7 +610,24 @@ final class AudioSession {
           // for the loop its absence left running for a whole call.
           preferredIsHandsFree: session.preferredInput?.portType == .bluetoothHFP)
 
-        switch CaptureReconciler.next(desired: desired, reading: reading) {
+        let action = CaptureReconciler.next(desired: desired, reading: reading)
+        // **Reported, not just decided.** Everything this handler does was
+        // invisible: `NSLog` reaches the Mac's console and nothing a rider can
+        // read or send, so three faults in a row were diagnosed by reasoning
+        // about the API instead of by reading what it had answered. This line
+        // lands in the engine's log, which is on screen in the diagnostics
+        // panel and travels with a shared recording.
+        self.channel.invokeMethod(
+          "sessionEvent",
+          arguments:
+            "route change (\(Self.reasonName(reason))): "
+            + "capturing \(self.capturing), "
+            + "in \(session.currentRoute.inputs.first?.portType.rawValue ?? "none"), "
+            + "preferred \(session.preferredInput?.portType.rawValue ?? "none"), "
+            + "ch \(session.inputNumberOfChannels), "
+            + "available \(session.isInputAvailable) -> \(action)")
+
+        switch action {
         case .none, .waitForRouteToSettle:
           // Nothing to do, and in the settling case that is the whole point:
           // a settled route posts its own notification.

@@ -466,6 +466,15 @@ const VAD_FADE_SAMPLES: usize = SAMPLE_RATE as usize * VAD_FADE_MS / 1000;
 ///
 /// Paid **only in voice-activated mode** — push-to-talk and continuous have no
 /// threshold to be late for and are not delayed at all.
+/// How long the input may be bit-exact zero before the streams are rebuilt.
+///
+/// **Half a second, which is long enough not to chase a transition and short
+/// enough that a rider does not give up.** The platform reconfigures its
+/// session on every capture change, and for a moment either side of that there
+/// is legitimately nothing arriving; reopening into the middle of it would
+/// fight the very thing being waited for.
+const DEAD_INPUT_SAMPLES: u64 = (SAMPLE_RATE as u64) / 2;
+
 /// How long the microphone may return bit-exact zero before it is reported.
 ///
 /// Two seconds. Long enough that a device switch or a route change passing
@@ -841,6 +850,12 @@ pub struct AudioShared {
     /// The same reason the raw input peak exists: a measurement taken after
     /// the thing being debugged cannot exonerate it.
     input_rate: AtomicU32,
+    /// Consecutive bit-exact-zero input samples while the devices are open.
+    ///
+    /// Reset by any sample that is not zero, so this only ever describes a
+    /// stream that has stopped rather than a quiet room. See the input
+    /// callback for what it recovers from.
+    dead_input_frames: AtomicU64,
     /// Which microphone the platform says we are on. See [`record::Recorded`]
     /// for what the numbers mean; the core only carries it to the log.
     route: AtomicU8,
@@ -1410,6 +1425,7 @@ impl AudioShared {
             input_blocks: AtomicU64::new(0),
             input_silent_blocks: AtomicU64::new(0),
             input_rate: AtomicU32::new(0),
+            dead_input_frames: AtomicU64::new(0),
             chain: Mutex::new(ChainStatus::default()),
             stage_timings: Mutex::new(StageTimings::default()),
             reset_stage_timings: AtomicBool::new(false),
@@ -1773,6 +1789,47 @@ impl AudioShared {
         if clipped > 0 {
             self.input_clipped
                 .fetch_add(clipped as u64, Ordering::Relaxed);
+        }
+    }
+
+    /// Rebuilds the streams if the input has stopped delivering anything.
+    ///
+    /// **Digital silence while the devices are open is a dead stream, and
+    /// nothing else.** A real microphone in a silent room sits tens of
+    /// decibels above bit-exact zero, so there is no ambiguity to guard
+    /// against and no threshold to tune.
+    ///
+    /// Called from the input callback rather than the worker, because the
+    /// worker is not fed at all while listening — which is the state pocket
+    /// mode spends its time in, and exactly where the fault was reported.
+    ///
+    /// **What it recovers from is written in `AudioSession.swift`'s own
+    /// words**: "deactivating stops the audio unit and interrupts the stream
+    /// the engine has open on it". That happens on every tap-to-stop on a
+    /// Bluetooth route, and nothing told the engine — so the microphone *and*
+    /// the speaker were dead from then on, which a rider reported as capture
+    /// stopping and then nothing at all: no cue, and no taps heard on either
+    /// microphone.
+    ///
+    /// A backstop rather than the mechanism. The platform now says when it has
+    /// rebuilt its session, which is immediate and certain; this catches the
+    /// causes nobody has thought of, which on this feature has been most of
+    /// them.
+    pub fn watch_for_dead_input(&self, block: &[f32]) {
+        if !self.audio_wanted() {
+            return;
+        }
+        if block.iter().all(|s| *s == 0.0) {
+            let dead = self
+                .dead_input_frames
+                .fetch_add(block.len() as u64, Ordering::Relaxed)
+                + block.len() as u64;
+            if dead >= DEAD_INPUT_SAMPLES {
+                self.dead_input_frames.store(0, Ordering::Relaxed);
+                self.request_reopen();
+            }
+        } else {
+            self.dead_input_frames.store(0, Ordering::Relaxed);
         }
     }
 
@@ -3164,6 +3221,30 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 interleaved_to_mono(data, in_channels, &mut mono_scratch);
                 resampled.clear();
                 in_resampler.process(&mono_scratch, &mut resampled);
+
+                // **Digital silence while the devices are open is a dead
+                // stream, and nothing else.**
+                //
+                // A real microphone in a silent room sits tens of decibels
+                // above bit-exact zero, so this is unambiguous: the device is
+                // not delivering. It is counted here rather than in the
+                // worker because the worker is not fed at all while listening,
+                // which is exactly the state pocket mode spends its time in
+                // and exactly where the fault was reported.
+                //
+                // **The fault it recovers from is in `AudioSession.swift`'s
+                // own words**: "deactivating stops the audio unit and
+                // interrupts the stream the engine has open on it". That
+                // happens on every tap-to-stop on a Bluetooth route, and
+                // nothing told the engine — so the microphone and the
+                // *speaker* were both dead, which a rider reported as capture
+                // stopping and then nothing at all: no cue, and no taps heard
+                // on either microphone.
+                //
+                // A backstop, not the mechanism: the platform now says when it
+                // has rebuilt its session. This catches the causes nobody has
+                // thought of, which on this feature has been most of them.
+                cap_shared.watch_for_dead_input(&resampled);
 
                 // **The gesture listens here, before the chain and whether or
                 // not the chain runs.**
@@ -5830,6 +5911,75 @@ mod tests {
     /// it had opened with, so in the listening state the detector was not
     /// hearing the phone's microphone at all. The whole feature rests on that
     /// switch: the helmet's while capturing, the phone's own while listening.
+    /// **What a rider saw as "capture stopped and nothing else happens".**
+    ///
+    /// Handing the hands-free profile back deactivates the platform session,
+    /// which stops the audio unit and takes both of the engine's streams with
+    /// it — so there was no microphone to hear a tap and no speaker to play
+    /// the cue that would have said so. The platform now reports the rebuild
+    /// directly; this is the backstop for every cause that does not.
+    #[test]
+    fn an_input_that_has_stopped_delivering_rebuilds_itself() {
+        let shared = AudioShared::new();
+        let silence = vec![0.0f32; 480];
+        let sound = {
+            let mut v = vec![0.0f32; 480];
+            v[7] = 0.004; // quiet, and nothing like bit-exact zero
+            v
+        };
+
+        // Nothing open: an idle engine is not a dead one.
+        let idle = shared.device_generation();
+        for _ in 0..200 {
+            shared.watch_for_dead_input(&silence);
+        }
+        assert_eq!(
+            shared.device_generation(),
+            idle,
+            "a shut engine rebuilt devices for an input nobody had opened"
+        );
+
+        shared.set_audio_wanted(true);
+        let open = shared.device_generation();
+
+        // Half a second of digital zero, one block short.
+        let blocks = (DEAD_INPUT_SAMPLES / 480) as usize;
+        for _ in 0..(blocks - 1) {
+            shared.watch_for_dead_input(&silence);
+        }
+        assert_eq!(
+            shared.device_generation(),
+            open,
+            "rebuilt before the input had been given its half second"
+        );
+
+        shared.watch_for_dead_input(&silence);
+        assert!(
+            shared.device_generation() > open,
+            "a dead input was left dead: no microphone, and no speaker either"
+        );
+
+        // **A quiet room is not a dead stream.** One sample above zero resets
+        // it, so a rider in a silent garage does not have their audio rebuilt
+        // twice a second.
+        assert!(shared.take_reopen_request());
+        let settled = shared.device_generation();
+        for _ in 0..(blocks * 3) {
+            shared.watch_for_dead_input(&sound);
+        }
+        assert_eq!(
+            shared.device_generation(),
+            settled,
+            "a quiet microphone was mistaken for a dead one"
+        );
+
+        // And the count does not carry over from before the sound.
+        for _ in 0..(blocks - 1) {
+            shared.watch_for_dead_input(&silence);
+        }
+        assert_eq!(shared.device_generation(), settled);
+    }
+
     #[test]
     fn a_changed_route_rebuilds_the_input() {
         let shared = AudioShared::new();

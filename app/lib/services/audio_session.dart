@@ -263,6 +263,7 @@ class AudioSessionBridge {
         route: (r?['route'] as num?)?.toInt() ?? 0,
         error: r?['error'] as String?,
         capturing: true,
+        sessionRebuilt: r?['sessionRebuilt'] == true,
       );
     } on MissingPluginException {
       return AudioSessionState.notNeeded;

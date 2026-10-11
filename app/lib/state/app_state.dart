@@ -2624,6 +2624,18 @@ class AppState extends ChangeNotifier {
       setAudioRoute(code: s.route);
       await setCaptureWanted(on_: true);
 
+      // **Taking the hands-free profile moves the input device**, from the
+      // phone's own microphone to the helmet's, and the engine's stream is
+      // bound to a device with the rate it resamples from read when that
+      // stream was built. A rider disarmed pocket mode and reported the
+      // microphone not going back to the helmet: the session had moved and
+      // nothing told the engine to follow.
+      if (s.sessionRebuilt) {
+        try {
+          audioSessionRebuilt();
+        } catch (_) {}
+      }
+
       _capturing = true;
       _captureChanging = false;
       try {

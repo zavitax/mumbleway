@@ -238,6 +238,12 @@ final class AudioSession {
       // answered -1 for exactly this reason.
       let channels = session.inputNumberOfChannels
       let known = channels > 0 || !session.isInputAvailable
+      channel.invokeMethod(
+        "sessionEvent",
+        arguments:
+          "startCapture: in \(session.currentRoute.inputs.first?.portType.rawValue ?? "none"), "
+          + "preferred \(session.preferredInput?.portType.rawValue ?? "none"), "
+          + "ch \(channels), rate \(session.sampleRate)")
       result([
         "ok": true,
         // Reported so Dart can say "no input available" instead of letting the
@@ -245,6 +251,14 @@ final class AudioSession {
         "inputChannels": known ? channels : -1,
         "sampleRate": session.sampleRate,
         "route": Self.routeCode(),
+        // **Taking the hands-free profile moves the input device**, from the
+        // phone's own microphone to the helmet's, so the engine has to open
+        // the new one — its stream is bound to a device, and the rate it
+        // resamples from was read when that stream was built. A rider
+        // disarmed pocket mode and reported that the microphone did not go
+        // back to the helmet, which is this: the session moved and the engine
+        // was never told to follow.
+        "sessionRebuilt": true,
       ])
     } catch {
       // An answer, not a crash. Something else holds the microphone, and the

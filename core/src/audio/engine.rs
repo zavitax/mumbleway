@@ -856,6 +856,12 @@ pub struct AudioShared {
     /// stream that has stopped rather than a quiet room. See the input
     /// callback for what it recovers from.
     dead_input_frames: AtomicU64,
+    /// Whether the input stream now open has ever delivered a non-zero sample.
+    ///
+    /// The guard that keeps [`Self::watch_for_dead_input`] from rebuilding in
+    /// a loop. Cleared when a rebuild is asked for, so the next one cannot be
+    /// asked for until the new stream has proved itself.
+    input_ever_delivered: AtomicBool,
     /// Which microphone the platform says we are on. See [`record::Recorded`]
     /// for what the numbers mean; the core only carries it to the log.
     route: AtomicU8,
@@ -1426,6 +1432,7 @@ impl AudioShared {
             input_silent_blocks: AtomicU64::new(0),
             input_rate: AtomicU32::new(0),
             dead_input_frames: AtomicU64::new(0),
+            input_ever_delivered: AtomicBool::new(false),
             chain: Mutex::new(ChainStatus::default()),
             stage_timings: Mutex::new(StageTimings::default()),
             reset_stage_timings: AtomicBool::new(false),
@@ -1819,17 +1826,38 @@ impl AudioShared {
         if !self.audio_wanted() {
             return;
         }
-        if block.iter().all(|s| *s == 0.0) {
-            let dead = self
-                .dead_input_frames
-                .fetch_add(block.len() as u64, Ordering::Relaxed)
-                + block.len() as u64;
-            if dead >= DEAD_INPUT_SAMPLES {
-                self.dead_input_frames.store(0, Ordering::Relaxed);
-                self.request_reopen();
-            }
-        } else {
+        if block.iter().any(|s| *s != 0.0) {
             self.dead_input_frames.store(0, Ordering::Relaxed);
+            self.input_ever_delivered.store(true, Ordering::Relaxed);
+            return;
+        }
+        // **Only a stream that was working and then stopped.**
+        //
+        // This shipped without the test and looped: a rebuild hands back a
+        // stream that needs a moment to deliver, that moment is silence, the
+        // silence asks for another rebuild, and so on. A rider heard it at
+        // once — music "horribly choppy with volume oscillation", which is a
+        // session being reconfigured over and over, ducking and unducking as
+        // it goes.
+        //
+        // Requiring evidence that *this* stream ever delivered closes it with
+        // no timer and no cooldown to tune: a reopen clears the flag, so the
+        // next reopen cannot be asked for until real audio has arrived, and
+        // real audio arriving is proof there is nothing to recover from. A
+        // stream that comes up dead is not this mechanism's problem — the
+        // platform says when it has rebuilt its session, and that is the path
+        // for a device that was never alive.
+        if !self.input_ever_delivered.load(Ordering::Relaxed) {
+            return;
+        }
+        let dead = self
+            .dead_input_frames
+            .fetch_add(block.len() as u64, Ordering::Relaxed)
+            + block.len() as u64;
+        if dead >= DEAD_INPUT_SAMPLES {
+            self.dead_input_frames.store(0, Ordering::Relaxed);
+            self.input_ever_delivered.store(false, Ordering::Relaxed);
+            self.request_reopen();
         }
     }
 
@@ -2041,37 +2069,30 @@ impl AudioShared {
         let _ = on;
     }
 
-    /// Records which microphone the platform says we are on, and **follows it**.
+    /// Records which microphone the platform says we are on, for the log.
     ///
-    /// **The second half was missing, and it is what made pocket mode useless
-    /// on a helmet.** This stored a number for the recorder's log and nothing
-    /// else, so when iOS moved the input between the helmet's hands-free
-    /// microphone and the phone's own, the engine's input stream stayed bound
-    /// to whichever device it had opened with. The rider's report was exactly
-    /// right and exactly literal: *the microphone didn't really switch*.
+    /// **A number, and deliberately nothing more.** The engine does have to
+    /// follow the route — the sample rate is read once in
+    /// `build_input_stream` and baked into a resampler, and hands-free
+    /// Bluetooth is 8 or 16 kHz where a built-in microphone is 48 — but this
+    /// is the wrong place to notice it.
     ///
-    /// Two things make that worse than a stale name. The sample rate is read
-    /// once, in `build_input_stream`, and baked into a resampler — hands-free
-    /// Bluetooth is 8 or 16 kHz where the built-in microphone is 48 — so a
-    /// route that moves under a live stream leaves the resampler converting
-    /// from a rate nothing is arriving at. And the whole of pocket mode rests
-    /// on the input switching: the helmet's while capturing, the phone's own
-    /// while listening, because that is the only microphone a tap on the phone
-    /// can reach.
+    /// It was briefly made to request a rebuild whenever the code changed, and
+    /// that failed twice over. The code is read one line after the category is
+    /// set, when the route has by definition not settled, so it frequently
+    /// reports the old value and the rebuild never happens; and when it does
+    /// fire, it fires in the middle of the platform's own transition, which is
+    /// the worst available moment — a rider heard that as music turning
+    /// choppy with the volume oscillating. Both are the same mistake
+    /// `CaptureReconciler` exists to prevent: deciding on an observed property
+    /// at the one moment it cannot be trusted.
     ///
-    /// [`Self::request_reopen`] already does the work and its own comment
-    /// already lists "a route changed under us" as a cause. It was only ever
-    /// called from cpal's error callback, and iOS does not error a stream when
-    /// the session's input moves — it just hands over different audio, or
-    /// none. So this is that mechanism's missing second trigger rather than a
-    /// new one.
-    ///
-    /// Only on a real change, so a burst of route reports cannot turn into a
-    /// burst of rebuilds.
+    /// What follows the route instead is commanded. The platform says when it
+    /// has rebuilt its session — `audio_session_rebuilt` in the FFI — and
+    /// [`Self::watch_for_dead_input`] is the backstop for anything that does
+    /// not say.
     pub fn set_route(&self, code: u8) {
-        if self.route.swap(code, Ordering::Relaxed) != code {
-            self.request_reopen();
-        }
+        self.route.store(code, Ordering::Relaxed);
     }
 
     pub fn route(&self) -> u8 {
@@ -5940,10 +5961,28 @@ mod tests {
         );
 
         shared.set_audio_wanted(true);
+        let blocks = (DEAD_INPUT_SAMPLES / 480) as usize;
+
+        // **A stream that has never delivered is not a dead one.** This is the
+        // guard that stops the loop, so it is asserted before anything else:
+        // after a rebuild the new stream needs a moment, and taking that
+        // moment for silence is what made a rider's music choppy with the
+        // volume oscillating as the session was torn down over and over.
+        let fresh = shared.device_generation();
+        for _ in 0..(blocks * 3) {
+            shared.watch_for_dead_input(&silence);
+        }
+        assert_eq!(
+            shared.device_generation(),
+            fresh,
+            "rebuilt a stream that had never delivered anything — this is the loop"
+        );
+
+        // It has to work first, which is what makes going quiet a fault.
+        shared.watch_for_dead_input(&sound);
         let open = shared.device_generation();
 
         // Half a second of digital zero, one block short.
-        let blocks = (DEAD_INPUT_SAMPLES / 480) as usize;
         for _ in 0..(blocks - 1) {
             shared.watch_for_dead_input(&silence);
         }
@@ -5959,10 +5998,23 @@ mod tests {
             "a dead input was left dead: no microphone, and no speaker either"
         );
 
+        // And having asked once, it cannot ask again until the replacement
+        // stream has proved itself.
+        let asked = shared.device_generation();
+        for _ in 0..(blocks * 3) {
+            shared.watch_for_dead_input(&silence);
+        }
+        assert_eq!(
+            shared.device_generation(),
+            asked,
+            "asked for a second rebuild while the first was still arriving"
+        );
+
         // **A quiet room is not a dead stream.** One sample above zero resets
         // it, so a rider in a silent garage does not have their audio rebuilt
         // twice a second.
         assert!(shared.take_reopen_request());
+        shared.watch_for_dead_input(&sound);
         let settled = shared.device_generation();
         for _ in 0..(blocks * 3) {
             shared.watch_for_dead_input(&sound);
@@ -5981,42 +6033,28 @@ mod tests {
     }
 
     #[test]
-    fn a_changed_route_rebuilds_the_input() {
+    /// **A route report is information, not an instruction.**
+    ///
+    /// It was briefly both, and that was wrong twice over: the code is read
+    /// before the route has settled, so it often reports the old value and
+    /// nothing happens; and when it does fire, it fires inside the platform's
+    /// own transition, which a rider heard as music turning choppy with the
+    /// volume oscillating. Following the route is commanded now — the platform
+    /// says when it has rebuilt its session — and this stays a number for the
+    /// log.
+    fn a_route_report_does_not_rebuild_anything() {
         let shared = AudioShared::new();
-
-        // Nothing open: a route report is information, not a reason to act.
-        let idle = shared.device_generation();
-        shared.set_route(3);
-        assert_eq!(
-            shared.device_generation(),
-            idle,
-            "a shut engine rebuilt devices for a route nobody was using"
-        );
-        assert_eq!(shared.route(), 3, "the code is recorded either way");
-
         shared.set_audio_wanted(true);
         let open = shared.device_generation();
 
-        // Hands-free to built-in, which is what stopping capture does.
-        shared.set_route(1);
-        assert!(
-            shared.device_generation() > open,
-            "the input stayed on the old microphone after the route moved"
-        );
-        assert_eq!(shared.route(), 1);
-
-        // **The same route reported again is not a change.** iOS posts route
-        // notifications in bursts, and a rebuild per notification would be
-        // the stream churn this was meant to cure.
-        assert!(shared.take_reopen_request());
-        let settled = shared.device_generation();
-        shared.set_route(1);
+        shared.set_route(3);
         shared.set_route(1);
         assert_eq!(
             shared.device_generation(),
-            settled,
-            "a repeated route report queued a rebuild"
+            open,
+            "a route report rebuilt the devices from inside a transition"
         );
+        assert_eq!(shared.route(), 1, "and it is still recorded");
     }
 
     #[test]

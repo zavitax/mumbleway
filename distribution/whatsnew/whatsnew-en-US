@@ -1,5 +1,7 @@
-Still 1.2.0. Pocket mode, and the tap detector rebuilt around a measurement.
+Still 1.2.0. The helmet microphone was silent two thirds of the time.
 
-Settings keeps one switch. A green slider at the bottom arms it: the screen locks and the microphone closes. Three taps on the phone within three seconds open it, three more close it. The red slider unlocks.
+Your recording of taps on the helmet was 66.9% digital zero — nothing at all — in bursts of about 120 ms. A tap landing in one of those does not exist, and nor did two thirds of your speech.
 
-Frequency turned out not to tell a tap from music, whatever the band — attack does. Real music went from 52 false triggers an hour to none, and your phone-tap recording now scores ten of ten.
+The session kept asking for an input it had already asked for, and each request interrupted the microphone. Fixed, with the test that accepted the loop.
+
+The panel now shows microphone silence; above 0% is a fault.

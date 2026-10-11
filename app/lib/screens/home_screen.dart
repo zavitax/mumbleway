@@ -326,35 +326,39 @@ class HomeScreen extends StatelessWidget {
             //
             // `AbsorbPointer` rather than `IgnorePointer`: the taps must stop
             // here rather than fall through to whatever is behind.
-            Opacity(
-              opacity: state.pocketActive ? 0.38 : 1,
-              child: AbsorbPointer(
-                absorbing: state.pocketActive,
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Above the breakpoint the extra width goes to a detail
-                    // pane rather than to stretching cards that gain nothing
-                    // from being wider.
-                    final wide =
-                        constraints.maxWidth >= kWideLayoutBreakpoint;
-                    return wide
-                        ? _WideBody(
-                            state: state,
-                            available: constraints.maxWidth,
-                          )
-                        : _NarrowBody(state: state);
-                  },
+            //
+            // **In the layout rather than over it**, which is not a style
+            // choice: the slider lives at the bottom of the screen and so does
+            // the talk button, so a positioned panel covered the one control
+            // this app exists for. The body takes the space that is left.
+            Column(
+              children: [
+                Expanded(
+                  child: Opacity(
+                    opacity: state.pocketActive ? 0.38 : 1,
+                    child: AbsorbPointer(
+                      absorbing: state.pocketActive,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // Above the breakpoint the extra width goes to a
+                          // detail pane rather than to stretching cards that
+                          // gain nothing from being wider.
+                          final wide =
+                              constraints.maxWidth >= kWideLayoutBreakpoint;
+                          return wide
+                              ? _WideBody(
+                                  state: state,
+                                  available: constraints.maxWidth,
+                                )
+                              : _NarrowBody(state: state);
+                        },
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            // Above the body and outside the lock, so it is the one thing
-            // still working. Below the diagnostics panel in the stack, which
-            // slides over everything when it is open.
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: PocketPanel(),
+                // Outside the lock, so it is the one thing still working.
+                const PocketPanel(),
+              ],
             ),
             // Slides up over the content rather than displacing it: the panel
             // is consulted while something is going wrong, and shifting the

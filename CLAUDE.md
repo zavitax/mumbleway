@@ -159,6 +159,32 @@ So an hour's patience clears it. Still worth not spending uploads on a change
 that ships no app code — a documentation edit, a benchmark harness, a test —
 because six in an hour is easy to reach on a busy afternoon.
 
+### A commit that has not been pushed has never been compiled
+
+**Check that `build.yml` has run on everything you are about to publish**, and
+treat an unpushed commit in the tree as unverified however green the local
+suite is:
+
+```bash
+git log --oneline origin/main..HEAD        # anything here has not been built
+gh run list --workflow=build.yml --limit 3 # and this says what has
+```
+
+The Swift, Kotlin and plist halves compile nowhere but CI — the section on
+verification says so — so `cargo test`, `flutter test` and `flutter analyze`
+can all be green over a tree that cannot build. On 2026-10-11 a commit
+removing a feature sat unpushed from a previous session, and the next push
+carried it: a `MethodChannel` had been half-deleted, leaving an unclosed
+paren, and a deleted `MotionSensors.swift` was still listed in
+`project.pbxproj`. Both device jobs died, twenty-four minutes in, on a commit
+nobody had changed that day.
+
+The Kotlin error is worth knowing for its shape as well. An unclosed paren is
+reported where the parser finally gives up, not where it began — here as
+*Unresolved reference 'MethodChannel'* fourteen lines later, on a channel that
+was perfectly fine and identical to seven others in the file. Reading the
+error where it points finds nothing wrong. Count delimiters instead.
+
 ### Check the secrets exist before claiming a publish happened
 
 Every job is gated and **skips cleanly when its secrets are absent**, which

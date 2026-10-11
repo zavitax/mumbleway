@@ -1,5 +1,5 @@
-Still 1.2.0. The tick was coming back through the helmet and counting itself.
+Still 1.2.0. Phone taps were not being missed, they were not being heard at all.
 
-It crosses to the helmet, out of its speaker, into its own microphone and back — two or three hundred milliseconds, where the detector stopped listening for 120. No delay fixes that: taps arrive 200 to 330 ms apart, so any wait long enough to ignore the tick swallows the next tap. No tick through a headset now; three dots above the slider instead.
+A flag saying "the rider is talking" is written by the capture worker, and the worker does not run while listening — so if you were talking when capture stopped, it stayed stuck on and the detector never listened again.
 
-Speaking no longer counts as tapping.
+Speaking on the helmet is a separate thing: a consonant is an impact, and what tells it from a tap is the vowel behind it. Measured, and now rejected on that.

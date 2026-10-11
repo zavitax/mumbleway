@@ -1,5 +1,5 @@
-Still 1.2.0. The microphone never followed the route — your words exactly.
+Still 1.2.0. Stopping capture on a headset was killing the microphone and the speaker.
 
-Switching between the helmet and the phone wrote a number to the recorder's log and told the audio engine nothing, so its input stayed on whichever microphone it opened with. Pocket mode then left it on a device that had gone: tapping the phone went unheard because the phone was not being listened to, and the helmet because it was gone.
+Handing the hands-free profile back deactivates the phone's audio session, which stops the audio unit the engine has both its streams open on. So capture stopped and then nothing happened: no cue to say so, no taps heard on either microphone. The phone's own speaker never showed it, needing no profile handed back.
 
-The panel now shows the rate the engine opened: 16 kHz helmet, 48 kHz phone.
+The session now reports that and the engine rebuilds. Its decisions go to the log.

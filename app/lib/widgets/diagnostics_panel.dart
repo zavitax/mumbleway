@@ -259,6 +259,14 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   /// labels quietly won and the cost table had been showing `To the server` for
   /// a row that times the onset delay and the decision log. Nothing failed:
   /// both keys existed, both files had them, both translations were real.
+  /// What a stream rate says about which microphone it is.
+  ///
+  /// Narrowband is hands-free Bluetooth and nothing else: a phone's own
+  /// microphone is always offered at 48 kHz. Not localised, because it names
+  /// a profile rather than describing one.
+  static String _micFromRate(int hz) =>
+      hz <= 24_000 ? 'Bluetooth hands-free' : 'built-in';
+
   /// How much of what the microphone delivered was digital silence.
   ///
   /// A share as well as a count, because the count alone says nothing without
@@ -486,6 +494,20 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                     (_chain?.inputSilentBlocks ??
                                         BigInt.zero) >
                                     BigInt.zero,
+                              ),
+                              // **Which microphone the engine is really on**,
+                              // beside the route the platform reports. 8 or
+                              // 16 kHz is hands-free Bluetooth, 48 kHz is the
+                              // phone's own — so the two rows disagreeing is
+                              // the fault a rider could only describe as "the
+                              // microphone didn't really switch", with nothing
+                              // on screen able to confirm it.
+                              _Row(
+                                l.diagInputRate,
+                                _chain == null || _chain!.inputRateHz == 0
+                                    ? '—'
+                                    : '${_chain!.inputRateHz} Hz'
+                                          ' · ${_micFromRate(_chain!.inputRateHz)}',
                               ),
                               // **The one place the slider and the gain in
                               // force can be reconciled.** The guard backs the

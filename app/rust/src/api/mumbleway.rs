@@ -2465,6 +2465,14 @@ pub struct UiChainStatus {
     /// recording; the phone's own microphone has never done it once.
     pub input_blocks: u64,
     pub input_silent_blocks: u64,
+    /// The sample rate of the input stream the **engine** has open.
+    ///
+    /// Which microphone it is really on, against which one the platform says
+    /// it is on: hands-free Bluetooth is 8 or 16 kHz, a built-in microphone
+    /// 48. A rider said "the microphone didn't really switch" and nothing on
+    /// screen could settle it, because the route came from the platform while
+    /// the stream was bound to whatever device it had opened with.
+    pub input_rate_hz: u32,
     /// What the clip guard is holding back off the gain slider, in dB. Never
     /// positive, and `0.0` when it is idle.
     ///
@@ -3001,6 +3009,7 @@ pub fn audio_chain_status() -> anyhow::Result<UiChainStatus> {
         input_clipped: shared.input_peak().1,
         input_blocks: shared.input_silence().0,
         input_silent_blocks: shared.input_silence().1,
+        input_rate_hz: shared.input_rate(),
         input_trim_db: c.input_trim_db,
         floor_held: c.floor_held,
         floor_held_ms: c.floor_held_ms,

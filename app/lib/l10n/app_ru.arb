@@ -428,6 +428,7 @@
   "diagGapsConcealed": "Скрыто пропусков",
   "diagSpeakersTracked": "Отслеживается говорящих",
   "diagMicrophoneDropped": "Потеряно с микрофона",
+  "diagInputRate": "Микрофон, открытый движком",
   "diagInputSilent": "Цифровая тишина с микрофона",
   "diagInputPeak": "Пик микрофона",
   "diagInputClipped": "Перегрузка микрофона",

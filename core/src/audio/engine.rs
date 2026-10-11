@@ -828,6 +828,19 @@ pub struct AudioShared {
     /// not register — a tap that lands in a silent block does not exist.
     input_blocks: AtomicU64,
     input_silent_blocks: AtomicU64,
+    /// The sample rate of the input stream the engine actually opened.
+    ///
+    /// **Which microphone the engine is on, as opposed to which one the
+    /// platform says it is on.** Hands-free Bluetooth is 8 or 16 kHz and a
+    /// built-in microphone is 48, so this one number settles a disagreement
+    /// that was otherwise invisible: a rider reported "the microphone didn't
+    /// really switch" and nothing on screen could confirm or deny it, because
+    /// the route shown came from the platform's notification while the stream
+    /// was bound to whatever device it opened with.
+    ///
+    /// The same reason the raw input peak exists: a measurement taken after
+    /// the thing being debugged cannot exonerate it.
+    input_rate: AtomicU32,
     /// Which microphone the platform says we are on. See [`record::Recorded`]
     /// for what the numbers mean; the core only carries it to the log.
     route: AtomicU8,
@@ -1396,6 +1409,7 @@ impl AudioShared {
             input_clipped: AtomicU64::new(0),
             input_blocks: AtomicU64::new(0),
             input_silent_blocks: AtomicU64::new(0),
+            input_rate: AtomicU32::new(0),
             chain: Mutex::new(ChainStatus::default()),
             stage_timings: Mutex::new(StageTimings::default()),
             reset_stage_timings: AtomicBool::new(false),
@@ -1770,6 +1784,15 @@ impl AudioShared {
         }
     }
 
+    /// The rate of the input stream the engine has open, or 0 if none.
+    pub fn input_rate(&self) -> u32 {
+        self.input_rate.load(Ordering::Relaxed)
+    }
+
+    pub fn set_input_rate(&self, hz: u32) {
+        self.input_rate.store(hz, Ordering::Relaxed);
+    }
+
     /// Blocks delivered, and how many were bit-exact zero.
     pub fn input_silence(&self) -> (u64, u64) {
         (
@@ -1961,8 +1984,37 @@ impl AudioShared {
         let _ = on;
     }
 
+    /// Records which microphone the platform says we are on, and **follows it**.
+    ///
+    /// **The second half was missing, and it is what made pocket mode useless
+    /// on a helmet.** This stored a number for the recorder's log and nothing
+    /// else, so when iOS moved the input between the helmet's hands-free
+    /// microphone and the phone's own, the engine's input stream stayed bound
+    /// to whichever device it had opened with. The rider's report was exactly
+    /// right and exactly literal: *the microphone didn't really switch*.
+    ///
+    /// Two things make that worse than a stale name. The sample rate is read
+    /// once, in `build_input_stream`, and baked into a resampler — hands-free
+    /// Bluetooth is 8 or 16 kHz where the built-in microphone is 48 — so a
+    /// route that moves under a live stream leaves the resampler converting
+    /// from a rate nothing is arriving at. And the whole of pocket mode rests
+    /// on the input switching: the helmet's while capturing, the phone's own
+    /// while listening, because that is the only microphone a tap on the phone
+    /// can reach.
+    ///
+    /// [`Self::request_reopen`] already does the work and its own comment
+    /// already lists "a route changed under us" as a cause. It was only ever
+    /// called from cpal's error callback, and iOS does not error a stream when
+    /// the session's input moves — it just hands over different audio, or
+    /// none. So this is that mechanism's missing second trigger rather than a
+    /// new one.
+    ///
+    /// Only on a real change, so a burst of route reports cannot turn into a
+    /// burst of rebuilds.
     pub fn set_route(&self, code: u8) {
-        self.route.store(code, Ordering::Relaxed);
+        if self.route.swap(code, Ordering::Relaxed) != code {
+            self.request_reopen();
+        }
     }
 
     pub fn route(&self) -> u8 {
@@ -3090,6 +3142,9 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
     // not what it had been handed. A device name here also settles which of
     // several possible microphones a helmet headset actually attached to.
     tracing::info!("input '{}' at {} Hz, {} ch", input, in_rate, in_channels);
+    // Published as well as logged, so the panel can say which microphone the
+    // engine is really on. See `AudioShared::input_rate`.
+    shared.set_input_rate(in_rate);
 
     let cap_shared = shared.clone();
     let mut in_resampler = Resampler::new(in_rate, SAMPLE_RATE);
@@ -5764,6 +5819,54 @@ mod tests {
         );
         assert!(shared.audio_wanted());
         handle.join().unwrap();
+    }
+
+    /// **The microphone has to follow the route, and it did not.**
+    ///
+    /// A rider in pocket mode with a helmet reported it in the plainest terms
+    /// available — *the microphone didn't really switch* — and tapping either
+    /// the phone or the helmet did nothing. `set_route` stored a number for
+    /// the recorder's log and left the input stream bound to whatever device
+    /// it had opened with, so in the listening state the detector was not
+    /// hearing the phone's microphone at all. The whole feature rests on that
+    /// switch: the helmet's while capturing, the phone's own while listening.
+    #[test]
+    fn a_changed_route_rebuilds_the_input() {
+        let shared = AudioShared::new();
+
+        // Nothing open: a route report is information, not a reason to act.
+        let idle = shared.device_generation();
+        shared.set_route(3);
+        assert_eq!(
+            shared.device_generation(),
+            idle,
+            "a shut engine rebuilt devices for a route nobody was using"
+        );
+        assert_eq!(shared.route(), 3, "the code is recorded either way");
+
+        shared.set_audio_wanted(true);
+        let open = shared.device_generation();
+
+        // Hands-free to built-in, which is what stopping capture does.
+        shared.set_route(1);
+        assert!(
+            shared.device_generation() > open,
+            "the input stayed on the old microphone after the route moved"
+        );
+        assert_eq!(shared.route(), 1);
+
+        // **The same route reported again is not a change.** iOS posts route
+        // notifications in bursts, and a rebuild per notification would be
+        // the stream churn this was meant to cure.
+        assert!(shared.take_reopen_request());
+        let settled = shared.device_generation();
+        shared.set_route(1);
+        shared.set_route(1);
+        assert_eq!(
+            shared.device_generation(),
+            settled,
+            "a repeated route report queued a rebuild"
+        );
     }
 
     #[test]

@@ -1753,6 +1753,15 @@ class UiChainStatus {
   final BigInt inputBlocks;
   final BigInt inputSilentBlocks;
 
+  /// The sample rate of the input stream the **engine** has open.
+  ///
+  /// Which microphone it is really on, against which one the platform says
+  /// it is on: hands-free Bluetooth is 8 or 16 kHz, a built-in microphone
+  /// 48. A rider said "the microphone didn't really switch" and nothing on
+  /// screen could settle it, because the route came from the platform while
+  /// the stream was bound to whatever device it had opened with.
+  final int inputRateHz;
+
   /// What the clip guard is holding back off the gain slider, in dB. Never
   /// positive, and `0.0` when it is idle.
   ///
@@ -1954,6 +1963,7 @@ class UiChainStatus {
     required this.inputClipped,
     required this.inputBlocks,
     required this.inputSilentBlocks,
+    required this.inputRateHz,
     required this.inputTrimDb,
     required this.floorHeld,
     required this.floorHeldMs,
@@ -2003,6 +2013,7 @@ class UiChainStatus {
       inputClipped.hashCode ^
       inputBlocks.hashCode ^
       inputSilentBlocks.hashCode ^
+      inputRateHz.hashCode ^
       inputTrimDb.hashCode ^
       floorHeld.hashCode ^
       floorHeldMs.hashCode ^
@@ -2054,6 +2065,7 @@ class UiChainStatus {
           inputClipped == other.inputClipped &&
           inputBlocks == other.inputBlocks &&
           inputSilentBlocks == other.inputSilentBlocks &&
+          inputRateHz == other.inputRateHz &&
           inputTrimDb == other.inputTrimDb &&
           floorHeld == other.floorHeld &&
           floorHeldMs == other.floorHeldMs &&

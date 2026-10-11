@@ -52,6 +52,53 @@ state, and nothing that releases the communication device while the session stay
 alive. On Android `setCommunicationDevice` is called once in `activate` and cleared
 only in `deactivate`.
 
+### The cost is worse than narrowband, and cannot be paid back
+
+Researched 2026-10-11, after a rider asked how to make their music resume when
+the headset returns to A2DP. **It cannot be made to resume, and the reason is
+worth keeping so nobody spends another afternoon on it.**
+
+What actually happens is not degradation. Taking HFP ends the headset's A2DP
+stream, and the rider's music **stops** — then stays stopped for the rest of
+the ride. Two mechanisms, neither ours:
+
+- **The headset.** A helmet intercom switching to HFP is, from its point of
+  view, a call starting, so it sends an AVRCP pause. A2DP's `Suspend`/`Start`
+  pair is optional in the profile and widely unimplemented, so the pause often
+  has no matching resume — this is a known cross-platform complaint, not an
+  iOS one.
+- **The music app.** If it sees its output port disappear, Apple's own
+  guidance for `.oldDeviceUnavailable` is to pause. Nothing in the guidance
+  tells it to resume when a device returns.
+
+**`notifyOthersOnDeactivation` does not help, and it is the obvious thing to
+reach for.** Apple's documentation is exact: it lets "other audio sessions
+*that had been interrupted by your session* return to their active state". We
+never interrupt anybody — every `setCategory` in `AudioSession.swift` carries
+`.mixWithOthers` — so there is no interruption to end. We pass the flag anyway,
+for the separate and real reason that it is what lets the headset fall back off
+HFP at all.
+
+There is also no public API for asking another app to resume.
+`MPRemoteCommandCenter` receives commands for your own app; the single
+exception is `MPMusicPlayerController.systemMusicPlayer`, which drives the
+Music app specifically — so it would work for Apple Music, do nothing for
+Spotify or anything else, and amount to this app deciding to start playback on
+a rider's behalf. Not done, and not a near miss.
+
+**What the constraint really is**: any active Bluetooth input forces HFP, so
+A2DP output and a Bluetooth microphone cannot coexist. But A2DP output
+alongside the **phone's own** microphone is allowed, and that is exactly the
+listening state — which is why music stays whole while pocket mode waits for a
+tap, and it is the one configuration that gets both.
+
+So the only lever is **time spent holding HFP**, which makes pocket mode better
+motivated than it was: the argument was bandwidth, and the real argument is
+that every second of HFP risks silencing the rider's music until they reach for
+their phone. The remaining honest option, if a rider would rather never lose
+their music, is to capture from the phone's microphone instead of the helmet's
+— legal, confirmed, and a poor trade at speed with the phone in a pocket.
+
 ## The organising principle: the chain does not know
 
 **The audio chain behaves exactly as it does today and is never told whether capture

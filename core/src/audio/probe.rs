@@ -250,7 +250,7 @@ fn measure(
     enhancer: &mut super::deepfilter::Enhancer,
     processor: &mut CaptureProcessor,
     at: &mut usize,
-) -> (u32, u32) {
+) -> (u32, u32, u32) {
     let mut times: Vec<u32> = Vec::with_capacity(BLOCKS);
     for i in 0..(BLOCKS + WARMUP) {
         let mut block = worst_case_block(*at);
@@ -269,7 +269,15 @@ fn measure(
         .get(times.len().saturating_sub(2))
         .copied()
         .unwrap_or(worst);
-    (second, worst)
+    // **The fastest block as well, for the questions about cost.** See
+    // `measure_enhancer` below, which states the distinction this third value
+    // exists to honour: a worst case answers "will this fit the budget", and
+    // only the fastest answers "what does this cost". Comparing two
+    // configurations by their worst blocks compares their worst scheduler
+    // interruptions, and under a full parallel test run that is most of the
+    // number.
+    let best = times.first().copied().unwrap_or(0);
+    (second, worst, best)
 }
 
 /// Times the enhancer on its own, and returns the **fastest** block, in
@@ -372,7 +380,7 @@ fn measure_ladder(budget_us: u32) -> Probed {
     let mut steps = 0u8;
     loop {
         level(&mut enhancer, &mut processor, rung);
-        let (worst_us, outlier_us) = measure(&mut enhancer, &mut processor, &mut at);
+        let (worst_us, outlier_us, _) = measure(&mut enhancer, &mut processor, &mut at);
         if worst_us <= budget_us {
             return Probed {
                 rung,
@@ -423,12 +431,25 @@ mod tests {
         let mut at = 0usize;
 
         level(&mut enhancer, &mut processor, Relief::None);
-        let (full, _) = measure(&mut enhancer, &mut processor, &mut at);
+        let (_, _, full) = measure(&mut enhancer, &mut processor, &mut at);
 
         // ErbOnly is where the DF decoder stops running at all.
         level(&mut enhancer, &mut processor, Relief::EnhancerLight);
-        let (light, _) = measure(&mut enhancer, &mut processor, &mut at);
+        let (_, _, light) = measure(&mut enhancer, &mut processor, &mut at);
 
+        // **The fastest block of each, where this used to take the
+        // second-worst.** That compared worst cases, and so compared
+        // scheduler noise rather than work: it passes alone and failed under
+        // a full `cargo test`, with 577 other tests competing for the cores,
+        // because one interruption during the ErbOnly run inverts the
+        // comparison. The distinction is already written down under
+        // `measure_enhancer` — a worst case answers whether something fits
+        // the budget, only the fastest answers what it costs — and this is a
+        // question about cost.
+        //
+        // A flake here costs more than its cause: this test is in the job
+        // every other job in both workflows hangs from, so an unlucky run
+        // takes a whole publish down.
         assert!(
             full > light,
             "the probe signal is not reaching the DF decoder: \

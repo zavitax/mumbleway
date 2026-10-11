@@ -604,8 +604,8 @@ class AppState extends ChangeNotifier {
   static const _prefsKey = 'mumbleway.servers';
   static const _prefsNoise = 'mumbleway.noise';
   static const _prefsMic = 'mumbleway.micMode';
-  static const _prefsTapCapture = 'mumbleway.tapToCapture';
-  static const _prefsTapCount = 'mumbleway.tapCount';
+  static const _prefsPocketMode = 'mumbleway.pocketMode';
+  static const _prefsPocketTutorial = 'mumbleway.pocketTutorialSeen';
   static const _prefsAutoStop = 'mumbleway.autoStopCapture';
   static const _prefsAutoStopSecs = 'mumbleway.autoStopSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
@@ -767,30 +767,42 @@ class AppState extends ChangeNotifier {
   /// in preferences and keeps it.
   MicMode micMode = MicMode.voiceActivity;
 
-  /// Whether the rider starts and stops capture by tapping the phone.
+  /// Whether pocket mode is offered at all.
   ///
-  /// **Off by default, and with it off nothing changes for anybody**: the
-  /// session takes the hands-free profile on connecting and holds it for the
-  /// call, exactly as it always has. That is the kill switch for
-  /// `docs/CAPTURE_ON_DEMAND.md` expressed as a default rather than as a flag
-  /// somebody has to find — much of that design rests on measurements not yet
-  /// taken, and if any comes back badly there is nothing to unpick.
-  bool tapToCapture = false;
+  /// **On by default, and on its own it changes nothing**: it only decides
+  /// whether the slider appears at the bottom of the screen. Nothing about the
+  /// session changes until a rider slides it, so the default can be on without
+  /// the risk that made its predecessor default to off — the microphone is
+  /// held exactly as it always was until somebody deliberately asks otherwise.
+  ///
+  /// The setting it replaces was `tapToCapture`, and it is a **new preferences
+  /// key** rather than a rename: the default has flipped, and reusing the key
+  /// would leave everybody who had ever seen the old switch pinned to off.
+  bool pocketMode = true;
 
-  /// How many taps the gesture takes: 2, 3 or 4.
+  /// Whether the rider has armed pocket mode with the slider.
   ///
-  /// **Three is the default because it is the first count that carries timing
-  /// evidence.** Two taps give exactly one interval, so there is nothing to
-  /// compare it against and the detector rests on magnitude alone; three give
-  /// two intervals and four give three, and deliberate tapping is
-  /// near-isochronous where road impulses are not. Four is for rough roads: the
-  /// chance of N accidental impulses landing in the right lattice falls
-  /// multiplicatively with N, not incrementally.
-  int tapCount = 3;
+  /// **Not persisted, deliberately.** It is a per-ride act, like putting the
+  /// phone away, and an app that came back from a restart already locked with
+  /// its microphone closed would be indistinguishable from a broken one.
+  bool get pocketActive => _pocketActive;
+  bool _pocketActive = false;
+
+  /// Whether pocket mode can be armed: the setting is on and the mic mode
+  /// allows it.
+  ///
+  /// Push-to-talk is excluded because that mode promises immediacy — the button
+  /// exists to put the microphone on the wire the instant it goes down, and in
+  /// pocket mode it would do nothing until a gesture had been performed first.
+  /// Open mic and voice activity are both coherent with it.
+  bool get pocketAvailable => pocketMode && micMode != MicMode.pushToTalk;
+
+  /// Whether the rider has ever armed it, so the explanation is shown once.
+  bool pocketTutorialSeen = false;
 
   /// Whether capture releases itself after a stretch of silence.
   ///
-  /// A sub-setting of [tapToCapture], and meaningless without it: on its own it
+  /// A sub-setting of pocket mode, and meaningless without it: on its own it
   /// would release capture with nothing able to ask for it back.
   bool autoStopCapture = false;
 
@@ -1195,10 +1207,8 @@ class AppState extends ChangeNotifier {
     if (m != null && m >= 0 && m < MicMode.values.length) {
       micMode = MicMode.values[m];
     }
-    tapToCapture = prefs.getBool(_prefsTapCapture) ?? false;
-    // Clamped on the way in rather than trusted. A stored 0 would be a gesture
-    // nobody can perform, and the cue that counts it out would be silence.
-    tapCount = (prefs.getInt(_prefsTapCount) ?? 3).clamp(2, 4);
+    pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
+    pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
     autoStopCapture = prefs.getBool(_prefsAutoStop) ?? false;
     autoStopSeconds = (prefs.getInt(_prefsAutoStopSecs) ?? 20).clamp(5, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
@@ -1361,10 +1371,8 @@ class AppState extends ChangeNotifier {
     );
     await prefs.setInt(_prefsNoise, noise.index);
     await prefs.setInt(_prefsMic, micMode.index);
-    await prefs.setBool(_prefsTapCapture, tapToCapture);
-    // Kept even while tap mode is off, so turning it back on restores what the
-    // rider chose rather than silently resetting to the default.
-    await prefs.setInt(_prefsTapCount, tapCount);
+    await prefs.setBool(_prefsPocketMode, pocketMode);
+    await prefs.setBool(_prefsPocketTutorial, pocketTutorialSeen);
     await prefs.setBool(_prefsAutoStop, autoStopCapture);
     await prefs.setInt(_prefsAutoStopSecs, autoStopSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
@@ -2290,7 +2298,7 @@ class AppState extends ChangeNotifier {
         // The cue the connect path plays, for the same reason: capture is off
         // and without it the first thing a rider does is talk into nothing.
         try {
-          playTapArmedCue(taps: tapCount);
+          playTapArmedCue(taps: 3);
         } catch (_) {}
       }
       return null;
@@ -2318,10 +2326,12 @@ class AppState extends ChangeNotifier {
     // not depend on when anything else happens: audio is only wanted at all
     // when there is a call, a meter or a hold, so "not for a hold" means "for
     // a call".
+    // **Always capturing.** Pocket mode closes the microphone afterwards,
+    // through `stopCapture`, on an act the rider performs — so connecting is
+    // no longer the moment that decides it. See `AudioSessionBridge.activate`.
     final onDemand = _captureOnDemand && !_captureRequiredByHold;
     final session = await AudioSessionBridge.instance.activate(
       voiceProcessing: voiceCommunication,
-      captureOnDemand: onDemand,
     );
     if (!session.usable) {
       // The platform's own wording when there is one — it names the app that
@@ -2378,7 +2388,7 @@ class AppState extends ChangeNotifier {
       // thing a rider does is talk into a microphone that is not there. It
       // counts out the configured taps, which also says what the gesture is.
       try {
-        playTapArmedCue(taps: tapCount);
+        playTapArmedCue(taps: 3);
       } catch (_) {}
     }
     // **The initial state has to be published too.** Without this the app
@@ -2511,7 +2521,7 @@ class AppState extends ChangeNotifier {
   ///
   /// False is the listening state: the group and whatever music is playing come
   /// through at full bandwidth, and nothing can be transmitted. Always true
-  /// unless [tapToCapture] is on.
+  /// unless pocket mode is armed.
   bool get capturing => _capturing;
   bool _capturing = true;
 
@@ -2524,12 +2534,12 @@ class AppState extends ChangeNotifier {
 
   /// Whether the session should stop at listening and wait to be asked.
   ///
-  /// Push-to-talk is excluded because it promises immediacy: the button exists
-  /// to put the microphone on the wire the instant it goes down, and it would
-  /// instead do nothing until a gesture had already been performed. Open mic is
-  /// *not* excluded — tap to open, tap to close is coherent, and arguably the
-  /// clearest use of the feature.
-  bool get _captureOnDemand => tapToCapture && micMode != MicMode.pushToTalk;
+  /// **This now means "armed", not "enabled"**, which is the change the slider
+  /// brought: the setting only decides whether the slider is offered, and the
+  /// session behaves exactly as it always did until a rider slides it. Before,
+  /// switching the setting on in settings silently changed what connecting did,
+  /// which is how a rider came to be listening when they expected to talk.
+  bool get _captureOnDemand => pocketAvailable && _pocketActive;
 
   /// What other MumbleWay clients are told about how this rider transmits.
   ///
@@ -4842,19 +4852,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Turns the tap gesture on or off.
+  /// Turns the offer of pocket mode on or off.
   ///
   /// Shares [canChangeMicMode]'s lock, and for the same reason: it changes what
-  /// the hello says.
-  Future<void> updateTapToCapture(bool on) async {
+  /// the hello says. Switching it off while pocket mode is armed disarms it
+  /// first, so the microphone cannot be left closed by a setting the rider has
+  /// just withdrawn.
+  Future<void> updatePocketMode(bool on) async {
     if (!canChangeMicMode) return;
-    // Refused rather than accepted-and-ignored. `_captureOnDemand` excludes
-    // push-to-talk, so storing `true` here while that mode is selected leaves a
-    // switch reading "on" with nothing behind it — sensors never started, no
-    // gesture ever detected, and no way to tell from the interface. The switch
-    // is disabled for the same reason; this is the guard under it.
     if (on && micMode == MicMode.pushToTalk) return;
-    tapToCapture = on;
+    pocketMode = on;
+    if (!on && _pocketActive) {
+      await setPocketActive(false);
+    }
     _syncTapDetection();
     try {
       await setMicModeHint(mode: _micModeHint);
@@ -4863,10 +4873,47 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// How many taps the gesture takes.
-  Future<void> updateTapCount(int taps) async {
-    tapCount = taps.clamp(2, 4);
+  /// Arms or disarms pocket mode — what the slider does.
+  ///
+  /// **The two halves of the rider's rule fall out of one fact changing**,
+  /// which is the point of reconciling rather than commanding: arming makes
+  /// `_captureOnDemand` true with no rider claim behind it, so the reconcile
+  /// closes the microphone; disarming makes it false, which `micWanted` reads
+  /// as "the microphone is simply on", so the same reconcile opens it. Neither
+  /// `startCapture` nor `stopCapture` is called from here, and that is why
+  /// they cannot be called in the wrong order or twice.
+  Future<void> setPocketActive(bool on) async {
+    if (on == _pocketActive) return;
+    if (on && !pocketAvailable) return;
+    _pocketActive = on;
+    // Armed means the rider is not asking for the microphone yet, and
+    // disarming must not leave a stale claim that survives into the next arm.
+    _riderWantsMic = false;
     _syncTapDetection();
+    if (!on) {
+      _captureIdle?.cancel();
+      _captureIdle = null;
+    }
+    notifyListeners();
+    await _reconcileCapture();
+    if (on) {
+      // Counts the gesture out, so the first thing a rider learns is what to
+      // do rather than that nothing happened.
+      try {
+        playTapArmedCue(taps: 3);
+      } catch (_) {}
+      _armCaptureIdle();
+    }
+    try {
+      await setMicModeHint(mode: _micModeHint);
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Remembers that the explanation has been shown.
+  Future<void> markPocketTutorialSeen() async {
+    if (pocketTutorialSeen) return;
+    pocketTutorialSeen = true;
     await _persist();
     notifyListeners();
   }
@@ -4879,7 +4926,7 @@ class AppState extends ChangeNotifier {
   void _syncTapDetection() {
     final want = _captureOnDemand;
     try {
-      setTapDetection(enabled: want, taps: tapCount);
+      setTapDetection(enabled: want);
     } catch (_) {
       // No engine yet; `startEngine` is followed by a sync of this.
     }

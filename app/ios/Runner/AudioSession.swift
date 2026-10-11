@@ -33,10 +33,7 @@ final class AudioSession {
         // session is being configured.
         let args = call.arguments as? [String: Any]
         self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
-        // Absent means false, which is today's behaviour: one call, capture
-        // live. Only the tap-driven mode stops at listening.
-        let onDemand = args?["captureOnDemand"] as? Bool ?? false
-        self.activateForCall(captureOnDemand: onDemand, result)
+        self.activateForCall(result)
       case "startCapture":
         self.startCapture(result)
       case "stopCapture":
@@ -128,31 +125,17 @@ final class AudioSession {
   /// negotiate — and it can be refused outright by a phone call or a voice
   /// memo holding a session that will not mix. Both are worth several seconds
   /// of a connect and neither is worth clipping the start of a sentence.
-  private func activateForCall(captureOnDemand: Bool, _ result: @escaping FlutterResult) {
-    if captureOnDemand {
-      // Listening only. No input to report on, and that is expected rather than
-      // a fault — the Dart side reads zero as "nothing to record from" only
-      // when capture was asked for, and `startCapture` is what answers for
-      // readiness in this mode.
-      do {
-        try activateListening()
-        let session = AVAudioSession.sharedInstance()
-        result([
-          "ok": true,
-          "inputChannels": 0,
-          "sampleRate": session.sampleRate,
-          "route": Self.routeCode(),
-        ])
-      } catch {
-        result([
-          "ok": false,
-          "inputChannels": 0,
-          "sampleRate": 0.0,
-          "error": error.localizedDescription,
-        ])
-      }
-      return
-    }
+  /// **This always takes capture**, and the branch that stopped at listening
+  /// is gone.
+  ///
+  /// It used to take a `captureOnDemand` and, when set, activate a listening
+  /// session with no input — so the single most consequential fact about a
+  /// call was decided by an argument at connect time. Pocket mode closes the
+  /// microphone afterwards, through `stopCapture`, which is reachable, named
+  /// for what it does, and cannot be reached by accident. `activateListening`
+  /// is still here and still used: it is what `stopCapture` hands the session
+  /// back to.
+  private func activateForCall(_ result: @escaping FlutterResult) {
     captureResult(result)
   }
 

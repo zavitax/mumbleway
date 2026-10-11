@@ -286,6 +286,61 @@ void main() {
       expect(m.state, CaptureState.capturing);
     });
 
+    /// **Arming and disarming pocket mode, which is items 4 and 10 of the
+    /// rider's specification** — and the reason neither needs a line of its
+    /// own in `AppState`. `tapMode` now means "pocket mode is armed", so
+    /// arming it is a change of inputs and the reconcile does the rest: the
+    /// microphone closes because nothing claims it, and opens again on
+    /// disarming because `micWanted` reads a session with no pocket mode as
+    /// one that simply has its microphone on.
+    test('arming pocket mode closes the microphone and disarming opens it', () {
+      final m = CaptureMachine();
+      const call = CaptureInputs(claims: {CaptureClaim.call});
+      const armed = CaptureInputs(claims: {CaptureClaim.call}, tapMode: true);
+
+      // Connected, not armed: capture is live, which is what `activate`
+      // always does now.
+      m.step(CaptureEvent.inputsChanged, call);
+      m.step(CaptureEvent.sessionOpened, call);
+      expect(m.state, CaptureState.capturing);
+
+      // Slid: the microphone goes, and nothing else.
+      final arm = m.step(CaptureEvent.inputsChanged, armed);
+      expect(arm.actions, contains(const StopCapture()));
+      expect(arm.actions, isNot(contains(const StopSession())));
+      m.step(CaptureEvent.captureStopped, armed);
+      expect(m.state, CaptureState.listening);
+
+      // Three taps, and it comes back.
+      m.step(CaptureEvent.tapped, armed);
+      m.step(CaptureEvent.captureStarted, armed);
+      expect(m.state, CaptureState.capturing);
+
+      // Slid back while capturing: still capturing, nothing to do, and no
+      // stray StopCapture from the latch being cleared.
+      m.step(CaptureEvent.inputsChanged, call);
+      expect(m.state, CaptureState.capturing);
+    });
+
+    test('disarming pocket mode reopens a microphone the rider had closed', () {
+      final m = CaptureMachine();
+      const call = CaptureInputs(claims: {CaptureClaim.call});
+      const armed = CaptureInputs(claims: {CaptureClaim.call}, tapMode: true);
+      m.step(CaptureEvent.inputsChanged, armed);
+      m.step(CaptureEvent.sessionOpened, armed);
+      expect(
+        m.state,
+        CaptureState.listening,
+        reason: 'armed with no rider claim is the listening state',
+      );
+
+      // The slider goes back without a tap. The microphone must return, or a
+      // rider who armed it by mistake is left unable to talk with every
+      // control on screen dead.
+      final off = m.step(CaptureEvent.inputsChanged, call);
+      expect(off.actions, contains(const StartCapture()));
+    });
+
     test('the devices go back when the last claim does', () {
       final m = CaptureMachine();
       const call = CaptureInputs(claims: {CaptureClaim.call}, tapMode: true);

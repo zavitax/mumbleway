@@ -3132,14 +3132,14 @@ pub fn diagnostic_recording_state() -> UiRecordingState {
 /// whether or not this is on, because measuring how often the detector fires by
 /// mistake needs rides in which nobody tapped at all.
 ///
-/// Changing the count discards a half-performed gesture rather than
-/// reinterpreting it as part of the new one.
+/// The gesture is always three taps inside three seconds, so there is no count
+/// to pass: see `gesture::TAPS_WANTED`.
 #[frb(sync)]
-pub fn set_tap_detection(enabled: bool, taps: u8) -> anyhow::Result<()> {
+pub fn set_tap_detection(enabled: bool) -> anyhow::Result<()> {
     let app = app()?;
     // The engine's detector, which hears whichever microphone is open — the
     // helmet's while capturing, the phone's own while listening.
-    app.shared.set_tap_detection(enabled, taps);
+    app.shared.set_tap_detection(enabled);
     Ok(())
 }
 
@@ -3168,6 +3168,17 @@ pub struct UiAcousticStats {
     pub floor_db: f32,
     /// How far over the last candidate reached.
     pub peak_db: f32,
+    /// The last impulse that was sharp enough to be judged, as its attack and
+    /// its height over the floor.
+    ///
+    /// **The attack is the threshold that decides this feature**, and it is
+    /// the only number here that can answer "why did my tap not register".
+    /// A rider whose taps come in at 11 dB a millisecond is not being
+    /// ignored by a broken detector; they are tapping too softly, or through
+    /// a case, or on something that is not the phone — and nothing else on
+    /// this panel distinguishes those from a microphone that never opened.
+    pub impulse_attack_db: f32,
+    pub impulse_over_db: f32,
     /// Taps banked towards the gesture in progress.
     pub run: u8,
 }
@@ -3186,6 +3197,8 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
             level_db: 0.0,
             floor_db: 0.0,
             peak_db: 0.0,
+            impulse_attack_db: 0.0,
+            impulse_over_db: 0.0,
             run: 0,
         };
     };
@@ -3200,6 +3213,8 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
         level_db: s.level_db,
         floor_db: s.floor_db,
         peak_db: s.peak_db,
+        impulse_attack_db: s.impulse_attack_db,
+        impulse_over_db: s.impulse_over_db,
         run: s.run,
     }
 }

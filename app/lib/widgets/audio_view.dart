@@ -76,11 +76,12 @@ class AudioView extends StatelessWidget {
         _line(context, 'route', _routeName(state.audioRoute)),
         _line(
           context,
-          'gesture',
-          state.tapToCapture
-              ? 'on · ${state.tapCount} taps · rider wants '
-                    '${_on(state.riderWantsMic)}'
-              : 'off',
+          'pocket mode',
+          !state.pocketAvailable
+              ? 'not offered'
+              : state.pocketActive
+              ? 'armed · 3 taps · rider wants ${_on(state.riderWantsMic)}'
+              : 'offered, not armed',
         ),
       ],
     );

@@ -2311,6 +2311,60 @@ abstract class L {
   /// **'Play the whole recording'**
   String get diagPreviewSentOnlyOff;
 
+  /// Title of the group showing what the microphone's tap detector is hearing. Only shown when tap-to-capture is switched on
+  ///
+  /// In en, this message translates to:
+  /// **'Listening for taps'**
+  String get diagTapDetector;
+
+  /// How many 1 ms frames the detector has looked at. Zero means no microphone was ever opened, which is a different fault from taps not being heard
+  ///
+  /// In en, this message translates to:
+  /// **'Milliseconds examined'**
+  String get diagTapFrames;
+
+  /// The current microphone level and the slow average a tap has to stand out from, both in dBFS
+  ///
+  /// In en, this message translates to:
+  /// **'Level / trailing average'**
+  String get diagTapLevel;
+
+  /// How fast the last candidate sound arrived, in dB per millisecond, and how far above the average it reached. A tap on the phone's body measures about 23 dB/ms; music about 8. This is the line that says why a tap was not registered
+  ///
+  /// In en, this message translates to:
+  /// **'Last sharp sound: rise · height'**
+  String get diagTapLastImpulse;
+
+  /// Impulses that arrived sharply and died away in time
+  ///
+  /// In en, this message translates to:
+  /// **'Sounds shaped like a tap'**
+  String get diagTapCandidates;
+
+  /// Impulses that arrived sharply but did not fade in time, so they were a sound rather than a strike
+  ///
+  /// In en, this message translates to:
+  /// **'Too long to be a tap'**
+  String get diagTapDiscardedLong;
+
+  /// How many taps have been counted towards gestures in total. One tick is played per tap, so this is what the rider heard
+  ///
+  /// In en, this message translates to:
+  /// **'Taps counted'**
+  String get diagTapBanked;
+
+  /// Short label for how many taps of the current gesture have been counted so far, shown after the total
+  ///
+  /// In en, this message translates to:
+  /// **'in progress'**
+  String get diagTapRun;
+
+  /// How many full tap gestures have been recognised
+  ///
+  /// In en, this message translates to:
+  /// **'Complete gestures'**
+  String get diagTapGestures;
+
   /// Title of the group breaking one capture block down by stage
   ///
   /// In en, this message translates to:
@@ -3985,29 +4039,137 @@ abstract class L {
   /// **'{count} held'**
   String accessTokensHeld(int count);
 
-  /// No description provided for @tapToCapture.
+  /// No description provided for @pocketMode.
   ///
   /// In en, this message translates to:
-  /// **'Tap the phone to talk'**
-  String get tapToCapture;
+  /// **'Pocket mode'**
+  String get pocketMode;
 
-  /// No description provided for @tapToCaptureBody.
+  /// Explanation under the one pocket-mode switch in settings. It has to say what the slider does, that the screen locks, and that three taps toggle the microphone
   ///
   /// In en, this message translates to:
-  /// **'Music stays at full quality while you listen, and the microphone opens when you tap the phone through a pocket or a bag. Tap again to close it.'**
-  String get tapToCaptureBody;
+  /// **'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking, three times again to stop. Music stays at full quality while nobody is talking.'**
+  String get pocketModeBody;
 
-  /// No description provided for @tapCount.
+  /// Label on the green slide-to-confirm control at the bottom of the main screen
   ///
   /// In en, this message translates to:
-  /// **'Taps'**
-  String get tapCount;
+  /// **'Slide right to enable pocket mode'**
+  String get pocketSlideOn;
 
-  /// No description provided for @tapCountBody.
+  /// Label on the red slide-to-confirm control shown while pocket mode is on
   ///
   /// In en, this message translates to:
-  /// **'Three is a good default. Two is quicker but easier for a bump in the road to imitate; four is the most deliberate, for rough going.'**
-  String get tapCountBody;
+  /// **'Slide right to disable pocket mode'**
+  String get pocketSlideOff;
+
+  /// Small reassuring note under the red slider, so a rider who finds every other control dead does not think the app has frozen
+  ///
+  /// In en, this message translates to:
+  /// **'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.'**
+  String get pocketLockedNote;
+
+  /// Shown above the slider while transmitting through a headset. The detector listens to whichever microphone is live, so while capturing it is the helmet's
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone open — tap your helmet three times to stop'**
+  String get pocketOpenTapHelmet;
+
+  /// The same, with no headset: the phone's own microphone is the live one
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone open — tap the phone three times to stop'**
+  String get pocketOpenTapPhone;
+
+  /// Shown above the slider while listening. Always the phone, because with the microphone closed the phone's own is the only one listening
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone closed — tap the phone three times to talk'**
+  String get pocketClosedTapPhone;
+
+  /// No description provided for @pocketMicPhone.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone microphone'**
+  String get pocketMicPhone;
+
+  /// No description provided for @pocketMicHelmet.
+  ///
+  /// In en, this message translates to:
+  /// **'Helmet microphone'**
+  String get pocketMicHelmet;
+
+  /// No description provided for @pocketMicWired.
+  ///
+  /// In en, this message translates to:
+  /// **'Wired headset'**
+  String get pocketMicWired;
+
+  /// No description provided for @pocketMicUsb.
+  ///
+  /// In en, this message translates to:
+  /// **'USB microphone'**
+  String get pocketMicUsb;
+
+  /// Which microphone is recording right now. Shown beside the capture state so a rider can tell the helmet is really being used rather than the phone in their pocket
+  ///
+  /// In en, this message translates to:
+  /// **'No microphone open'**
+  String get pocketMicNone;
+
+  /// No description provided for @pocketTutorialTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Riding with the phone away'**
+  String get pocketTutorialTitle;
+
+  /// No description provided for @pocketTutorialTapsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Three taps, within three seconds'**
+  String get pocketTutorialTapsTitle;
+
+  /// No description provided for @pocketTutorialTapsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. You will hear a tick for each tap that was counted, so you know where you are without looking.'**
+  String get pocketTutorialTapsBody;
+
+  /// No description provided for @pocketTutorialLockTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The screen locks itself'**
+  String get pocketTutorialLockTitle;
+
+  /// No description provided for @pocketTutorialLockBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Every control except the slider stops responding, so a phone moving against your leg cannot hang up the call or change a setting. Slide the red slider to unlock.'**
+  String get pocketTutorialLockBody;
+
+  /// No description provided for @pocketTutorialSoundTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Listen, do not look'**
+  String get pocketTutorialSoundTitle;
+
+  /// No description provided for @pocketTutorialSoundBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. If you hear ticks but no tones, a tap was counted but the three did not arrive in time — try again, a little harder.'**
+  String get pocketTutorialSoundBody;
+
+  /// No description provided for @pocketTutorialNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get pocketTutorialNext;
+
+  /// No description provided for @pocketTutorialStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start pocket mode'**
+  String get pocketTutorialStart;
 
   /// No description provided for @autoStopCapture.
   ///
@@ -4021,11 +4183,11 @@ abstract class L {
   /// **'Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.'**
   String autoStopCaptureBody(int seconds);
 
-  /// No description provided for @micPushToTalkBlockedByTap.
+  /// No description provided for @micPushToTalkBlockedByPocket.
   ///
   /// In en, this message translates to:
-  /// **'Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.'**
-  String get micPushToTalkBlockedByTap;
+  /// **'Unavailable while pocket mode is on: a button cannot be instant if the microphone is closed until you tap.'**
+  String get micPushToTalkBlockedByPocket;
 
   /// No description provided for @micModeLockedWhileConnected.
   ///
@@ -4039,11 +4201,11 @@ abstract class L {
   /// **'{count} motion readings lost — storage could not keep up'**
   String diagRecordingDroppedMotion(int count);
 
-  /// No description provided for @tapBlockedByPushToTalk.
+  /// No description provided for @pocketBlockedByPushToTalk.
   ///
   /// In en, this message translates to:
   /// **'Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.'**
-  String get tapBlockedByPushToTalk;
+  String get pocketBlockedByPushToTalk;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

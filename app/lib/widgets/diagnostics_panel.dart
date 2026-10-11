@@ -131,6 +131,16 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   /// Where a block's time goes.
   UiStageCosts? _costs;
 
+  /// What the tap detector is hearing.
+  ///
+  /// **Every defect in capture-on-demand was found by a rider noticing a
+  /// sound**, over seventeen test builds, because there was nothing on screen
+  /// to look at instead — the FFI that answers this has existed the whole time
+  /// and nothing called it. "The phone stopped responding to taps" and "no
+  /// microphone was ever opened" are the same report from the outside and
+  /// different lines in here.
+  UiAcousticStats? _tap;
+
   /// Slide the panel away.
   ///
   /// Reached through the state rather than taken as an `onClose` callback, and
@@ -159,6 +169,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
       // reason: a cost only measured while a panel is open is measured under
       // different load than the one being complained about.
       final costs = audioStageCosts();
+      final tap = acousticDiagnostics();
       final was = _previous;
       // Sampled outside `setState`, and kept whether or not anybody is
       // looking. The graphs answer "what was it doing when the audio broke",
@@ -220,6 +231,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         _audio = now;
         _chain = chain;
         _costs = costs;
+        _tap = tap;
       });
     } catch (_) {
       // The engine is not up; nothing to report.
@@ -659,6 +671,58 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                         // read the same wrong way: `unattributed` is the part
                         // of the block no stage was timing, and a backlog that
                         // climbs is the chain losing whatever the stages say.
+                        // Shown whenever the gesture is armed, including when
+                        // it has heard nothing — "frames: 0" is the single
+                        // most useful line here, because it says the detector
+                        // is not deaf but blind: no microphone was opened.
+                        if (_tap?.enabled ?? false)
+                          _Group(
+                            title: l.diagTapDetector,
+                            rows: [
+                              _Row(
+                                l.diagTapFrames,
+                                '${_tap!.frames}',
+                                // Nothing examined at all. While listening
+                                // that is a session fault, not a tuning one.
+                                bad: _tap!.frames == BigInt.zero,
+                              ),
+                              _Row(
+                                l.diagTapLevel,
+                                '${_tap!.levelDb.toStringAsFixed(0)}'
+                                ' / ${_tap!.floorDb.toStringAsFixed(0)} dB',
+                                // Sitting on the floor: nothing can stand out
+                                // of it, so no tap will ever be heard.
+                                bad:
+                                    _tap!.frames > BigInt.zero &&
+                                    _tap!.levelDb - _tap!.floorDb < 1,
+                              ),
+                              // **The line that answers "why did my tap not
+                              // register".** The threshold is 14 dB a
+                              // millisecond, measured — a tap on the phone's
+                              // body comes in around 23, and music around 8.
+                              // A rider reading 11 here is tapping too
+                              // softly or on the wrong thing, which no other
+                              // number on this panel can tell them.
+                              _Row(
+                                l.diagTapLastImpulse,
+                                _tap!.impulseAttackDb == 0
+                                    ? '—'
+                                    : '${_tap!.impulseAttackDb.toStringAsFixed(0)} dB/ms'
+                                          ' · ${_tap!.impulseOverDb.toStringAsFixed(0)} dB',
+                              ),
+                              _Row(l.diagTapCandidates, '${_tap!.candidates}'),
+                              _Row(
+                                l.diagTapDiscardedLong,
+                                '${_tap!.discardedLong}',
+                              ),
+                              _Row(
+                                l.diagTapBanked,
+                                '${_tap!.banked}'
+                                ' · ${l.diagTapRun}: ${_tap!.run}',
+                              ),
+                              _Row(l.diagTapGestures, '${_tap!.gestures}'),
+                            ],
+                          ),
                         if ((_costs?.blocks ?? BigInt.zero) > BigInt.zero)
                           _Group(
                             title: l.diagBlockCost,

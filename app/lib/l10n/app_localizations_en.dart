@@ -1223,6 +1223,33 @@ class LEn extends L {
   String get diagPreviewSentOnlyOff => 'Play the whole recording';
 
   @override
+  String get diagTapDetector => 'Listening for taps';
+
+  @override
+  String get diagTapFrames => 'Milliseconds examined';
+
+  @override
+  String get diagTapLevel => 'Level / trailing average';
+
+  @override
+  String get diagTapLastImpulse => 'Last sharp sound: rise · height';
+
+  @override
+  String get diagTapCandidates => 'Sounds shaped like a tap';
+
+  @override
+  String get diagTapDiscardedLong => 'Too long to be a tap';
+
+  @override
+  String get diagTapBanked => 'Taps counted';
+
+  @override
+  String get diagTapRun => 'in progress';
+
+  @override
+  String get diagTapGestures => 'Complete gestures';
+
+  @override
   String get diagBlockCost => 'Where a block\'s 10 ms goes';
 
   @override
@@ -2195,18 +2222,78 @@ class LEn extends L {
   }
 
   @override
-  String get tapToCapture => 'Tap the phone to talk';
+  String get pocketMode => 'Pocket mode';
 
   @override
-  String get tapToCaptureBody =>
-      'Music stays at full quality while you listen, and the microphone opens when you tap the phone through a pocket or a bag. Tap again to close it.';
+  String get pocketModeBody =>
+      'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking, three times again to stop. Music stays at full quality while nobody is talking.';
 
   @override
-  String get tapCount => 'Taps';
+  String get pocketSlideOn => 'Slide right to enable pocket mode';
 
   @override
-  String get tapCountBody =>
-      'Three is a good default. Two is quicker but easier for a bump in the road to imitate; four is the most deliberate, for rough going.';
+  String get pocketSlideOff => 'Slide right to disable pocket mode';
+
+  @override
+  String get pocketLockedNote =>
+      'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.';
+
+  @override
+  String get pocketOpenTapHelmet =>
+      'Microphone open — tap your helmet three times to stop';
+
+  @override
+  String get pocketOpenTapPhone =>
+      'Microphone open — tap the phone three times to stop';
+
+  @override
+  String get pocketClosedTapPhone =>
+      'Microphone closed — tap the phone three times to talk';
+
+  @override
+  String get pocketMicPhone => 'Phone microphone';
+
+  @override
+  String get pocketMicHelmet => 'Helmet microphone';
+
+  @override
+  String get pocketMicWired => 'Wired headset';
+
+  @override
+  String get pocketMicUsb => 'USB microphone';
+
+  @override
+  String get pocketMicNone => 'No microphone open';
+
+  @override
+  String get pocketTutorialTitle => 'Riding with the phone away';
+
+  @override
+  String get pocketTutorialTapsTitle => 'Three taps, within three seconds';
+
+  @override
+  String get pocketTutorialTapsBody =>
+      'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. You will hear a tick for each tap that was counted, so you know where you are without looking.';
+
+  @override
+  String get pocketTutorialLockTitle => 'The screen locks itself';
+
+  @override
+  String get pocketTutorialLockBody =>
+      'Every control except the slider stops responding, so a phone moving against your leg cannot hang up the call or change a setting. Slide the red slider to unlock.';
+
+  @override
+  String get pocketTutorialSoundTitle => 'Listen, do not look';
+
+  @override
+  String get pocketTutorialSoundBody =>
+      'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. If you hear ticks but no tones, a tap was counted but the three did not arrive in time — try again, a little harder.';
+
+  @override
+  String get pocketTutorialNext => 'Next';
+
+  @override
+  String get pocketTutorialStart => 'Start pocket mode';
 
   @override
   String get autoStopCapture => 'Close the microphone after a pause';
@@ -2217,8 +2304,8 @@ class LEn extends L {
   }
 
   @override
-  String get micPushToTalkBlockedByTap =>
-      'Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.';
+  String get micPushToTalkBlockedByPocket =>
+      'Unavailable while pocket mode is on: a button cannot be instant if the microphone is closed until you tap.';
 
   @override
   String get micModeLockedWhileConnected =>
@@ -2230,6 +2317,6 @@ class LEn extends L {
   }
 
   @override
-  String get tapBlockedByPushToTalk =>
+  String get pocketBlockedByPushToTalk =>
       'Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.';
 }

@@ -167,19 +167,17 @@ class AudioSessionBridge {
   /// is spoken. Activation is not instant and can be refused outright by a
   /// phone call holding a session that will not mix, and neither is worth
   /// discovering half-way through a sentence.
-  /// `captureOnDemand` stops at the listening state and waits for
-  /// [startCapture].
+  /// **This always starts capturing**, and the flag that used to decide
+  /// otherwise is gone.
   ///
-  /// **Absent or false is today's behaviour to the letter**: one call, the
-  /// hands-free profile taken, capture live, the route reported. Only the
-  /// tap-driven mode asks for the other, which makes this flag the feature's
-  /// kill switch — if the measurements in `docs/CAPTURE_ON_DEMAND.md` come back
-  /// badly, riders stay on the path that works today and there is nothing to
-  /// unpick.
-  Future<AudioSessionState> activate({
-    bool voiceProcessing = false,
-    bool captureOnDemand = false,
-  }) async {
+  /// It took a `captureOnDemand` which stopped at the listening state, and the
+  /// tap mode passed it at connect time — so connecting was the moment that
+  /// decided whether the microphone opened, and getting it wrong produced a
+  /// rider who was listening when they meant to talk. Pocket mode closes the
+  /// microphone *afterwards*, through [stopCapture], on an act the rider
+  /// performs deliberately. One path through activation, and the only thing
+  /// that can close a microphone is the thing whose name says so.
+  Future<AudioSessionState> activate({bool voiceProcessing = false}) async {
     if (!isNeeded) return AudioSessionState.notNeeded;
     _ensureHandler();
     try {
@@ -188,7 +186,6 @@ class AudioSessionBridge {
       // built. Neither can be told later and act on it now.
       final r = await _channel.invokeMapMethod<String, dynamic>('activate', {
         'voiceProcessing': voiceProcessing,
-        'captureOnDemand': captureOnDemand,
       });
       return AudioSessionState(
         granted: true,
@@ -198,9 +195,7 @@ class AudioSessionBridge {
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
         route: (r?['route'] as num?)?.toInt() ?? 0,
         error: r?['error'] as String?,
-        // The listening state genuinely has no input, so zero channels there is
-        // expected rather than a refusal. See [AudioSessionState.usable].
-        capturing: !captureOnDemand,
+        capturing: true,
       );
     } on MissingPluginException {
       // An older platform side. Let the engine try rather than refusing: it

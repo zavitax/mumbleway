@@ -1222,6 +1222,34 @@ class LRu extends L {
   String get diagPreviewSentOnlyOff => 'Проигрывать запись целиком';
 
   @override
+  String get diagTapDetector => 'Слушает постукивания';
+
+  @override
+  String get diagTapFrames => 'Просмотрено миллисекунд';
+
+  @override
+  String get diagTapLevel => 'Уровень / скользящее среднее';
+
+  @override
+  String get diagTapLastImpulse =>
+      'Последний резкий звук: нарастание · превышение';
+
+  @override
+  String get diagTapCandidates => 'Звуки, похожие на постукивание';
+
+  @override
+  String get diagTapDiscardedLong => 'Слишком долгие для постукивания';
+
+  @override
+  String get diagTapBanked => 'Засчитано постукиваний';
+
+  @override
+  String get diagTapRun => 'в серии';
+
+  @override
+  String get diagTapGestures => 'Завершённых жестов';
+
+  @override
   String get diagBlockCost => 'На что уходят 10 мс блока';
 
   @override
@@ -2184,18 +2212,79 @@ class LRu extends L {
   }
 
   @override
-  String get tapToCapture => 'Нажать по телефону, чтобы говорить';
+  String get pocketMode => 'Карманный режим';
 
   @override
-  String get tapToCaptureBody =>
-      'Пока вы слушаете, музыка звучит в полном качестве, а микрофон открывается, когда вы постукиваете по телефону через карман или сумку. Ещё раз — и он закрывается.';
+  String get pocketModeBody =>
+      'Позволяет ехать с телефоном в кармане: внизу экрана появляется ползунок, и после сдвига экран блокируется, а микрофон закрывается. Постучите по телефону три раза, чтобы начать говорить, и ещё три — чтобы закончить. Пока никто не говорит, музыка звучит в полном качестве.';
 
   @override
-  String get tapCount => 'Постукиваний';
+  String get pocketSlideOn => 'Сдвиньте вправо, чтобы включить карманный режим';
 
   @override
-  String get tapCountBody =>
-      'Три — хорошее значение по умолчанию. Два быстрее, но их легче повторить ямой на дороге; четыре — самое осознанное действие, для разбитых дорог.';
+  String get pocketSlideOff =>
+      'Сдвиньте вправо, чтобы выключить карманный режим';
+
+  @override
+  String get pocketLockedNote =>
+      'Остальной экран заблокирован специально, чтобы в кармане ничего не нажалось. Чтобы разблокировать, сдвиньте ползунок выше.';
+
+  @override
+  String get pocketOpenTapHelmet =>
+      'Микрофон открыт — постучите по шлему три раза, чтобы закончить';
+
+  @override
+  String get pocketOpenTapPhone =>
+      'Микрофон открыт — постучите по телефону три раза, чтобы закончить';
+
+  @override
+  String get pocketClosedTapPhone =>
+      'Микрофон закрыт — постучите по телефону три раза, чтобы говорить';
+
+  @override
+  String get pocketMicPhone => 'Микрофон телефона';
+
+  @override
+  String get pocketMicHelmet => 'Микрофон шлема';
+
+  @override
+  String get pocketMicWired => 'Проводная гарнитура';
+
+  @override
+  String get pocketMicUsb => 'USB-микрофон';
+
+  @override
+  String get pocketMicNone => 'Микрофон не открыт';
+
+  @override
+  String get pocketTutorialTitle => 'Когда телефон убран';
+
+  @override
+  String get pocketTutorialTapsTitle => 'Три постукивания за три секунды';
+
+  @override
+  String get pocketTutorialTapsBody =>
+      'Постучите по телефону три раза — через куртку, сумку на бак или карман — и микрофон откроется. Ещё три раза — закроется. На каждое засчитанное постукивание слышен щелчок, поэтому на экран смотреть не нужно.';
+
+  @override
+  String get pocketTutorialLockTitle => 'Экран блокируется сам';
+
+  @override
+  String get pocketTutorialLockBody =>
+      'Все элементы управления, кроме ползунка, перестают отвечать, поэтому телефон, который трётся о ногу, не отключит вас от сервера и не изменит настройку. Чтобы разблокировать, сдвиньте красный ползунок.';
+
+  @override
+  String get pocketTutorialSoundTitle => 'Слушайте, а не смотрите';
+
+  @override
+  String get pocketTutorialSoundBody =>
+      'Два восходящих тона — микрофон открыт, вас слышат. Два нисходящих — он закрылся. Если слышны щелчки, но тонов нет, постукивания засчитаны, но три не успели прийти вовремя — попробуйте ещё раз, чуть сильнее.';
+
+  @override
+  String get pocketTutorialNext => 'Далее';
+
+  @override
+  String get pocketTutorialStart => 'Включить карманный режим';
 
   @override
   String get autoStopCapture => 'Закрывать микрофон после паузы';
@@ -2206,8 +2295,8 @@ class LRu extends L {
   }
 
   @override
-  String get micPushToTalkBlockedByTap =>
-      'Недоступно, пока включено постукивание: кнопка не может сработать сразу, если микрофон закрыт до постукивания.';
+  String get micPushToTalkBlockedByPocket =>
+      'Недоступно, пока включён карманный режим: кнопка не может сработать сразу, если микрофон закрыт до постукивания.';
 
   @override
   String get micModeLockedWhileConnected =>
@@ -2219,6 +2308,6 @@ class LRu extends L {
   }
 
   @override
-  String get tapBlockedByPushToTalk =>
+  String get pocketBlockedByPushToTalk =>
       'Недоступно, пока режим микрофона — «По нажатию»: кнопка не может сработать сразу, если микрофон закрыт до постукивания. Выберите «По голосу» или «Открытый микрофон».';
 }

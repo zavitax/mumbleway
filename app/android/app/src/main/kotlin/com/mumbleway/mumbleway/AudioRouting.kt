@@ -208,14 +208,16 @@ class AudioRouting(private val context: Context) {
      * `MODE_IN_COMMUNICATION` and the communication device *are* the hands-free
      * profile. See `docs/CAPTURE_ON_DEMAND.md`.
      *
-     * `captureOnDemand = false` is today's behaviour to the letter: one call,
-     * SCO negotiated, capture live, route reported. Only the tap-driven mode
-     * passes `true`, which stops at the listening state — mode left
-     * `MODE_NORMAL` and no communication device, so the output stream (which
-     * carries AAudio's default media usage, because the vendored cpal backend
-     * never calls `setUsage`) rides A2DP and music plays at full bandwidth.
+     * **This always takes capture**, and the `captureOnDemand` that stopped at
+     * the listening state is gone. It made connecting the moment that decided
+     * whether a microphone existed, which is the wrong place for that decision
+     * and the wrong time to get it wrong. Pocket mode calls `stopCapture`
+     * afterwards, which drops back to `MODE_NORMAL` with no communication
+     * device — so the output stream (carrying AAudio's default media usage,
+     * because the vendored cpal backend never calls `setUsage`) rides A2DP and
+     * music plays at full bandwidth, exactly as the listening branch did.
      */
-    fun activate(captureOnDemand: Boolean, done: (Boolean) -> Unit) {
+    fun activate(done: (Boolean) -> Unit) {
         if (!active) {
             previousMode = audio.mode
             // Before the mode change, so whatever is playing is already ducking
@@ -223,14 +225,6 @@ class AudioRouting(private val context: Context) {
             requestMusicFocus()
             active = true
             watchForRouteChanges()
-        }
-        if (captureOnDemand) {
-            // Listening only. Nothing to negotiate, so there is nothing to wait
-            // for — and the route is whatever the platform is already doing,
-            // which is reported rather than guessed at.
-            routeCode = currentRouteCode()
-            done(true)
-            return
         }
         startCapture(done)
     }
@@ -509,11 +503,22 @@ class AudioRouting(private val context: Context) {
                 return true
             }
 
-        routeCode = codeForType(target.type)
         return try {
-            audio.setCommunicationDevice(target)
+            val ok = audio.setCommunicationDevice(target)
+            // **Read back rather than assume.** This used to record the route
+            // from the device it *asked* for, before knowing whether the
+            // request was honoured — so a failed switch still reported the
+            // helmet, and pocket mode's "which microphone is recording" line
+            // would have named a microphone that was not being used. That is
+            // the exact confusion `CLAUDE.md` says costs a whole measurement,
+            // because audio carries no record of what captured it.
+            routeCode =
+                if (ok) currentRouteCode().let { if (it == 0) codeForType(target.type) else it }
+                else currentRouteCode()
+            ok
         } catch (e: Exception) {
             Log.w(TAG, "could not select a communication device", e)
+            routeCode = currentRouteCode()
             false
         }
     }

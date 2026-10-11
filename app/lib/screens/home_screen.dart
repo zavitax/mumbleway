@@ -8,6 +8,7 @@ import '../widgets/diagnostics_panel.dart';
 import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
 import '../widgets/my_avatar.dart';
+import '../widgets/pocket_mode.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/review_request.dart';
 import '../widgets/server_card.dart';
@@ -40,7 +41,7 @@ class HomeScreen extends StatelessWidget {
     final l = L.of(context);
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: _lockedBar(AppBar(
         // The lockup rather than the single-line title. It is a fixed shape
         // rather than text that reflows, so it is allowed to shrink on a bar
         // too narrow for it — which beats the alternatives of clipping the
@@ -312,20 +313,48 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ],
-      ),
+      ), locked: state.pocketActive),
       body: SafeArea(
         child: Stack(
           children: [
-            LayoutBuilder(
-              builder: (context, constraints) {
-                // Above the breakpoint the extra width goes to a detail pane
-                // rather than to stretching cards that gain nothing from being
-                // wider.
-                final wide = constraints.maxWidth >= kWideLayoutBreakpoint;
-                return wide
-                    ? _WideBody(state: state, available: constraints.maxWidth)
-                    : _NarrowBody(state: state);
-              },
+            // **Everything except the slider stops responding while pocket
+            // mode is armed**, which is the point of the mode: the phone is
+            // going into a pocket and must not disconnect the call or change a
+            // setting by rubbing against a leg. Dimmed as well as deadened,
+            // because a control that is merely inert is indistinguishable from
+            // a frozen app — and the note under the slider says why.
+            //
+            // `AbsorbPointer` rather than `IgnorePointer`: the taps must stop
+            // here rather than fall through to whatever is behind.
+            Opacity(
+              opacity: state.pocketActive ? 0.38 : 1,
+              child: AbsorbPointer(
+                absorbing: state.pocketActive,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Above the breakpoint the extra width goes to a detail
+                    // pane rather than to stretching cards that gain nothing
+                    // from being wider.
+                    final wide =
+                        constraints.maxWidth >= kWideLayoutBreakpoint;
+                    return wide
+                        ? _WideBody(
+                            state: state,
+                            available: constraints.maxWidth,
+                          )
+                        : _NarrowBody(state: state);
+                  },
+                ),
+              ),
+            ),
+            // Above the body and outside the lock, so it is the one thing
+            // still working. Below the diagnostics panel in the stack, which
+            // slides over everything when it is open.
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: PocketPanel(),
             ),
             // Slides up over the content rather than displacing it: the panel
             // is consulted while something is going wrong, and shifting the
@@ -364,6 +393,20 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
+  /// Dims and deadens the app bar while pocket mode is armed.
+  ///
+  /// The bar is the one part of the screen outside the body's lock, and it
+  /// carries settings, the overflow menu and the language button — every one
+  /// of which a phone in a pocket could reach.
+  static PreferredSizeWidget _lockedBar(AppBar bar, {required bool locked}) =>
+      PreferredSize(
+        preferredSize: bar.preferredSize,
+        child: Opacity(
+          opacity: locked ? 0.38 : 1,
+          child: AbsorbPointer(absorbing: locked, child: bar),
+        ),
+      );
 
   static Future<void> _addServer(BuildContext context) async {
     await Navigator.push(

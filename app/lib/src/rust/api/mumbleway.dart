@@ -542,12 +542,10 @@ UiRecordingState diagnosticRecordingState() =>
 /// whether or not this is on, because measuring how often the detector fires by
 /// mistake needs rides in which nobody tapped at all.
 ///
-/// Changing the count discards a half-performed gesture rather than
-/// reinterpreting it as part of the new one.
-void setTapDetection({required bool enabled, required int taps}) => RustLib
-    .instance
-    .api
-    .crateApiMumblewaySetTapDetection(enabled: enabled, taps: taps);
+/// The gesture is always three taps inside three seconds, so there is no count
+/// to pass: see `gesture::TAPS_WANTED`.
+void setTapDetection({required bool enabled}) =>
+    RustLib.instance.api.crateApiMumblewaySetTapDetection(enabled: enabled);
 
 /// What the microphone's tap detector is hearing.
 UiAcousticStats acousticDiagnostics() =>
@@ -1597,6 +1595,18 @@ class UiAcousticStats {
   /// How far over the last candidate reached.
   final double peakDb;
 
+  /// The last impulse that was sharp enough to be judged, as its attack and
+  /// its height over the floor.
+  ///
+  /// **The attack is the threshold that decides this feature**, and it is
+  /// the only number here that can answer "why did my tap not register".
+  /// A rider whose taps come in at 11 dB a millisecond is not being
+  /// ignored by a broken detector; they are tapping too softly, or through
+  /// a case, or on something that is not the phone — and nothing else on
+  /// this panel distinguishes those from a microphone that never opened.
+  final double impulseAttackDb;
+  final double impulseOverDb;
+
   /// Taps banked towards the gesture in progress.
   final int run;
 
@@ -1610,6 +1620,8 @@ class UiAcousticStats {
     required this.levelDb,
     required this.floorDb,
     required this.peakDb,
+    required this.impulseAttackDb,
+    required this.impulseOverDb,
     required this.run,
   });
 
@@ -1624,6 +1636,8 @@ class UiAcousticStats {
       levelDb.hashCode ^
       floorDb.hashCode ^
       peakDb.hashCode ^
+      impulseAttackDb.hashCode ^
+      impulseOverDb.hashCode ^
       run.hashCode;
 
   @override
@@ -1640,6 +1654,8 @@ class UiAcousticStats {
           levelDb == other.levelDb &&
           floorDb == other.floorDb &&
           peakDb == other.peakDb &&
+          impulseAttackDb == other.impulseAttackDb &&
+          impulseOverDb == other.impulseOverDb &&
           run == other.run;
 }
 

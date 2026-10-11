@@ -178,11 +178,7 @@ class MainActivity : FlutterActivity() {
                             mapOf("ok" to false, "inputChannels" to 0, "sampleRate" to 0.0)
                         )
                     } else {
-                        // `captureOnDemand` stops at the listening state and
-                        // waits for `startCapture`. Absent means false, which is
-                        // today's behaviour: one call, capture live.
-                        val onDemand = call.argument<Boolean>("captureOnDemand") == true
-                        audioRouting.activate(onDemand) { ok ->
+                        audioRouting.activate { ok ->
                             result.success(sessionReply(ok))
                         }
                     }

@@ -624,6 +624,42 @@
   "@diagPreviewSentOnlyOff": {
     "description": "Tooltip on the same control when it is on, saying what pressing it does next"
   },
+  "diagTapDetector": "Listening for taps",
+  "@diagTapDetector": {
+    "description": "Title of the group showing what the microphone's tap detector is hearing. Only shown when tap-to-capture is switched on"
+  },
+  "diagTapFrames": "Milliseconds examined",
+  "@diagTapFrames": {
+    "description": "How many 1 ms frames the detector has looked at. Zero means no microphone was ever opened, which is a different fault from taps not being heard"
+  },
+  "diagTapLevel": "Level / trailing average",
+  "@diagTapLevel": {
+    "description": "The current microphone level and the slow average a tap has to stand out from, both in dBFS"
+  },
+  "diagTapLastImpulse": "Last sharp sound: rise · height",
+  "@diagTapLastImpulse": {
+    "description": "How fast the last candidate sound arrived, in dB per millisecond, and how far above the average it reached. A tap on the phone's body measures about 23 dB/ms; music about 8. This is the line that says why a tap was not registered"
+  },
+  "diagTapCandidates": "Sounds shaped like a tap",
+  "@diagTapCandidates": {
+    "description": "Impulses that arrived sharply and died away in time"
+  },
+  "diagTapDiscardedLong": "Too long to be a tap",
+  "@diagTapDiscardedLong": {
+    "description": "Impulses that arrived sharply but did not fade in time, so they were a sound rather than a strike"
+  },
+  "diagTapBanked": "Taps counted",
+  "@diagTapBanked": {
+    "description": "How many taps have been counted towards gestures in total. One tick is played per tap, so this is what the rider heard"
+  },
+  "diagTapRun": "in progress",
+  "@diagTapRun": {
+    "description": "Short label for how many taps of the current gesture have been counted so far, shown after the total"
+  },
+  "diagTapGestures": "Complete gestures",
+  "@diagTapGestures": {
+    "description": "How many full tap gestures have been recognised"
+  },
   "diagBlockCost": "Where a block's 10 ms goes",
   "@diagBlockCost": {
     "description": "Title of the group breaking one capture block down by stage"
@@ -1230,10 +1266,52 @@
       }
     }
   },
-  "tapToCapture": "Tap the phone to talk",
-  "tapToCaptureBody": "Music stays at full quality while you listen, and the microphone opens when you tap the phone through a pocket or a bag. Tap again to close it.",
-  "tapCount": "Taps",
-  "tapCountBody": "Three is a good default. Two is quicker but easier for a bump in the road to imitate; four is the most deliberate, for rough going.",
+  "pocketMode": "Pocket mode",
+  "pocketModeBody": "Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking, three times again to stop. Music stays at full quality while nobody is talking.",
+  "@pocketModeBody": {
+    "description": "Explanation under the one pocket-mode switch in settings. It has to say what the slider does, that the screen locks, and that three taps toggle the microphone"
+  },
+  "pocketSlideOn": "Slide right to enable pocket mode",
+  "@pocketSlideOn": {
+    "description": "Label on the green slide-to-confirm control at the bottom of the main screen"
+  },
+  "pocketSlideOff": "Slide right to disable pocket mode",
+  "@pocketSlideOff": {
+    "description": "Label on the red slide-to-confirm control shown while pocket mode is on"
+  },
+  "pocketLockedNote": "The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.",
+  "@pocketLockedNote": {
+    "description": "Small reassuring note under the red slider, so a rider who finds every other control dead does not think the app has frozen"
+  },
+  "pocketOpenTapHelmet": "Microphone open — tap your helmet three times to stop",
+  "@pocketOpenTapHelmet": {
+    "description": "Shown above the slider while transmitting through a headset. The detector listens to whichever microphone is live, so while capturing it is the helmet's"
+  },
+  "pocketOpenTapPhone": "Microphone open — tap the phone three times to stop",
+  "@pocketOpenTapPhone": {
+    "description": "The same, with no headset: the phone's own microphone is the live one"
+  },
+  "pocketClosedTapPhone": "Microphone closed — tap the phone three times to talk",
+  "@pocketClosedTapPhone": {
+    "description": "Shown above the slider while listening. Always the phone, because with the microphone closed the phone's own is the only one listening"
+  },
+  "pocketMicPhone": "Phone microphone",
+  "pocketMicHelmet": "Helmet microphone",
+  "pocketMicWired": "Wired headset",
+  "pocketMicUsb": "USB microphone",
+  "pocketMicNone": "No microphone open",
+  "@pocketMicNone": {
+    "description": "Which microphone is recording right now. Shown beside the capture state so a rider can tell the helmet is really being used rather than the phone in their pocket"
+  },
+  "pocketTutorialTitle": "Riding with the phone away",
+  "pocketTutorialTapsTitle": "Three taps, within three seconds",
+  "pocketTutorialTapsBody": "Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. You will hear a tick for each tap that was counted, so you know where you are without looking.",
+  "pocketTutorialLockTitle": "The screen locks itself",
+  "pocketTutorialLockBody": "Every control except the slider stops responding, so a phone moving against your leg cannot hang up the call or change a setting. Slide the red slider to unlock.",
+  "pocketTutorialSoundTitle": "Listen, do not look",
+  "pocketTutorialSoundBody": "Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. If you hear ticks but no tones, a tap was counted but the three did not arrive in time — try again, a little harder.",
+  "pocketTutorialNext": "Next",
+  "pocketTutorialStart": "Start pocket mode",
   "autoStopCapture": "Close the microphone after a pause",
   "autoStopCaptureBody": "Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.",
   "@autoStopCaptureBody": {
@@ -1243,7 +1321,7 @@
       }
     }
   },
-  "micPushToTalkBlockedByTap": "Unavailable while tapping to talk: a button cannot be instant if the microphone is closed until you tap.",
+  "micPushToTalkBlockedByPocket": "Unavailable while pocket mode is on: a button cannot be instant if the microphone is closed until you tap.",
   "micModeLockedWhileConnected": "The microphone mode cannot change during a call, because other riders are told which one you are using when you connect. Disconnect to change it.",
   "diagRecordingDroppedMotion": "{count} motion readings lost — storage could not keep up",
   "@diagRecordingDroppedMotion": {
@@ -1253,5 +1331,5 @@
       }
     }
   },
-  "tapBlockedByPushToTalk": "Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first."
+  "pocketBlockedByPushToTalk": "Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first."
 }

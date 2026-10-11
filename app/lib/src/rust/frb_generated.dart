@@ -392,10 +392,7 @@ abstract class RustLibApi extends BaseApi {
 
   void crateApiMumblewaySetSimpleModel({required bool on_});
 
-  void crateApiMumblewaySetTapDetection({
-    required bool enabled,
-    required int taps,
-  });
+  void crateApiMumblewaySetTapDetection({required bool enabled});
 
   void crateApiMumblewaySetTransmitting({required bool on_});
 
@@ -3284,16 +3281,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "set_simple_model", argNames: ["on_"]);
 
   @override
-  void crateApiMumblewaySetTapDetection({
-    required bool enabled,
-    required int taps,
-  }) {
+  void crateApiMumblewaySetTapDetection({required bool enabled}) {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_bool(enabled, serializer);
-          sse_encode_u_8(taps, serializer);
           return pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -3305,7 +3298,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiMumblewaySetTapDetectionConstMeta,
-        argValues: [enabled, taps],
+        argValues: [enabled],
         apiImpl: this,
       ),
     );
@@ -3314,7 +3307,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiMumblewaySetTapDetectionConstMeta =>
       const TaskConstMeta(
         debugName: "set_tap_detection",
-        argNames: ["enabled", "taps"],
+        argNames: ["enabled"],
       );
 
   @override
@@ -4383,8 +4376,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiAcousticStats dco_decode_ui_acoustic_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 10)
-      throw Exception('unexpected arr length: expect 10 but see ${arr.length}');
+    if (arr.length != 12)
+      throw Exception('unexpected arr length: expect 12 but see ${arr.length}');
     return UiAcousticStats(
       enabled: dco_decode_bool(arr[0]),
       frames: dco_decode_u_64(arr[1]),
@@ -4395,7 +4388,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       levelDb: dco_decode_f_32(arr[6]),
       floorDb: dco_decode_f_32(arr[7]),
       peakDb: dco_decode_f_32(arr[8]),
-      run: dco_decode_u_8(arr[9]),
+      impulseAttackDb: dco_decode_f_32(arr[9]),
+      impulseOverDb: dco_decode_f_32(arr[10]),
+      run: dco_decode_u_8(arr[11]),
     );
   }
 
@@ -5743,6 +5738,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_levelDb = sse_decode_f_32(deserializer);
     var var_floorDb = sse_decode_f_32(deserializer);
     var var_peakDb = sse_decode_f_32(deserializer);
+    var var_impulseAttackDb = sse_decode_f_32(deserializer);
+    var var_impulseOverDb = sse_decode_f_32(deserializer);
     var var_run = sse_decode_u_8(deserializer);
     return UiAcousticStats(
       enabled: var_enabled,
@@ -5754,6 +5751,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       levelDb: var_levelDb,
       floorDb: var_floorDb,
       peakDb: var_peakDb,
+      impulseAttackDb: var_impulseAttackDb,
+      impulseOverDb: var_impulseOverDb,
       run: var_run,
     );
   }
@@ -7164,6 +7163,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_f_32(self.levelDb, serializer);
     sse_encode_f_32(self.floorDb, serializer);
     sse_encode_f_32(self.peakDb, serializer);
+    sse_encode_f_32(self.impulseAttackDb, serializer);
+    sse_encode_f_32(self.impulseOverDb, serializer);
     sse_encode_u_8(self.run, serializer);
   }
 

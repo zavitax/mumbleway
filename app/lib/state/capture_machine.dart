@@ -123,7 +123,7 @@ class CaptureInputs {
   /// Everyone currently asking. Empty means give the devices back.
   final Set<CaptureClaim> claims;
 
-  /// Tap-to-capture is on *and* usable — `tapToCapture && micMode != pushToTalk`.
+  /// Pocket mode is armed *and* usable — `pocketAvailable && pocketActive`.
   ///
   /// When this is false the microphone follows the session, which is the
   /// behaviour every rider had before this feature and still has by default.

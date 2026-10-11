@@ -190,7 +190,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _SectionHeader(l.micMode),
           _Explainer(l.micModeBody),
           Watch<(MicMode, bool, bool)>(
-            (state) => (state.micMode, state.canChangeMicMode, state.tapToCapture),
+            (state) => (state.micMode, state.canChangeMicMode, state.pocketMode),
             (context, state) => RadioGroup<MicMode>(
               groupValue: state.micMode,
               // Always present, because `RadioGroup` requires it; the lock is
@@ -204,19 +204,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   for (final m in MicMode.values)
                     RadioListTile<MicMode>(
                       value: m,
-                      // Push-to-talk is unavailable while the tap gesture is
-                      // on, and the two exclude each other in both directions.
-                      // Push-to-talk exists to put the microphone on the wire
-                      // the instant the button goes down; tap mode means it is
-                      // closed until tapped, so the button would do nothing
-                      // until a gesture had already been performed.
+                      // Push-to-talk is unavailable while pocket mode is
+                      // offered, and the two exclude each other in both
+                      // directions. Push-to-talk exists to put the microphone
+                      // on the wire the instant the button goes down; pocket
+                      // mode means it is closed until tapped, so the button
+                      // would do nothing until a gesture had been performed.
                       enabled:
                           state.canChangeMicMode &&
-                          !(m == MicMode.pushToTalk && state.tapToCapture),
+                          !(m == MicMode.pushToTalk && state.pocketMode),
                       title: Text(_micTitle(l, m)),
                       subtitle: Text(
-                        m == MicMode.pushToTalk && state.tapToCapture
-                            ? l.micPushToTalkBlockedByTap
+                        m == MicMode.pushToTalk && state.pocketMode
+                            ? l.micPushToTalkBlockedByPocket
                             : _micSubtitle(l, m),
                       ),
                     ),
@@ -643,10 +643,9 @@ class _TapToCaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, int, bool, int, bool, MicMode)>(
+    return Watch<(bool, bool, int, bool, MicMode)>(
       (state) => (
-        state.tapToCapture,
-        state.tapCount,
+        state.pocketMode,
         state.autoStopCapture,
         state.autoStopSeconds,
         state.canChangeMicMode,
@@ -657,57 +656,34 @@ class _TapToCaptureTile extends StatelessWidget {
         // **The exclusion has to run both ways, and only one of them was
         // built.** Push-to-talk was disabled in the radio group while the
         // gesture was on, but the gesture could still be switched on while
-        // push-to-talk was selected — and then `tapToCapture && micMode !=
-        // pushToTalk` resolved to false, so the switch read "on" and the
-        // feature was inert, with the sensors never started. That is a control
-        // that lies, which is worse than one that refuses.
+        // push-to-talk was selected — and then the derived flag resolved to
+        // false, so the switch read "on" and the feature was inert. That is a
+        // control that lies, which is worse than one that refuses.
         final blocked = state.micMode == MicMode.pushToTalk;
-        final on = state.tapToCapture && !blocked;
+        final on = state.pocketMode && !blocked;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // **One switch where there were three.** The count and the gesture
+            // itself are no longer settings: it is always three taps inside
+            // three seconds, measured, and the slider on the main screen is
+            // what arms it. A setting that silently changed what connecting
+            // did is how a rider came to be listening when they meant to talk.
             SwitchListTile(
-              secondary: const Icon(Icons.touch_app),
-              title: Text(l.tapToCapture),
+              secondary: const Icon(Icons.phone_android),
+              title: Text(l.pocketMode),
               subtitle: Text(
-                blocked ? l.tapBlockedByPushToTalk : l.tapToCaptureBody,
+                blocked ? l.pocketBlockedByPushToTalk : l.pocketModeBody,
               ),
               isThreeLine: true,
               value: on,
               // Shares the mode's lock, and for the same reason: it changes
               // what the connect-time hello says about this rider.
               onChanged: state.canChangeMicMode && !blocked
-                  ? (v) => state.updateTapToCapture(v)
+                  ? (v) => state.updatePocketMode(v)
                   : null,
             ),
-            if (on) ...[
-              Padding(
-                padding: const EdgeInsets.only(left: 72, right: 16, bottom: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(l.tapCount, style: Theme.of(context).textTheme.bodyMedium),
-                    const SizedBox(height: 4),
-                    SegmentedButton<int>(
-                      segments: [
-                        for (final n in [2, 3, 4])
-                          ButtonSegment<int>(value: n, label: Text('$n')),
-                      ],
-                      selected: {state.tapCount},
-                      onSelectionChanged: (s) =>
-                          state.updateTapCount(s.first),
-                    ),
-                    const SizedBox(height: 4),
-                    // Three is the default because it is the first count that
-                    // carries timing evidence at all: two taps give one
-                    // interval, so there is nothing to compare it against.
-                    Text(
-                      l.tapCountBody,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
+            if (on)
               SwitchListTile(
                 secondary: const SizedBox(width: 24),
                 contentPadding: const EdgeInsets.only(left: 72, right: 16),
@@ -717,7 +693,6 @@ class _TapToCaptureTile extends StatelessWidget {
                 value: state.autoStopCapture,
                 onChanged: (v) => state.updateAutoStopCapture(v),
               ),
-            ],
           ],
         );
       },

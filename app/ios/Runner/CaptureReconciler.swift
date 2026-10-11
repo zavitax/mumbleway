@@ -68,12 +68,42 @@ enum CaptureReconciler {
     var inputChannels: Int
     /// Answered immediately, unlike the count.
     var inputAvailable: Bool
+    /// Whether the input this app has **asked for** is the hands-free one.
+    ///
+    /// `AVAudioSession.preferredInput`, not `currentRoute`. Commanded, so it
+    /// is true the instant the setter returns and it obeys this file's own
+    /// rule about which properties may decide. The observed route is still
+    /// settling right after `setActive(true)`, and deciding on it is the fault
+    /// this type was created to stop.
+    ///
+    /// **Without this the reconciler had no fixed point while capturing.** It
+    /// answered `.preferHandsFreeInput` on every route change, and
+    /// `setPreferredInput` on a live session posts a route change of its own —
+    /// so the handler drove itself round for the whole call, interrupting the
+    /// input each time. Measured on a helmet recording: two thirds of it was
+    /// bit-exact zero, in bursts, with the audio arriving in runs of about
+    /// 270 ms separated by gaps of about 120 ms. The rider reported it as
+    /// taps on the helmet not registering, which is true and is the smaller
+    /// half of it — two thirds of their speech was going nowhere too.
+    ///
+    /// It never happened on the phone's own microphone, which is what made it
+    /// look like a tap-detection problem rather than a session one:
+    /// `preferHandsFreeInput()` guards on finding a `.bluetoothHFP` port, so
+    /// with no headset it returns early and the loop has no body.
+    var preferredIsHandsFree: Bool
 
-    init(category: String, options: UInt, inputChannels: Int, inputAvailable: Bool) {
+    init(
+      category: String,
+      options: UInt,
+      inputChannels: Int,
+      inputAvailable: Bool,
+      preferredIsHandsFree: Bool = false
+    ) {
       self.category = category
       self.options = options
       self.inputChannels = inputChannels
       self.inputAvailable = inputAvailable
+      self.preferredIsHandsFree = preferredIsHandsFree
     }
   }
 
@@ -162,7 +192,11 @@ enum CaptureReconciler {
 
     guard desired.capturing else { return .none }
 
-    if reading.inputChannels > 0 { return .preferHandsFreeInput }
+    // Asked for already, so asking again would only interrupt the input and
+    // post the notification that brought us here. This is the fixed point.
+    if reading.inputChannels > 0 {
+      return reading.preferredIsHandsFree ? .none : .preferHandsFreeInput
+    }
     if reading.inputAvailable { return .waitForRouteToSettle }
     return .reportNoInput
   }

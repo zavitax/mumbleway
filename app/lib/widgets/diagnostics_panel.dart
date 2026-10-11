@@ -259,6 +259,19 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   /// labels quietly won and the cost table had been showing `To the server` for
   /// a row that times the onset delay and the decision log. Nothing failed:
   /// both keys existed, both files had them, both translations were real.
+  /// How much of what the microphone delivered was digital silence.
+  ///
+  /// A share as well as a count, because the count alone says nothing without
+  /// knowing how long the call has been: two thousand blocks is a catastrophe
+  /// in a twenty-second call and a blink in an hour.
+  static String _silence(UiChainStatus? chain) {
+    final blocks = chain?.inputBlocks ?? BigInt.zero;
+    final silent = chain?.inputSilentBlocks ?? BigInt.zero;
+    if (blocks == BigInt.zero) return '—';
+    final pct = 100 * silent.toDouble() / blocks.toDouble();
+    return '${pct.toStringAsFixed(1)}% · ${silent * BigInt.from(10)} ms';
+  }
+
   static String _stageLabel(L l, String id) => switch (id) {
     'input' => l.diagCostInput,
     'enhancer' => l.diagCostEnhancer,
@@ -454,6 +467,24 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                 '${_chain?.inputClipped ?? 0} samples',
                                 bad:
                                     (_chain?.inputClipped ?? BigInt.zero) >
+                                    BigInt.zero,
+                              ),
+                              // **Zero, not quiet.** A real microphone in a
+                              // silent room sits tens of dB above this, so any
+                              // figure here is the device handing over nothing
+                              // and every stage below working perfectly on it.
+                              // A helmet over Bluetooth did this for two
+                              // thirds of a recording while the rider's taps
+                              // went unnoticed — a tap in a silent block does
+                              // not exist — and nothing said so, because the
+                              // existing watchdog wants two consecutive
+                              // seconds and these runs were 120 ms.
+                              _Row(
+                                l.diagInputSilent,
+                                _silence(_chain),
+                                bad:
+                                    (_chain?.inputSilentBlocks ??
+                                        BigInt.zero) >
                                     BigInt.zero,
                               ),
                               // **The one place the slider and the gain in

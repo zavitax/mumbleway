@@ -1903,6 +1903,12 @@ abstract class L {
   /// **'Microphone dropped'**
   String get diagMicrophoneDropped;
 
+  /// How much of what the microphone delivered was bit-exact zero, as a share and a duration. Not quiet - zero. Any figure above 0% means the device is handing over nothing and nothing downstream can transmit; a Bluetooth helmet has been seen doing this for two thirds of a call
+  ///
+  /// In en, this message translates to:
+  /// **'Digital silence from the microphone'**
+  String get diagInputSilent;
+
   /// No description provided for @diagInputPeak.
   ///
   /// In en, this message translates to:

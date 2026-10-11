@@ -813,6 +813,21 @@ pub struct AudioShared {
     /// thread without a lock.
     input_peak_bits: AtomicU32,
     input_clipped: AtomicU64,
+    /// Capture blocks delivered, and how many of those were bit-exact zero.
+    ///
+    /// **A run-length watchdog cannot see this fault.** The warning below
+    /// fires after two seconds of *consecutive* silence, which is right for
+    /// the Android-in-the-background case it was written for: there the
+    /// microphone stops for good. A Bluetooth helmet fails differently — it
+    /// delivers in bursts, and a recording from one came back two thirds
+    /// digital zero with a median silent run of 120 ms. Nothing warned,
+    /// because no run reached two seconds, and nothing on screen said a word.
+    ///
+    /// So a ratio as well as a run. Two thirds of a rider's speech was being
+    /// dropped and the only visible symptom was that tapping the helmet did
+    /// not register — a tap that lands in a silent block does not exist.
+    input_blocks: AtomicU64,
+    input_silent_blocks: AtomicU64,
     /// Which microphone the platform says we are on. See [`record::Recorded`]
     /// for what the numbers mean; the core only carries it to the log.
     route: AtomicU8,
@@ -1379,6 +1394,8 @@ impl AudioShared {
             route: AtomicU8::new(0),
             input_peak_bits: AtomicU32::new(0),
             input_clipped: AtomicU64::new(0),
+            input_blocks: AtomicU64::new(0),
+            input_silent_blocks: AtomicU64::new(0),
             chain: Mutex::new(ChainStatus::default()),
             stage_timings: Mutex::new(StageTimings::default()),
             reset_stage_timings: AtomicBool::new(false),
@@ -1745,6 +1762,22 @@ impl AudioShared {
         }
     }
 
+    /// Counts one delivered capture block, and whether it was digital silence.
+    pub fn note_input_block(&self, silent: bool) {
+        self.input_blocks.fetch_add(1, Ordering::Relaxed);
+        if silent {
+            self.input_silent_blocks.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    /// Blocks delivered, and how many were bit-exact zero.
+    pub fn input_silence(&self) -> (u64, u64) {
+        (
+            self.input_blocks.load(Ordering::Relaxed),
+            self.input_silent_blocks.load(Ordering::Relaxed),
+        )
+    }
+
     /// The loudest input sample seen, and how many have hit full scale.
     pub fn input_peak(&self) -> (f32, u64) {
         (
@@ -1756,6 +1789,8 @@ impl AudioShared {
     pub fn reset_input_peak(&self) {
         self.input_peak_bits.store(0, Ordering::Relaxed);
         self.input_clipped.store(0, Ordering::Relaxed);
+        self.input_blocks.store(0, Ordering::Relaxed);
+        self.input_silent_blocks.store(0, Ordering::Relaxed);
     }
 
     /// Publishes a frame. Silently drops it if the reader holds the lock,
@@ -3724,7 +3759,9 @@ where
             // Warned about once per run of silence rather than per block, and
             // again when it comes back, so the log carries the two edges and
             // not thirty thousand lines between them.
-            if block.iter().all(|s| *s == 0.0) {
+            let silent = block.iter().all(|s| *s == 0.0);
+            shared.note_input_block(silent);
+            if silent {
                 silent_blocks += 1;
                 if silent_blocks == SILENT_BLOCKS_BEFORE_WARNING {
                     tracing::warn!(

@@ -1743,6 +1743,16 @@ class UiChainStatus {
   final double inputPeakDb;
   final BigInt inputClipped;
 
+  /// Capture blocks delivered, and how many were **bit-exact zero**.
+  ///
+  /// Not "quiet" — zero. A real microphone in a silent room sits tens of
+  /// decibels above this, so anything here is the device handing over
+  /// nothing at all, and every stage below it is working perfectly on
+  /// silence. A helmet over Bluetooth did this for two thirds of a
+  /// recording; the phone's own microphone has never done it once.
+  final BigInt inputBlocks;
+  final BigInt inputSilentBlocks;
+
   /// What the clip guard is holding back off the gain slider, in dB. Never
   /// positive, and `0.0` when it is idle.
   ///
@@ -1942,6 +1952,8 @@ class UiChainStatus {
     required this.activationThresholdDb,
     required this.inputPeakDb,
     required this.inputClipped,
+    required this.inputBlocks,
+    required this.inputSilentBlocks,
     required this.inputTrimDb,
     required this.floorHeld,
     required this.floorHeldMs,
@@ -1989,6 +2001,8 @@ class UiChainStatus {
       activationThresholdDb.hashCode ^
       inputPeakDb.hashCode ^
       inputClipped.hashCode ^
+      inputBlocks.hashCode ^
+      inputSilentBlocks.hashCode ^
       inputTrimDb.hashCode ^
       floorHeld.hashCode ^
       floorHeldMs.hashCode ^
@@ -2038,6 +2052,8 @@ class UiChainStatus {
           activationThresholdDb == other.activationThresholdDb &&
           inputPeakDb == other.inputPeakDb &&
           inputClipped == other.inputClipped &&
+          inputBlocks == other.inputBlocks &&
+          inputSilentBlocks == other.inputSilentBlocks &&
           inputTrimDb == other.inputTrimDb &&
           floorHeld == other.floorHeld &&
           floorHeldMs == other.floorHeldMs &&

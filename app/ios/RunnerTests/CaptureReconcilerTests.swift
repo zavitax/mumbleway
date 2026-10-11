@@ -65,19 +65,30 @@ final class CaptureReconcilerTests: XCTestCase {
         case .waitForRouteToSettle:
           // The route settles on its own and posts a notification.
           reading.inputChannels = 1
-        case .preferHandsFreeInput, .none, .reportNoInput:
+        case .preferHandsFreeInput:
+          // **Applied, not ignored.** Treating this as a no-op is what let
+          // the loop through: `setPreferredInput` has an effect, and the
+          // effect is the thing that has to make the next answer different.
+          reading.preferredIsHandsFree = true
+        case .none, .reportNoInput:
           break
         }
-        if action == .none || action == .preferHandsFreeInput { break }
+        if action == .none { break }
       }
 
       XCTAssertFalse(
         seen.contains(.reportNoInput),
         "an available input was reported missing: \(seen)")
-      // Having converged, it must stay converged.
+      // **Converged means `.none`, and nothing else counts.**
+      //
+      // This used to accept `.preferHandsFreeInput` as convergence too, and
+      // that is precisely the bug it was supposed to exclude: every one of
+      // those posts a route change, so a reconciler that keeps answering it
+      // drives the handler round for the whole call and interrupts the input
+      // on each turn. A helmet recording came back two thirds digital zero.
       let again = R.next(desired: desired, reading: reading)
-      XCTAssertTrue(
-        again == .none || again == .preferHandsFreeInput,
+      XCTAssertEqual(
+        again, .none,
         "not a fixed point: \(again) after \(seen)")
     }
   }
@@ -120,6 +131,29 @@ final class CaptureReconcilerTests: XCTestCase {
     XCTAssertEqual(
       R.next(desired: desired, reading: capturing(channels: 1)),
       .preferHandsFreeInput)
+  }
+
+  /// **The loop that shipped, and the fourth defect out of this handler.**
+  ///
+  /// Asking for an input that is already asked for is not free: it posts a
+  /// route change, which calls the handler, which asks again. Each turn
+  /// interrupts the microphone, and on a helmet the result was a recording
+  /// that was 66.9% bit-exact zero — audio in runs of about 270 ms with gaps
+  /// of about 120 ms, for thirty-four seconds. The rider reported it as
+  /// helmet taps not registering; a tap landing in a silent block does not
+  /// exist.
+  ///
+  /// It was invisible on the phone's own microphone, because
+  /// `preferHandsFreeInput()` guards on finding a `.bluetoothHFP` port and so
+  /// did nothing at all without a headset — which is what made a session bug
+  /// look like a detector bug.
+  func testTheHelmetInputIsNotAskedForTwice() {
+    let desired = R.Desired(active: true, capturing: true)
+    var reading = capturing(channels: 1)
+    reading.preferredIsHandsFree = true
+    XCTAssertEqual(
+      R.next(desired: desired, reading: reading), .none,
+      "asked for the hands-free input it had already asked for")
   }
 
   /// No input hardware at all is a different answer from one that is late.

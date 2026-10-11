@@ -5004,6 +5004,8 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
         let mut var_activationThresholdDb = <f32>::sse_decode(deserializer);
         let mut var_inputPeakDb = <f32>::sse_decode(deserializer);
         let mut var_inputClipped = <u64>::sse_decode(deserializer);
+        let mut var_inputBlocks = <u64>::sse_decode(deserializer);
+        let mut var_inputSilentBlocks = <u64>::sse_decode(deserializer);
         let mut var_inputTrimDb = <f32>::sse_decode(deserializer);
         let mut var_floorHeld = <bool>::sse_decode(deserializer);
         let mut var_floorHeldMs = <u32>::sse_decode(deserializer);
@@ -5049,6 +5051,8 @@ impl SseDecode for crate::api::mumbleway::UiChainStatus {
             activation_threshold_db: var_activationThresholdDb,
             input_peak_db: var_inputPeakDb,
             input_clipped: var_inputClipped,
+            input_blocks: var_inputBlocks,
+            input_silent_blocks: var_inputSilentBlocks,
             input_trim_db: var_inputTrimDb,
             floor_held: var_floorHeld,
             floor_held_ms: var_floorHeldMs,
@@ -6419,6 +6423,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiChainStatus {
             self.activation_threshold_db.into_into_dart().into_dart(),
             self.input_peak_db.into_into_dart().into_dart(),
             self.input_clipped.into_into_dart().into_dart(),
+            self.input_blocks.into_into_dart().into_dart(),
+            self.input_silent_blocks.into_into_dart().into_dart(),
             self.input_trim_db.into_into_dart().into_dart(),
             self.floor_held.into_into_dart().into_dart(),
             self.floor_held_ms.into_into_dart().into_dart(),
@@ -7851,6 +7857,8 @@ impl SseEncode for crate::api::mumbleway::UiChainStatus {
         <f32>::sse_encode(self.activation_threshold_db, serializer);
         <f32>::sse_encode(self.input_peak_db, serializer);
         <u64>::sse_encode(self.input_clipped, serializer);
+        <u64>::sse_encode(self.input_blocks, serializer);
+        <u64>::sse_encode(self.input_silent_blocks, serializer);
         <f32>::sse_encode(self.input_trim_db, serializer);
         <bool>::sse_encode(self.floor_held, serializer);
         <u32>::sse_encode(self.floor_held_ms, serializer);

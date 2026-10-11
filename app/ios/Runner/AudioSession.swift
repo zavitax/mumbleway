@@ -542,7 +542,11 @@ final class AudioSession {
           category: session.category.rawValue,
           options: session.categoryOptions.rawValue,
           inputChannels: session.inputNumberOfChannels,
-          inputAvailable: session.isInputAvailable)
+          inputAvailable: session.isInputAvailable,
+          // Commanded, not observed: what we asked for, which is true the
+          // instant the setter returned. See `Reading.preferredIsHandsFree`
+          // for the loop its absence left running for a whole call.
+          preferredIsHandsFree: session.preferredInput?.portType == .bluetoothHFP)
 
         switch CaptureReconciler.next(desired: desired, reading: reading) {
         case .none, .waitForRouteToSettle:

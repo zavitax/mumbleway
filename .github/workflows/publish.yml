@@ -132,13 +132,22 @@ jobs:
       # Checked here instead, on Linux, in a second, before any job that
       # builds. Cheap enough that it never needs thinking about again.
       - name: Every file the Xcode project references exists
-        working-directory: app/ios
         run: |
           missing=0
-          refs=$(grep -oE 'path = [A-Za-z0-9_.+-]+\.(swift|m|h|plist|entitlements)' Runner.xcodeproj/project.pbxproj | sed 's/path = //' | sort -u)
+          # **Against what git tracks, not against the working tree.** Several
+          # of these are generated — `GeneratedPluginRegistrant.h` and `.m` are
+          # written by `flutter pub get` — so they are absent from a fresh
+          # checkout and present on any machine that has built. Checking the
+          # tree passes locally and fails here, which is how the first version
+          # of this step went red on files that were never missing. What the
+          # fault actually is, is a reference to a file that has left the
+          # repository, and git is the thing that knows.
+          tracked=$(git ls-files app/ios | sed 's|.*/||' | sort -u)
+          refs=$(grep -oE 'path = [A-Za-z0-9_.+-]+\.(swift|m|h|plist|entitlements)' app/ios/Runner.xcodeproj/project.pbxproj | sed 's/path = //' | sort -u)
           for f in $refs; do
-            if [ -z "$(find . -name "$f" -not -path './Pods/*' | head -1)" ]; then
-              echo "::error::project.pbxproj references $f, which does not exist"
+            case "$f" in Generated*) continue ;; esac
+            if ! echo "$tracked" | grep -qxF "$f"; then
+              echo "::error::project.pbxproj references $f, which is not in the repository"
               missing=1
             fi
           done

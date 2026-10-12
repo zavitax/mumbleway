@@ -1228,6 +1228,36 @@ class LRu extends L {
   String get diagPreviewSentOnlyOff => 'Проигрывать запись целиком';
 
   @override
+  String get tapStages => 'Ступени, которые проходит постукивание';
+
+  @override
+  String get tapStageInput => 'вход';
+
+  @override
+  String get tapStageBand => 'полоса';
+
+  @override
+  String get tapStageHearing => 'слух';
+
+  @override
+  String get tapStageFloor => 'фон';
+
+  @override
+  String get tapStageMargin => 'запас';
+
+  @override
+  String get tapStageAttack => 'атака';
+
+  @override
+  String get tapStageFellBack => 'спад';
+
+  @override
+  String get tapStageTail => 'хвост';
+
+  @override
+  String get tapStageBanked => 'удар';
+
+  @override
   String get diagTapDetector => 'Слушает постукивания';
 
   @override

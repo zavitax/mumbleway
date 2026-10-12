@@ -632,6 +632,46 @@
   "@diagPreviewSentOnlyOff": {
     "description": "Tooltip on the same control when it is on, saying what pressing it does next"
   },
+  "tapStages": "Stages a tap passes",
+  "@tapStages": {
+    "description": "Heading for the row of nine lamps on the tap panel. Each is lit while its stage is passing signal to the next, so the row stops where taps are being lost"
+  },
+  "tapStageInput": "in",
+  "@tapStageInput": {
+    "description": "Stage 0: audio arriving at all, above one 16-bit step. Keep to four characters or so — nine of these share a phone's width"
+  },
+  "tapStageBand": "band",
+  "@tapStageBand": {
+    "description": "Stage 1: something survived the 100 Hz to 4 kHz band-pass"
+  },
+  "tapStageHearing": "hear",
+  "@tapStageHearing": {
+    "description": "Stage 2: the detector was not deafened by this app's own cue or by the rider's speech"
+  },
+  "tapStageFloor": "floor",
+  "@tapStageFloor": {
+    "description": "Stage 3: the frame stood above the trailing floor at all. Dark with its neighbours lit means the floor has risen onto the signal"
+  },
+  "tapStageMargin": "marg",
+  "@tapStageMargin": {
+    "description": "Stage 4: it stood the required 18 dB above the floor"
+  },
+  "tapStageAttack": "atk",
+  "@tapStageAttack": {
+    "description": "Stage 5: it rose 14 dB inside one millisecond, which is the test that separates contact from a sound"
+  },
+  "tapStageFellBack": "fall",
+  "@tapStageFellBack": {
+    "description": "Stage 6: it died away in time and outside the dead time, so a strike was formed"
+  },
+  "tapStageTail": "tail",
+  "@tapStageTail": {
+    "description": "Stage 7: its tail had fallen away, so it was a tap rather than a consonant with a vowel behind it"
+  },
+  "tapStageBanked": "tap",
+  "@tapStageBanked": {
+    "description": "Stage 8: it was banked towards the three-tap gesture"
+  },
   "diagTapDetector": "Listening for taps",
   "@diagTapDetector": {
     "description": "Title of the group showing what the microphone's tap detector is hearing. Only shown when tap-to-capture is switched on"

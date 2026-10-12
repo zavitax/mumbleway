@@ -4437,8 +4437,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiAcousticStats dco_decode_ui_acoustic_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 16)
-      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    if (arr.length != 17)
+      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
     return UiAcousticStats(
       enabled: dco_decode_bool(arr[0]),
       frames: dco_decode_u_64(arr[1]),
@@ -4456,6 +4456,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       discardedRinging: dco_decode_u_64(arr[13]),
       speechBlocks: dco_decode_u_64(arr[14]),
       run: dco_decode_u_8(arr[15]),
+      stageMask: dco_decode_u_32(arr[16]),
     );
   }
 
@@ -5813,6 +5814,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_discardedRinging = sse_decode_u_64(deserializer);
     var var_speechBlocks = sse_decode_u_64(deserializer);
     var var_run = sse_decode_u_8(deserializer);
+    var var_stageMask = sse_decode_u_32(deserializer);
     return UiAcousticStats(
       enabled: var_enabled,
       frames: var_frames,
@@ -5830,6 +5832,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       discardedRinging: var_discardedRinging,
       speechBlocks: var_speechBlocks,
       run: var_run,
+      stageMask: var_stageMask,
     );
   }
 
@@ -7252,6 +7255,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.discardedRinging, serializer);
     sse_encode_u_64(self.speechBlocks, serializer);
     sse_encode_u_8(self.run, serializer);
+    sse_encode_u_32(self.stageMask, serializer);
   }
 
   @protected

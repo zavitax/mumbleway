@@ -1229,6 +1229,36 @@ class LEn extends L {
   String get diagPreviewSentOnlyOff => 'Play the whole recording';
 
   @override
+  String get tapStages => 'Stages a tap passes';
+
+  @override
+  String get tapStageInput => 'in';
+
+  @override
+  String get tapStageBand => 'band';
+
+  @override
+  String get tapStageHearing => 'hear';
+
+  @override
+  String get tapStageFloor => 'floor';
+
+  @override
+  String get tapStageMargin => 'marg';
+
+  @override
+  String get tapStageAttack => 'atk';
+
+  @override
+  String get tapStageFellBack => 'fall';
+
+  @override
+  String get tapStageTail => 'tail';
+
+  @override
+  String get tapStageBanked => 'tap';
+
+  @override
   String get diagTapDetector => 'Listening for taps';
 
   @override

@@ -33,7 +33,7 @@
 //! point of the split is that one path can be changed without touching the
 //! other.
 
-use super::acoustic_tap::{AcousticStats, FRAME};
+use super::acoustic_tap::{stage, AcousticStats, FRAME};
 use super::gesture::{Banked, Candidate, GesturePattern, TapGesture};
 
 /// The band a tap lives in, measured rather than assumed.
@@ -64,6 +64,17 @@ const SELF_NOISE_TAIL_MS: u32 = 120;
 /// anything let a digitally silent block drag the floor to it, after which
 /// every frame was a candidate and nothing was ever a tap.
 const QUANTISATION_DBFS: f32 = -90.0;
+
+/// The same floor as an amplitude, so a frame costs no logarithm to test.
+const QUANTISATION_AMPLITUDE: f32 = 3.162_278e-5;
+
+/// How long a stage lamp stays lit after the last frame that passed it.
+///
+/// Its own copy, like everything else in this file: the front end is
+/// duplicated on purpose — see the header — and a shared constant is a shared
+/// blast radius. The number matches the helmet path because the panel is the
+/// same panel.
+const STAGE_HOLD_MS: u64 = 1_500;
 
 /// How fast the reference level follows the audio, per 1 ms frame.
 ///
@@ -134,6 +145,9 @@ pub struct PhoneTapDetector {
     peak_over: f32,
     latent_until_ms: u64,
     frame_ms: u64,
+    /// When each stage last passed something, on the frame clock. See
+    /// [`stage`].
+    stage_at: [u64; stage::COUNT],
     stats: AcousticStats,
 }
 
@@ -160,6 +174,7 @@ impl PhoneTapDetector {
             peak_over: f32::NEG_INFINITY,
             latent_until_ms: 0,
             frame_ms: 0,
+            stage_at: [0; stage::COUNT],
             stats: AcousticStats {
                 // **Not the derived zero**, which is full scale: the meter
                 // would open pinned and take three seconds to fall.
@@ -174,7 +189,24 @@ impl PhoneTapDetector {
     }
 
     pub fn stats(&self) -> AcousticStats {
-        self.stats
+        let mut s = self.stats;
+        s.stage_mask = self.stage_mask();
+        s
+    }
+
+    /// Which stages have passed something within [`STAGE_HOLD_MS`].
+    fn stage_mask(&self) -> u32 {
+        let mut mask = 0u32;
+        for (i, &at) in self.stage_at.iter().enumerate() {
+            if at > 0 && self.frame_ms.saturating_sub(at) <= STAGE_HOLD_MS {
+                mask |= 1 << i;
+            }
+        }
+        mask
+    }
+
+    fn pass(&mut self, stage: usize) {
+        self.stage_at[stage] = self.frame_ms;
     }
 
     /// Tells the detector how loud this app's own output is.
@@ -216,8 +248,10 @@ impl PhoneTapDetector {
             self.stats.run = 0;
         }
 
+        let mut raw_peak = 0.0f32;
         let mut peak = 0.0f32;
         for &sample in frame {
+            raw_peak = raw_peak.max(sample.abs());
             let mut v = sample;
             for pole in self.low.iter_mut() {
                 *pole += (v - *pole) * self.low_coeff;
@@ -225,6 +259,12 @@ impl PhoneTapDetector {
             }
             self.high += (v - self.high) * self.high_coeff;
             peak = peak.max((v - self.high).abs());
+        }
+        if raw_peak > QUANTISATION_AMPLITUDE {
+            self.pass(stage::INPUT);
+        }
+        if peak > QUANTISATION_AMPLITUDE {
+            self.pass(stage::BAND);
         }
         let level_db = (20.0 * (peak + 1e-7).log10()).max(QUANTISATION_DBFS);
         self.stats.meter_db = level_db.max(self.stats.meter_db - METER_FALL_DB_PER_MS);
@@ -245,14 +285,39 @@ impl PhoneTapDetector {
             return None;
         }
 
+        self.pass(stage::HEARING);
+
         if !self.reference_db.is_finite() {
             self.reference_db = level_db;
         }
         self.reference_db += (level_db - self.reference_db) * REFERENCE_ALPHA;
         let floor_db = self.reference_db;
         let over = level_db - floor_db;
-        let attack = level_db - self.previous_db;
+        // **The first frame has no previous frame, and that is not an
+        // infinite attack.** `previous_db` starts at minus infinity, so the
+        // first millisecond of every stream reported a rise of infinity — the
+        // same fault the deafness branch above was fixed for, left standing
+        // at construction because it could not arm anything on its own: the
+        // margin is zero on that frame, since the reference is seeded from
+        // it. Harmless for detection and a lie on the panel, which is how it
+        // was found — the attack lamp lit on digital silence.
+        let attack = if self.previous_db.is_finite() {
+            level_db - self.previous_db
+        } else {
+            0.0
+        };
         self.previous_db = level_db;
+        // Lit separately, whatever the state: the arming test wants both, and
+        // one lamp for the pair would not say which was missing.
+        if over > 0.0 {
+            self.pass(stage::OVER_FLOOR);
+        }
+        if over >= self.margin_db {
+            self.pass(stage::MARGIN);
+        }
+        if attack >= self.attack_db {
+            self.pass(stage::ATTACK);
+        }
         self.stats.floor_db = floor_db;
         let at_ms = self.frame_ms;
 
@@ -288,6 +353,13 @@ impl PhoneTapDetector {
                         return None;
                     }
                     self.latent_until_ms = at_ms + LATENT_MS as u64;
+                    self.pass(stage::FELL_BACK);
+                    // **No tail test on this path**, so the strike passes the
+                    // stage by arriving. Lit rather than left dark, because
+                    // dark means "stopped here" on the panel and nothing
+                    // stops here — the helmet path is the one that can throw a
+                    // strike away for ringing.
+                    self.pass(stage::TAIL);
                     self.stats.candidates += 1;
                     return self.offer(
                         Candidate {
@@ -306,18 +378,21 @@ impl PhoneTapDetector {
         match self.pattern.offer(c) {
             Banked::Ignored => None,
             Banked::Added { run } => {
+                self.pass(stage::BANKED);
                 self.stats.banked += 1;
                 self.stats.run = run;
                 *banked = true;
                 None
             }
             Banked::RestartedOnMagnitude => {
+                self.pass(stage::BANKED);
                 self.stats.banked += 1;
                 self.stats.run = 1;
                 *banked = true;
                 None
             }
             Banked::Completed(g) => {
+                self.pass(stage::BANKED);
                 self.stats.banked += 1;
                 self.stats.gestures += 1;
                 self.stats.run = 0;
@@ -383,6 +458,120 @@ mod tests {
             d.stats()
         );
         assert_eq!(d.stats().banked, 3, "a tick for each tap");
+    }
+
+    /// Lamp *n* is lit when stage *n* passed something recently.
+    fn lit(d: &PhoneTapDetector, s: usize) -> bool {
+        d.stats().stage_mask & (1 << s) != 0
+    }
+
+    /// **The row a rider reads to see where it stops.** A tap passes every
+    /// stage, so every lamp is lit directly after one.
+    #[test]
+    fn a_tap_lights_the_whole_row() {
+        let mut audio = Vec::new();
+        quiet(&mut audio, 400);
+        tap(&mut audio, 0.4);
+
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+        assert!(banked, "the tap did not bank: {:?}", d.stats());
+        for s in 0..stage::COUNT {
+            assert!(lit(&d, s), "stage {s} dark after a tap: {:?}", d.stats());
+        }
+    }
+
+    /// And the row is a *diagnosis*, which means the lamps have to go dark in
+    /// the right place. Quiet room: audio is arriving and in band, the
+    /// detector is listening, nothing stands over the floor.
+    #[test]
+    fn a_quiet_room_stops_at_the_floor() {
+        let mut audio = Vec::new();
+        quiet(&mut audio, 2_000);
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+
+        assert!(lit(&d, stage::INPUT), "a room is not digital silence");
+        assert!(lit(&d, stage::BAND));
+        assert!(lit(&d, stage::HEARING));
+        assert!(!lit(&d, stage::MARGIN), "quiet reached the margin");
+        assert!(!lit(&d, stage::FELL_BACK));
+        assert!(!lit(&d, stage::BANKED));
+    }
+
+    /// **Deafness is the one that has actually caught people out**, because
+    /// the tick this app plays comes back through a helmet's own microphone
+    /// and shuts the detector for 600 ms. The row says so: audio in, band in,
+    /// hearing dark, nothing after it.
+    #[test]
+    fn our_own_noise_puts_the_hearing_lamp_out() {
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+
+        let mut settle = Vec::new();
+        quiet(&mut settle, 400);
+        d.push(&settle, &mut banked);
+
+        // **Reported every block, which is how the engine reports it**, and
+        // the stretch has to outlast [`STAGE_HOLD_MS`] before the lamp can be
+        // expected to go out — a single [`SELF_NOISE_TAIL_MS`] is shorter than
+        // the hold, so the lamp would still be lit and right to be.
+        for _ in 0..200 {
+            let mut block = Vec::new();
+            quiet(&mut block, 10);
+            d.hear_own_output(-20.0);
+            d.push(&block, &mut banked);
+        }
+
+        let mut tapped = Vec::new();
+        tap(&mut tapped, 0.4);
+        d.hear_own_output(-20.0);
+        d.push(&tapped, &mut banked);
+
+        assert!(!banked, "banked a tap while deaf");
+        assert!(lit(&d, stage::INPUT), "the stream is still arriving");
+        assert!(lit(&d, stage::BAND));
+        assert!(!lit(&d, stage::HEARING), "heard a tap through its own cue");
+        assert!(!lit(&d, stage::MARGIN), "a stage past the deafness is lit");
+        assert!(!lit(&d, stage::BANKED));
+    }
+
+    /// Digital silence puts out the first lamp and every one after it, which
+    /// is the reading that tells a dead stream from a quiet room — the fault
+    /// that took 8.5 minutes of bit-exact zero to notice once.
+    #[test]
+    fn a_dead_stream_lights_nothing() {
+        let audio = vec![0.0f32; FRAME * 500];
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+        assert_eq!(
+            d.stats().stage_mask & !(1 << stage::HEARING),
+            0,
+            "something passed on digital silence: {:?}",
+            d.stats()
+        );
+    }
+
+    /// A lamp goes out again on its own, or a row read a minute later
+    /// describes a tap nobody is performing.
+    #[test]
+    fn the_lamps_go_out_again() {
+        let mut audio = Vec::new();
+        quiet(&mut audio, 400);
+        tap(&mut audio, 0.4);
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+        assert!(lit(&d, stage::BANKED));
+
+        let mut after = Vec::new();
+        quiet(&mut after, STAGE_HOLD_MS as usize + 10);
+        d.push(&after, &mut banked);
+        assert!(!lit(&d, stage::BANKED), "the tap lamp stayed lit");
+        assert!(lit(&d, stage::HEARING), "and this one should still be lit");
     }
 
     #[test]

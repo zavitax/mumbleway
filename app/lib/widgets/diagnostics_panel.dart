@@ -13,6 +13,7 @@ import 'recording_toggle.dart';
 import 'audio_view.dart';
 import 'spectrum_view.dart';
 import 'watch.dart';
+import 'tap_stages.dart';
 
 /// Live diagnostics, shown over the bottom of whatever is on screen.
 ///
@@ -141,6 +142,12 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
   /// different lines in here.
   UiAcousticStats? _tap;
 
+  /// The lamp row's reader, which needs the previous poll's frame count. See
+  /// [TapStageReader]: a stalled count means every lamp is dark, and nothing
+  /// else here can tell that from a detector that is simply quiet.
+  final _stageReader = TapStageReader();
+  int _stages = 0;
+
   /// Slide the panel away.
   ///
   /// Reached through the state rather than taken as an `onClose` callback, and
@@ -232,6 +239,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
         _chain = chain;
         _costs = costs;
         _tap = tap;
+        _stages = _stageReader.read(tap);
       });
     } catch (_) {
       // The engine is not up; nothing to report.
@@ -728,7 +736,28 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                         // it has heard nothing — "frames: 0" is the single
                         // most useful line here, because it says the detector
                         // is not deaf but blind: no microphone was opened.
-                        if (_tap?.enabled ?? false)
+                        if (_tap?.enabled ?? false) ...[
+                          // **The row that answers "where does it stop".**
+                          // Above the readings rather than below them, because
+                          // it is the one line that can be read at a glance
+                          // with a helmet on: the lamps go out at the gate
+                          // that is losing the taps, and the numbers under it
+                          // say by how much.
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 2),
+                            child: Text(
+                              l.tapStages.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          TapStageRow(mask: _stages),
                           _Group(
                             title: l.diagTapDetector,
                             rows: [
@@ -798,6 +827,7 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                               _Row(l.diagTapGestures, '${_tap!.gestures}'),
                             ],
                           ),
+                        ],
                         if ((_costs?.blocks ?? BigInt.zero) > BigInt.zero)
                           _Group(
                             title: l.diagBlockCost,

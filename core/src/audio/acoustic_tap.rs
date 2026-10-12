@@ -228,6 +228,65 @@ const METER_FALL_DB_PER_MS: f32 = 0.03;
 /// being low rather than for meaning something reproduced it exactly.
 const QUANTISATION_DBFS: f32 = -90.0;
 
+/// The same floor as an amplitude, so a frame can be tested without a log.
+///
+/// 10^(−90/20). Used only by the stage lamps, which ask "was there anything at
+/// all" a thousand times a second and have no business computing a logarithm
+/// to answer it.
+const QUANTISATION_AMPLITUDE: f32 = 3.162_278e-5;
+
+/// How long a stage lamp stays lit after the last frame that passed it, in ms.
+///
+/// **A gate that passes for one millisecond is invisible.** A panel samples
+/// ten times a second, so without a hold every lamp except the ones that pass
+/// continuously would read dark for ever — the same reason [`METER_FALL_DB_PER_MS`]
+/// exists beside the raw level.
+///
+/// **A second and a half, because the slower of the two panels samples once a
+/// second.** That makes the row a latch rather than an instant — it shows the
+/// furthest point a frame reached recently — which is what somebody tapping a
+/// helmet and then looking at the screen actually wants. Short enough that a
+/// lamp still goes out while they watch it.
+const STAGE_HOLD_MS: u64 = 1_500;
+
+/// The gates a frame passes, in the order it passes them.
+///
+/// **A rider asked to see where it stops**, which is a different question from
+/// any of the numbers beside them: a tap that is heard, stands over the floor
+/// and rises sharply but never banks has failed somewhere specific, and until
+/// now the panel could only show the readings and leave the arithmetic to
+/// whoever remembered the thresholds.
+///
+/// Travels as a bitmask — one `u32` rather than nine fields — because it is
+/// read ten times a second. Bit *n* is lit when stage *n* passed something
+/// within [`STAGE_HOLD_MS`]. The panel's labels are in `app_en.arb`.
+pub mod stage {
+    /// Audio arrived at all: the raw frame is above one 16-bit step.
+    pub const INPUT: usize = 0;
+    /// Something survived the band-pass. On a hands-free route the band is
+    /// most of what the codec left.
+    pub const BAND: usize = 1;
+    /// Not deaf — this app was not making a noise of its own, and the chain
+    /// was not reporting the rider's speech.
+    pub const HEARING: usize = 2;
+    /// The frame stood above the trailing floor at all. Dark here with the
+    /// others lit means the floor has risen onto the signal.
+    pub const OVER_FLOOR: usize = 3;
+    /// It stood [`MARGIN_DB`] above it.
+    pub const MARGIN: usize = 4;
+    /// It rose [`ATTACK_DB`] inside the millisecond. The discriminator.
+    pub const ATTACK: usize = 5;
+    /// It fell back inside [`MAX_DECAY_MS`] and was not inside the dead time,
+    /// so a strike was formed.
+    pub const FELL_BACK: usize = 6;
+    /// Its tail had fallen away, so it was a tap and not a consonant. Lit as
+    /// soon as the strike forms on paths with no tail test.
+    pub const TAIL: usize = 7;
+    /// It was banked towards a gesture.
+    pub const BANKED: usize = 8;
+    pub const COUNT: usize = 9;
+}
+
 /// How fast the reference level follows the audio, per 1 ms frame.
 ///
 /// **A slow average, not a minimum statistic, and that distinction cost a
@@ -332,6 +391,10 @@ pub struct AcousticStats {
     pub impulse_decay_db: f32,
     pub peak_db: f32,
     pub run: u8,
+    /// Which stages have passed something recently. See [`stage`], and note
+    /// that it is filled in by `stats()` rather than on the audio thread,
+    /// because it is a function of how long ago each stage last passed.
+    pub stage_mask: u32,
 }
 
 /// An impulse that has peaked and is having its tail measured.
@@ -373,6 +436,9 @@ pub struct AcousticTapDetector {
     /// in the tail window.
     held: Option<Held>,
     frame_ms: u64,
+    /// When each stage last passed something, on the frame clock. Zero means
+    /// never, which is why [`stage_mask`](Self::stage_mask) tests it.
+    stage_at: [u64; stage::COUNT],
     stats: AcousticStats,
 }
 
@@ -396,6 +462,7 @@ impl AcousticTapDetector {
             attack_db: Self::tuned("MW_TAP_ATTACK_DB", ATTACK_DB),
             decay_drop_db: Self::tuned("MW_TAP_DECAY_DROP_DB", DECAY_DROP_DB),
             held: None,
+            stage_at: [0; stage::COUNT],
             pattern: GesturePattern::new(),
             previous_db: f32::NEG_INFINITY,
             rising_at_ms: None,
@@ -465,7 +532,31 @@ impl AcousticTapDetector {
     }
 
     pub fn stats(&self) -> AcousticStats {
-        self.stats
+        let mut s = self.stats;
+        s.stage_mask = self.stage_mask();
+        s
+    }
+
+    /// Which stages have passed something within [`STAGE_HOLD_MS`].
+    ///
+    /// Measured on the frame clock, which only advances while audio arrives —
+    /// so a dead stream freezes this rather than clearing it. The panel is
+    /// what notices: it compares `frames` between polls and draws every lamp
+    /// dark when nothing has moved, which is the truthful reading and needs no
+    /// clock on the audio thread.
+    fn stage_mask(&self) -> u32 {
+        let mut mask = 0u32;
+        for (i, &at) in self.stage_at.iter().enumerate() {
+            if at > 0 && self.frame_ms.saturating_sub(at) <= STAGE_HOLD_MS {
+                mask |= 1 << i;
+            }
+        }
+        mask
+    }
+
+    /// Records that a stage passed something on this frame.
+    fn pass(&mut self, stage: usize) {
+        self.stage_at[stage] = self.frame_ms;
     }
 
     /// Feeds a block of 48 kHz mono audio, however long it happens to be.
@@ -504,8 +595,10 @@ impl AcousticTapDetector {
         // Band-limited first, and only then measured. The band is for recall
         // — see `BAND_LOW_HZ`, which also records the two ways band-limiting
         // was tried as a way of rejecting music, and why neither worked.
+        let mut raw_peak = 0.0f32;
         let mut peak = 0.0f32;
         for &sample in frame {
+            raw_peak = raw_peak.max(sample.abs());
             let mut v = sample;
             for pole in self.low.iter_mut() {
                 *pole += (v - *pole) * self.low_coeff;
@@ -513,6 +606,14 @@ impl AcousticTapDetector {
             }
             self.high += (v - self.high) * self.high_coeff;
             peak = peak.max((v - self.high).abs());
+        }
+        // The first two lamps, and the pair that tells a dead microphone from
+        // a codec that has thrown the band away.
+        if raw_peak > QUANTISATION_AMPLITUDE {
+            self.pass(stage::INPUT);
+        }
+        if peak > QUANTISATION_AMPLITUDE {
+            self.pass(stage::BAND);
         }
 
         // While this app is making a noise it is not listening for taps.
@@ -536,6 +637,7 @@ impl AcousticTapDetector {
             self.previous_db = (20.0 * (peak + 1e-7).log10()).max(QUANTISATION_DBFS);
             return None;
         }
+        self.pass(stage::HEARING);
         // Clamped at one quantisation step, and this is load-bearing.
         //
         // **The accelerometer detector shipped the identical fault and this
@@ -564,8 +666,34 @@ impl AcousticTapDetector {
         self.reference_db += (level_db - self.reference_db) * REFERENCE_ALPHA;
         let floor_db = self.reference_db;
         let over = level_db - floor_db;
-        let attack = level_db - self.previous_db;
+        // **The first frame has no previous frame, and that is not an
+        // infinite attack.** `previous_db` starts at minus infinity, so the
+        // first millisecond of every stream reported a rise of infinity — the
+        // same fault the deafness branch above was fixed for, left standing
+        // at construction because it could not arm anything on its own: the
+        // margin is zero on that frame, since the reference is seeded from
+        // it. Harmless for detection and a lie on the panel, which is how it
+        // was found — the attack lamp lit on digital silence.
+        let attack = if self.previous_db.is_finite() {
+            level_db - self.previous_db
+        } else {
+            0.0
+        };
         self.previous_db = level_db;
+        // **Both halves of the decision, lit separately and whatever the
+        // state.** The arming test below needs them together, so a single
+        // lamp there would say "no tap" and nothing about which of the two was
+        // missing — which is the one thing a rider tapping harder needs to
+        // know.
+        if over > 0.0 {
+            self.pass(stage::OVER_FLOOR);
+        }
+        if over >= self.margin_db {
+            self.pass(stage::MARGIN);
+        }
+        if attack >= self.attack_db {
+            self.pass(stage::ATTACK);
+        }
         self.stats.level_db = level_db;
         self.stats.floor_db = floor_db;
         // A peak that falls back slowly enough to be seen. See
@@ -587,6 +715,7 @@ impl AcousticTapDetector {
                 let drop = held.tail_db - held.peak_db;
                 self.stats.impulse_decay_db = drop;
                 if drop <= self.decay_drop_db {
+                    self.pass(stage::TAIL);
                     if let Some(g) = self.offer(held.candidate, banked) {
                         return Some(g);
                     }
@@ -635,12 +764,15 @@ impl AcousticTapDetector {
                         return None;
                     }
                     self.latent_until_ms = at_ms + LATENT_MS as u64;
+                    self.pass(stage::FELL_BACK);
                     self.stats.candidates += 1;
                     let candidate = Candidate {
                         at_ms: since,
                         strength_db,
                     };
                     if self.decay_drop_db >= 0.0 {
+                        // No tail test to pass, so the strike passes.
+                        self.pass(stage::TAIL);
                         return self.offer(candidate, banked);
                     }
                     // Held while its tail is measured. See `DECAY_DROP_DB`: a
@@ -660,20 +792,25 @@ impl AcousticTapDetector {
 
     fn offer(&mut self, c: Candidate, banked: &mut bool) -> Option<TapGesture> {
         match self.pattern.offer(c) {
+            // Not lit: a strike inside the dead time is the same strike, and
+            // the lamp would say a tap had been taken when it had not.
             Banked::Ignored => None,
             Banked::Added { run } => {
+                self.pass(stage::BANKED);
                 self.stats.banked += 1;
                 self.stats.run = run;
                 *banked = true;
                 None
             }
             Banked::RestartedOnMagnitude => {
+                self.pass(stage::BANKED);
                 self.stats.banked += 1;
                 self.stats.run = 1;
                 *banked = true;
                 None
             }
             Banked::Completed(g) => {
+                self.pass(stage::BANKED);
                 self.stats.banked += 1;
                 self.stats.gestures += 1;
                 self.stats.run = 0;
@@ -899,6 +1036,47 @@ mod tests {
             "rejected for some other reason, so this proves nothing: {:?}",
             d.stats()
         );
+    }
+
+    /// **The lamp row has to stop in the right place**, which on this path is
+    /// the tail: a consonant arrives sharply, stands over the floor and falls
+    /// back in time, so every lamp up to and including `FELL_BACK` is lit and
+    /// the two after it are dark. That is the reading that tells a rider their
+    /// speech is being taken for a strike and thrown away, which no number
+    /// beside it says in one glance.
+    #[test]
+    fn a_consonant_lights_the_row_as_far_as_the_tail() {
+        fn band(into: &mut Vec<f32>, ms: usize, amp: f32) {
+            for m in 0..ms {
+                for i in 0..FRAME {
+                    let x = (m * FRAME + i) as f32;
+                    into.push(amp * ((x * 0.209).sin() + (x * 0.406).sin()) * 0.5);
+                }
+            }
+        }
+
+        let mut audio = Vec::new();
+        band(&mut audio, 1_500, 0.01);
+        // A sharp onset with a vowel behind it: three milliseconds of plosive,
+        // then a level that does not fall away.
+        band(&mut audio, 3, 0.158);
+        band(&mut audio, 57, 0.063);
+        band(&mut audio, 60, 0.01);
+
+        let mut d = AcousticTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+        let mask = d.stats().stage_mask;
+        let lit = |s: usize| mask & (1 << s) != 0;
+
+        assert!(lit(stage::INPUT), "{:?}", d.stats());
+        assert!(lit(stage::BAND));
+        assert!(lit(stage::HEARING));
+        assert!(lit(stage::MARGIN), "a consonant does reach the margin");
+        assert!(lit(stage::ATTACK), "and it does arrive sharply");
+        assert!(lit(stage::FELL_BACK), "and it does fall back in time");
+        assert!(!lit(stage::TAIL), "its tail was accepted: {:?}", d.stats());
+        assert!(!lit(stage::BANKED), "a consonant was banked as a tap");
     }
 
     /// **Speaking on a helmet was tapping it.**

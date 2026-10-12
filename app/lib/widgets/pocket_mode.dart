@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'tap_stages.dart';
 import 'watch.dart';
 
 /// Arming and disarming pocket mode, and saying what it is doing.
@@ -260,6 +261,8 @@ class _TapFeedbackState extends State<_TapFeedback> {
   Timer? _tick;
   int _run = 0;
   double _over = 0;
+  int _stages = 0;
+  final _reader = TapStageReader();
 
   @override
   void initState() {
@@ -280,10 +283,17 @@ class _TapFeedbackState extends State<_TapFeedback> {
       // over the trailing average, so the distance to it is the only reading
       // that means anything. A raw dBFS meter would move with the room.
       final over = (s.meterDb - s.floorDb).clamp(0.0, _span);
-      if (s.run == _run && (over - _over).abs() < 0.5) return;
+      // The lamps are read on every poll whether or not anything else moved:
+      // the reader's whole job is comparing one poll's frame count with the
+      // next, and skipping a poll would make a live stream look dead.
+      final stages = _reader.read(s);
+      if (s.run == _run && stages == _stages && (over - _over).abs() < 0.5) {
+        return;
+      }
       setState(() {
         _run = s.run;
         _over = over;
+        _stages = stages;
       });
     } catch (_) {
       // No engine; nothing to draw and nothing to report.
@@ -357,6 +367,8 @@ class _TapFeedbackState extends State<_TapFeedback> {
               ),
           ],
         ),
+        const SizedBox(height: 6),
+        TapStageRow(mask: _stages),
       ],
     );
   }

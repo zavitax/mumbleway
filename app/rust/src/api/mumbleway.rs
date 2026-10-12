@@ -3217,6 +3217,21 @@ pub struct UiAcousticStats {
     pub speech_blocks: u64,
     /// Taps banked towards the gesture in progress.
     pub run: u8,
+    /// Which of the nine stages a frame passes have passed anything in the
+    /// last three hundred milliseconds, as a bitmask, lowest bit first:
+    /// input, band, hearing, over the floor, margin, attack, fell back, tail,
+    /// banked. `core::audio::acoustic_tap::stage` names them.
+    ///
+    /// **A rider asked to see where it stops.** Every other number here is a
+    /// reading that has to be compared against a threshold by whoever is
+    /// looking; this is the comparison, taken on the audio thread where the
+    /// frames are, and held long enough for a ten-hertz poll to see it.
+    ///
+    /// Frozen rather than cleared when the microphone dies, because it is
+    /// measured on a clock that only advances while audio arrives — so a
+    /// reader must compare [`frames`](Self::frames) between polls and treat a
+    /// stalled count as every lamp dark.
+    pub stage_mask: u32,
 }
 
 /// What the microphone's tap detector is hearing.
@@ -3240,6 +3255,7 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
             discarded_ringing: 0,
             speech_blocks: 0,
             run: 0,
+            stage_mask: 0,
         };
     };
     let s = app.shared.tap_stats();
@@ -3260,6 +3276,7 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
         discarded_ringing: s.discarded_ringing,
         speech_blocks: s.speech_blocks,
         run: s.run,
+        stage_mask: s.stage_mask,
     }
 }
 

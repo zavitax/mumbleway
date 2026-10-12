@@ -2323,6 +2323,66 @@ abstract class L {
   /// **'Play the whole recording'**
   String get diagPreviewSentOnlyOff;
 
+  /// Heading for the row of nine lamps on the tap panel. Each is lit while its stage is passing signal to the next, so the row stops where taps are being lost
+  ///
+  /// In en, this message translates to:
+  /// **'Stages a tap passes'**
+  String get tapStages;
+
+  /// Stage 0: audio arriving at all, above one 16-bit step. Keep to four characters or so — nine of these share a phone's width
+  ///
+  /// In en, this message translates to:
+  /// **'in'**
+  String get tapStageInput;
+
+  /// Stage 1: something survived the 100 Hz to 4 kHz band-pass
+  ///
+  /// In en, this message translates to:
+  /// **'band'**
+  String get tapStageBand;
+
+  /// Stage 2: the detector was not deafened by this app's own cue or by the rider's speech
+  ///
+  /// In en, this message translates to:
+  /// **'hear'**
+  String get tapStageHearing;
+
+  /// Stage 3: the frame stood above the trailing floor at all. Dark with its neighbours lit means the floor has risen onto the signal
+  ///
+  /// In en, this message translates to:
+  /// **'floor'**
+  String get tapStageFloor;
+
+  /// Stage 4: it stood the required 18 dB above the floor
+  ///
+  /// In en, this message translates to:
+  /// **'marg'**
+  String get tapStageMargin;
+
+  /// Stage 5: it rose 14 dB inside one millisecond, which is the test that separates contact from a sound
+  ///
+  /// In en, this message translates to:
+  /// **'atk'**
+  String get tapStageAttack;
+
+  /// Stage 6: it died away in time and outside the dead time, so a strike was formed
+  ///
+  /// In en, this message translates to:
+  /// **'fall'**
+  String get tapStageFellBack;
+
+  /// Stage 7: its tail had fallen away, so it was a tap rather than a consonant with a vowel behind it
+  ///
+  /// In en, this message translates to:
+  /// **'tail'**
+  String get tapStageTail;
+
+  /// Stage 8: it was banked towards the three-tap gesture
+  ///
+  /// In en, this message translates to:
+  /// **'tap'**
+  String get tapStageBanked;
+
   /// Title of the group showing what the microphone's tap detector is hearing. Only shown when tap-to-capture is switched on
   ///
   /// In en, this message translates to:

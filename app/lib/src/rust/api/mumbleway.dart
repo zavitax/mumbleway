@@ -1662,6 +1662,22 @@ class UiAcousticStats {
   /// Taps banked towards the gesture in progress.
   final int run;
 
+  /// Which of the nine stages a frame passes have passed anything in the
+  /// last three hundred milliseconds, as a bitmask, lowest bit first:
+  /// input, band, hearing, over the floor, margin, attack, fell back, tail,
+  /// banked. `core::audio::acoustic_tap::stage` names them.
+  ///
+  /// **A rider asked to see where it stops.** Every other number here is a
+  /// reading that has to be compared against a threshold by whoever is
+  /// looking; this is the comparison, taken on the audio thread where the
+  /// frames are, and held long enough for a ten-hertz poll to see it.
+  ///
+  /// Frozen rather than cleared when the microphone dies, because it is
+  /// measured on a clock that only advances while audio arrives — so a
+  /// reader must compare [`frames`](Self::frames) between polls and treat a
+  /// stalled count as every lamp dark.
+  final int stageMask;
+
   const UiAcousticStats({
     required this.enabled,
     required this.frames,
@@ -1679,6 +1695,7 @@ class UiAcousticStats {
     required this.discardedRinging,
     required this.speechBlocks,
     required this.run,
+    required this.stageMask,
   });
 
   @override
@@ -1698,7 +1715,8 @@ class UiAcousticStats {
       impulseDecayDb.hashCode ^
       discardedRinging.hashCode ^
       speechBlocks.hashCode ^
-      run.hashCode;
+      run.hashCode ^
+      stageMask.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1720,7 +1738,8 @@ class UiAcousticStats {
           impulseDecayDb == other.impulseDecayDb &&
           discardedRinging == other.discardedRinging &&
           speechBlocks == other.speechBlocks &&
-          run == other.run;
+          run == other.run &&
+          stageMask == other.stageMask;
 }
 
 /// One entry of the server's ban list.

@@ -392,7 +392,7 @@ class _DeviceSection extends StatelessWidget {
         const _NormaliseTile(),
         const _JitterBufferTile(),
         const _ReverbTile(),
-        if (Platform.isIOS) const _DuckOthersTile(),
+        if (Platform.isAndroid || Platform.isIOS) const _DuckOthersTile(),
         const _TestOutputTile(),
       ],
     );
@@ -704,13 +704,17 @@ class _TapToCaptureTile extends StatelessWidget {
 
 /// Lower other apps' audio while another rider is talking.
 ///
-/// **iOS only, because on iOS it is a signal and on Android it is a lease.**
-/// Here the duck is a category option that can be applied to a live session
-/// and withdrawn again as people speak, which is what the label promises.
-/// Android grants audio focus for the whole session — listening and capturing
-/// together — and giving focus back and taking it again mid-call is a
-/// different mechanism with different risks, so the same switch would make a
-/// different promise. `docs/CAPTURE_ON_DEMAND.md` has what it would take.
+/// **Both phones, by two different mechanisms, from one signal.** On iOS the
+/// duck is a category option applied to a live session; on Android it is an
+/// audio-focus lease, where holding the focus *is* the duck and the only way
+/// to stop ducking is to give it back. So the platform sides share nothing but
+/// the question they are asked — is somebody talking — and the fifteen-second
+/// tail that answers it, which lives in `AppState` beside the levels that
+/// decide it. `docs/CAPTURE_ON_DEMAND.md` has the mechanics of both and what
+/// the Android half still has to be measured against.
+///
+/// Desktop has no session to configure and nothing contending for the
+/// microphone, so there is nothing behind it there.
 class _DuckOthersTile extends StatelessWidget {
   const _DuckOthersTile();
 

@@ -4189,7 +4189,7 @@ abstract class L {
   /// **'Start pocket mode'**
   String get pocketTutorialStart;
 
-  /// iOS-only setting, on by default. The duck is applied while another rider is being heard and withdrawn fifteen seconds after the last voice, rather than lasting for the whole call
+  /// Phones only, on by default. The duck is applied while another rider is being heard and withdrawn fifteen seconds after the last voice, rather than lasting for the whole call. A category option on iOS, an audio-focus lease on Android
   ///
   /// In en, this message translates to:
   /// **'Lower music when others talk'**

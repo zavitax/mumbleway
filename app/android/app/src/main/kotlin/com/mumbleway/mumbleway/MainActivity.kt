@@ -196,6 +196,15 @@ class MainActivity : FlutterActivity() {
                     audioRouting.stopCapture()
                     result.success(sessionReply(true))
                 }
+                // Ducking is a focus lease here rather than a session option,
+                // so this is the signal that takes it and gives it back. The
+                // fifteen-second tail is in Dart, which is where the levels
+                // that decide it arrive, and is therefore the same tail iOS
+                // uses rather than a second implementation of it.
+                "setOthersTalking" -> {
+                    audioRouting.setOthersTalking(call.arguments as? Boolean ?: false)
+                    result.success(true)
+                }
                 "deactivate" -> {
                     audioRouting.deactivate()
                     result.success(true)

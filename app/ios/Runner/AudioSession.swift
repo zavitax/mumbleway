@@ -345,9 +345,10 @@ final class AudioSession {
   /// to lose, so the fault has no surface at all; choosing `.playAndRecord` and
   /// hoping would be walking back into it for no gain.
   ///
-  /// `.mixWithOthers` and `.duckOthers` carry over unchanged, so music still
-  /// plays and still drops under a voice — at full bandwidth now, which is the
-  /// whole point.
+  /// `.mixWithOthers` carries over, so music still plays — at full bandwidth
+  /// now, which is the whole point. **`.duckOthers` does not**, and that is
+  /// deliberate: see the options below, where a rider's report that their
+  /// music was quiet for the whole of pocket mode is written up.
   private func activateListening() throws {
     wantedActive = true
     capturing = false
@@ -381,8 +382,25 @@ final class AudioSession {
       .playAndRecord,
       mode: .default,
       options: [
+        // **Mixing, and deliberately not ducking.** A rider found their music
+        // playing at full quality but much quieter throughout pocket mode,
+        // and `.duckOthers` is why: Apple's documentation is exact — "ducking
+        // begins when you activate your app's audio session and ends when you
+        // deactivate the session". It is not tied to this app actually playing
+        // anything, so a session sitting open listening for taps ducked the
+        // rider's music for the whole of it.
+        //
+        // **`.mixWithOthers` has to stay explicit for this to be safe.** The
+        // same page warns that "if you clear this option, activating your
+        // session interrupts other audio sessions", because `.duckOthers`
+        // implies `.mixWithOthers` — so removing the duck while relying on
+        // that implication would stop the music outright instead of merely
+        // leaving it loud. It is listed here in its own right, so it does not.
+        //
+        // The cost is that another rider's voice no longer ducks the music
+        // while listening. The capturing session below keeps the duck, which
+        // is where it earns its place: there somebody is actually talking.
         .mixWithOthers,
-        .duckOthers,
         .allowBluetoothA2DP,
         .defaultToSpeaker,
       ])

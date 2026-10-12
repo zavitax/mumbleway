@@ -278,16 +278,20 @@ class AudioSessionBridge {
     }
   }
 
-  /// Whether to lower other apps' audio while only listening for taps.
+  /// Whether another rider is being heard right now, cooldown included.
   ///
-  /// Takes effect at once if the session is already listening, because a
-  /// category option is only read when the category is set — a switch that
-  /// did nothing until pocket mode was next armed would look broken for as
-  /// long as a rider was watching it.
-  Future<void> setDuckWhileListening(bool on) async {
+  /// **A signal, not a setting.** The platform side holds no opinion about
+  /// whether ducking is wanted; it lowers other apps while this is true and
+  /// stops when it goes false. Who is speaking, and how long the duck outlives
+  /// them, is decided in `AppState`, where the per-speaker levels arrive.
+  ///
+  /// Applied at once on a live session — `setCategory` is documented to take
+  /// effect immediately while active — so this is on the path of an ordinary
+  /// transmission rather than something read at the next transition.
+  Future<void> setOthersTalking(bool talking) async {
     if (!isNeeded) return;
     try {
-      await _channel.invokeMethod<bool>('setDuckWhileListening', on);
+      await _channel.invokeMethod<bool>('setOthersTalking', talking);
     } catch (_) {
       // An older platform side, or a desktop with no session to configure.
     }

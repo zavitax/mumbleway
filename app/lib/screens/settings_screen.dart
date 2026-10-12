@@ -392,6 +392,7 @@ class _DeviceSection extends StatelessWidget {
         const _NormaliseTile(),
         const _JitterBufferTile(),
         const _ReverbTile(),
+        if (Platform.isIOS) const _DuckOthersTile(),
         const _TestOutputTile(),
       ],
     );
@@ -643,14 +644,13 @@ class _TapToCaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, bool, int, bool, MicMode, bool)>(
+    return Watch<(bool, bool, int, bool, MicMode)>(
       (state) => (
         state.pocketMode,
         state.autoStopCapture,
         state.autoStopSeconds,
         state.canChangeMicMode,
         state.micMode,
-        state.duckWhileListening,
       ),
       (context, state) {
         final l = L.of(context);
@@ -694,27 +694,39 @@ class _TapToCaptureTile extends StatelessWidget {
                 value: state.autoStopCapture,
                 onChanged: (v) => state.updateAutoStopCapture(v),
               ),
-              // **iOS only, because it means one exact thing there.** The
-              // option is per category on iOS, so it can be withheld from the
-              // listening session alone. Android holds audio focus for the
-              // whole session, listening and capturing together, so the same
-              // switch would quieten a rider's music under their own voice as
-              // well — a different promise from the one the label makes.
-              if (Platform.isIOS)
-                SwitchListTile(
-                  secondary: const SizedBox(width: 24),
-                  contentPadding: const EdgeInsets.only(left: 72, right: 16),
-                  title: Text(l.duckWhileListening),
-                  subtitle: Text(l.duckWhileListeningBody),
-                  isThreeLine: true,
-                  value: state.duckWhileListening,
-                  onChanged: (v) => state.updateDuckWhileListening(v),
-                ),
             ],
           ],
         );
       },
     );
+  }
+}
+
+/// Lower other apps' audio while another rider is talking.
+///
+/// **iOS only, because on iOS it is a signal and on Android it is a lease.**
+/// Here the duck is a category option that can be applied to a live session
+/// and withdrawn again as people speak, which is what the label promises.
+/// Android grants audio focus for the whole session — listening and capturing
+/// together — and giving focus back and taking it again mid-call is a
+/// different mechanism with different risks, so the same switch would make a
+/// different promise. `docs/CAPTURE_ON_DEMAND.md` has what it would take.
+class _DuckOthersTile extends StatelessWidget {
+  const _DuckOthersTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Watch<bool>((state) => state.duckWhenOthersTalk, (context, state) {
+      final l = L.of(context);
+      return SwitchListTile(
+        secondary: const Icon(Icons.music_note),
+        title: Text(l.duckWhenOthersTalk),
+        subtitle: Text(l.duckWhenOthersTalkBody),
+        isThreeLine: true,
+        value: state.duckWhenOthersTalk,
+        onChanged: (v) => state.updateDuckWhenOthersTalk(v),
+      );
+    });
   }
 }
 

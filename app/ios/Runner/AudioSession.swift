@@ -34,18 +34,11 @@ final class AudioSession {
         let args = call.arguments as? [String: Any]
         self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
         self.activateForCall(result)
-      case "setDuckWhileListening":
+      case "setOthersTalking":
         let on = call.arguments as? Bool ?? false
-        let changed = on != self.duckWhileListening
-        self.duckWhileListening = on
-        // **Applied now if it applies now.** A category option only takes
-        // effect when the category is set, so without this the switch would
-        // do nothing until pocket mode was next armed — a control that looks
-        // broken for as long as a rider is watching it. Re-applying the
-        // listening category is the reconciler's own idempotent path: it keeps
-        // hands-free off, so the handler it wakes answers `.none`.
-        if changed, self.wantedActive, !self.capturing {
-          try? self.activateListening()
+        if on != self.othersTalking {
+          self.othersTalking = on
+          self.applyDucking()
         }
         result(true)
       case "startCapture":
@@ -340,19 +333,23 @@ final class AudioSession {
   /// Apple's echo cancellation — and what it costs is in `activate` below.
   private var voiceProcessing = false
 
-  /// Whether to lower other apps' audio while only listening for taps.
+  /// Whether another rider is being heard right now, cooldown included.
   ///
-  /// **Off by default, because ducking here is not what a rider expects it to
-  /// be.** It does not begin when this app plays something: Apple's wording is
-  /// that it "begins when you activate your app's audio session and ends when
-  /// you deactivate the session", so a session sitting open to hear taps
-  /// lowers the rider's music for the whole ride rather than while anybody is
-  /// talking. One reported exactly that and asked for the choice.
+  /// **The whole of the ducking decision**, and the reason ducking is no
+  /// longer a standing category option. A standing option is a standing duck:
+  /// Apple's wording is that ducking "begins when you activate your app's
+  /// audio session and ends when you deactivate the session", so listing it
+  /// once lowered a rider's music for every second of a call. One reported
+  /// precisely that.
   ///
-  /// The capturing session ducks regardless, and is not covered by this: there
-  /// somebody really is talking, which is the case the option was designed
-  /// for.
-  private var duckWhileListening = false
+  /// Set from Dart, which knows who is speaking and holds the cooldown — the
+  /// signal is per-speaker levels arriving twenty times a second, and the
+  /// hysteresis belongs with the signal rather than here.
+  ///
+  /// **The listening session never ducks at all**, whatever this says. There
+  /// is nobody to talk over while pocket mode waits for a tap, and the only
+  /// thing a duck achieves there is quiet music for the whole ride.
+  private var othersTalking = false
 
   /// Whether a retry of [preferHandsFreeInput] is already scheduled.
   ///
@@ -427,14 +424,11 @@ final class AudioSession {
     // chaining a method onto the literal costs it its contextual type, and
     // Swift infers `[Any]` and refuses every member. Caught by typechecking
     // on a Mac, which is the only thing short of CI that compiles this file.
-    var listening: AVAudioSession.CategoryOptions = [
+    let listening: AVAudioSession.CategoryOptions = [
       .mixWithOthers,
       .allowBluetoothA2DP,
       .defaultToSpeaker,
     ]
-    if duckWhileListening {
-      listening.insert(.duckOthers)
-    }
     try session.setCategory(.playAndRecord, mode: .default, options: listening)
     try session.setActive(true)
     preferBuiltInInput()
@@ -468,45 +462,36 @@ final class AudioSession {
   private func activate() throws {
     wantedActive = true
     capturing = true
+    try setCapturingCategory()
+    try AVAudioSession.sharedInstance().setActive(true)
+    preferHandsFreeInput()
+  }
+
+  /// The capturing category, on its own, so a duck can be applied to a
+  /// session that is already live without touching the route.
+  ///
+  /// Shared with `activate` rather than copied: two lists of category
+  /// options for one session is the shape of fault this feature has had
+  /// most of, and the one that would show up as ducking quietly reverting
+  /// whatever else changed.
+  private func setCapturingCategory() throws {
     let session = AVAudioSession.sharedInstance()
-    try session.setCategory(
-      .playAndRecord,
-      // **`.voiceChat` was tried, and it clipped the microphone.**
-      //
-      // The reasoning for `.default` is that this app does its own echo
-      // cancellation and noise suppression, tuned by ear, and a second
-      // canceller underneath them produces artefacts nobody can locate. That
-      // was challenged by a fair observation: the same music in `Helmet` was
-      // suppressed better on Android than on an iPhone, because Android's
-      // capture goes through AAudio's default `VOICE_RECOGNITION` preset and
-      // gets Google's noise suppression before our chain sees a sample, while
-      // `.default` here gave a genuinely raw microphone. The platforms were
-      // never doing the same work.
-      //
-      // So `.voiceChat` went out for a build, and the diagnostic recordings
-      // settled it. Speech, measured on the *raw* capture:
-      //
-      //     before .voiceChat   -11.9 dB   0.27% of samples at full scale
-      //     with .voiceChat      -6.0 dB   9.61% of samples at full scale
-      //
-      // Apple's AGC drives the signal 11 dB hotter and into the ceiling, and
-      // a tenth of every voiced sample is clipped. That is audible as
-      // distortion, it happens *before* anything of ours runs, and no profile
-      // can undo it — which is also why `Helmet` seemed to be the culprit: it
-      // is the profile that makes already-clipped speech most obvious.
-      //
-      // The asymmetry with Android is real and stands. The answer to it is not
-      // this.
-      //
-      // **It is now a setting, off by default, and the paragraph above is the
-      // reason it is off rather than a reason nobody may try it.** A rider on
-      // a device whose own canceller is better than ours should be able to
-      // find that out, and the diagnostics panel's echo-returned figure is how
-      // to see which is happening. The clipping measured above is the thing to
-      // listen for when it is on: speech that is loud and harsh rather than
-      // quiet and muddy.
-      mode: voiceProcessing ? .voiceChat : .default,
-      options: [
+    // **Ducking is no longer a standing option.** It used to be listed
+    // here unconditionally, which meant the rider's music was quieter for
+    // every second of a call rather than while somebody was talking —
+    // Apple's own wording is that ducking "begins when you activate your
+    // app's audio session and ends when you deactivate the session", so a
+    // standing option is a standing duck.
+    //
+    // So it is applied and withdrawn as people speak, which `setCategory`
+    // supports on a live session: "you can also set the category or mode
+    // while the session is active, but doing so results in an immediate
+    // change". See `applyDucking`, and `othersTalking` for who decides.
+    //
+    // Built as a typed value rather than a literal with `.union` chained
+    // on: that costs the literal its contextual type, Swift infers `[Any]`
+    // and refuses every member. This file has eaten that mistake twice.
+    var options: AVAudioSession.CategoryOptions = [
         // Helmet intercoms are HFP devices. Without this they are not offered
         // as an input at all, and the phone quietly records from its own
         // microphone inside a helmet at seventy miles an hour.
@@ -550,13 +535,48 @@ final class AudioSession {
         // the *session* being taken away. Fixing one did nothing for the other,
         // which is why it survived that fix.
         .mixWithOthers,
-        // Music drops while somebody is talking and comes back afterwards.
-        // With .mixWithOthers alone a rider hears both at once at full level,
-        // and the voice is the half that matters.
-        .duckOthers,
-      ])
-    try session.setActive(true)
-    preferHandsFreeInput()
+    ]
+    if othersTalking {
+      options.insert(.duckOthers)
+    }
+    try session.setCategory(
+      .playAndRecord,
+      // **`.voiceChat` was tried, and it clipped the microphone.**
+      //
+      // The reasoning for `.default` is that this app does its own echo
+      // cancellation and noise suppression, tuned by ear, and a second
+      // canceller underneath them produces artefacts nobody can locate. That
+      // was challenged by a fair observation: the same music in `Helmet` was
+      // suppressed better on Android than on an iPhone, because Android's
+      // capture goes through AAudio's default `VOICE_RECOGNITION` preset and
+      // gets Google's noise suppression before our chain sees a sample, while
+      // `.default` here gave a genuinely raw microphone. The platforms were
+      // never doing the same work.
+      //
+      // So `.voiceChat` went out for a build, and the diagnostic recordings
+      // settled it. Speech, measured on the *raw* capture:
+      //
+      //     before .voiceChat   -11.9 dB   0.27% of samples at full scale
+      //     with .voiceChat      -6.0 dB   9.61% of samples at full scale
+      //
+      // Apple's AGC drives the signal 11 dB hotter and into the ceiling, and
+      // a tenth of every voiced sample is clipped. That is audible as
+      // distortion, it happens *before* anything of ours runs, and no profile
+      // can undo it — which is also why `Helmet` seemed to be the culprit: it
+      // is the profile that makes already-clipped speech most obvious.
+      //
+      // The asymmetry with Android is real and stands. The answer to it is not
+      // this.
+      //
+      // **It is now a setting, off by default, and the paragraph above is the
+      // reason it is off rather than a reason nobody may try it.** A rider on
+      // a device whose own canceller is better than ours should be able to
+      // find that out, and the diagnostics panel's echo-returned figure is how
+      // to see which is happening. The clipping measured above is the thing to
+      // listen for when it is on: speech that is loud and harsh rather than
+      // quiet and muddy.
+      mode: voiceProcessing ? .voiceChat : .default,
+      options: options)
   }
 
   /// Points the session at the Bluetooth headset's microphone, if there is one.
@@ -609,6 +629,36 @@ final class AudioSession {
       // refusing to start a call over a preference is worse than the
       // preference being ignored.
       NSLog("MumbleWay: could not prefer the Bluetooth input: \(error)")
+    }
+  }
+
+  /// Applies the duck, or withdraws it, on a session that is already live.
+  ///
+  /// **Only the category, deliberately.** `activateCapturing` would also call
+  /// `setActive` and `preferHandsFreeInput`, and the latter sets a preferred
+  /// input — which posts a route change of its own and is the shape of the
+  /// self-sustaining loop this file has produced four times. A duck that
+  /// toggles as people speak must not touch the route, so this re-sets the
+  /// category and nothing else.
+  ///
+  /// `setCategory` is documented to support exactly this: "you can also set
+  /// the category or mode while the session is active, but doing so results in
+  /// an immediate change". The route-change notification it posts carries
+  /// reason `.categoryChange`, which `CaptureReconciler` answers with `.none`
+  /// because neither the category nor the hands-free bit has moved.
+  ///
+  /// Capturing only. The listening session never ducks, so there is nothing to
+  /// apply there and re-setting its category would be churn for nothing.
+  private func applyDucking() {
+    guard wantedActive, capturing else { return }
+    do {
+      try setCapturingCategory()
+    } catch {
+      // Not fatal, and not worth interrupting a call over: the worst case is
+      // music at the wrong volume until the next transition.
+      channel.invokeMethod(
+        "sessionEvent",
+        arguments: "could not change ducking: \(error.localizedDescription)")
     }
   }
 

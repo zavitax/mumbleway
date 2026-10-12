@@ -1624,6 +1624,10 @@ class UiAcousticStats {
   final double levelDb;
   final double floorDb;
 
+  /// The same level with a meter's fall-back, so a panel sampling ten times
+  /// a second sees the taps rather than one frame in a hundred.
+  final double meterDb;
+
   /// How far over the last candidate reached.
   final double peakDb;
 
@@ -1667,6 +1671,7 @@ class UiAcousticStats {
     required this.gestures,
     required this.levelDb,
     required this.floorDb,
+    required this.meterDb,
     required this.peakDb,
     required this.impulseAttackDb,
     required this.impulseOverDb,
@@ -1686,6 +1691,7 @@ class UiAcousticStats {
       gestures.hashCode ^
       levelDb.hashCode ^
       floorDb.hashCode ^
+      meterDb.hashCode ^
       peakDb.hashCode ^
       impulseAttackDb.hashCode ^
       impulseOverDb.hashCode ^
@@ -1707,6 +1713,7 @@ class UiAcousticStats {
           gestures == other.gestures &&
           levelDb == other.levelDb &&
           floorDb == other.floorDb &&
+          meterDb == other.meterDb &&
           peakDb == other.peakDb &&
           impulseAttackDb == other.impulseAttackDb &&
           impulseOverDb == other.impulseOverDb &&

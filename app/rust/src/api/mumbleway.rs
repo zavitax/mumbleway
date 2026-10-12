@@ -3186,6 +3186,9 @@ pub struct UiAcousticStats {
     /// against. If these sit on top of each other no strike can stand out.
     pub level_db: f32,
     pub floor_db: f32,
+    /// The same level with a meter's fall-back, so a panel sampling ten times
+    /// a second sees the taps rather than one frame in a hundred.
+    pub meter_db: f32,
     /// How far over the last candidate reached.
     pub peak_db: f32,
     /// The last impulse that was sharp enough to be judged, as its attack and
@@ -3229,6 +3232,7 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
             gestures: 0,
             level_db: 0.0,
             floor_db: 0.0,
+            meter_db: 0.0,
             peak_db: 0.0,
             impulse_attack_db: 0.0,
             impulse_over_db: 0.0,
@@ -3248,6 +3252,7 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
         gestures: s.gestures,
         level_db: s.level_db,
         floor_db: s.floor_db,
+        meter_db: s.meter_db,
         peak_db: s.peak_db,
         impulse_attack_db: s.impulse_attack_db,
         impulse_over_db: s.impulse_over_db,

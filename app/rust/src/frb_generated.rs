@@ -5017,6 +5017,7 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
         let mut var_gestures = <u64>::sse_decode(deserializer);
         let mut var_levelDb = <f32>::sse_decode(deserializer);
         let mut var_floorDb = <f32>::sse_decode(deserializer);
+        let mut var_meterDb = <f32>::sse_decode(deserializer);
         let mut var_peakDb = <f32>::sse_decode(deserializer);
         let mut var_impulseAttackDb = <f32>::sse_decode(deserializer);
         let mut var_impulseOverDb = <f32>::sse_decode(deserializer);
@@ -5033,6 +5034,7 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
             gestures: var_gestures,
             level_db: var_levelDb,
             floor_db: var_floorDb,
+            meter_db: var_meterDb,
             peak_db: var_peakDb,
             impulse_attack_db: var_impulseAttackDb,
             impulse_over_db: var_impulseOverDb,
@@ -6445,6 +6447,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiAcousticStats {
             self.gestures.into_into_dart().into_dart(),
             self.level_db.into_into_dart().into_dart(),
             self.floor_db.into_into_dart().into_dart(),
+            self.meter_db.into_into_dart().into_dart(),
             self.peak_db.into_into_dart().into_dart(),
             self.impulse_attack_db.into_into_dart().into_dart(),
             self.impulse_over_db.into_into_dart().into_dart(),
@@ -7906,6 +7909,7 @@ impl SseEncode for crate::api::mumbleway::UiAcousticStats {
         <u64>::sse_encode(self.gestures, serializer);
         <f32>::sse_encode(self.level_db, serializer);
         <f32>::sse_encode(self.floor_db, serializer);
+        <f32>::sse_encode(self.meter_db, serializer);
         <f32>::sse_encode(self.peak_db, serializer);
         <f32>::sse_encode(self.impulse_attack_db, serializer);
         <f32>::sse_encode(self.impulse_over_db, serializer);

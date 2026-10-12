@@ -79,7 +79,7 @@ class PocketPanel extends StatelessWidget {
               ),
               if (active) ...[
                 const SizedBox(height: 10),
-                const _TapPips(),
+                _TapFeedback(capturing: state.capturing),
                 const SizedBox(height: 8),
                 // **The anti-panic line.** Every other control on the screen
                 // has just stopped working, which from the outside is exactly
@@ -213,38 +213,50 @@ class _StateLine extends StatelessWidget {
   }
 }
 
-/// One pip per tap of the gesture, filling as they are counted.
+/// What the detector is hearing, and how many taps it has counted.
 ///
-/// **This is what the tick used to do, moved to where it can work.** The
+/// **The pips are what the tick used to do, moved to where it can work.** The
 /// acknowledging tick is a sound played into the rider's ears, and on a helmet
 /// it comes back through the helmet's own microphone a round trip later and
-/// registers as the next tap — a rider reported exactly that. There is no tail
-/// that fixes it: taps arrive 200 to 330 ms apart and the round trip is of the
-/// same order, so any delay long enough to ignore the tick is long enough to
-/// swallow a tap.
+/// registers as the next tap. There is no tail that fixes it: taps arrive 200
+/// to 330 ms apart and the round trip is of the same order.
 ///
-/// So the per-tap feedback is drawn instead of sounded. A rider with the phone
-/// in a pocket cannot see it, which is the honest limitation — but it is
-/// exactly what is wanted while testing the gesture, and the gesture's
-/// completion is still announced by the capture cue, which is one sound rather
-/// than three and lands after the detector has stopped caring.
-class _TapPips extends StatefulWidget {
-  const _TapPips();
+/// **The meter is the phone's own microphone, as the detector hears it** —
+/// band-limited to 100 Hz–4 kHz and measured before anything else touches it,
+/// which is the only level that says whether a tap will register. Shown only
+/// while listening, because that is when the phone's microphone is the one
+/// being tapped; while capturing it is the helmet's, and the talk panel's own
+/// meters cover that.
+///
+/// The mark on the track is the threshold. A tap has to reach it, so a rider
+/// can see whether theirs do rather than guess — which is the question three
+/// days of this feature have turned on.
+class _TapFeedback extends StatefulWidget {
+  const _TapFeedback({required this.capturing});
+
+  final bool capturing;
 
   @override
-  State<_TapPips> createState() => _TapPipsState();
+  State<_TapFeedback> createState() => _TapFeedbackState();
 }
 
-class _TapPipsState extends State<_TapPips> {
-  /// Ten a second: a tap is counted in about a millisecond and the rider is
-  /// performing a rhythm, so anything slower reads as the pips lagging the
-  /// hand. Only runs while pocket mode is armed, which is the only time this
-  /// widget is built at all.
+class _TapFeedbackState extends State<_TapFeedback> {
+  /// Ten a second: a rider is performing a rhythm, and anything slower reads
+  /// as the panel lagging the hand. Runs only while pocket mode is armed,
+  /// which is the only time this widget exists.
   static const _period = Duration(milliseconds: 100);
+
+  /// How far over the floor the meter draws, in dB. Taps measure 19 to 36 over
+  /// it on the recordings, so this shows the whole of the useful range with
+  /// the threshold about half way along.
+  static const _span = 40.0;
+
+  /// What a tap has to clear, which is `MARGIN_DB` in the detector.
+  static const _threshold = 18.0;
 
   Timer? _tick;
   int _run = 0;
-  int _taps = 0;
+  double _over = 0;
 
   @override
   void initState() {
@@ -261,12 +273,14 @@ class _TapPipsState extends State<_TapPips> {
   void _poll() {
     try {
       final s = acousticDiagnostics();
-      final run = s.run;
-      final taps = s.banked.toInt();
-      if (run == _run && taps == _taps) return;
+      // Against the floor rather than full scale: the threshold is a margin
+      // over the trailing average, so the distance to it is the only reading
+      // that means anything. A raw dBFS meter would move with the room.
+      final over = (s.meterDb - s.floorDb).clamp(0.0, _span);
+      if (s.run == _run && (over - _over).abs() < 0.5) return;
       setState(() {
-        _run = run;
-        _taps = taps;
+        _run = s.run;
+        _over = over;
       });
     } catch (_) {
       // No engine; nothing to draw and nothing to report.
@@ -276,20 +290,70 @@ class _TapPipsState extends State<_TapPips> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Column(
       children: [
-        for (var i = 0; i < 3; i++)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: i < _run ? 16 : 10,
-            height: i < _run ? 16 : 10,
-            margin: const EdgeInsets.symmetric(horizontal: 5),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i < _run ? StatusColors.talking : scheme.outlineVariant,
-            ),
+        if (!widget.capturing) ...[
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final w = constraints.maxWidth;
+              final loud = _over >= _threshold;
+              return SizedBox(
+                height: 8,
+                child: Stack(
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHigh,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const SizedBox(width: double.infinity),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: (_over / _span).clamp(0.0, 1.0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: loud
+                              ? StatusColors.talking
+                              : scheme.onSurfaceVariant,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const SizedBox(height: 8),
+                      ),
+                    ),
+                    // The threshold. A tap has to reach this.
+                    Positioned(
+                      left: (w * _threshold / _span).clamp(0.0, w - 2),
+                      child: Container(
+                        width: 2,
+                        height: 8,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
+          const SizedBox(height: 8),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < 3; i++)
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                width: i < _run ? 16 : 10,
+                height: i < _run ? 16 : 10,
+                margin: const EdgeInsets.symmetric(horizontal: 5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i < _run
+                      ? StatusColors.talking
+                      : scheme.outlineVariant,
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }

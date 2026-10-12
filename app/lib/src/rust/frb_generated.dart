@@ -4437,8 +4437,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiAcousticStats dco_decode_ui_acoustic_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 15)
-      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
+    if (arr.length != 16)
+      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
     return UiAcousticStats(
       enabled: dco_decode_bool(arr[0]),
       frames: dco_decode_u_64(arr[1]),
@@ -4448,13 +4448,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       gestures: dco_decode_u_64(arr[5]),
       levelDb: dco_decode_f_32(arr[6]),
       floorDb: dco_decode_f_32(arr[7]),
-      peakDb: dco_decode_f_32(arr[8]),
-      impulseAttackDb: dco_decode_f_32(arr[9]),
-      impulseOverDb: dco_decode_f_32(arr[10]),
-      impulseDecayDb: dco_decode_f_32(arr[11]),
-      discardedRinging: dco_decode_u_64(arr[12]),
-      speechBlocks: dco_decode_u_64(arr[13]),
-      run: dco_decode_u_8(arr[14]),
+      meterDb: dco_decode_f_32(arr[8]),
+      peakDb: dco_decode_f_32(arr[9]),
+      impulseAttackDb: dco_decode_f_32(arr[10]),
+      impulseOverDb: dco_decode_f_32(arr[11]),
+      impulseDecayDb: dco_decode_f_32(arr[12]),
+      discardedRinging: dco_decode_u_64(arr[13]),
+      speechBlocks: dco_decode_u_64(arr[14]),
+      run: dco_decode_u_8(arr[15]),
     );
   }
 
@@ -5804,6 +5805,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_gestures = sse_decode_u_64(deserializer);
     var var_levelDb = sse_decode_f_32(deserializer);
     var var_floorDb = sse_decode_f_32(deserializer);
+    var var_meterDb = sse_decode_f_32(deserializer);
     var var_peakDb = sse_decode_f_32(deserializer);
     var var_impulseAttackDb = sse_decode_f_32(deserializer);
     var var_impulseOverDb = sse_decode_f_32(deserializer);
@@ -5820,6 +5822,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       gestures: var_gestures,
       levelDb: var_levelDb,
       floorDb: var_floorDb,
+      meterDb: var_meterDb,
       peakDb: var_peakDb,
       impulseAttackDb: var_impulseAttackDb,
       impulseOverDb: var_impulseOverDb,
@@ -7241,6 +7244,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.gestures, serializer);
     sse_encode_f_32(self.levelDb, serializer);
     sse_encode_f_32(self.floorDb, serializer);
+    sse_encode_f_32(self.meterDb, serializer);
     sse_encode_f_32(self.peakDb, serializer);
     sse_encode_f_32(self.impulseAttackDb, serializer);
     sse_encode_f_32(self.impulseOverDb, serializer);

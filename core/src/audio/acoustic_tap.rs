@@ -207,6 +207,19 @@ const DECAY_DROP_DB: f32 = -10.0;
 const DECAY_FROM_MS: u64 = 15;
 const DECAY_TO_MS: u64 = 30;
 
+/// How fast the meter falls back, in dB per millisecond.
+///
+/// **A meter needs ballistics or it shows nothing.** The level here is the
+/// peak of a one-millisecond frame, and a panel reading it ten times a second
+/// samples one frame in a hundred — so a tap, which is over in forty, is
+/// missed about ninety-nine times out of a hundred. A rider watching that
+/// would see a meter that never moves while they tap.
+///
+/// Thirty decibels a second: a tap forty decibels over the floor stays
+/// visible for a second and a bit, which is long enough to read and short
+/// enough not to smear three taps into one.
+const METER_FALL_DB_PER_MS: f32 = 0.03;
+
 /// The lowest level the floor may believe in, in dBFS.
 ///
 /// One least-significant bit of sixteen-bit audio. See the note where it is
@@ -306,6 +319,9 @@ pub struct AcousticStats {
     pub gestures: u64,
     pub level_db: f32,
     pub floor_db: f32,
+    /// The same level with a meter's fall-back, so something sampling this
+    /// from outside sees the taps. See `METER_FALL_DB_PER_MS`.
+    pub meter_db: f32,
     /// The last impulse that arrived sharply enough to be judged, as its
     /// attack and its height over the floor — the two numbers the decision is
     /// actually made on, kept so the rig can sweep [`ATTACK_DB`] and
@@ -388,7 +404,14 @@ impl AcousticTapDetector {
             peak_at_ms: 0,
             latent_until_ms: 0,
             frame_ms: 0,
-            stats: AcousticStats::default(),
+            stats: AcousticStats {
+                // **Not the derived zero**, which is full scale: the meter
+                // would start pinned and take three seconds to fall, so a
+                // rider opening the panel would see a microphone that looks
+                // deafeningly loud and settles for no reason.
+                meter_db: QUANTISATION_DBFS,
+                ..AcousticStats::default()
+            },
         }
     }
 
@@ -533,6 +556,10 @@ impl AcousticTapDetector {
         self.previous_db = level_db;
         self.stats.level_db = level_db;
         self.stats.floor_db = floor_db;
+        // A peak that falls back slowly enough to be seen. See
+        // `METER_FALL_DB_PER_MS`: the raw level is a one-millisecond frame and
+        // anything sampling it from outside would miss every tap.
+        self.stats.meter_db = level_db.max(self.stats.meter_db - METER_FALL_DB_PER_MS);
 
         // A held impulse gathers the loudest frame in its tail window and is
         // judged at the end of it. A maximum rather than a never-exceeds test:

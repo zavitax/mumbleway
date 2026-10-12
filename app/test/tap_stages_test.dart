@@ -32,6 +32,8 @@ void main() {
         speechBlocks: BigInt.zero,
         run: 0,
         stageMask: mask,
+        recentAttackDb: 0,
+        recentOverDb: 0,
       );
 
   test('the first poll draws nothing, because nothing is known yet', () {

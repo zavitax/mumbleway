@@ -792,6 +792,21 @@ class _DiagnosticsPanelState extends State<DiagnosticsPanel> {
                                     : '${_tap!.impulseAttackDb.toStringAsFixed(0)} dB/ms'
                                           ' · ${_tap!.impulseOverDb.toStringAsFixed(0)} dB',
                               ),
+                              // **What the row's dark lamps cost in
+                              // decibels.** The impulse readings above are
+                              // written only when both tests pass, so a
+                              // microphone whose taps never arm reports
+                              // nothing at all — and two short of the bar and
+                              // twenty short need opposite fixes.
+                              _Row(
+                                l.diagTapReach,
+                                _tap!.recentAttackDb == 0
+                                    ? '—'
+                                    : '${_tap!.recentAttackDb.toStringAsFixed(0)}'
+                                          ' / 14 dB/ms · '
+                                          '${_tap!.recentOverDb.toStringAsFixed(0)}'
+                                          ' / 18 dB',
+                              ),
                               _Row(l.diagTapCandidates, '${_tap!.candidates}'),
                               _Row(
                                 l.diagTapDiscardedLong,

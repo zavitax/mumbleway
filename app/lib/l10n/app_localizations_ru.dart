@@ -1249,6 +1249,9 @@ class LRu extends L {
   String get tapStageAttack => 'атака';
 
   @override
+  String get tapStageArmed => 'вместе';
+
+  @override
   String get tapStageFellBack => 'спад';
 
   @override
@@ -1256,6 +1259,9 @@ class LRu extends L {
 
   @override
   String get tapStageBanked => 'удар';
+
+  @override
+  String get diagTapReach => 'Лучшее за секунду';
 
   @override
   String get diagTapDetector => 'Слушает постукивания';

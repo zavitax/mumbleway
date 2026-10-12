@@ -660,6 +660,10 @@
   "@tapStageAttack": {
     "description": "Stage 5: it rose 14 dB inside one millisecond, which is the test that separates contact from a sound"
   },
+  "tapStageArmed": "arm",
+  "@tapStageArmed": {
+    "description": "Stage 6: the margin and the attack were met in the SAME millisecond, so an impulse was armed. Separate from the two because both of those lamps can be lit by different frames"
+  },
   "tapStageFellBack": "fall",
   "@tapStageFellBack": {
     "description": "Stage 6: it died away in time and outside the dead time, so a strike was formed"
@@ -671,6 +675,10 @@
   "tapStageBanked": "tap",
   "@tapStageBanked": {
     "description": "Stage 8: it was banked towards the three-tap gesture"
+  },
+  "diagTapReach": "Best recent",
+  "@diagTapReach": {
+    "description": "Panel row: the sharpest rise and the greatest height over the floor seen in the last second and a half, whether or not anything armed. Shown against the two thresholds so a rider can see how far short a tap fell"
   },
   "diagTapDetector": "Listening for taps",
   "@diagTapDetector": {

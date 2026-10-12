@@ -1250,6 +1250,9 @@ class LEn extends L {
   String get tapStageAttack => 'atk';
 
   @override
+  String get tapStageArmed => 'arm';
+
+  @override
   String get tapStageFellBack => 'fall';
 
   @override
@@ -1257,6 +1260,9 @@ class LEn extends L {
 
   @override
   String get tapStageBanked => 'tap';
+
+  @override
+  String get diagTapReach => 'Best recent';
 
   @override
   String get diagTapDetector => 'Listening for taps';

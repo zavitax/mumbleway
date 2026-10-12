@@ -5026,6 +5026,8 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
         let mut var_speechBlocks = <u64>::sse_decode(deserializer);
         let mut var_run = <u8>::sse_decode(deserializer);
         let mut var_stageMask = <u32>::sse_decode(deserializer);
+        let mut var_recentAttackDb = <f32>::sse_decode(deserializer);
+        let mut var_recentOverDb = <f32>::sse_decode(deserializer);
         return crate::api::mumbleway::UiAcousticStats {
             enabled: var_enabled,
             frames: var_frames,
@@ -5044,6 +5046,8 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
             speech_blocks: var_speechBlocks,
             run: var_run,
             stage_mask: var_stageMask,
+            recent_attack_db: var_recentAttackDb,
+            recent_over_db: var_recentOverDb,
         };
     }
 }
@@ -6458,6 +6462,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiAcousticStats {
             self.speech_blocks.into_into_dart().into_dart(),
             self.run.into_into_dart().into_dart(),
             self.stage_mask.into_into_dart().into_dart(),
+            self.recent_attack_db.into_into_dart().into_dart(),
+            self.recent_over_db.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -7921,6 +7927,8 @@ impl SseEncode for crate::api::mumbleway::UiAcousticStats {
         <u64>::sse_encode(self.speech_blocks, serializer);
         <u8>::sse_encode(self.run, serializer);
         <u32>::sse_encode(self.stage_mask, serializer);
+        <f32>::sse_encode(self.recent_attack_db, serializer);
+        <f32>::sse_encode(self.recent_over_db, serializer);
     }
 }
 

@@ -2365,6 +2365,12 @@ abstract class L {
   /// **'atk'**
   String get tapStageAttack;
 
+  /// Stage 6: the margin and the attack were met in the SAME millisecond, so an impulse was armed. Separate from the two because both of those lamps can be lit by different frames
+  ///
+  /// In en, this message translates to:
+  /// **'arm'**
+  String get tapStageArmed;
+
   /// Stage 6: it died away in time and outside the dead time, so a strike was formed
   ///
   /// In en, this message translates to:
@@ -2382,6 +2388,12 @@ abstract class L {
   /// In en, this message translates to:
   /// **'tap'**
   String get tapStageBanked;
+
+  /// Panel row: the sharpest rise and the greatest height over the floor seen in the last second and a half, whether or not anything armed. Shown against the two thresholds so a rider can see how far short a tap fell
+  ///
+  /// In en, this message translates to:
+  /// **'Best recent'**
+  String get diagTapReach;
 
   /// Title of the group showing what the microphone's tap detector is hearing. Only shown when tap-to-capture is switched on
   ///

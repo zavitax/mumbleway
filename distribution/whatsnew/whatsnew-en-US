@@ -1,5 +1,5 @@
-Still 1.2.0. A row of lamps that says where a tap is lost.
+Still 1.2.0. A tenth lamp, because nine were ambiguous.
 
-Pocket mode shows nine dots, in the order a tap passes them: in, band, hear, floor, marg, atk, fall, tail, tap. Each is lit while that step is passing signal on, so the row stops where your taps are being lost. Also in Diagnostics, above the tap numbers.
+On a helmet the first six lit and the last three did not, which could mean two opposite things: that a tap armed and never died away in time, or that the margin and the attack were reached in different milliseconds so nothing armed at all. "arm" is the lamp that tells those apart.
 
-And nothing lowers your music any more — ducking is gone from both phones, after it stopped background audio for good on build 184.
+The tap panel also shows the best rise and height of the last second against the two thresholds, so a tap that falls short says by how much.

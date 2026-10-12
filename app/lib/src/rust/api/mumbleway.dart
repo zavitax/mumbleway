@@ -1662,9 +1662,9 @@ class UiAcousticStats {
   /// Taps banked towards the gesture in progress.
   final int run;
 
-  /// Which of the nine stages a frame passes have passed anything in the
-  /// last three hundred milliseconds, as a bitmask, lowest bit first:
-  /// input, band, hearing, over the floor, margin, attack, fell back, tail,
+  /// Which of the ten stages a frame passes have passed anything in the
+  /// last second and a half, as a bitmask, lowest bit first: input, band,
+  /// hearing, over the floor, margin, attack, armed, fell back, tail,
   /// banked. `core::audio::acoustic_tap::stage` names them.
   ///
   /// **A rider asked to see where it stops.** Every other number here is a
@@ -1677,6 +1677,17 @@ class UiAcousticStats {
   /// reader must compare [`frames`](Self::frames) between polls and treat a
   /// stalled count as every lamp dark.
   final int stageMask;
+
+  /// The sharpest rise and the greatest height over the floor in the last
+  /// second and a half, whether or not anything armed.
+  ///
+  /// **`impulse_attack_db` is written only when both tests pass**, so a
+  /// helmet whose taps never arm reports nothing and there is no telling a
+  /// rider who is two decibels short from one who is twenty. These say how
+  /// far off it is, which is what decides between a lower threshold and a
+  /// different measurement.
+  final double recentAttackDb;
+  final double recentOverDb;
 
   const UiAcousticStats({
     required this.enabled,
@@ -1696,6 +1707,8 @@ class UiAcousticStats {
     required this.speechBlocks,
     required this.run,
     required this.stageMask,
+    required this.recentAttackDb,
+    required this.recentOverDb,
   });
 
   @override
@@ -1716,7 +1729,9 @@ class UiAcousticStats {
       discardedRinging.hashCode ^
       speechBlocks.hashCode ^
       run.hashCode ^
-      stageMask.hashCode;
+      stageMask.hashCode ^
+      recentAttackDb.hashCode ^
+      recentOverDb.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -1739,7 +1754,9 @@ class UiAcousticStats {
           discardedRinging == other.discardedRinging &&
           speechBlocks == other.speechBlocks &&
           run == other.run &&
-          stageMask == other.stageMask;
+          stageMask == other.stageMask &&
+          recentAttackDb == other.recentAttackDb &&
+          recentOverDb == other.recentOverDb;
 }
 
 /// One entry of the server's ban list.

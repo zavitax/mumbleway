@@ -4,7 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart' show UiAcousticStats;
 import '../theme.dart';
 
-/// The nine gates a frame passes on its way to being a tap, as lamps.
+/// The ten gates a frame passes on its way to being a tap, as lamps.
 ///
 /// **Asked for by a rider, in those words: "then I will see where exactly
 /// stuff stops".** Every other reading on the tap panel is a number that has
@@ -15,6 +15,11 @@ import '../theme.dart';
 ///
 /// A lamp is lit when its stage passed something to the next one recently.
 /// Read left to right, the row stops at the gate that is losing the taps.
+///
+/// **`arm` is the lamp that a field reading added.** Six lit and the rest dark
+/// was ambiguous: the margin and the attack lamps answer for themselves, and
+/// both being lit does not mean they were lit by the same millisecond. `arm`
+/// is the one that says they met, which is what the detector actually needs.
 class TapStageRow extends StatelessWidget {
   const TapStageRow({super.key, required this.mask});
 
@@ -37,6 +42,7 @@ class TapStageRow extends StatelessWidget {
       l.tapStageFloor,
       l.tapStageMargin,
       l.tapStageAttack,
+      l.tapStageArmed,
       l.tapStageFellBack,
       l.tapStageTail,
       l.tapStageBanked,

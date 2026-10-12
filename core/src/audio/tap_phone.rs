@@ -148,6 +148,9 @@ pub struct PhoneTapDetector {
     /// When each stage last passed something, on the frame clock. See
     /// [`stage`].
     stage_at: [u64; stage::COUNT],
+    /// The running maxima behind `recent_attack_db` and `recent_over_db`.
+    recent_attack: (f32, u64),
+    recent_over: (f32, u64),
     stats: AcousticStats,
 }
 
@@ -175,6 +178,8 @@ impl PhoneTapDetector {
             latent_until_ms: 0,
             frame_ms: 0,
             stage_at: [0; stage::COUNT],
+            recent_attack: (f32::NEG_INFINITY, 0),
+            recent_over: (f32::NEG_INFINITY, 0),
             stats: AcousticStats {
                 // **Not the derived zero**, which is full scale: the meter
                 // would open pinned and take three seconds to fall.
@@ -191,7 +196,20 @@ impl PhoneTapDetector {
     pub fn stats(&self) -> AcousticStats {
         let mut s = self.stats;
         s.stage_mask = self.stage_mask();
+        s.recent_attack_db = self.recent(self.recent_attack);
+        s.recent_over_db = self.recent(self.recent_over);
         s
+    }
+
+    /// A maximum that expires with the lamps, so the reading belongs to the
+    /// tap that was just performed.
+    fn recent(&self, held: (f32, u64)) -> f32 {
+        let (value, at) = held;
+        if at > 0 && self.frame_ms.saturating_sub(at) <= STAGE_HOLD_MS {
+            value
+        } else {
+            0.0
+        }
     }
 
     /// Which stages have passed something within [`STAGE_HOLD_MS`].
@@ -318,6 +336,16 @@ impl PhoneTapDetector {
         if attack >= self.attack_db {
             self.pass(stage::ATTACK);
         }
+        if attack > self.recent_attack.0
+            || self.frame_ms.saturating_sub(self.recent_attack.1) > STAGE_HOLD_MS
+        {
+            self.recent_attack = (attack, self.frame_ms);
+        }
+        if over > self.recent_over.0
+            || self.frame_ms.saturating_sub(self.recent_over.1) > STAGE_HOLD_MS
+        {
+            self.recent_over = (over, self.frame_ms);
+        }
         self.stats.floor_db = floor_db;
         let at_ms = self.frame_ms;
 
@@ -326,6 +354,7 @@ impl PhoneTapDetector {
                 // Loud against the room, and sharp. Both, because speech and
                 // music reach the margin too and neither arrives this fast.
                 if over >= self.margin_db && attack >= self.attack_db {
+                    self.pass(stage::ARMED);
                     self.stats.impulse_attack_db = attack;
                     self.stats.impulse_over_db = over;
                     self.rising_at_ms = Some(at_ms);
@@ -497,8 +526,80 @@ mod tests {
         assert!(lit(&d, stage::BAND));
         assert!(lit(&d, stage::HEARING));
         assert!(!lit(&d, stage::MARGIN), "quiet reached the margin");
+        assert!(!lit(&d, stage::ARMED));
         assert!(!lit(&d, stage::FELL_BACK));
         assert!(!lit(&d, stage::BANKED));
+    }
+
+    /// **The reading this lamp exists for, and it is a real one.** A rider
+    /// hitting a helmet reported the first six lamps lit and the last three
+    /// dark. That was meant to say "it armed and never fell back in time" and
+    /// could equally have said "the two tests passed in different
+    /// milliseconds and nothing ever armed" — two causes with opposite fixes.
+    ///
+    /// So here is a signal that does exactly the second: a blip that rises
+    /// sharply but not far, and then a ramp that climbs far but not sharply.
+    /// Margin lit, attack lit, armed dark.
+    #[test]
+    fn two_tests_passed_in_different_frames_do_not_arm() {
+        /// One millisecond at an amplitude, in the band taps occupy.
+        fn ms(into: &mut Vec<f32>, amp: f32, at: usize) {
+            for i in 0..FRAME {
+                let x = (at * FRAME + i) as f32;
+                into.push(amp * ((x * 0.209).sin() + (x * 0.406).sin()) * 0.5);
+            }
+        }
+
+        let base = 0.0008;
+        let mut audio = Vec::new();
+        let mut at = 0;
+        for _ in 0..1_500 {
+            ms(&mut audio, base, at);
+            at += 1;
+        }
+        // Sharp and short: a tenth of the floor, then three times it. About
+        // 20 dB in one millisecond, reaching only 10 dB over the floor.
+        ms(&mut audio, base * 0.3, at);
+        at += 1;
+        ms(&mut audio, base * 3.2, at);
+        at += 1;
+        for _ in 0..40 {
+            ms(&mut audio, base, at);
+            at += 1;
+        }
+        // Far but not sharp: 5 dB a millisecond up to 30 dB over the floor.
+        let mut amp = base;
+        for _ in 0..6 {
+            amp *= 1.78;
+            ms(&mut audio, amp, at);
+            at += 1;
+        }
+        for _ in 0..20 {
+            ms(&mut audio, amp, at);
+            at += 1;
+        }
+
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+
+        assert!(
+            lit(&d, stage::MARGIN),
+            "the ramp missed the margin: {:?}",
+            d.stats()
+        );
+        assert!(
+            lit(&d, stage::ATTACK),
+            "the blip missed the attack: {:?}",
+            d.stats()
+        );
+        assert!(
+            !lit(&d, stage::ARMED),
+            "armed on two tests that passed in different frames: {:?}",
+            d.stats()
+        );
+        assert!(!lit(&d, stage::FELL_BACK));
+        assert!(!banked);
     }
 
     /// **Deafness is the one that has actually caught people out**, because

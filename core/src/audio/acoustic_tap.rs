@@ -276,15 +276,27 @@ pub mod stage {
     pub const MARGIN: usize = 4;
     /// It rose [`ATTACK_DB`] inside the millisecond. The discriminator.
     pub const ATTACK: usize = 5;
+    /// **Both of those in the same millisecond**, so an impulse was armed.
+    ///
+    /// Added after the row was read on a helmet: the first six lamps lit and
+    /// the last three did not, which was meant to say "it armed and never
+    /// fell back in time" and could equally have meant "the two tests passed
+    /// in different milliseconds and nothing ever armed". Two causes, one
+    /// reading, and opposite fixes — a threshold against a smeared onset.
+    ///
+    /// [`MARGIN`] and [`ATTACK`] stay separate because which half is missing
+    /// is the thing a rider tapping harder needs to know. This is the lamp
+    /// that says they met.
+    pub const ARMED: usize = 6;
     /// It fell back inside [`MAX_DECAY_MS`] and was not inside the dead time,
     /// so a strike was formed.
-    pub const FELL_BACK: usize = 6;
+    pub const FELL_BACK: usize = 7;
     /// Its tail had fallen away, so it was a tap and not a consonant. Lit as
     /// soon as the strike forms on paths with no tail test.
-    pub const TAIL: usize = 7;
+    pub const TAIL: usize = 8;
     /// It was banked towards a gesture.
-    pub const BANKED: usize = 8;
-    pub const COUNT: usize = 9;
+    pub const BANKED: usize = 9;
+    pub const COUNT: usize = 10;
 }
 
 /// How fast the reference level follows the audio, per 1 ms frame.
@@ -390,6 +402,16 @@ pub struct AcousticStats {
     /// How far the last impulse's tail had fallen 15 to 30 ms after its peak.
     pub impulse_decay_db: f32,
     pub peak_db: f32,
+    /// The sharpest rise and the greatest height over the floor seen in the
+    /// last [`STAGE_HOLD_MS`], whether or not anything armed.
+    ///
+    /// **`impulse_attack_db` is only written when both tests pass**, so a
+    /// helmet whose taps never arm reports nothing at all and there is no way
+    /// to tell a rider tapping 2 dB short from one tapping 20 dB short. These
+    /// two are what say how far off it is, and therefore whether the answer is
+    /// a lower threshold or a different measurement.
+    pub recent_attack_db: f32,
+    pub recent_over_db: f32,
     pub run: u8,
     /// Which stages have passed something recently. See [`stage`], and note
     /// that it is filled in by `stats()` rather than on the audio thread,
@@ -439,6 +461,10 @@ pub struct AcousticTapDetector {
     /// When each stage last passed something, on the frame clock. Zero means
     /// never, which is why [`stage_mask`](Self::stage_mask) tests it.
     stage_at: [u64; stage::COUNT],
+    /// The running maxima behind `recent_attack_db` and `recent_over_db`, each
+    /// with the frame it was seen on so it can expire.
+    recent_attack: (f32, u64),
+    recent_over: (f32, u64),
     stats: AcousticStats,
 }
 
@@ -463,6 +489,8 @@ impl AcousticTapDetector {
             decay_drop_db: Self::tuned("MW_TAP_DECAY_DROP_DB", DECAY_DROP_DB),
             held: None,
             stage_at: [0; stage::COUNT],
+            recent_attack: (f32::NEG_INFINITY, 0),
+            recent_over: (f32::NEG_INFINITY, 0),
             pattern: GesturePattern::new(),
             previous_db: f32::NEG_INFINITY,
             rising_at_ms: None,
@@ -534,7 +562,21 @@ impl AcousticTapDetector {
     pub fn stats(&self) -> AcousticStats {
         let mut s = self.stats;
         s.stage_mask = self.stage_mask();
+        s.recent_attack_db = self.recent(self.recent_attack);
+        s.recent_over_db = self.recent(self.recent_over);
         s
+    }
+
+    /// A maximum that expires, so the panel shows this tap and not one from a
+    /// minute ago. Zero rather than minus infinity when there is nothing, so a
+    /// reader has one "nothing here" value and not two.
+    fn recent(&self, held: (f32, u64)) -> f32 {
+        let (value, at) = held;
+        if at > 0 && self.frame_ms.saturating_sub(at) <= STAGE_HOLD_MS {
+            value
+        } else {
+            0.0
+        }
     }
 
     /// Which stages have passed something within [`STAGE_HOLD_MS`].
@@ -694,6 +736,18 @@ impl AcousticTapDetector {
         if attack >= self.attack_db {
             self.pass(stage::ATTACK);
         }
+        // The two maxima, each expiring on its own so the reading belongs to
+        // the tap the rider just performed.
+        if attack > self.recent_attack.0
+            || self.frame_ms.saturating_sub(self.recent_attack.1) > STAGE_HOLD_MS
+        {
+            self.recent_attack = (attack, self.frame_ms);
+        }
+        if over > self.recent_over.0
+            || self.frame_ms.saturating_sub(self.recent_over.1) > STAGE_HOLD_MS
+        {
+            self.recent_over = (over, self.frame_ms);
+        }
         self.stats.level_db = level_db;
         self.stats.floor_db = floor_db;
         // A peak that falls back slowly enough to be seen. See
@@ -732,6 +786,7 @@ impl AcousticTapDetector {
                 // inside a millisecond, because only contact with the phone
                 // does. See `ATTACK_DB` for the measurement.
                 if over >= self.margin_db && attack >= self.attack_db {
+                    self.pass(stage::ARMED);
                     self.stats.impulse_attack_db = attack;
                     self.stats.impulse_over_db = over;
                     self.rising_at_ms = Some(at_ms);

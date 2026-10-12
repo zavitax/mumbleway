@@ -665,8 +665,113 @@ so there is no new consent surface, but the document should say so rather than i
 - **Per-utterance audio focus.** Focus is held for the whole session and
   `TRANSIENT_MAY_DUCK` / `.duckOthers` duck other apps for as long as it is held, so in the
   listening state music returns to full *bandwidth* but may stay at ducked *level*. If that
-  matters, the answer is per-utterance focus — a separate change.
+  matters, the answer is per-utterance focus — a separate change. **It mattered, and the
+  iOS half of it shipped on 2026-10-12; see [Ducking per
+  utterance](#ducking-per-utterance-shipped-on-ios-open-on-android) below.**
 - **Fixing the music gate.** `MUSIC_GATE.md` stays open; nothing here improves or worsens
   it.
 - **GPS for speed** — a location permission this app has deliberately never requested,
   against a no-telemetry promise.
+
+## Ducking per utterance: shipped on iOS, open on Android
+
+Written 2026-10-12, after a rider reported the fault the bullet above predicted:
+*"music seems to play with good quality but significantly quieter"* while pocket mode was
+listening. It is the same complaint in both halves of the platform, and only one half is
+fixed.
+
+### What was wrong, and it is not a tuning question
+
+Ducking is not a thing that happens while an app plays something. On iOS it is a category
+option, and Apple's wording is exact: it "begins when you activate your app's audio
+session and ends when you deactivate the session". So `.duckOthers` listed on a category
+is a **standing duck** — for the whole call, and in pocket mode for the whole ride, with
+nobody talking for any of it.
+
+The first answer was a switch to turn it off, off by default. That is a worse app for
+everyone who wanted the feature, so it lasted one build.
+
+### The iOS answer: the option is applied and withdrawn as people speak
+
+`setCategory` is documented to work on a live session — "you can also set the category or
+mode while the session is active, but doing so results in an immediate change" — so the
+duck does not have to be a property of the session's lifetime. `AudioSession.swift` holds
+an `othersTalking` flag, `applyDucking` re-sets the capturing category when it moves, and
+the setting (*Lower music when others talk*) is on by default because it now means what
+its label says.
+
+Two constraints, both learned here:
+
+- **Only the category.** `activate` also calls `setActive` and `preferHandsFreeInput`, and
+  a preferred input posts a route change — the shape of the self-sustaining loop this file
+  has produced four times. A duck that toggles as people speak must not touch the route.
+  `CaptureReconciler` answers the `.categoryChange` notification with `.none` because
+  neither the category nor the hands-free bit has moved.
+- **The listening session never ducks at all.** There is nobody to talk over while pocket
+  mode waits for a tap, which is the entire complaint.
+
+The fifteen-second tail lives in Dart, where the per-speaker levels arrive, and is driven
+by speech arriving rather than by silence arriving — the engine stops reporting levels a
+second or so after the last speaker empties, so there is no "nobody is talking" event to
+hang it on. A timer re-armed by every voice needs none.
+
+### Android: the same lever does not exist
+
+**There is no "duck others" to switch on Android.** Ducking is a consequence of *holding
+focus*, and the three gain types say stop (`AUDIOFOCUS_GAIN`), pause
+(`..._GAIN_TRANSIENT`) and duck (`..._GAIN_TRANSIENT_MAY_DUCK`). None of them is "I hold
+focus and you carry on at full volume", so **the only way to stop ducking is to abandon
+the focus**, and the only way to start again is to request it.
+
+`AudioRouting.kt` requests it in `activate` and abandons it in `deactivate`, so today
+Android ducks for the whole session — listening included. **The rider's report applies to
+Android exactly as it did to iOS, and this build does not fix it there.**
+
+The replication is therefore per-utterance focus: move `requestMusicFocus` /
+`abandonMusicFocus` off `activate`/`deactivate` and onto the signal the iOS side already
+receives. Concretely, a `setOthersTalking` case on the `mumbleway/audioSession` channel —
+which Dart already sends and Android currently answers `notImplemented`, swallowed by the
+bridge — calling the two methods that exist. About twenty-five lines, plus dropping the
+`Platform.isIOS` guard on the settings tile.
+
+Three things make it more than a transliteration of the iOS change, and the first is the
+reason it has not simply been done:
+
+- **Some apps pause instead of ducking.** An app that sets `setWillPauseWhenDucked(true)`
+  stops on a duck and resumes on the gain, and flapping focus every utterance would make
+  it stop and start per sentence — distinctly worse than the standing duck it replaces,
+  which at least pauses it once. On iOS this risk does not exist, because the duck is the
+  system's and the other app is not consulted.
+- **Focus can be refused.** If something takes exclusive focus while we have let ours go,
+  the next request returns `AUDIOFOCUS_REQUEST_FAILED`. That is already handled — "carrying
+  on without ducking" — and self-heals on the next utterance, but it is a state the
+  permanent hold never reached.
+- **Focus requests would start happening while backgrounded**, which they do not today:
+  the one request is made at connect time with the app on screen. The microphone-typed
+  foreground service runs for the whole session, so this should be allowed, and "should"
+  is why it is on the measurement list rather than in the summary.
+
+And one thing that is *easier* on Android, worth saying because it is the mirror of the
+iOS constraint: focus is orthogonal to the route. `MODE_IN_COMMUNICATION` and the
+communication device are what make a microphone exist, and neither of them is focus — so
+unlike iOS, toggling the duck here cannot disturb the input at all, and the loop that
+shaped `applyDucking` has no surface.
+
+### What to measure before shipping the Android half
+
+Each of these needs a phone, a helmet intercom and something playing; `adb logcat -s
+MumbleWay` shows every focus call, and the ear decides the rest.
+
+1. **Does the music come back between utterances at all?** Request, abandon, listen. If it
+   does not, the automatic ducking the system performs for apps that do not handle focus
+   (API 26+) is not being released, and nothing else here is worth doing.
+2. **Does the rider's music app duck or pause?** The answer differs per app and it decides
+   whether this is an improvement or a regression. Spotify is the one to try first because
+   it is the one riders use.
+3. **Is the capturing state even ducked by focus, or by the mode?**
+   `MODE_IN_COMMUNICATION` already reroutes other apps' audio — the comment on `deactivate`
+   says why a phone must not be left in it — so per-utterance focus may turn out to matter
+   only in the listening state. That would be a smaller change with the same benefit.
+4. **Pumping.** Fifteen seconds was chosen so that a conversation does not turn the music
+   into a volume pump. Whether that is long enough is an ear question, and it is the same
+   constant on both platforms.

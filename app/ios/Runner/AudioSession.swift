@@ -397,8 +397,9 @@ final class AudioSession {
     // implication would stop the music outright instead of merely leaving it
     // loud. It is listed in its own right, so it does not.
     //
-    // The capturing session below ducks regardless, which is where the option
-    // earns its place: there somebody really is talking.
+    // **And the capturing session no longer ducks either**, which this
+    // paragraph used to say it did. The two options are never listed together
+    // anywhere now: `setCapturingCategory` has the measurement that ended it.
     //
     // Built as a typed value rather than a literal with `.union` on the end:
     // chaining a method onto the literal costs it its contextual type, and
@@ -465,6 +466,16 @@ final class AudioSession {
     // to work on a live session, "you can also set the category or mode
     // while the session is active, but doing so results in an immediate
     // change", so the duck was applied and withdrawn as people spoke.
+    //
+    // **Two sentences of Apple's own documentation disagree about that**, and
+    // the one on this page is the one that governed: `setCategory` says a
+    // change on a live session is immediate, and `.duckOthers` says ducking
+    // "begins when you activate" and "ends when you deactivate". A duck is
+    // not a setting the route layer re-reads; it is a property of an
+    // activation. Which is also why the two options are never listed together
+    // here: `.duckOthers` implies `.mixWithOthers`, so the pair is at best
+    // redundant, and `activateListening` records why `.mixWithOthers` is
+    // nevertheless always explicit in its own right.
     //
     // On a Bluetooth headset that **stops the rider's background audio
     // permanently.** Reported from build 184: another party spoke, and

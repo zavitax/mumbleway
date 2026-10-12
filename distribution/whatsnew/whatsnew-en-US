@@ -1,5 +1,5 @@
-Still 1.2.0. Phone taps were not being missed, they were not being heard at all.
+Still 1.2.0. A microphone meter on the pocket panel, with the threshold on it.
 
-A flag saying "the rider is talking" is written by the capture worker, and the worker does not run while listening — so if you were talking when capture stopped, it stayed stuck on and the detector never listened again.
+It draws the detector's own level — the phone's microphone, band-limited to the range a tap lives in and measured before anything else touches it. The mark on the track is what a tap has to reach, so you can see whether yours do instead of guessing. Shown while listening, which is when the phone is the microphone being tapped.
 
-Speaking on the helmet is a separate thing: a consonant is an impact, and what tells it from a tap is the vowel behind it. Measured, and now rejected on that.
+The three dots still fill as taps are counted.

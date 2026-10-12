@@ -606,7 +606,6 @@ class AppState extends ChangeNotifier {
   static const _prefsMic = 'mumbleway.micMode';
   static const _prefsPocketMode = 'mumbleway.pocketMode';
   static const _prefsPocketTutorial = 'mumbleway.pocketTutorialSeen';
-  static const _prefsDuckOthersTalk = 'mumbleway.duckWhenOthersTalk';
   static const _prefsAutoStop = 'mumbleway.autoStopCapture';
   static const _prefsAutoStopSecs = 'mumbleway.autoStopSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
@@ -826,46 +825,20 @@ class AppState extends ChangeNotifier {
   /// Whether the rider has ever armed it, so the explanation is shown once.
   bool pocketTutorialSeen = false;
 
-  /// Whether to lower other apps' audio while another rider is talking.
-  ///
-  /// **On by default, because now it means what it says.** It used to be a
-  /// standing category option, and a standing option is a standing duck:
-  /// Apple's wording is that ducking "begins when you activate your app's
-  /// audio session and ends when you deactivate the session", so asking for it
-  /// once lowered a rider's music for every second the microphone was open —
-  /// the whole ride, in pocket mode. One reported exactly that, and the first
-  /// answer here was a switch to turn the whole thing off.
-  ///
-  /// That switch is this one, with the behaviour behind it replaced: the duck
-  /// is applied as people speak and withdrawn [_duckCooldown] after the last
-  /// of them stops. So it can be on by default, which is what a rider expects
-  /// of a voice app, and the complaint it came from no longer happens.
-  bool duckWhenOthersTalk = true;
-
-  /// How long the duck outlives the voice that applied it.
-  ///
-  /// **Long, deliberately.** Conversation on an intercom is intermittent —
-  /// half a sentence, a pause, an answer — and music that climbs back up
-  /// between them is worse than music that stays down: the rider hears a
-  /// volume pump rather than a conversation. Fifteen seconds is long enough
-  /// to cover a reply and short enough that a finished exchange gives the
-  /// music back while it is still the same song.
-  static const _duckCooldown = Duration(seconds: 15);
-
-  /// Whether the platform side has been told to duck.
-  ///
-  /// Mirrored here so the signal is sent on its edges only. It arrives from
-  /// per-speaker levels ten times a second, and `setCategory` on a live
-  /// session is not free — it posts a route-change notification that the
-  /// reconciler then has to answer.
-  bool _duckingOthers = false;
-
-  /// What has been asked for, for tests.
-  @visibleForTesting
-  bool get duckingOthers => _duckingOthers;
-
-  /// Releases the duck when nobody has spoken for [_duckCooldown].
-  Timer? _duckRelease;
+  // **No ducking, on either platform, and no setting for it.** It shipped as
+  // a standing `.duckOthers` / audio-focus lease, which quietened a rider's
+  // music for the whole of a ride rather than while anybody talked. The
+  // speech-gated replacement worked on Android and could not be made to work
+  // on iOS at all: changing a live session's category to apply the duck makes
+  // the system decide the route again, which on a Bluetooth headset dropped
+  // the A2DP output the music was playing on and stopped it for good.
+  //
+  // So it is gone from both, on the rider's call, and the fifteen-second
+  // cooldown that lived here went with it. The evidence for the feature was
+  // never better than the evidence against: the rider who heard every version
+  // of it said the mix is fine without any, because incoming speech is
+  // normalised and carries over music. `docs/CAPTURE_ON_DEMAND.md` has the
+  // measurements and the one thing not ruled out.
 
   /// Whether capture releases itself after a stretch of silence.
   ///
@@ -1290,7 +1263,6 @@ class AppState extends ChangeNotifier {
     }
     pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
     pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
-    duckWhenOthersTalk = prefs.getBool(_prefsDuckOthersTalk) ?? true;
     autoStopCapture = prefs.getBool(_prefsAutoStop) ?? false;
     autoStopSeconds = (prefs.getInt(_prefsAutoStopSecs) ?? 20).clamp(5, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
@@ -1455,7 +1427,6 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_prefsMic, micMode.index);
     await prefs.setBool(_prefsPocketMode, pocketMode);
     await prefs.setBool(_prefsPocketTutorial, pocketTutorialSeen);
-    await prefs.setBool(_prefsDuckOthersTalk, duckWhenOthersTalk);
     await prefs.setBool(_prefsAutoStop, autoStopCapture);
     await prefs.setInt(_prefsAutoStopSecs, autoStopSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
@@ -5017,45 +4988,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Turns ducking under other riders' voices on or off.
-  ///
-  /// Withdraws a duck that is in force when it goes off, rather than leaving
-  /// it to the cooldown: a rider who turns this off is asking for their music
-  /// back now, and fifteen seconds of it staying quiet reads as a switch that
-  /// did nothing.
-  Future<void> updateDuckWhenOthersTalk(bool on) async {
-    duckWhenOthersTalk = on;
-    if (!on) _releaseDuck();
-    await _persist();
-    notifyListeners();
-  }
-
-  /// Another rider is being heard — duck, and start the cooldown again.
-  ///
-  /// **Driven by speech arriving, never by silence arriving.** The engine
-  /// stops reporting levels a second or so after the last speaker empties, so
-  /// there is no event to hang "nobody is talking" on; a timer re-armed by
-  /// every voice needs none. The duck therefore outlives the last voice by
-  /// [_duckCooldown] exactly, whether or not anything is still being sent.
-  @visibleForTesting
-  void noteOthersTalking() {
-    if (!duckWhenOthersTalk) return;
-    _duckRelease?.cancel();
-    _duckRelease = Timer(_duckCooldown, _releaseDuck);
-    if (_duckingOthers) return;
-    _duckingOthers = true;
-    unawaited(AudioSessionBridge.instance.setOthersTalking(true));
-  }
-
-  /// Gives the rider's music back.
-  void _releaseDuck() {
-    _duckRelease?.cancel();
-    _duckRelease = null;
-    if (!_duckingOthers) return;
-    _duckingOthers = false;
-    unawaited(AudioSessionBridge.instance.setOthersTalking(false));
-  }
-
   /// Remembers that the explanation has been shown.
   Future<void> markPocketTutorialSeen() async {
     if (pocketTutorialSeen) return;
@@ -5476,15 +5408,6 @@ class AppState extends ChangeNotifier {
           ).noteSpeakerLevel(entry.session, entry.levelDb);
           (reported[entry.serverId] ??= <int>{}).add(entry.session);
         }
-        // **The ducking signal, taken from the reported level rather than
-        // from the meters.** A meter falls at a limited rate so that it reads
-        // smoothly, which means it stands above the floor for a while after
-        // the voice has gone; the level in the report is what the decoder
-        // actually produced on this tick. The same floor either way, so what
-        // ducks is what lights a meter up.
-        if (levels.any((e) => e.levelDb > ServerRuntime.speakingFloorDb)) {
-          noteOthersTalking();
-        }
         // A speaker who stops is reaped from the mixer and simply stops being
         // reported, so without this their meter freezes at whatever it last
         // showed — a full bar for someone who went quiet a minute ago.
@@ -5560,7 +5483,6 @@ class AppState extends ChangeNotifier {
     _probeTimer?.cancel();
     _channelRightsSettle?.cancel();
     _audioRelease?.cancel();
-    _duckRelease?.cancel();
     _lifecycle?.dispose();
     _events?.cancel();
     _meters.dispose();

@@ -4189,18 +4189,6 @@ abstract class L {
   /// **'Start pocket mode'**
   String get pocketTutorialStart;
 
-  /// Android only, on by default. Audio focus is held while another rider is being heard and given back fifteen seconds after the last voice. iOS cannot withdraw a duck without dropping other apps' output route, so it does not duck at all
-  ///
-  /// In en, this message translates to:
-  /// **'Lower music when others talk'**
-  String get duckWhenOthersTalk;
-
-  /// No description provided for @duckWhenOthersTalkBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Music and other apps drop while another rider is talking, and come back about fifteen seconds after the last voice. With this off they play at full volume and a voice has to carry over them. Nothing is lowered while pocket mode is only listening for taps.'**
-  String get duckWhenOthersTalkBody;
-
   /// No description provided for @autoStopCapture.
   ///
   /// In en, this message translates to:

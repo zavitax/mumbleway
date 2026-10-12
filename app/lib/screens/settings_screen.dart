@@ -392,7 +392,6 @@ class _DeviceSection extends StatelessWidget {
         const _NormaliseTile(),
         const _JitterBufferTile(),
         const _ReverbTile(),
-        if (Platform.isAndroid) const _DuckOthersTile(),
         const _TestOutputTile(),
       ],
     );
@@ -699,42 +698,6 @@ class _TapToCaptureTile extends StatelessWidget {
         );
       },
     );
-  }
-}
-
-/// Lower other apps' audio while another rider is talking.
-///
-/// **Android only, because only there can a duck be withdrawn.** Ducking is an
-/// audio-focus lease: holding the focus *is* the duck, giving it back stops it,
-/// and the gain the other app receives is a documented cue to come back up. So
-/// the duck can follow the voices.
-///
-/// iOS cannot do it at all, and the attempt shipped as a regression — on a
-/// Bluetooth headset, changing the category of a live session to apply the
-/// duck dropped the A2DP output the rider's music was playing on and stopped
-/// it for good. There the duck is a property of the whole session, the two
-/// shapes available are "all call" and "never", and it is never:
-/// `AudioSession.swift`'s `setCapturingCategory` carries the mechanism and
-/// `docs/CAPTURE_ON_DEMAND.md` both halves.
-///
-/// Desktop has no session to configure and nothing contending for the
-/// microphone, so there is nothing behind it there either.
-class _DuckOthersTile extends StatelessWidget {
-  const _DuckOthersTile();
-
-  @override
-  Widget build(BuildContext context) {
-    return Watch<bool>((state) => state.duckWhenOthersTalk, (context, state) {
-      final l = L.of(context);
-      return SwitchListTile(
-        secondary: const Icon(Icons.music_note),
-        title: Text(l.duckWhenOthersTalk),
-        subtitle: Text(l.duckWhenOthersTalkBody),
-        isThreeLine: true,
-        value: state.duckWhenOthersTalk,
-        onChanged: (v) => state.updateDuckWhenOthersTalk(v),
-      );
-    });
   }
 }
 

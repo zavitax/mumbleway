@@ -4,9 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioRecordingConfiguration
 import android.os.Build
@@ -42,9 +40,6 @@ class AudioRouting(private val context: Context) {
     private var previousMode: Int = AudioManager.MODE_NORMAL
     private var active = false
 
-    /** Held for as long as the route is, and given back with it. */
-    private var focusRequest: AudioFocusRequest? = null
-
     /**
      * Told when another app takes the microphone out from under us.
      *
@@ -67,122 +62,37 @@ class AudioRouting(private val context: Context) {
     private var recordingCallback: AudioManager.AudioRecordingCallback? = null
 
     /**
-     * Whether another rider is being heard right now, cooldown included.
+     * **There is no audio-focus request in this class, and that is a
+     * withdrawal rather than an omission.**
      *
-     * **Set from Dart, which holds the whole of the decision.** The signal is
-     * per-speaker levels arriving ten times a second and a fifteen-second
-     * timer re-armed by every voice, both of which belong with the levels
-     * rather than here — and both of which the iOS side already uses, so the
-     * two platforms duck on exactly the same signal rather than on two
-     * implementations of it.
+     * It held `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` from [activate] to
+     * [deactivate] for months, which asks the system to turn other apps down
+     * while it is held. A rider reported the consequence: music quieter for
+     * the whole ride with nobody talking for any of it. Holding the focus *is*
+     * the duck — the three gain types mean stop, pause and duck, and none of
+     * them is "I hold focus and you carry on at full volume" — so there was
+     * nothing to switch off except the lease itself.
      *
-     * Remembered rather than acted on and forgotten, because the focus is
-     * given back whenever the profile is, and has to be taken again when the
-     * profile comes back mid-conversation.
+     * It then became per-utterance, taken as people spoke and given back
+     * fifteen seconds after the last voice, which works on this platform:
+     * focus is orthogonal to the route, so unlike iOS nothing about the input
+     * could be disturbed by it. That version was never published. **The iOS
+     * half of the same feature stopped a rider's background audio for good**
+     * (see `AudioSession.swift`'s `setCapturingCategory`), and with the
+     * feature gone there the rider asked for it gone here too, which leaves
+     * one behaviour to explain instead of two.
+     *
+     * The evidence that it was worth having was never there either, in the
+     * only form that counts — a rider who heard both said the mix is fine
+     * without it: *"we normalize incoming speaker audio, so it mixes nicely
+     * with the music"*.
+     *
+     * So other apps now play at their own volume through a call. One thing
+     * this does not control and should not be mistaken for ducking:
+     * `MODE_IN_COMMUNICATION` reroutes and on many devices attenuates other
+     * apps' media by itself — see [deactivate] on why a phone must not be
+     * left in it. `docs/CAPTURE_ON_DEMAND.md` has both halves of the story.
      */
-    private var othersTalking = false
-
-    /**
-     * Takes the focus, or gives it back, to match the three facts that decide
-     * it.
-     *
-     * **The whole of the ducking policy on this platform**, and the only
-     * writer of the focus — the one place that knows that ducking here is a
-     * lease rather than a switch. Idempotent either way: both calls below
-     * return at once when there is nothing to do, so this can be called from
-     * anywhere that changes one of the three.
-     *
-     * `capturing` is in the condition so that this matches the iOS side,
-     * where the listening session carries no `.duckOthers` at all: pocket mode
-     * waiting for a tap has nobody to talk over, and quietening a rider's
-     * music for the whole ride is the fault this feature is recovering from.
-     */
-    private fun applyMusicFocus() {
-        if (active && capturing && othersTalking) {
-            requestMusicFocus()
-        } else {
-            abandonMusicFocus()
-        }
-    }
-
-    /**
-     * Another rider started or stopped being heard.
-     *
-     * Edge-triggered by the caller and again here, because requesting focus is
-     * not free: every request and release sends a focus-change callback to
-     * whatever is playing, and an app that pauses rather than ducks would stop
-     * and start on each one.
-     */
-    fun setOthersTalking(talking: Boolean) {
-        if (othersTalking == talking) return
-        othersTalking = talking
-        applyMusicFocus()
-    }
-
-    /**
-     * Asks the system to duck music rather than stop it, and keeps holding the
-     * microphone when it will not.
-     *
-     * `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` is the whole choice here. Plain
-     * `AUDIOFOCUS_GAIN` would tell the other app to stop, which is not what a
-     * rider wants from an intercom: they are listening to something and would
-     * like to keep listening to it between sentences. This asks for it to be
-     * turned down instead, which is what the iOS side gets from `.duckOthers`.
-     *
-     * **Held per utterance, not for the session.** It used to be taken in
-     * [activate] and given back in [deactivate], and that is the bug: there is
-     * no gain type that means "I hold focus and you carry on at full volume",
-     * so holding it at all *is* the duck. A rider reported the consequence —
-     * music quieter for the whole ride, with nobody talking for any of it.
-     * Abandoning the focus is therefore the only way to stop ducking, which is
-     * why the request moved onto [setOthersTalking] rather than onto an option
-     * somewhere.
-     *
-     * **Losing focus does not release the microphone.** That is deliberate and
-     * it is the Android half of a fault reported on iOS: something else
-     * starting audio must not end up silencing a rider mid-ride, with the only
-     * symptom being that nobody answers. A call outlives another app's music.
-     * The listener exists so the loss is recorded rather than acted on — which
-     * is also what makes giving the focus back between sentences safe, since
-     * nothing in this app reacts to holding it or not.
-     *
-     * Not fatal if refused. Another app can hold focus exclusively, and the
-     * right response is a call with music over the top of it, not no call. The
-     * next voice asks again, because the cooldown clears the request first.
-     */
-    private fun requestMusicFocus() {
-        if (focusRequest != null) return
-        val request =
-            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                )
-                // Nothing here waits for focus, so a delayed grant would arrive
-                // after the call it was for.
-                .setAcceptsDelayedFocusGain(false)
-                .setOnAudioFocusChangeListener { change ->
-                    Log.i(TAG, "audio focus changed: $change (the call keeps the microphone)")
-                }
-                .build()
-        focusRequest = request
-        val granted = audio.requestAudioFocus(request)
-        if (granted != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
-            Log.i(TAG, "audio focus refused ($granted); carrying on without ducking")
-        }
-    }
-
-    private fun abandonMusicFocus() {
-        val request = focusRequest ?: return
-        focusRequest = null
-        try {
-            audio.abandonAudioFocusRequest(request)
-        } catch (e: Exception) {
-            Log.w(TAG, "could not give back audio focus", e)
-        }
-    }
 
     /**
      * Takes the route for a call, reporting when the microphone is actually
@@ -269,9 +179,11 @@ class AudioRouting(private val context: Context) {
      * Takes the session, and the profile with it unless capture is on demand.
      *
      * **The split is along session versus profile**, and on Android it falls out
-     * almost for free: focus and the saved mode are the session, while
+     * almost for free: the saved mode is the session, while
      * `MODE_IN_COMMUNICATION` and the communication device *are* the hands-free
-     * profile. See `docs/CAPTURE_ON_DEMAND.md`.
+     * profile. See `docs/CAPTURE_ON_DEMAND.md`. Audio focus used to be the
+     * other half of "the session"; the comment above `activate` says where it
+     * went.
      *
      * **This always takes capture**, and the `captureOnDemand` that stopped at
      * the listening state is gone. It made connecting the moment that decided
@@ -312,11 +224,6 @@ class AudioRouting(private val context: Context) {
             return
         }
         capturing = true
-        // Before the mode change, so that if somebody is already talking —
-        // capture starting mid-conversation is the ordinary case in pocket
-        // mode — whatever is playing is already ducking by the time the route
-        // moves under it.
-        applyMusicFocus()
         audio.mode = AudioManager.MODE_IN_COMMUNICATION
         watchForSilencing()
 
@@ -358,10 +265,6 @@ class AudioRouting(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "could not leave communication mode", e)
         }
-        // After the mode change, so the music comes back up to a phone that has
-        // already stopped being a telephone — the same order [deactivate] uses
-        // and for the same reason.
-        applyMusicFocus()
         routeCode = currentRouteCode()
     }
 
@@ -402,12 +305,6 @@ class AudioRouting(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "could not restore the audio mode", e)
         }
-        // Last, so music comes back up to a phone that has already stopped
-        // being a telephone. Unconditionally rather than through
-        // [applyMusicFocus]: a session ending while somebody is still talking
-        // must not leave the focus held, and `othersTalking` is deliberately
-        // left standing so that reconnecting mid-conversation ducks again.
-        abandonMusicFocus()
     }
 
     /**

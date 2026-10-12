@@ -1,5 +1,5 @@
-Still 1.2.0. Ducking: Android gets it, iPhone loses it.
+Still 1.2.0. No app lowers your music any more.
 
-On iPhone, lowering music while somebody talks means changing the audio session mid-call, and on a Bluetooth headset that stopped your background audio for good — build 184's fault. There is no way to do it without that, so the iPhone no longer lowers anything: music plays at full volume, and voices are normalised to carry over it.
+Ducking is gone from both phones. On iPhone it could not be turned off and on again mid-call without dropping the Bluetooth output your music was playing on — build 184 stopped background audio for good, and that is fixed by removing it. On Android it worked, and went with it so there is one behaviour rather than two.
 
-On Android it works as described: quieter while somebody talks, back up fifteen seconds after.
+So music plays at its own volume through a call, and voices are levelled to carry over it.

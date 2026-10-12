@@ -665,22 +665,29 @@ so there is no new consent surface, but the document should say so rather than i
 - **Per-utterance audio focus.** Focus is held for the whole session and
   `TRANSIENT_MAY_DUCK` / `.duckOthers` duck other apps for as long as it is held, so in the
   listening state music returns to full *bandwidth* but may stay at ducked *level*. If that
-  matters, the answer is per-utterance focus — a separate change. **It mattered; it shipped
-  on Android on 2026-10-12 and could not be made to work on iOS at all. See [Ducking per
-  utterance](#ducking-per-utterance-and-why-only-android-can) below.**
+  matters, the answer is per-utterance focus — a separate change. **It mattered, it was
+  built for both platforms on 2026-10-12, and ducking was then withdrawn altogether. See
+  [Ducking: withdrawn](#ducking-withdrawn-on-both-platforms) below.**
 - **Fixing the music gate.** `MUSIC_GATE.md` stays open; nothing here improves or worsens
   it.
 - **GPS for speed** — a location permission this app has deliberately never requested,
   against a no-telemetry promise.
 
-## Ducking per utterance, and why only Android can
+## Ducking: withdrawn, on both platforms
 
 Written 2026-10-12, after a rider reported the fault the bullet above predicted:
 *"music seems to play with good quality but significantly quieter"* while pocket mode was
-listening. It was the same complaint in both halves of the platform. Android can answer
-it. **iOS cannot, and the attempt shipped as a worse bug than the one it fixed** — the
-section below it is the retraction, kept because the reasoning was sound and would be
-re-derived by anybody reading only the API.
+listening. Three versions of an answer were built in one day. **The feature is now gone
+from both platforms**, and this section is the record of why — kept rather than deleted
+because every version of it was reasonable from the API alone, and the next reader would
+re-derive them in the same order.
+
+The short form: on iOS a duck cannot be withdrawn without dropping other apps' output
+route; on Android it can, cleanly, and it went too so that there is one behaviour to
+explain instead of two. Other apps now play at their own volume through a call, and
+incoming speech is normalised to carry over them — which is the only arrangement a rider
+has said works: *"the mix seems fine since we normalize incoming speaker audio, so it
+mixes nicely with the music"*.
 
 ### What was wrong, and it is not a tuning question
 
@@ -748,7 +755,7 @@ arrive. It is driven by speech arriving rather than by silence arriving: the eng
 reporting levels a second or so after the last speaker empties, so there is no "nobody is
 talking" event to hang it on, and a timer re-armed by every voice needs none.
 
-### Android: there is no option, so the lease is held per utterance
+### Android could do it, and it went anyway
 
 **There is no "duck others" to switch on Android.** Ducking is a consequence of *holding
 focus*, and the three gain types say stop (`AUDIOFOCUS_GAIN`), pause
@@ -756,25 +763,29 @@ focus*, and the three gain types say stop (`AUDIOFOCUS_GAIN`), pause
 focus and you carry on at full volume", so **the only way to stop ducking is to abandon
 the focus**, and the only way to start again is to request it.
 
-`AudioRouting.kt` used to request it in `activate` and abandon it in `deactivate`, which
-is the same standing duck by a different road: the whole session, listening included. So
-the request moved onto the signal instead. `setOthersTalking` on the
-`mumbleway/audioSession` channel — which Dart was already sending, and which Android
-answered `notImplemented` into the bridge's `catch` — now reaches `applyMusicFocus`, and
-that is the only writer of the focus:
+`AudioRouting.kt` requested it in `activate` and abandoned it in `deactivate`, which is
+the same standing duck by a different road: the whole session, listening included. The
+replacement moved the request onto the signal instead — `setOthersTalking` on the
+`mumbleway/audioSession` channel reaching one writer of the focus:
 
 ```kotlin
 if (active && capturing && othersTalking) requestMusicFocus() else abandonMusicFocus()
 ```
 
-`capturing` is in the condition because the listening state is where the whole-ride
-complaint came from. The ordering is the mirror of `deactivate`'s: the focus
-is taken *before* `MODE_IN_COMMUNICATION` so that whatever is playing is already ducking
-by the time the route moves under it, and given back *after* leaving it, so the music
-comes back up to a phone that has stopped being a telephone.
+`capturing` was in the condition because the listening state is where the whole-ride
+complaint came from. The ordering mirrored `deactivate`'s: the focus taken *before*
+`MODE_IN_COMMUNICATION` so that whatever was playing was already ducking by the time the
+route moved under it, and given back *after* leaving it, so the music came back up to a
+phone that had stopped being a telephone.
 
-Three things make it more than a transliteration of what iOS was asked to do, and they
-are what to listen for:
+**It compiled, it was never published, and the class now holds no focus request at all.**
+With the feature gone on iOS the rider asked for it gone here too. That is a defensible
+trade rather than a loss: the thing Android could do and iOS could not was worth having
+only if ducking itself was worth having, and the only rider who has heard every version
+says it is not.
+
+Three things made it more than a transliteration of what iOS was asked to do, and they
+are what to listen for if it is ever wanted back:
 
 - **Some apps pause instead of ducking.** An app that sets `setWillPauseWhenDucked(true)`
   stops on a duck and resumes on the gain, so flapping the focus could stop and start it
@@ -803,10 +814,11 @@ make a microphone exist, and neither of them is focus — so toggling the duck h
 move a route, ours or anybody else's. On iOS the duck and the route are decided by the
 same call, which is the whole of why that half had to be withdrawn.
 
-### What the Android half still has to be measured against
+### What to measure if ducking is ever wanted again
 
-Reasoned from the API and pushed, like the iOS half, because none of it compiles or runs
-on the development machine. Each of these needs a phone, a helmet intercom and something
+Nothing here was measured, which is the honest reason the Android half was cheap to give
+up: it was reasoned from the API, like the iOS half, because none of it runs on the
+development machine. Each of these needs a phone, a helmet intercom and something
 playing; `adb logcat -s MumbleWay` logs every focus call, and the ear decides the rest.
 
 1. **Does the music come back between utterances at all?** The system ducks on behalf of

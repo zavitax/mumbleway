@@ -2305,13 +2305,6 @@ class LEn extends L {
   String get pocketTutorialStart => 'Start pocket mode';
 
   @override
-  String get duckWhenOthersTalk => 'Lower music when others talk';
-
-  @override
-  String get duckWhenOthersTalkBody =>
-      'Music and other apps drop while another rider is talking, and come back about fifteen seconds after the last voice. With this off they play at full volume and a voice has to carry over them. Nothing is lowered while pocket mode is only listening for taps.';
-
-  @override
   String get autoStopCapture => 'Close the microphone after a pause';
 
   @override

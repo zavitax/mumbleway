@@ -392,7 +392,7 @@ class _DeviceSection extends StatelessWidget {
         const _NormaliseTile(),
         const _JitterBufferTile(),
         const _ReverbTile(),
-        if (Platform.isAndroid || Platform.isIOS) const _DuckOthersTile(),
+        if (Platform.isAndroid) const _DuckOthersTile(),
         const _TestOutputTile(),
       ],
     );
@@ -704,17 +704,21 @@ class _TapToCaptureTile extends StatelessWidget {
 
 /// Lower other apps' audio while another rider is talking.
 ///
-/// **Both phones, by two different mechanisms, from one signal.** On iOS the
-/// duck is a category option applied to a live session; on Android it is an
-/// audio-focus lease, where holding the focus *is* the duck and the only way
-/// to stop ducking is to give it back. So the platform sides share nothing but
-/// the question they are asked — is somebody talking — and the fifteen-second
-/// tail that answers it, which lives in `AppState` beside the levels that
-/// decide it. `docs/CAPTURE_ON_DEMAND.md` has the mechanics of both and what
-/// the Android half still has to be measured against.
+/// **Android only, because only there can a duck be withdrawn.** Ducking is an
+/// audio-focus lease: holding the focus *is* the duck, giving it back stops it,
+/// and the gain the other app receives is a documented cue to come back up. So
+/// the duck can follow the voices.
+///
+/// iOS cannot do it at all, and the attempt shipped as a regression — on a
+/// Bluetooth headset, changing the category of a live session to apply the
+/// duck dropped the A2DP output the rider's music was playing on and stopped
+/// it for good. There the duck is a property of the whole session, the two
+/// shapes available are "all call" and "never", and it is never:
+/// `AudioSession.swift`'s `setCapturingCategory` carries the mechanism and
+/// `docs/CAPTURE_ON_DEMAND.md` both halves.
 ///
 /// Desktop has no session to configure and nothing contending for the
-/// microphone, so there is nothing behind it there.
+/// microphone, so there is nothing behind it there either.
 class _DuckOthersTile extends StatelessWidget {
   const _DuckOthersTile();
 

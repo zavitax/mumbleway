@@ -285,12 +285,22 @@ class AudioSessionBridge {
   /// stops when it goes false. Who is speaking, and how long the duck outlives
   /// them, is decided in `AppState`, where the per-speaker levels arrive.
   ///
-  /// Applied at once on a live session — `setCategory` is documented to take
-  /// effect immediately while active — so this is on the path of an ordinary
-  /// transmission rather than something read at the next transition.
+  /// **Android only, and that is a platform difference rather than an
+  /// omission.** There ducking is an audio-focus lease: it can be taken and
+  /// given back while a call is running, and giving it back is a documented
+  /// cue for the other app to come back up.
+  ///
+  /// On iOS the duck is a category option, and changing a category on a live
+  /// session makes the system decide the route again — which on a Bluetooth
+  /// headset drops the A2DP output the rider's music was playing on and stops
+  /// it for good. Measured on build 184. `AudioSession.swift`'s
+  /// `setCapturingCategory` has the mechanism; the iOS side now never ducks.
   Future<void> setOthersTalking(bool talking) async {
+    // Through [isNeeded] first, which is the one place that copes with a test
+    // harness where `Platform` itself is unavailable.
     if (!isNeeded) return;
     try {
+      if (!Platform.isAndroid) return;
       await _channel.invokeMethod<bool>('setOthersTalking', talking);
     } catch (_) {
       // An older platform side, or a desktop with no session to configure.

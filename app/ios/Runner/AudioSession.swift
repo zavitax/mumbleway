@@ -34,13 +34,10 @@ final class AudioSession {
         let args = call.arguments as? [String: Any]
         self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
         self.activateForCall(result)
-      case "setOthersTalking":
-        let on = call.arguments as? Bool ?? false
-        if on != self.othersTalking {
-          self.othersTalking = on
-          self.applyDucking()
-        }
-        result(true)
+      // No `setOthersTalking` here, and `setCapturingCategory` says why: on
+      // this platform the duck cannot be changed on a live session without
+      // taking another app's playback down with it. Dart sends the signal to
+      // Android only.
       case "startCapture":
         self.startCapture(result)
       case "stopCapture":
@@ -333,23 +330,6 @@ final class AudioSession {
   /// Apple's echo cancellation — and what it costs is in `activate` below.
   private var voiceProcessing = false
 
-  /// Whether another rider is being heard right now, cooldown included.
-  ///
-  /// **The whole of the ducking decision**, and the reason ducking is no
-  /// longer a standing category option. A standing option is a standing duck:
-  /// Apple's wording is that ducking "begins when you activate your app's
-  /// audio session and ends when you deactivate the session", so listing it
-  /// once lowered a rider's music for every second of a call. One reported
-  /// precisely that.
-  ///
-  /// Set from Dart, which knows who is speaking and holds the cooldown — the
-  /// signal is per-speaker levels arriving twenty times a second, and the
-  /// hysteresis belongs with the signal rather than here.
-  ///
-  /// **The listening session never ducks at all**, whatever this says. There
-  /// is nobody to talk over while pocket mode waits for a tap, and the only
-  /// thing a duck achieves there is quiet music for the whole ride.
-  private var othersTalking = false
 
   /// Whether a retry of [preferHandsFreeInput] is already scheduled.
   ///
@@ -467,31 +447,55 @@ final class AudioSession {
     preferHandsFreeInput()
   }
 
-  /// The capturing category, on its own, so a duck can be applied to a
-  /// session that is already live without touching the route.
+  /// The capturing category, set once per transition and never re-set live.
   ///
-  /// Shared with `activate` rather than copied: two lists of category
-  /// options for one session is the shape of fault this feature has had
-  /// most of, and the one that would show up as ducking quietly reverting
-  /// whatever else changed.
+  /// Factored out of `activate` rather than copied: two lists of category
+  /// options for one session is the shape of fault this feature has had most
+  /// of.
   private func setCapturingCategory() throws {
     let session = AVAudioSession.sharedInstance()
-    // **Ducking is no longer a standing option.** It used to be listed
-    // here unconditionally, which meant the rider's music was quieter for
-    // every second of a call rather than while somebody was talking —
-    // Apple's own wording is that ducking "begins when you activate your
-    // app's audio session and ends when you deactivate the session", so a
-    // standing option is a standing duck.
+    // **There is no `.duckOthers` here, and this is the retraction of a
+    // build that put one in.**
     //
-    // So it is applied and withdrawn as people speak, which `setCategory`
-    // supports on a live session: "you can also set the category or mode
+    // The reasoning was sound and the measurement killed it. A standing
+    // option is a standing duck — Apple's wording is that ducking "begins
+    // when you activate your app's audio session and ends when you
+    // deactivate the session" — so a rider's music was quieter for every
+    // second of a call. The fix looked obvious: `setCategory` is documented
+    // to work on a live session, "you can also set the category or mode
     // while the session is active, but doing so results in an immediate
-    // change". See `applyDucking`, and `othersTalking` for who decides.
+    // change", so the duck was applied and withdrawn as people spoke.
+    //
+    // On a Bluetooth headset that **stops the rider's background audio
+    // permanently.** Reported from build 184: another party spoke, and
+    // whatever was playing stopped and never came back. Only on the headset
+    // mic — on the phone's own microphone nothing happened at all.
+    //
+    // Which says what it is. This option set deliberately excludes
+    // `.allowBluetoothA2DP` — see the comment on it below, and the Cardo
+    // Edge Pro bug it exists for — and re-setting the category forces iOS to
+    // decide the route again from the permitted set. The A2DP output the
+    // music was playing on is not in that set, so it goes, the music app
+    // sees its output route disappear, and it pauses exactly as Apple's own
+    // guidance tells it to on `oldDeviceUnavailable`. Nothing resumes it:
+    // `newDeviceAvailable` is not a resume cue, and the one signal that is —
+    // `.notifyOthersOnDeactivation` — can only be passed on an explicit
+    // `setActive(false, …)`, which this must never do mid-call because
+    // deactivating stops the audio unit the engine has a stream open on.
+    //
+    // So the duck is a property of the session's lifetime on this platform,
+    // and the only two shapes available are "for the whole session" and
+    // "never". It is never, because a rider who heard both said the mix is
+    // fine without it: incoming speech is normalised and carries over music.
+    // Android is different in kind — there ducking is an audio-focus lease
+    // that can be taken and given back per utterance, with a documented
+    // resume cue — and it keeps the feature. `docs/CAPTURE_ON_DEMAND.md` has
+    // both halves.
     //
     // Built as a typed value rather than a literal with `.union` chained
     // on: that costs the literal its contextual type, Swift infers `[Any]`
     // and refuses every member. This file has eaten that mistake twice.
-    var options: AVAudioSession.CategoryOptions = [
+    let options: AVAudioSession.CategoryOptions = [
         // Helmet intercoms are HFP devices. Without this they are not offered
         // as an input at all, and the phone quietly records from its own
         // microphone inside a helmet at seventy miles an hour.
@@ -536,9 +540,6 @@ final class AudioSession {
         // which is why it survived that fix.
         .mixWithOthers,
     ]
-    if othersTalking {
-      options.insert(.duckOthers)
-    }
     try session.setCategory(
       .playAndRecord,
       // **`.voiceChat` was tried, and it clipped the microphone.**
@@ -629,36 +630,6 @@ final class AudioSession {
       // refusing to start a call over a preference is worse than the
       // preference being ignored.
       NSLog("MumbleWay: could not prefer the Bluetooth input: \(error)")
-    }
-  }
-
-  /// Applies the duck, or withdraws it, on a session that is already live.
-  ///
-  /// **Only the category, deliberately.** `activateCapturing` would also call
-  /// `setActive` and `preferHandsFreeInput`, and the latter sets a preferred
-  /// input — which posts a route change of its own and is the shape of the
-  /// self-sustaining loop this file has produced four times. A duck that
-  /// toggles as people speak must not touch the route, so this re-sets the
-  /// category and nothing else.
-  ///
-  /// `setCategory` is documented to support exactly this: "you can also set
-  /// the category or mode while the session is active, but doing so results in
-  /// an immediate change". The route-change notification it posts carries
-  /// reason `.categoryChange`, which `CaptureReconciler` answers with `.none`
-  /// because neither the category nor the hands-free bit has moved.
-  ///
-  /// Capturing only. The listening session never ducks, so there is nothing to
-  /// apply there and re-setting its category would be churn for nothing.
-  private func applyDucking() {
-    guard wantedActive, capturing else { return }
-    do {
-      try setCapturingCategory()
-    } catch {
-      // Not fatal, and not worth interrupting a call over: the worst case is
-      // music at the wrong volume until the next transition.
-      channel.invokeMethod(
-        "sessionEvent",
-        arguments: "could not change ducking: \(error.localizedDescription)")
     }
   }
 

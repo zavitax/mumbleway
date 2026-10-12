@@ -1,5 +1,5 @@
-Still 1.2.0. Ducking rebuilt, and switched back on.
+Still 1.2.0. Ducking: Android gets it, iPhone loses it.
 
-Music now drops while another rider is talking and returns about fifteen seconds after the last voice. Before, asking the phone to duck lowered it from the moment the microphone opened until it closed, so the last build offered a switch to turn it off. That switch stays, on by default now that it means what it says.
+On iPhone, lowering music while somebody talks means changing the audio session mid-call, and on a Bluetooth headset that stopped your background audio for good — build 184's fault. There is no way to do it without that, so the iPhone no longer lowers anything: music plays at full volume, and voices are normalised to carry over it.
 
-Nothing is lowered while pocket mode only listens for taps.
+On Android it works as described: quieter while somebody talks, back up fifteen seconds after.

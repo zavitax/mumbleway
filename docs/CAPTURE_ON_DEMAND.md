@@ -665,20 +665,22 @@ so there is no new consent surface, but the document should say so rather than i
 - **Per-utterance audio focus.** Focus is held for the whole session and
   `TRANSIENT_MAY_DUCK` / `.duckOthers` duck other apps for as long as it is held, so in the
   listening state music returns to full *bandwidth* but may stay at ducked *level*. If that
-  matters, the answer is per-utterance focus — a separate change. **It mattered, and that
-  change shipped on both platforms on 2026-10-12; see [Ducking per
-  utterance](#ducking-per-utterance-on-both-platforms) below.**
+  matters, the answer is per-utterance focus — a separate change. **It mattered; it shipped
+  on Android on 2026-10-12 and could not be made to work on iOS at all. See [Ducking per
+  utterance](#ducking-per-utterance-and-why-only-android-can) below.**
 - **Fixing the music gate.** `MUSIC_GATE.md` stays open; nothing here improves or worsens
   it.
 - **GPS for speed** — a location permission this app has deliberately never requested,
   against a no-telemetry promise.
 
-## Ducking per utterance, on both platforms
+## Ducking per utterance, and why only Android can
 
 Written 2026-10-12, after a rider reported the fault the bullet above predicted:
 *"music seems to play with good quality but significantly quieter"* while pocket mode was
-listening. It was the same complaint in both halves of the platform, and both halves are
-now answered from one signal — by two mechanisms that have almost nothing in common.
+listening. It was the same complaint in both halves of the platform. Android can answer
+it. **iOS cannot, and the attempt shipped as a worse bug than the one it fixed** — the
+section below it is the retraction, kept because the reasoning was sound and would be
+re-derived by anybody reading only the API.
 
 ### What was wrong, and it is not a tuning question
 
@@ -691,29 +693,60 @@ nobody talking for any of it.
 The first answer was a switch to turn it off, off by default. That is a worse app for
 everyone who wanted the feature, so it lasted one build.
 
-### The iOS answer: the option is applied and withdrawn as people speak
+### The iOS attempt, and the measurement that withdrew it
 
-`setCategory` is documented to work on a live session — "you can also set the category or
-mode while the session is active, but doing so results in an immediate change" — so the
-duck does not have to be a property of the session's lifetime. `AudioSession.swift` holds
-an `othersTalking` flag, `applyDucking` re-sets the capturing category when it moves, and
-the setting (*Lower music when others talk*) is on by default because it now means what
-its label says.
+**Build 184, withdrawn in 185.** The reasoning: `setCategory` is documented to work on a
+live session — "you can also set the category or mode while the session is active, but
+doing so results in an immediate change" — so the duck need not be a property of the
+session's lifetime. `AudioSession.swift` held an `othersTalking` flag and re-set the
+capturing category when it moved. The category only, deliberately: `activate` also calls
+`setActive` and `preferHandsFreeInput`, and a preferred input posts a route change, which
+is the self-sustaining loop this file has produced four times.
 
-Two constraints, both learned here:
+It worked on the phone's own microphone and it was fine for *our* route. What it did to
+everybody else's, reported from the ride:
 
-- **Only the category.** `activate` also calls `setActive` and `preferHandsFreeInput`, and
-  a preferred input posts a route change — the shape of the self-sustaining loop this file
-  has produced four times. A duck that toggles as people speak must not touch the route.
-  `CaptureReconciler` answers the `.categoryChange` notification with `.none` because
-  neither the category nor the hands-free bit has moved.
-- **The listening session never ducks at all.** There is nobody to talk over while pocket
-  mode waits for a tap, which is the entire complaint.
+> when another party spoke, background audio stopped completely and never resumed
+>
+> only when listening to headset mic in pocket mode (or non pocket mode)
 
-The fifteen-second tail lives in Dart, where the per-speaker levels arrive, and is driven
-by speech arriving rather than by silence arriving — the engine stops reporting levels a
-second or so after the last speaker empties, so there is no "nobody is talking" event to
-hang it on. A timer re-armed by every voice needs none.
+**That last line is the diagnosis.** The capturing option set deliberately excludes
+`.allowBluetoothA2DP` — see the comment on it in `setCapturingCategory`, and the Cardo
+Edge Pro bug it exists for — and re-setting the category makes iOS decide the route again
+*from the permitted set*. The A2DP output the music was playing on is not in that set, so
+it goes; the music app sees its output route disappear and pauses exactly as Apple's
+guidance tells it to on `oldDeviceUnavailable`; and nothing brings it back.
+`newDeviceAvailable` is not a resume cue — *Responding to audio route changes* frames it
+as the user's intent to keep listening, not as permission to restart — and the one signal
+that is a resume cue, `.notifyOthersOnDeactivation`, can only be passed on an explicit
+`setActive(false, …)`, which must never happen mid-call because deactivating stops the
+audio unit the engine has a stream open on.
+
+So on iOS the duck is a property of the session's lifetime after all, and the only two
+shapes available are **for the whole session** and **never**:
+
+| | music while capturing | music while listening |
+|---|---|---|
+| standing `.duckOthers` | quiet all call | quiet all ride — the original complaint |
+| live toggle | **stopped for good on a headset** | untried, and the same mechanism |
+| none | full volume | full volume |
+
+It is **none**. The rider who heard both said the mix is fine without it — *"the mix seems
+fine since we normalize incoming speaker audio, so it mixes nicely with the music"* —
+which is the only evidence anybody has that the feature was worth having, and it says it
+was not.
+
+What is *not* ruled out, and is the one thing left to try if ducking on iOS is ever wanted
+again: toggling the **listening** category live, which unlike the capturing one already
+permits A2DP, so a fresh route decision has no reason to drop it. That is also the state
+where music actually plays at full bandwidth and a voice has to carry over it, so it is
+the only state where the duck would be worth the risk. Untried on purpose — the listening
+state is the one that works today.
+
+The fifteen-second tail survives all of this, in Dart, where the per-speaker levels
+arrive. It is driven by speech arriving rather than by silence arriving: the engine stops
+reporting levels a second or so after the last speaker empties, so there is no "nobody is
+talking" event to hang it on, and a timer re-armed by every voice needs none.
 
 ### Android: there is no option, so the lease is held per utterance
 
@@ -734,20 +767,21 @@ that is the only writer of the focus:
 if (active && capturing && othersTalking) requestMusicFocus() else abandonMusicFocus()
 ```
 
-`capturing` is in the condition so that this matches iOS, where the listening session
-carries no `.duckOthers` at all. The ordering is the mirror of `deactivate`'s: the focus
+`capturing` is in the condition because the listening state is where the whole-ride
+complaint came from. The ordering is the mirror of `deactivate`'s: the focus
 is taken *before* `MODE_IN_COMMUNICATION` so that whatever is playing is already ducking
 by the time the route moves under it, and given back *after* leaving it, so the music
 comes back up to a phone that has stopped being a telephone.
 
-Three things make it more than a transliteration of the iOS change, and they are what to
-listen for rather than reasons not to have done it:
+Three things make it more than a transliteration of what iOS was asked to do, and they
+are what to listen for:
 
 - **Some apps pause instead of ducking.** An app that sets `setWillPauseWhenDucked(true)`
   stops on a duck and resumes on the gain, so flapping the focus could stop and start it
   per conversation — where the standing duck at least paused it once. The fifteen-second
-  tail is most of the defence, and it is the same tail iOS uses. On iOS the risk does not
-  exist at all, because the duck is the system's and the other app is not consulted.
+  tail is most of the defence. On iOS the risk would not have existed at all, because
+  there the duck is the system's and the other app is never consulted — which is the same
+  property that made it impossible to withdraw.
 - **Focus can be refused.** If something takes exclusive focus while ours is let go, the
   next request returns `AUDIOFOCUS_REQUEST_FAILED`. Already handled — "carrying on without
   ducking" — and it self-heals, because the cooldown clears the request object and the
@@ -763,11 +797,11 @@ holding focus or not.** The listener only logs, deliberately — a call outlives
 app's music, and losing focus must never release the microphone — so there is no state to
 corrupt by letting the lease go and taking it again.
 
-And one thing is *easier* on Android, the mirror of the iOS constraint: focus is
-orthogonal to the route. `MODE_IN_COMMUNICATION` and the communication device are what
-make a microphone exist, and neither of them is focus — so unlike iOS, toggling the duck
-here cannot disturb the input at all, and the loop that shaped `applyDucking` has no
-surface.
+And one thing is *easier* on Android, which is exactly the property iOS lacked: **focus is
+orthogonal to the route.** `MODE_IN_COMMUNICATION` and the communication device are what
+make a microphone exist, and neither of them is focus — so toggling the duck here cannot
+move a route, ours or anybody else's. On iOS the duck and the route are decided by the
+same call, which is the whole of why that half had to be withdrawn.
 
 ### What the Android half still has to be measured against
 

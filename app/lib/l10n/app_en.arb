@@ -1329,7 +1329,7 @@
   "pocketTutorialStart": "Start pocket mode",
   "duckWhenOthersTalk": "Lower music when others talk",
   "@duckWhenOthersTalk": {
-    "description": "Phones only, on by default. The duck is applied while another rider is being heard and withdrawn fifteen seconds after the last voice, rather than lasting for the whole call. A category option on iOS, an audio-focus lease on Android"
+    "description": "Android only, on by default. Audio focus is held while another rider is being heard and given back fifteen seconds after the last voice. iOS cannot withdraw a duck without dropping other apps' output route, so it does not duck at all"
   },
   "duckWhenOthersTalkBody": "Music and other apps drop while another rider is talking, and come back about fifteen seconds after the last voice. With this off they play at full volume and a voice has to carry over them. Nothing is lowered while pocket mode is only listening for taps.",
   "autoStopCapture": "Close the microphone after a pause",

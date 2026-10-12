@@ -1,5 +1,5 @@
-Still 1.2.0. Two fixes from your testing.
+Still 1.2.0. Three fixes from your testing.
 
-Your music is no longer quietened while pocket mode listens. Ducking does not begin when this app plays something — Apple's wording is that it begins when the session is activated and ends when it is deactivated, so a session sitting open for taps ducked your music all ride. Off while listening, kept while talking, which is where it earns its place.
+Your music is no longer quietened while pocket mode listens. Ducking does not begin when this app plays something — Apple's wording is that it begins when the session is activated — so a session held open to hear taps lowered your music all ride. A setting puts it back, and says plainly that it quietens the whole ride, not only while somebody talks.
 
 And a dropped connection no longer leaves the screen locked with the slider gone.

@@ -1,5 +1,5 @@
-Still 1.2.0. No app lowers your music any more.
+Still 1.2.0. A row of lamps that says where a tap is lost.
 
-Ducking is gone from both phones. On iPhone it could not be turned off and on again mid-call without dropping the Bluetooth output your music was playing on — build 184 stopped background audio for good, and that is fixed by removing it. On Android it worked, and went with it so there is one behaviour rather than two.
+Pocket mode shows nine dots, in the order a tap passes them: in, band, hear, floor, marg, atk, fall, tail, tap. Each is lit while that step is passing signal on, so the row stops where your taps are being lost. Also in Diagnostics, above the tap numbers.
 
-So music plays at its own volume through a call, and voices are levelled to carry over it.
+And nothing lowers your music any more — ducking is gone from both phones, after it stopped background audio for good on build 184.

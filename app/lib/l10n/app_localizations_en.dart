@@ -2274,7 +2274,7 @@ class LEn extends L {
 
   @override
   String get pocketModeBody =>
-      'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking, three times again to stop. Music stays at full quality while nobody is talking.';
+      'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking; it closes itself again after a stretch of not talking. Music stays at full quality while nobody is talking.';
 
   @override
   String get pocketSlideOn => 'Slide right to enable pocket mode';
@@ -2287,8 +2287,9 @@ class LEn extends L {
       'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.';
 
   @override
-  String get pocketOpenTapHelmet =>
-      'Microphone open — tap your helmet three times to stop';
+  String pocketOpenQuiet(int seconds) {
+    return 'Microphone open — stop talking for $seconds seconds and it closes';
+  }
 
   @override
   String get pocketOpenTapPhone =>
@@ -2318,7 +2319,7 @@ class LEn extends L {
 
   @override
   String get pocketTutorialTapsBody =>
-      'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. Three dots above the slider fill as each tap is counted, and on the phone\'s own speaker you will hear a tick for each one as well.';
+      'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three dots above the slider fill as each tap is counted, and you will hear a note for each one: three rising notes that make a chord when all three land.';
 
   @override
   String get pocketTutorialLockTitle => 'The screen locks itself';
@@ -2332,7 +2333,7 @@ class LEn extends L {
 
   @override
   String get pocketTutorialSoundBody =>
-      'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. There is no per-tap tick through a headset, because a helmet hears it through its own microphone and counts it as the next tap — so on a headset, watch the dots or just listen for the two tones.';
+      'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. Taps are heard by the phone\'s own microphone, so while a headset is carrying your voice, tapping does nothing — stop talking instead and the microphone hands itself back.';
 
   @override
   String get pocketTutorialNext => 'Next';
@@ -2341,11 +2342,11 @@ class LEn extends L {
   String get pocketTutorialStart => 'Start pocket mode';
 
   @override
-  String get autoStopCapture => 'Close the microphone after a pause';
+  String get captureIdle => 'Hand the microphone back after a silence';
 
   @override
-  String autoStopCaptureBody(int seconds) {
-    return 'Stops capturing after $seconds seconds with nobody talking, so you do not have to remember to tap again.';
+  String captureIdleBody(int seconds) {
+    return 'In pocket mode the microphone closes itself after $seconds seconds in which you have not spoken, and tapping the phone opens it again. This is the way back, because a tap on a helmet cannot be told from the road.';
   }
 
   @override

@@ -643,11 +643,10 @@ class _TapToCaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, bool, int, bool, MicMode)>(
+    return Watch<(bool, int, bool, MicMode)>(
       (state) => (
         state.pocketMode,
-        state.autoStopCapture,
-        state.autoStopSeconds,
+        state.captureIdleSeconds,
         state.canChangeMicMode,
         state.micMode,
       ),
@@ -684,14 +683,32 @@ class _TapToCaptureTile extends StatelessWidget {
                   : null,
             ),
             if (on) ...[
-              SwitchListTile(
-                secondary: const SizedBox(width: 24),
+              // **A duration where there was a switch.** It used to be
+              // optional, off by default, because the way out of capture was
+              // three taps on the helmet. That never worked, so this is the
+              // way out — and a way out is not a thing to be able to turn
+              // off.
+              ListTile(
                 contentPadding: const EdgeInsets.only(left: 72, right: 16),
-                title: Text(l.autoStopCapture),
-                subtitle: Text(l.autoStopCaptureBody(state.autoStopSeconds)),
+                title: Text(l.captureIdle),
+                subtitle: Text(l.captureIdleBody(state.captureIdleSeconds)),
                 isThreeLine: true,
-                value: state.autoStopCapture,
-                onChanged: (v) => state.updateAutoStopCapture(v),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 72, right: 16),
+                child: Slider(
+                  value: state.captureIdleSeconds.toDouble(),
+                  min: 10,
+                  max: 120,
+                  // Five-second steps: the difference between thirty and
+                  // thirty-one seconds of silence is not a thing anybody can
+                  // judge from a ride, and twenty-three stops are reachable
+                  // with gloves on.
+                  divisions: 22,
+                  label: '${state.captureIdleSeconds} s',
+                  onChanged: (v) =>
+                      state.updateCaptureIdleSeconds(v.round()),
+                ),
               ),
             ],
           ],

@@ -836,3 +836,93 @@ playing; `adb logcat -s MumbleWay` logs every focus call, and the ear decides th
 4. **Pumping.** Fifteen seconds was chosen so that a conversation does not turn the music
    into a volume pump. Whether that is long enough is an ear question, and it is one
    constant on both platforms: `_duckCooldown` in `app_state.dart`.
+
+## Tapping the helmet: removed, and what replaced it
+
+Written 2026-10-12, at the end of a day that went 183 → 185 on this one
+question. **There is no tap detector on an external microphone any more.** The
+way out of capture is a silence.
+
+### What was tried, in order
+
+1. **The accelerometer.** The original specification chose it and named the
+   reason it would fail: at the 100 Hz iOS delivers, a tap is four samples.
+   A rider tapped and nothing fired.
+2. **Audio, one rule for both microphones.** Band-pass 100 Hz–4 kHz, 18 dB over
+   a trailing average *and* a 14 dB rise inside one millisecond, then a tail
+   test 15–30 ms later to throw out consonants. On the phone's own microphone
+   this is right: 10/10 recall on taps a rider confirmed, and real music
+   produces no gestures in an hour.
+3. **Two rules, one per microphone** (builds 177–185), because the shared one
+   was simultaneously too strict for the phone and too loose for the helmet.
+   The phone half is what ships. The helmet half never fired once in the field.
+4. **A front end built for the shell**: band-pass 100–280 Hz for the hollow
+   thud *below* the voice band, short-time energy with a 5 ms rise limit, a
+   30 ms decay, a 40 ms sustain reject and a peak-to-RMS crest factor. Written,
+   compiled, tested against synthetic thuds — and **never shipped**, because
+   the rider stopped it:
+
+   > researching more about this makes tapping on helmet a very unpredictable
+   > exercise
+
+   That judgement is sound and the code agreed with it in advance: the whole
+   approach rests on 100–280 Hz surviving a link that nominally carries
+   300 Hz upwards, and nothing in any API says whether it does.
+
+### Why it cannot work, stated once
+
+A hands-free link is a chain built to carry speech: the headset's own AGC and
+noise suppression, then CVSD at 8 kHz or mSBC at 16. **Every quantity that
+distinguishes a strike from a sound is one that chain is designed to remove.**
+A transient's rise is smeared over milliseconds; its peak is pulled down by the
+AGC, which is exactly what a crest factor measures; and the band below 300 Hz
+may be high-passed away entirely.
+
+The stage lamps said it in the end, from the ride:
+
+> first 6 lights go on when I hit the helmet, the remaining 3 do not
+
+Margin reached, rise reached, and nothing ever armed or ever fell back in time.
+
+### What replaced it
+
+**A cooldown of not talking**, in `AppState`: thirty seconds in which the
+rider's voice would not have opened the gate, and capture gives itself back.
+The loop is now
+
+- three taps on the phone — through a pocket, where tapping is measured and
+  works — open the microphone;
+- the helmet carries the conversation;
+- half a minute of not talking hands the microphone back to the phone.
+
+Three details that are not arbitrary:
+
+- **The signal is the gate's verdict, not the transmission.**
+  `AppEvent_InputLevel` carries `speaking` ten times a second — the chain's own
+  answer to "would voice activation open right now, whatever mode is set" — so
+  it holds the microphone for a rider who is muted, or in open mic, or talking
+  to somebody beside the bike. Watching the transmission would close the
+  microphone under a muted rider mid-sentence, and in open mic would never
+  close it at all.
+- **It counts quiet seconds; it does not read a clock.** The first version took
+  `DateTime.now()` differences and could not be tested at all — `FakeAsync`
+  fakes timers and not the wall clock — and a phone correcting its clock
+  mid-ride would have shifted or skipped the release. A count needs no clock
+  and is exact to the second.
+- **It follows the rider's *claim* on the microphone, not the microphone.** The
+  claim is held from the third tap, through the second or two an SCO
+  negotiation takes and through one that never finishes, so a stuck open also
+  expires. In the listening state nothing ticks.
+
+Somebody else talking holds it open too. A rider waiting for an answer is in
+the middle of a conversation, and each transition renegotiates an SCO link —
+audible, and a second or two long.
+
+### And the taps that remain have a chord
+
+One rising note per tap, B♭–D–F, where there was a single 2 kHz click. The
+comment that chose the click argued that a pitched blip at this spacing "reads
+as a chirp rather than as three separate acknowledgements"; it does, and that is
+now the point, because the chirp is the count. The third note usually loses to
+the capture cue a few milliseconds behind it, which is correct — that one is
+the answer, where the notes were only counting towards it.

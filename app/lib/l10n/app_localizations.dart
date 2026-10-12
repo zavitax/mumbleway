@@ -4144,7 +4144,7 @@ abstract class L {
   /// Explanation under the one pocket-mode switch in settings. It has to say what the slider does, that the screen locks, and that three taps toggle the microphone
   ///
   /// In en, this message translates to:
-  /// **'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking, three times again to stop. Music stays at full quality while nobody is talking.'**
+  /// **'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking; it closes itself again after a stretch of not talking. Music stays at full quality while nobody is talking.'**
   String get pocketModeBody;
 
   /// Label on the green slide-to-confirm control at the bottom of the main screen
@@ -4165,11 +4165,11 @@ abstract class L {
   /// **'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.'**
   String get pocketLockedNote;
 
-  /// Shown above the slider while transmitting through a headset. The detector listens to whichever microphone is live, so while capturing it is the helmet's
+  /// Pocket-mode state line while the microphone is open and an external microphone is carrying the voice, so tapping cannot be heard. The number is the silence that hands the microphone back
   ///
   /// In en, this message translates to:
-  /// **'Microphone open — tap your helmet three times to stop'**
-  String get pocketOpenTapHelmet;
+  /// **'Microphone open — stop talking for {seconds} seconds and it closes'**
+  String pocketOpenQuiet(int seconds);
 
   /// The same, with no headset: the phone's own microphone is the live one
   ///
@@ -4222,7 +4222,7 @@ abstract class L {
   /// No description provided for @pocketTutorialTapsBody.
   ///
   /// In en, this message translates to:
-  /// **'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. Three dots above the slider fill as each tap is counted, and on the phone\'s own speaker you will hear a tick for each one as well.'**
+  /// **'Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three dots above the slider fill as each tap is counted, and you will hear a note for each one: three rising notes that make a chord when all three land.'**
   String get pocketTutorialTapsBody;
 
   /// No description provided for @pocketTutorialLockTitle.
@@ -4246,7 +4246,7 @@ abstract class L {
   /// No description provided for @pocketTutorialSoundBody.
   ///
   /// In en, this message translates to:
-  /// **'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. There is no per-tap tick through a headset, because a helmet hears it through its own microphone and counts it as the next tap — so on a headset, watch the dots or just listen for the two tones.'**
+  /// **'Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. Taps are heard by the phone\'s own microphone, so while a headset is carrying your voice, tapping does nothing — stop talking instead and the microphone hands itself back.'**
   String get pocketTutorialSoundBody;
 
   /// No description provided for @pocketTutorialNext.
@@ -4261,17 +4261,17 @@ abstract class L {
   /// **'Start pocket mode'**
   String get pocketTutorialStart;
 
-  /// No description provided for @autoStopCapture.
+  /// No description provided for @captureIdle.
   ///
   /// In en, this message translates to:
-  /// **'Close the microphone after a pause'**
-  String get autoStopCapture;
+  /// **'Hand the microphone back after a silence'**
+  String get captureIdle;
 
-  /// No description provided for @autoStopCaptureBody.
+  /// No description provided for @captureIdleBody.
   ///
   /// In en, this message translates to:
-  /// **'Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.'**
-  String autoStopCaptureBody(int seconds);
+  /// **'In pocket mode the microphone closes itself after {seconds} seconds in which you have not spoken, and tapping the phone opens it again. This is the way back, because a tap on a helmet cannot be told from the road.'**
+  String captureIdleBody(int seconds);
 
   /// No description provided for @micPushToTalkBlockedByPocket.
   ///

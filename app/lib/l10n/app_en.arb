@@ -1331,7 +1331,7 @@
     }
   },
   "pocketMode": "Pocket mode",
-  "pocketModeBody": "Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking, three times again to stop. Music stays at full quality while nobody is talking.",
+  "pocketModeBody": "Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking; it closes itself again after a stretch of not talking. Music stays at full quality while nobody is talking.",
   "@pocketModeBody": {
     "description": "Explanation under the one pocket-mode switch in settings. It has to say what the slider does, that the screen locks, and that three taps toggle the microphone"
   },
@@ -1347,9 +1347,14 @@
   "@pocketLockedNote": {
     "description": "Small reassuring note under the red slider, so a rider who finds every other control dead does not think the app has frozen"
   },
-  "pocketOpenTapHelmet": "Microphone open — tap your helmet three times to stop",
-  "@pocketOpenTapHelmet": {
-    "description": "Shown above the slider while transmitting through a headset. The detector listens to whichever microphone is live, so while capturing it is the helmet's"
+  "pocketOpenQuiet": "Microphone open — stop talking for {seconds} seconds and it closes",
+  "@pocketOpenQuiet": {
+    "description": "Pocket-mode state line while the microphone is open and an external microphone is carrying the voice, so tapping cannot be heard. The number is the silence that hands the microphone back",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
   },
   "pocketOpenTapPhone": "Microphone open — tap the phone three times to stop",
   "@pocketOpenTapPhone": {
@@ -1368,16 +1373,16 @@
   },
   "pocketTutorialTitle": "Riding with the phone away",
   "pocketTutorialTapsTitle": "Three taps, within three seconds",
-  "pocketTutorialTapsBody": "Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three taps again and it closes. Three dots above the slider fill as each tap is counted, and on the phone's own speaker you will hear a tick for each one as well.",
+  "pocketTutorialTapsBody": "Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three dots above the slider fill as each tap is counted, and you will hear a note for each one: three rising notes that make a chord when all three land.",
   "pocketTutorialLockTitle": "The screen locks itself",
   "pocketTutorialLockBody": "Every control except the slider stops responding, so a phone moving against your leg cannot hang up the call or change a setting. Slide the red slider to unlock.",
   "pocketTutorialSoundTitle": "Listen, do not look",
-  "pocketTutorialSoundBody": "Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. There is no per-tap tick through a headset, because a helmet hears it through its own microphone and counts it as the next tap — so on a headset, watch the dots or just listen for the two tones.",
+  "pocketTutorialSoundBody": "Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. Taps are heard by the phone's own microphone, so while a headset is carrying your voice, tapping does nothing — stop talking instead and the microphone hands itself back.",
   "pocketTutorialNext": "Next",
   "pocketTutorialStart": "Start pocket mode",
-  "autoStopCapture": "Close the microphone after a pause",
-  "autoStopCaptureBody": "Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.",
-  "@autoStopCaptureBody": {
+  "captureIdle": "Hand the microphone back after a silence",
+  "captureIdleBody": "In pocket mode the microphone closes itself after {seconds} seconds in which you have not spoken, and tapping the phone opens it again. This is the way back, because a tap on a helmet cannot be told from the road.",
+  "@captureIdleBody": {
     "placeholders": {
       "seconds": {
         "type": "int"

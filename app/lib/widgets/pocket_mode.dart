@@ -83,7 +83,10 @@ class PocketPanel extends StatelessWidget {
               ),
               if (active) ...[
                 const SizedBox(height: 10),
-                _TapFeedback(capturing: state.capturing),
+                _TapFeedback(
+                  capturing: state.capturing,
+                  route: state.audioRoute,
+                ),
                 const SizedBox(height: 8),
                 // **The anti-panic line.** Every other control on the screen
                 // has just stopped working, which from the outside is exactly
@@ -174,10 +177,16 @@ class _StateLine extends StatelessWidget {
     // Closed is always the phone: with capture off there is no hands-free
     // link, so the phone's own microphone is the only one listening and the
     // only one a tap can reach.
+    //
+    // **Open on an external microphone is the case that changed.** It used to
+    // say "tap your helmet three times to stop", and that never worked — a
+    // hands-free link's AGC and codec smear the transient a strike is
+    // recognised by. So the instruction is now the one that does work: stop
+    // talking, and the microphone hands itself back.
     final what = !capturing
         ? l.pocketClosedTapPhone
         : _external(route)
-        ? l.pocketOpenTapHelmet
+        ? l.pocketOpenQuiet(AppStateScope.of(context).captureIdleSeconds)
         : l.pocketOpenTapPhone;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -235,10 +244,22 @@ class _StateLine extends StatelessWidget {
 /// The mark on the track is the threshold. A tap has to reach it, so a rider
 /// can see whether theirs do rather than guess — which is the question three
 /// days of this feature have turned on.
+/// The meter, the three dots and the stage lamps — the whole of what a rider
+/// can see about tap detection.
+///
+/// **Drawn only while a tap can actually be heard**, which is while the
+/// phone's own microphone is the live one. There is no detector on an external
+/// microphone any more: tapping a helmet could not be told from the road, so
+/// the way out of capture is a silence and the state line above says so. A
+/// meter and nine dark lamps would be an instrument reporting on a detector
+/// that is not running.
 class _TapFeedback extends StatefulWidget {
-  const _TapFeedback({required this.capturing});
+  const _TapFeedback({required this.capturing, required this.route});
 
   final bool capturing;
+
+  /// `Recorded::route`'s numbers. 2, 3 and 4 are external microphones.
+  final int route;
 
   @override
   State<_TapFeedback> createState() => _TapFeedbackState();
@@ -300,8 +321,12 @@ class _TapFeedbackState extends State<_TapFeedback> {
     }
   }
 
+  /// Whether anything here has a detector behind it.
+  bool get _live => !_StateLine._external(widget.route);
+
   @override
   Widget build(BuildContext context) {
+    if (!_live) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
     return Column(
       children: [

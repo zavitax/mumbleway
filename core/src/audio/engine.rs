@@ -642,7 +642,6 @@ pub struct AudioShared {
     /// **Fed from the input callback, so it hears the raw device** — the
     /// helmet while capturing, the phone's own while listening — before any
     /// of the chain and whether or not the chain runs at all.
-    tap: Mutex<crate::audio::acoustic_tap::AcousticTapDetector>,
     /// The same, for the phone's own microphone, by amplitude alone.
     ///
     /// **Two detectors, not one, at a rider's request.** The two microphones
@@ -868,22 +867,6 @@ pub struct AudioShared {
     /// stream that has stopped rather than a quiet room. See the input
     /// callback for what it recovers from.
     dead_input_frames: AtomicU64,
-    /// Whether the chain heard speech in the block it last finished.
-    ///
-    /// **Read by the tap detector, which is why it is an atomic and not the
-    /// chain status behind its mutex.** A rider talking into a boom microphone
-    /// two centimetres from their mouth produces plosives with onsets as sharp
-    /// as a tap on a phone's body — /p/, /t/ and /k/ are, acoustically, small
-    /// impacts — and a rider reported exactly that: speaking on the helmet
-    /// registered as tapping it.
-    ///
-    /// One block late by construction, since the worker runs behind the
-    /// callback, and that is enough: the gesture needs three taps inside three
-    /// seconds, so the first plosive of an utterance may arm a candidate but
-    /// everything after it is suppressed and no gesture can complete. Tapping
-    /// while talking is not a thing a rider does — they stop talking and then
-    /// tap — so nothing real is lost.
-    speech_now: AtomicBool,
     /// Whether the input stream now open has ever delivered a non-zero sample.
     ///
     /// The guard that keeps [`Self::watch_for_dead_input`] from rebuilding in
@@ -1010,14 +993,22 @@ pub enum AudioCue {
     ParticipantJoined,
     /// Someone left it.
     ParticipantLeft,
-    /// A single tap was heard and banked.
+    /// The first, second and third tap of a gesture, as a rising major triad.
     ///
-    /// **Acknowledges one tap, which no other cue can.** The gesture cues say
-    /// three taps were heard; they cannot say that two were and the third was
-    /// not — and that is the difference between "the feature is broken" and
-    /// "tap a little harder", which has cost this project several rides to
-    /// tell apart.
-    TapTick,
+    /// **Acknowledges *which* tap, which no other cue can.** The gesture cues
+    /// say three taps were heard; they cannot say that two were and the third
+    /// was not — the difference between "the feature is broken" and "tap a
+    /// little harder", which has cost this project several rides to tell
+    /// apart. One pitch per tap says it without a word.
+    ///
+    /// A rider asked for exactly this: *"3 rising bops, which would constitute
+    /// a major chord if played together, one per each tap out of 3"*. B♭, D,
+    /// F — chosen inside the 300–3400 Hz band a hands-free link carries, and
+    /// off the frequencies every other cue here uses so none of them can be
+    /// mistaken for a tap.
+    TapOne,
+    TapTwo,
+    TapThree,
     /// One beat of the countdown while the hands-free profile is negotiated.
     ///
     /// **Re-triggered rather than rendered once**, because an SCO negotiation
@@ -1088,11 +1079,18 @@ impl AudioCue {
             // or while somebody is working out why it does not fire. This is
             // the smallest sound that says "that one counted".
             //
-            // Deliberately a click rather than a tone: it has to be able to
-            // land three times in six hundred milliseconds without the three
-            // running together, and a pitched blip at that spacing reads as a
-            // chirp rather than as three separate acknowledgements.
-            AudioCue::TapTick => &[(2000.0, 18)],
+            // **This was a 2 kHz click, and the comment here argued for the
+            // click**: three in six hundred milliseconds, and "a pitched blip
+            // at that spacing reads as a chirp rather than as three separate
+            // acknowledgements". It does read as a chirp. That is now the
+            // point — the chirp is the count, and a rider asked for it.
+            //
+            // Fifty-five milliseconds each: long enough to have a pitch,
+            // short enough that two taps 80 ms apart (the gesture's minimum
+            // gap) do not overlap.
+            AudioCue::TapOne => &[(466.16, 55)],
+            AudioCue::TapTwo => &[(587.33, 55)],
+            AudioCue::TapThree => &[(698.46, 55)],
             AudioCue::CaptureWaiting => &[(660.0, 120), (0.0, 250)],
             // **The countdown is part of the cue, not merely what fills the
             // wait.** It used to be the rising pair alone, with the three
@@ -1242,7 +1240,10 @@ impl AudioCue {
             // Quieter than anything else here. It fires per tap, so it is the
             // most frequent sound the app makes, and it is an acknowledgement
             // rather than an announcement.
-            AudioCue::TapTick => 0.08,
+            // A little above the click it replaces: a tone at the same
+            // amplitude reads quieter than a transient, and this one has to be
+            // audible through a helmet at speed.
+            AudioCue::TapOne | AudioCue::TapTwo | AudioCue::TapThree => 0.12,
             // Quiet, because it repeats for as long as a negotiation lasts
             // and is the one cue with real potential to irritate.
             AudioCue::CaptureWaiting => 0.12,
@@ -1283,11 +1284,16 @@ impl AudioCue {
         match self {
             // Informational, and the only things that should ever lose.
             //
-            // `TapTick` is here for a reason worth stating: it fires while a
-            // gesture is being performed, which is exactly when the capture
-            // cues are about to play. At any higher level the last tick would
-            // cut off the countdown it was leading into.
-            AudioCue::ParticipantJoined | AudioCue::ParticipantLeft | AudioCue::TapTick => 0,
+            // The tap notes are here for a reason worth stating: they fire
+            // while a gesture is being performed, which is exactly when the
+            // capture cues are about to play. At any higher level the third
+            // note would cut off the countdown it was leading into — and that
+            // one is the answer, where the note was only the count.
+            AudioCue::ParticipantJoined
+            | AudioCue::ParticipantLeft
+            | AudioCue::TapOne
+            | AudioCue::TapTwo
+            | AudioCue::TapThree => 0,
             // Losing the group, or having the microphone taken, is not
             // something to miss because somebody joined — and each is paired
             // with the cue that says it is over. `Test` is here because a rider
@@ -1428,7 +1434,6 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
-            tap: Mutex::new(crate::audio::acoustic_tap::AcousticTapDetector::new()),
             tap_phone: Mutex::new(crate::audio::tap_phone::PhoneTapDetector::new()),
             tap_enabled: AtomicBool::new(false),
             tap_gestures: AtomicU64::new(0),
@@ -1462,7 +1467,6 @@ impl AudioShared {
             input_rate: AtomicU32::new(0),
             dead_input_frames: AtomicU64::new(0),
             input_ever_delivered: AtomicBool::new(false),
-            speech_now: AtomicBool::new(false),
             chain: Mutex::new(ChainStatus::default()),
             stage_timings: Mutex::new(StageTimings::default()),
             reset_stage_timings: AtomicBool::new(false),
@@ -1827,11 +1831,6 @@ impl AudioShared {
             self.input_clipped
                 .fetch_add(clipped as u64, Ordering::Relaxed);
         }
-    }
-
-    /// Whether the chain heard speech in the block it last finished.
-    pub fn speech_now(&self) -> bool {
-        self.speech_now.load(Ordering::Relaxed)
     }
 
     /// Rebuilds the streams if the input has stopped delivering anything.
@@ -2577,27 +2576,27 @@ impl AudioShared {
         self.tap_enabled.load(Ordering::Acquire)
     }
 
-    /// What the detector on the live microphone is seeing.
-    ///
-    /// Whichever of the two the route selects, so the panel shows the path
-    /// that is actually running rather than an average of two.
-    pub fn tap_stats(&self) -> crate::audio::acoustic_tap::AcousticStats {
-        if self.on_helmet() {
-            self.tap.lock().stats()
-        } else {
-            self.tap_phone.lock().stats()
-        }
+    /// What the tap detector is seeing.
+    pub fn tap_stats(&self) -> crate::audio::tap_stats::AcousticStats {
+        self.tap_phone.lock().stats()
     }
 
-    /// Whether the live microphone is a helmet on the hands-free profile.
+    /// Whether the live microphone is the phone's own.
     ///
-    /// Route 3; see `record::Recorded` for the numbers, which are a wire
-    /// format shared with every recording already on a rider's phone. **Route
-    /// 0 means not reported**, and counts as the phone: the phone's path is
-    /// the forgiving one, so an unknown route fails towards detecting a tap
-    /// rather than towards silence.
-    pub fn on_helmet(&self) -> bool {
-        self.route() == 3
+    /// **The only microphone taps are listened for on.** A detector ran on the
+    /// helmet's for four builds and never worked: a hands-free link's own AGC
+    /// and codec smear a transient, which is the only thing that distinguishes
+    /// a strike from a sound. The way out of capture is a silence now, not a
+    /// tap — see `AppState`'s capture idle.
+    ///
+    /// Routes 0 and 1; see `record::Recorded` for the numbers, which are a
+    /// wire format shared with every recording already on a rider's phone.
+    /// **Route 0 means not reported**, and counts as the phone: iOS's
+    /// listening session asks for the built-in input explicitly, so an
+    /// unreported route there is the phone's own, and failing towards
+    /// detection beats failing towards a rider who cannot stop talking.
+    pub fn phone_mic(&self) -> bool {
+        matches!(self.route(), 0 | 1)
     }
 
     /// How many gestures have completed since the engine started.
@@ -2625,16 +2624,14 @@ impl AudioShared {
     /// the *previous* open's verdict is the subtler version of the same bug.
     #[must_use]
     pub fn set_capture_wanted(&self, wanted: bool) -> bool {
-        // **Cleared here or it is stale for ever.** `speech_now` is written by
-        // the worker, and the worker is not fed while listening — so a rider
-        // who was talking when capture stopped left the flag reading true with
-        // nothing able to clear it, the tap detector deaf on every block, and
-        // taps on the phone simply not registering. Reported as phone
-        // recognition becoming "very bad", which is what a detector that never
-        // listens looks like from outside.
-        if !wanted {
-            self.speech_now.store(false, Ordering::Relaxed);
-        }
+        // **A flag the worker writes is stale while the worker does not
+        // run**, which used to be cleared here: the tap detector read a
+        // speech flag written by the chain, the chain is not fed while
+        // listening, and a rider who was talking when capture stopped left it
+        // reading true for ever — the detector deaf on every block, reported
+        // as tap recognition on the phone becoming "very bad". The helmet
+        // detector that needed the flag is gone and so is the flag; the shape
+        // of the bug is worth keeping in mind for the next one.
         if self.capture_wanted.swap(wanted, Ordering::AcqRel) == wanted {
             return false;
         }
@@ -3344,54 +3341,60 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 // millisecond, one multiply to move a trailing average, and a
                 // comparison. The lock is uncontended but for a panel reading
                 // the counters once a second.
-                if cap_shared.tap_detection_enabled() {
+                if cap_shared.tap_detection_enabled() && cap_shared.phone_mic() {
                     let mut banked = false;
-                    // **Two paths, and only one of them runs**, chosen by
-                    // which microphone is live. See `tap_phone` for why one
-                    // shared rule was too strict for the phone and too loose
-                    // for the helmet at the same time.
-                    let on_helmet = cap_shared.on_helmet();
-                    let gesture = if on_helmet {
-                        let mut d = cap_shared.tap.lock();
-                        // Not while the rider is talking: a boom microphone
-                        // hears a plosive as a small impact. Only while
-                        // capturing, which is the only state the flag means
-                        // anything in — the worker that writes it does not run
-                        // while listening, so reading it there gives a value
-                        // from the last call.
-                        if cap_shared.capture_wanted() && cap_shared.speech_now() {
-                            d.hear_speech();
-                        }
-                        d.hear_own_output(cap_shared.output_level_db(), true);
-                        d.push(&resampled, &mut banked)
-                    } else {
+                    // **One detector, and it listens to the phone's own
+                    // microphone only.**
+                    //
+                    // There was a second path for the helmet's microphone and
+                    // it is gone, on a rider's instruction after four builds
+                    // of it: *"researching more about this makes tapping on
+                    // helmet a very unpredictable exercise"*. The last reading
+                    // from the stage lamps said the same thing — margin and
+                    // rise reached, nothing ever armed — because a hands-free
+                    // link's AGC and codec smear the one quantity a strike is
+                    // recognised by. `docs/CAPTURE_ON_DEMAND.md` has what was
+                    // tried, including the 100–280 Hz shell-resonance front
+                    // end that was written and never shipped.
+                    //
+                    // So capture is released by silence instead, which is in
+                    // `AppState`: thirty seconds in which the rider's voice
+                    // would not have opened the gate, and the microphone goes
+                    // back to the phone where tapping works.
+                    let (gesture, run) = {
                         let mut d = cap_shared.tap_phone.lock();
                         // **What this app is playing, so the detector can stop
                         // listening while it plays it.** It sits before the
                         // canceller — in the listening state there is no chain
-                        // at all — so our own tick, a 2 kHz click in the middle
-                        // of the band a phone-body tap occupies, would be heard
-                        // as the next tap.
+                        // at all — so our own acknowledgement would be heard as
+                        // the next tap.
                         d.hear_own_output(cap_shared.output_level_db());
-                        d.push(&resampled, &mut banked)
+                        let gesture = d.push(&resampled, &mut banked);
+                        (gesture, d.stats().run)
                     };
-                    if banked && !on_helmet {
-                        // **One tick per tap, and never into a helmet.**
+                    if banked {
+                        // **A rising major triad, one note per tap**, so the
+                        // sound says *which* tap landed rather than only that
+                        // one did.
                         //
-                        // The tick is the only signal that can say *which* tap
-                        // of three went unheard, so it is kept where it works:
-                        // the phone's own speaker and microphone, where the
-                        // round trip is a handful of milliseconds and the
-                        // self-noise gate covers it.
+                        // This replaces a single 2 kHz click, and the comment
+                        // that chose the click said a pitched blip at this
+                        // spacing "reads as a chirp rather than as three
+                        // separate acknowledgements". It does read as a chirp
+                        // — that is now the point, because the chirp is the
+                        // count. A rider asked for it in those terms.
                         //
-                        // Over Bluetooth it cannot work, and not for want of
-                        // tuning. Taps arrive 200 to 330 ms apart and the round
-                        // trip is of the same order, so any tail long enough to
-                        // ignore the tick is long enough to swallow the next
-                        // tap. A rider reported the tick registering as a tap,
-                        // and that is the arithmetic behind it. The pips on the
-                        // pocket panel carry the per-tap feedback instead.
-                        cap_shared.play_cue(AudioCue::TapTick);
+                        // The third note usually loses to the capture cue that
+                        // follows it a few milliseconds later, which is
+                        // correct: that one answers the question this was only
+                        // counting towards.
+                        cap_shared.play_cue(if gesture.is_some() {
+                            AudioCue::TapThree
+                        } else if run >= 2 {
+                            AudioCue::TapTwo
+                        } else {
+                            AudioCue::TapOne
+                        });
                     }
                     if gesture.is_some() {
                         cap_shared.tap_gestures.fetch_add(1, Ordering::Release);
@@ -4347,10 +4350,6 @@ where
             let aec_align = processor.aec_alignment();
             let restore_cost = processor.restore_cost_ms();
             was_speaking = analysis.speaking;
-            // For the tap detector, which cannot wait on the mutex below.
-            shared
-                .speech_now
-                .store(analysis.speaking, Ordering::Relaxed);
             shared.publish_chain_status(ChainStatus {
                 warming_up: analysis.warming_up,
                 vad_says_speech: analysis.vad_says_speech,

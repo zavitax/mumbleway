@@ -1,6 +1,6 @@
 //! Taps on the phone's own microphone, by amplitude alone.
 //!
-//! **A separate path from [`super::acoustic_tap`] at a rider's request**, and
+//! **A separate path from [`super::tap_helmet`] at a rider's request**, and
 //! the request was narrow: separate the code, and on the phone let amplitude
 //! be enough. A sharp peak with a relatively fast decline is a tap; three
 //! inside three seconds is the gesture. Nothing else is consulted.
@@ -13,7 +13,7 @@
 //! belongs to the helmet: plosives from two centimetres away, this app's own
 //! cues coming back a round trip later, and a narrowband link. The tests that
 //! deal with those — a tail measurement and the chain's speech verdict — stay
-//! in [`super::acoustic_tap`], which keeps them *and* keeps its own
+//! in [`super::tap_helmet`], which keeps its own
 //! thresholds, so helmet work cannot move the phone under it.
 //!
 //! What a tap has to be here:
@@ -33,8 +33,11 @@
 //! point of the split is that one path can be changed without touching the
 //! other.
 
-use super::acoustic_tap::{stage, AcousticStats, FRAME};
 use super::gesture::{Banked, Candidate, GesturePattern, TapGesture};
+use super::tap_stats::{
+    tuned, AcousticStats, StageLamps, FRAME, METER_FALL_DB_PER_MS, QUANTISATION_AMPLITUDE,
+    QUANTISATION_DBFS,
+};
 
 /// The band a tap lives in, measured rather than assumed.
 ///
@@ -57,25 +60,6 @@ const BAND_HIGH_HZ: f32 = 4_000.0;
 const SELF_NOISE_GATE_DBFS: f32 = -60.0;
 const SELF_NOISE_TAIL_MS: u32 = 120;
 
-/// The lowest level the floor may believe in, in dBFS.
-///
-/// One least-significant bit of sixteen-bit audio. **Load-bearing**: a clamp
-/// set to a number chosen for being safely low rather than for meaning
-/// anything let a digitally silent block drag the floor to it, after which
-/// every frame was a candidate and nothing was ever a tap.
-const QUANTISATION_DBFS: f32 = -90.0;
-
-/// The same floor as an amplitude, so a frame costs no logarithm to test.
-const QUANTISATION_AMPLITUDE: f32 = 3.162_278e-5;
-
-/// How long a stage lamp stays lit after the last frame that passed it.
-///
-/// Its own copy, like everything else in this file: the front end is
-/// duplicated on purpose — see the header — and a shared constant is a shared
-/// blast radius. The number matches the helmet path because the panel is the
-/// same panel.
-const STAGE_HOLD_MS: u64 = 1_500;
-
 /// How fast the reference level follows the audio, per 1 ms frame.
 ///
 /// **A slow average, not a minimum statistic.** The quietest frame in the last
@@ -85,15 +69,42 @@ const STAGE_HOLD_MS: u64 = 1_500;
 /// that a tap cannot drag it up behind itself either.
 const REFERENCE_ALPHA: f32 = 0.001;
 
-/// How fast the meter falls back, in dB per millisecond.
-///
-/// **A meter needs ballistics or it shows nothing.** The level is the peak of
-/// a one-millisecond frame, and a panel reading it ten times a second samples
-/// one frame in a hundred — so a tap, over in forty, is missed about
-/// ninety-nine times out of a hundred.
-const METER_FALL_DB_PER_MS: f32 = 0.03;
-
 /// How far above the trailing average a frame must reach, in dB.
+/// The stages a frame passes, in the order it passes them.
+///
+/// **This path's own set.** The helmet detector has a different rule and
+/// therefore different lamps — a crest factor and a sustain limit where this
+/// has a margin and a per-millisecond attack — and
+/// `UiAcousticStats::on_helmet` is what tells a panel which it is reading.
+pub mod stage {
+    /// Audio arrived at all: the raw frame is above one 16-bit step.
+    pub const INPUT: usize = 0;
+    /// Something survived the band-pass.
+    pub const BAND: usize = 1;
+    /// Not deaf — this app was not making a noise of its own.
+    pub const HEARING: usize = 2;
+    /// The frame stood above the trailing floor at all. Dark here with the
+    /// others lit means the floor has risen onto the signal.
+    pub const OVER_FLOOR: usize = 3;
+    /// It stood [`MARGIN_DB`] above it.
+    pub const MARGIN: usize = 4;
+    /// It rose [`ATTACK_DB`] inside the millisecond. The discriminator.
+    pub const ATTACK: usize = 5;
+    /// **Both of those in the same millisecond**, so an impulse was armed.
+    /// [`MARGIN`] and [`ATTACK`] answer for themselves, and both being lit
+    /// does not mean one frame did both.
+    pub const ARMED: usize = 6;
+    /// It fell back inside [`MAX_DECAY_MS`] and outside the dead time, so a
+    /// strike was formed.
+    pub const FELL_BACK: usize = 7;
+    /// There is no tail test on this path, so a strike passes this stage by
+    /// arriving. Lit rather than dark, because dark means "stopped here".
+    pub const TAIL: usize = 8;
+    /// It was banked towards a gesture.
+    pub const BANKED: usize = 9;
+    pub const COUNT: usize = 10;
+}
+
 const MARGIN_DB: f32 = 18.0;
 
 /// How sharply it must arrive: this frame against the one before, in dB.
@@ -145,12 +156,7 @@ pub struct PhoneTapDetector {
     peak_over: f32,
     latent_until_ms: u64,
     frame_ms: u64,
-    /// When each stage last passed something, on the frame clock. See
-    /// [`stage`].
-    stage_at: [u64; stage::COUNT],
-    /// The running maxima behind `recent_attack_db` and `recent_over_db`.
-    recent_attack: (f32, u64),
-    recent_over: (f32, u64),
+    lamps: StageLamps<{ stage::COUNT }>,
     stats: AcousticStats,
 }
 
@@ -177,9 +183,7 @@ impl PhoneTapDetector {
             peak_over: f32::NEG_INFINITY,
             latent_until_ms: 0,
             frame_ms: 0,
-            stage_at: [0; stage::COUNT],
-            recent_attack: (f32::NEG_INFINITY, 0),
-            recent_over: (f32::NEG_INFINITY, 0),
+            lamps: StageLamps::new(),
             stats: AcousticStats {
                 // **Not the derived zero**, which is full scale: the meter
                 // would open pinned and take three seconds to fall.
@@ -195,36 +199,10 @@ impl PhoneTapDetector {
 
     pub fn stats(&self) -> AcousticStats {
         let mut s = self.stats;
-        s.stage_mask = self.stage_mask();
-        s.recent_attack_db = self.recent(self.recent_attack);
-        s.recent_over_db = self.recent(self.recent_over);
+        s.stage_mask = self.lamps.mask(self.frame_ms);
+        s.recent_attack_db = self.lamps.recent(0, self.frame_ms);
+        s.recent_over_db = self.lamps.recent(1, self.frame_ms);
         s
-    }
-
-    /// A maximum that expires with the lamps, so the reading belongs to the
-    /// tap that was just performed.
-    fn recent(&self, held: (f32, u64)) -> f32 {
-        let (value, at) = held;
-        if at > 0 && self.frame_ms.saturating_sub(at) <= STAGE_HOLD_MS {
-            value
-        } else {
-            0.0
-        }
-    }
-
-    /// Which stages have passed something within [`STAGE_HOLD_MS`].
-    fn stage_mask(&self) -> u32 {
-        let mut mask = 0u32;
-        for (i, &at) in self.stage_at.iter().enumerate() {
-            if at > 0 && self.frame_ms.saturating_sub(at) <= STAGE_HOLD_MS {
-                mask |= 1 << i;
-            }
-        }
-        mask
-    }
-
-    fn pass(&mut self, stage: usize) {
-        self.stage_at[stage] = self.frame_ms;
     }
 
     /// Tells the detector how loud this app's own output is.
@@ -279,10 +257,10 @@ impl PhoneTapDetector {
             peak = peak.max((v - self.high).abs());
         }
         if raw_peak > QUANTISATION_AMPLITUDE {
-            self.pass(stage::INPUT);
+            self.lamps.pass(stage::INPUT, self.frame_ms);
         }
         if peak > QUANTISATION_AMPLITUDE {
-            self.pass(stage::BAND);
+            self.lamps.pass(stage::BAND, self.frame_ms);
         }
         let level_db = (20.0 * (peak + 1e-7).log10()).max(QUANTISATION_DBFS);
         self.stats.meter_db = level_db.max(self.stats.meter_db - METER_FALL_DB_PER_MS);
@@ -303,7 +281,7 @@ impl PhoneTapDetector {
             return None;
         }
 
-        self.pass(stage::HEARING);
+        self.lamps.pass(stage::HEARING, self.frame_ms);
 
         if !self.reference_db.is_finite() {
             self.reference_db = level_db;
@@ -328,24 +306,16 @@ impl PhoneTapDetector {
         // Lit separately, whatever the state: the arming test wants both, and
         // one lamp for the pair would not say which was missing.
         if over > 0.0 {
-            self.pass(stage::OVER_FLOOR);
+            self.lamps.pass(stage::OVER_FLOOR, self.frame_ms);
         }
         if over >= self.margin_db {
-            self.pass(stage::MARGIN);
+            self.lamps.pass(stage::MARGIN, self.frame_ms);
         }
         if attack >= self.attack_db {
-            self.pass(stage::ATTACK);
+            self.lamps.pass(stage::ATTACK, self.frame_ms);
         }
-        if attack > self.recent_attack.0
-            || self.frame_ms.saturating_sub(self.recent_attack.1) > STAGE_HOLD_MS
-        {
-            self.recent_attack = (attack, self.frame_ms);
-        }
-        if over > self.recent_over.0
-            || self.frame_ms.saturating_sub(self.recent_over.1) > STAGE_HOLD_MS
-        {
-            self.recent_over = (over, self.frame_ms);
-        }
+        self.lamps.offer(0, attack, self.frame_ms);
+        self.lamps.offer(1, over, self.frame_ms);
         self.stats.floor_db = floor_db;
         let at_ms = self.frame_ms;
 
@@ -354,7 +324,7 @@ impl PhoneTapDetector {
                 // Loud against the room, and sharp. Both, because speech and
                 // music reach the margin too and neither arrives this fast.
                 if over >= self.margin_db && attack >= self.attack_db {
-                    self.pass(stage::ARMED);
+                    self.lamps.pass(stage::ARMED, self.frame_ms);
                     self.stats.impulse_attack_db = attack;
                     self.stats.impulse_over_db = over;
                     self.rising_at_ms = Some(at_ms);
@@ -382,13 +352,13 @@ impl PhoneTapDetector {
                         return None;
                     }
                     self.latent_until_ms = at_ms + LATENT_MS as u64;
-                    self.pass(stage::FELL_BACK);
+                    self.lamps.pass(stage::FELL_BACK, self.frame_ms);
                     // **No tail test on this path**, so the strike passes the
                     // stage by arriving. Lit rather than left dark, because
                     // dark means "stopped here" on the panel and nothing
                     // stops here — the helmet path is the one that can throw a
                     // strike away for ringing.
-                    self.pass(stage::TAIL);
+                    self.lamps.pass(stage::TAIL, self.frame_ms);
                     self.stats.candidates += 1;
                     return self.offer(
                         Candidate {
@@ -407,21 +377,21 @@ impl PhoneTapDetector {
         match self.pattern.offer(c) {
             Banked::Ignored => None,
             Banked::Added { run } => {
-                self.pass(stage::BANKED);
+                self.lamps.pass(stage::BANKED, self.frame_ms);
                 self.stats.banked += 1;
                 self.stats.run = run;
                 *banked = true;
                 None
             }
             Banked::RestartedOnMagnitude => {
-                self.pass(stage::BANKED);
+                self.lamps.pass(stage::BANKED, self.frame_ms);
                 self.stats.banked += 1;
                 self.stats.run = 1;
                 *banked = true;
                 None
             }
             Banked::Completed(g) => {
-                self.pass(stage::BANKED);
+                self.lamps.pass(stage::BANKED, self.frame_ms);
                 self.stats.banked += 1;
                 self.stats.gestures += 1;
                 self.stats.run = 0;
@@ -432,21 +402,10 @@ impl PhoneTapDetector {
     }
 }
 
-/// A threshold, with an environment override for sweeping it.
-///
-/// Read where the detector is built rather than where it is used, so the audio
-/// callback never touches the environment.
-fn tuned(name: &str, default: f32) -> f32 {
-    std::env::var(name)
-        .ok()
-        .and_then(|v| v.parse::<f32>().ok())
-        .filter(|v| v.is_finite())
-        .unwrap_or(default)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::audio::tap_stats::STAGE_HOLD_MS;
 
     /// A tap as it was measured: full level in the first frame, then a decay
     /// to a tenth in about forty milliseconds, in the band taps occupy.

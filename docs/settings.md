@@ -414,15 +414,20 @@ headset carries a microphone only on a profile that sounds like a phone call.
 Most of a ride is listening, so most of a ride pays that for nothing.
 
 With this on, the app gives the profile back while you are only listening, so
-music plays at full quality, and takes it again when you tap the phone — through
-a pocket, or a bag on your thigh. Tap again to close it.
+music plays at full quality, and takes it again when you tap the phone three
+times — through a pocket, or a bag on your thigh. It hands the microphone back
+by itself after a stretch in which you have not spoken.
+
+**Taps are heard by the phone’s own microphone**, which is why the way back is
+a silence rather than three more taps: while a headset is carrying your voice,
+the phone is not listening, and a tap on a helmet shell cannot be told from the
+road — a hands-free link removes the very things that distinguish them.
 
 <div class="table-wrap" markdown="1">
 
 | | |
 |---|---|
-| **Taps** | Two, three or four. **Three** is a good default: two is quicker but easier for a bump in the road to imitate, and four is the most deliberate, for rough going. |
-| **Close the microphone after a pause** | Optional. Stops capturing after a set quiet period, so you need not remember to tap again. Only available with tapping on, because on its own there would be nothing left to switch it back. |
+| **Hand the microphone back after a silence** | How long a silence closes it, from ten seconds to two minutes, thirty seconds by default. Not optional, because it is the way back. |
 
 </div>
 

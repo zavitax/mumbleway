@@ -606,8 +606,7 @@ class AppState extends ChangeNotifier {
   static const _prefsMic = 'mumbleway.micMode';
   static const _prefsPocketMode = 'mumbleway.pocketMode';
   static const _prefsPocketTutorial = 'mumbleway.pocketTutorialSeen';
-  static const _prefsAutoStop = 'mumbleway.autoStopCapture';
-  static const _prefsAutoStopSecs = 'mumbleway.autoStopSeconds';
+  static const _prefsCaptureIdle = 'mumbleway.captureIdleSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
   static const _prefsInputGain = 'mumbleway.inputGain';
@@ -840,14 +839,24 @@ class AppState extends ChangeNotifier {
   // normalised and carries over music. `docs/CAPTURE_ON_DEMAND.md` has the
   // measurements and the one thing not ruled out.
 
-  /// Whether capture releases itself after a stretch of silence.
+  /// How long the rider has to not be talking before capture gives itself
+  /// back, in seconds.
   ///
-  /// A sub-setting of pocket mode, and meaningless without it: on its own it
-  /// would release capture with nothing able to ask for it back.
-  bool autoStopCapture = false;
-
-  /// How long that silence has to be.
-  int autoStopSeconds = 20;
+  /// **This is now the only way out of capture besides the slider, and that
+  /// is why it is not a switch any more.** It used to be one, off by default,
+  /// and the way out of capture was three taps on the helmet. Tapping a
+  /// helmet never worked: a hands-free link's own AGC and codec smear the
+  /// transient that distinguishes a strike from a sound, which four builds of
+  /// tuning could not get round. So the rider asked for the inverse —
+  ///
+  /// > lets remove "tapping on helmet" detection, and introduce a "cooldown
+  /// > period of not talking" which will switch back into "tap-to-talk" mode
+  /// > in pocket mode
+  ///
+  /// — and thirty seconds is their figure. The loop is now: three taps on the
+  /// phone open the microphone, the helmet carries the conversation, and half
+  /// a minute of not talking hands it back to the phone, where tapping works.
+  int captureIdleSeconds = 30;
   int maxServers = 2;
 
   /// Chosen interface language. Null follows the system.
@@ -1263,8 +1272,7 @@ class AppState extends ChangeNotifier {
     }
     pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
     pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
-    autoStopCapture = prefs.getBool(_prefsAutoStop) ?? false;
-    autoStopSeconds = (prefs.getInt(_prefsAutoStopSecs) ?? 20).clamp(5, 300);
+    captureIdleSeconds = (prefs.getInt(_prefsCaptureIdle) ?? 30).clamp(10, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
     selectedOutput = prefs.getString(_prefsOutputDevice);
     inputGainDbValue = prefs.getDouble(_prefsInputGain) ?? 0;
@@ -1427,8 +1435,7 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_prefsMic, micMode.index);
     await prefs.setBool(_prefsPocketMode, pocketMode);
     await prefs.setBool(_prefsPocketTutorial, pocketTutorialSeen);
-    await prefs.setBool(_prefsAutoStop, autoStopCapture);
-    await prefs.setInt(_prefsAutoStopSecs, autoStopSeconds);
+    await prefs.setInt(_prefsCaptureIdle, captureIdleSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
     await prefs.setDouble(_prefsOutputVolume, outputVolumeDbValue);
     if (selectedInput == null) {
@@ -2315,6 +2322,12 @@ class AppState extends ChangeNotifier {
   /// forward case and not the reverse, so connecting while a meter held the
   /// microphone came up live with the gesture on.
   Future<void> _reconcileCapture() async {
+    // **The silence counter follows the claim, from every door.** Arming it
+    // only where capture goes live left it unarmed whenever the devices were
+    // slow or refused, and the claim is the thing that expires — see
+    // [_armCaptureIdle]. Idempotent, and a no-op whenever the rider is not
+    // holding the microphone open.
+    _armCaptureIdle();
     if (!_audioActive || _captureChanging) return;
     if (_micWanted == _capturing) return;
     if (_micWanted) {
@@ -2758,25 +2771,76 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  /// Starts the silence timer, when the rider has asked for one.
+  /// Whether the rider's voice has been heard since the last quiet tick.
+  ///
+  /// **The gate's verdict, not what was transmitted.** `AppEvent_InputLevel`
+  /// carries `speaking` ten times a second for as long as the microphone is
+  /// open, and it is the chain's own answer to "would voice activation open
+  /// right now, whatever mode is set" — so it holds the microphone open for a
+  /// rider who is muted, or in open mic, or talking to somebody beside the
+  /// bike, all of which are talking. Watching the *transmission* instead would
+  /// close the microphone under a muted rider mid-sentence, and in open mic it
+  /// would never close at all.
+  ///
+  /// Sticky rather than sampled: a word is a few hundred milliseconds and the
+  /// tick below is a second, so sampling `speaking` directly would miss "yes".
+  bool _voiceSinceTick = false;
+
+  /// How many consecutive seconds the rider has not spoken for.
+  int _quietSeconds = 0;
+
+  /// Notes a voice, for tests. The real path is the level event.
+  @visibleForTesting
+  void noteRiderVoiceForTest() => _voiceSinceTick = true;
+
+  /// Starts the silence counter that hands capture back.
+  ///
+  /// **A second at a time, counting, rather than one long timer measured
+  /// against the clock.** The first version of this took `DateTime.now()`
+  /// differences, and that is not testable — `FakeAsync` fakes timers and not
+  /// the wall clock, so the release could not be exercised at all — and not
+  /// robust either: a phone that corrects its clock mid-ride would shift or
+  /// skip the release. A count of quiet ticks needs no clock, is exact to the
+  /// second, and the test for it runs in milliseconds.
   void _armCaptureIdle() {
     _captureIdle?.cancel();
     _captureIdle = null;
-    if (!autoStopCapture || !_captureOnDemand) return;
-    _captureIdle = Timer(Duration(seconds: autoStopSeconds), () {
-      // Reluctant on purpose. Each transition renegotiates an SCO link, which
-      // is a second or two and audible in the helmet, so flapping through a
-      // conversation would be worse than staying narrowband for all of it.
-      if (_transmitting || _anyoneSpeaking) {
-        _armCaptureIdle();
-        return;
-      }
-      // Through the latch, like the gesture. Calling `releaseCapture` directly
-      // closed the microphone while the rider's claim still said they wanted
-      // it, so the next reconcile from any other door would open it again.
-      _riderWantsMic = false;
-      unawaited(_reconcileCapture());
-    });
+    _quietSeconds = 0;
+    _voiceSinceTick = false;
+    // **Only while the rider is holding the microphone open.** Not
+    // `_capturing`: the claim is what expires, and it is held from the third
+    // tap — through the second or two an SCO negotiation takes, and through a
+    // negotiation that never finishes. A ticking counter in the listening
+    // state would be a wake-up a second for the whole of a ride, to count
+    // towards releasing something nobody is holding.
+    if (!_captureOnDemand || !_riderWantsMic) return;
+    _captureIdle = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _captureIdleTick(),
+    );
+  }
+
+  /// One second gone. Count it, or start the count again.
+  void _captureIdleTick() {
+    // Reluctant on purpose. Each transition renegotiates an SCO link, which
+    // is a second or two and audible in the helmet, so flapping through a
+    // conversation would be worse than staying narrowband for all of it —
+    // which is also why somebody else talking holds it open. A rider
+    // listening to an answer is in the middle of a conversation.
+    if (_voiceSinceTick || _transmitting || _anyoneSpeaking) {
+      _voiceSinceTick = false;
+      _quietSeconds = 0;
+      return;
+    }
+    _quietSeconds++;
+    if (_quietSeconds < captureIdleSeconds) return;
+    _captureIdle?.cancel();
+    _captureIdle = null;
+    // Through the latch, like the gesture. Calling `releaseCapture` directly
+    // closed the microphone while the rider's claim still said they wanted
+    // it, so the next reconcile from any other door would open it again.
+    _riderWantsMic = false;
+    unawaited(_reconcileCapture());
   }
 
   /// Whether anybody is being heard right now, on any server.
@@ -5011,23 +5075,13 @@ class AppState extends ChangeNotifier {
   }
 
   /// Whether capture releases itself after a stretch of silence.
-  Future<void> updateAutoStopCapture(bool on) async {
-    autoStopCapture = on;
-    // Re-armed or cancelled at once, so a rider who switches it off mid-ride is
-    // not released ten seconds later by a timer nobody can see.
-    if (on) {
-      _armCaptureIdle();
-    } else {
-      _captureIdle?.cancel();
-      _captureIdle = null;
-    }
-    await _persist();
-    notifyListeners();
-  }
-
-  Future<void> updateAutoStopSeconds(int seconds) async {
-    autoStopSeconds = seconds.clamp(5, 300);
-    if (autoStopCapture) _armCaptureIdle();
+  /// Changes how long the silence has to be.
+  ///
+  /// Re-armed at once, so a rider who shortens it mid-ride is not held by a
+  /// timer set to the old figure.
+  Future<void> updateCaptureIdleSeconds(int seconds) async {
+    captureIdleSeconds = seconds.clamp(10, 300);
+    if (_captureIdle != null) _armCaptureIdle();
     await _persist();
     notifyListeners();
   }
@@ -5392,6 +5446,9 @@ class AppState extends ChangeNotifier {
         // the others slide.
         _inputLevelDb = VoiceMeter.follow(_inputLevelDb, levelDb);
         _speaking = speaking;
+        // The cooldown's whole input. Ten times a second, for as long as the
+        // microphone is open; see [_voiceSinceTick].
+        if (speaking) _voiceSinceTick = true;
         _thresholdDb = thresholdDb;
         _noiseFloorDb = noiseFloorDb;
         // Returns rather than falling through to [notifyListeners]: see

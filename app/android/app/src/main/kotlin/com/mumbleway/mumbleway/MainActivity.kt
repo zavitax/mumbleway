@@ -147,6 +147,7 @@ class MainActivity : FlutterActivity() {
                     "routeChanged",
                     mapOf(
                         "route" to route,
+                        "headset" to audioRouting.headsetPresent(),
                         // Android has never answered a channel count here — it
                         // reports -1, "not known", for the reason the iOS half
                         // documents — so it keeps saying so rather than
@@ -601,6 +602,10 @@ class MainActivity : FlutterActivity() {
             // Which microphone this turned out to be. See
             // `AudioRouting.routeCode` and `Recorded::route`.
             "route" to audioRouting.routeCode,
+            // Whether a headset is attached at all, which the route cannot
+            // say while the phone's own microphone is the live one. See
+            // `AudioRouting.headsetPresent`.
+            "headset" to audioRouting.headsetPresent(),
             // Android does not offer a channel count before the device is open,
             // and the engine opens it itself. Negative means "not known", which
             // the Dart side distinguishes from zero — and zero, which means

@@ -123,6 +123,39 @@ final class AudioSession {
     }
   }
 
+  /// Whether a headset is attached at all, whichever microphone is live.
+  ///
+  /// **Not derivable from [`routeCode`], and that is the whole reason this
+  /// exists.** The listening session deliberately prefers the built-in
+  /// microphone and does not offer hands-free as an input, so a rider in
+  /// pocket mode with a helmet on their head reports route 1 — the phone’s
+  /// own. Deriving "is a helmet connected" from that would answer no for the
+  /// entire state the answer matters in.
+  ///
+  /// The **outputs** are the half that knows while listening: the music is
+  /// going to the helmet over A2DP, so the output port names it. The inputs
+  /// are the half that knows while capturing, and a wired or USB microphone
+  /// can show up on either. Both are consulted; either is enough.
+  static func headsetPresent() -> Bool {
+    let session = AVAudioSession.sharedInstance()
+    for port in session.currentRoute.outputs {
+      switch port.portType {
+      case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .headphones, .usbAudio,
+        .carAudio, .lineOut:
+        return true
+      default: continue
+      }
+    }
+    for port in session.availableInputs ?? [] {
+      switch port.portType {
+      case .bluetoothHFP, .headsetMic, .lineIn, .usbAudio, .carAudio:
+        return true
+      default: continue
+      }
+    }
+    return false
+  }
+
   static func routeCode() -> Int {
     let session = AVAudioSession.sharedInstance()
     guard let port = session.currentRoute.inputs.first?.portType else { return 0 }
@@ -197,6 +230,7 @@ final class AudioSession {
         "inputChannels": 0,
         "sampleRate": session.sampleRate,
         "route": Self.routeCode(),
+        "headset": Self.headsetPresent(),
         // **Reported because the comment above is true and nothing acted on
         // it.** Deactivating stops the audio unit and interrupts the streams
         // the engine has open — *both* of them — and the engine was never
@@ -255,6 +289,7 @@ final class AudioSession {
         "inputChannels": known ? channels : -1,
         "sampleRate": session.sampleRate,
         "route": Self.routeCode(),
+        "headset": Self.headsetPresent(),
         // **Taking the hands-free profile moves the input device**, from the
         // phone's own microphone to the helmet's, so the engine has to open
         // the new one — its stream is bound to a device, and the rate it
@@ -748,6 +783,7 @@ final class AudioSession {
           "routeChanged",
           arguments: [
             "route": Self.routeCode(),
+            "headset": Self.headsetPresent(),
             "inputChannels": session.inputNumberOfChannels,
             "sampleRate": session.sampleRate,
           ])

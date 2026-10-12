@@ -418,6 +418,12 @@ music plays at full quality, and takes it again when you tap the phone three
 times — through a pocket, or a bag on your thigh. It hands the microphone back
 by itself after a stretch in which you have not spoken.
 
+**It needs a headset.** The whole point is giving a headset’s hands-free
+profile back while nobody is talking; with nothing connected there is no
+profile to give back, so the panel says so and the microphone simply stays
+open. The panel can also be pulled down to a handle when you do not want it
+taking up the screen, and it stays down until you pull it back up.
+
 **Taps are heard by the phone’s own microphone**, which is why the way back is
 a silence rather than three more taps: while a headset is carrying your voice,
 the phone is not listening, and a tap on a helmet shell cannot be told from the

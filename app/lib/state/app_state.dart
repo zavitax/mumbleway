@@ -606,6 +606,7 @@ class AppState extends ChangeNotifier {
   static const _prefsMic = 'mumbleway.micMode';
   static const _prefsPocketMode = 'mumbleway.pocketMode';
   static const _prefsPocketTutorial = 'mumbleway.pocketTutorialSeen';
+  static const _prefsPocketCollapsed = 'mumbleway.pocketPanelCollapsed';
   static const _prefsCaptureIdle = 'mumbleway.captureIdleSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
   static const _prefsOutputDevice = 'mumbleway.outputDevice';
@@ -821,8 +822,34 @@ class AppState extends ChangeNotifier {
   /// Open mic and voice activity are both coherent with it.
   bool get pocketAvailable => pocketMode && micMode != MicMode.pushToTalk;
 
+  /// Whether pocket mode can actually do anything right now.
+  ///
+  /// **A headset is the whole premise.** Pocket mode closes the microphone
+  /// while nobody is talking so that a Bluetooth headset can give the
+  /// hands-free profile back, which is what costs a rider their music and
+  /// their bandwidth. With no headset there is no profile to give back and
+  /// nothing to gain: closing the phone's own microphone would buy nothing and
+  /// cost the rider three taps to undo. So the panel says why instead, and
+  /// capture simply stays open.
+  bool get pocketReady => pocketAvailable && _headsetPresent;
+
   /// Whether the rider has ever armed it, so the explanation is shown once.
   bool pocketTutorialSeen = false;
+
+  /// Whether the panel is pulled down to its handle.
+  ///
+  /// **Remembered between rides**, at a rider's request: it is a decision about
+  /// how much of the screen this feature may have, which does not change
+  /// because an app restarted.
+  bool pocketPanelCollapsed = false;
+
+  /// Pulls the panel down to its handle, or back up.
+  Future<void> setPocketPanelCollapsed(bool collapsed) async {
+    if (pocketPanelCollapsed == collapsed) return;
+    pocketPanelCollapsed = collapsed;
+    notifyListeners();
+    await _persist();
+  }
 
   // **No ducking, on either platform, and no setting for it.** It shipped as
   // a standing `.duckOthers` / audio-focus lease, which quietened a rider's
@@ -1141,6 +1168,11 @@ class AppState extends ChangeNotifier {
       };
 
       AudioSessionBridge.instance.onRouteChanged = (session) {
+        // **Ahead of the early return below**, which only cares about the
+        // input route: a headset plugged in or dropped while the phone's own
+        // microphone is the live one changes nothing about the route and
+        // everything about whether pocket mode can work.
+        _noteHeadset(session.headset);
         if (_audioRoute == session.route) return;
         _audioRoute = session.route;
         try {
@@ -1272,6 +1304,7 @@ class AppState extends ChangeNotifier {
     }
     pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
     pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
+    pocketPanelCollapsed = prefs.getBool(_prefsPocketCollapsed) ?? false;
     captureIdleSeconds = (prefs.getInt(_prefsCaptureIdle) ?? 30).clamp(10, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
     selectedOutput = prefs.getString(_prefsOutputDevice);
@@ -1435,6 +1468,7 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_prefsMic, micMode.index);
     await prefs.setBool(_prefsPocketMode, pocketMode);
     await prefs.setBool(_prefsPocketTutorial, pocketTutorialSeen);
+    await prefs.setBool(_prefsPocketCollapsed, pocketPanelCollapsed);
     await prefs.setInt(_prefsCaptureIdle, captureIdleSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
     await prefs.setDouble(_prefsOutputVolume, outputVolumeDbValue);
@@ -2421,6 +2455,7 @@ class AppState extends ChangeNotifier {
     // Before the engine opens, so the first block the recorder sees is already
     // labelled with the microphone it came from.
     _audioRoute = session.route;
+    _headsetPresent = session.headset;
     try {
       setAudioRoute(code: session.route);
     } catch (_) {
@@ -2584,6 +2619,37 @@ class AppState extends ChangeNotifier {
   int get audioRoute => _audioRoute;
   int _audioRoute = 0;
 
+  /// Whether a headset is attached at all, whichever microphone is live.
+  ///
+  /// **The route cannot answer this**, which is why the platform sides report
+  /// it separately: the listening session prefers the phone's own microphone
+  /// deliberately, so a rider in pocket mode with a helmet on their head is on
+  /// route 1. See `AudioSessionState.headset`.
+  bool get headsetPresent => _headsetPresent;
+  bool _headsetPresent = false;
+
+  /// Says a headset is or is not there, for tests.
+  ///
+  /// There is no platform under a test to report one, and without a headset
+  /// pocket mode deliberately does nothing — so every test of it has to say.
+  @visibleForTesting
+  void noteHeadsetForTest({required bool present}) => _noteHeadset(present);
+
+  /// Takes a platform reply's word for whether a headset is there.
+  void _noteHeadset(bool present) {
+    if (_headsetPresent == present) return;
+    _headsetPresent = present;
+    // **Capture follows it**, because pocket mode is only meaningful with a
+    // headset: without one the on-demand release is turned off and the
+    // microphone simply stays open. A headset dropping mid-ride therefore has
+    // to reconcile, or a rider is left listening with nothing able to open the
+    // microphone again — tapping a phone is how pocket mode opens it, and the
+    // panel has stopped offering that.
+    unawaited(_reconcileCapture());
+    _syncTapDetection();
+    notifyListeners();
+  }
+
   /// Whether the hands-free profile is held and there is a microphone.
   ///
   /// False is the listening state: the group and whatever music is playing come
@@ -2606,7 +2672,7 @@ class AppState extends ChangeNotifier {
   /// session behaves exactly as it always did until a rider slides it. Before,
   /// switching the setting on in settings silently changed what connecting did,
   /// which is how a rider came to be listening when they expected to talk.
-  bool get _captureOnDemand => pocketAvailable && _pocketActive;
+  bool get _captureOnDemand => pocketReady && _pocketActive;
 
   /// What other MumbleWay clients are told about how this rider transmits.
   ///
@@ -2678,6 +2744,7 @@ class AppState extends ChangeNotifier {
       }
 
       _audioRoute = s.route;
+      _headsetPresent = s.headset;
       setAudioRoute(code: s.route);
       await setCaptureWanted(on_: true);
 
@@ -2729,6 +2796,7 @@ class AppState extends ChangeNotifier {
       await setCaptureWanted(on_: false);
       _capturing = false;
       _audioRoute = s.route;
+      _headsetPresent = s.headset;
       try {
         setAudioRoute(code: s.route);
       } catch (_) {}
@@ -2788,6 +2856,15 @@ class AppState extends ChangeNotifier {
 
   /// How many consecutive seconds the rider has not spoken for.
   int _quietSeconds = 0;
+
+  /// How many seconds of silence are left before the microphone closes.
+  ///
+  /// The panel counts this down, which is the one part of pocket mode a rider
+  /// cannot hear: the two falling tones say it *has* closed, and this says it
+  /// is about to. Full again whenever anybody speaks, which is what makes the
+  /// bar refill rather than drift.
+  int get captureIdleLeft =>
+      (captureIdleSeconds - _quietSeconds).clamp(0, captureIdleSeconds);
 
   /// Notes a voice, for tests. The real path is the level event.
   @visibleForTesting

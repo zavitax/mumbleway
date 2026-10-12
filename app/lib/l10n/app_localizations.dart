@@ -4165,23 +4165,29 @@ abstract class L {
   /// **'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.'**
   String get pocketLockedNote;
 
-  /// Pocket-mode state line while the microphone is open and an external microphone is carrying the voice, so tapping cannot be heard. The number is the silence that hands the microphone back
+  /// Heading of the message shown in place of the pocket-mode slider when no Bluetooth, wired or USB headset is attached
   ///
   /// In en, this message translates to:
-  /// **'Microphone open — stop talking for {seconds} seconds and it closes'**
-  String pocketOpenQuiet(int seconds);
+  /// **'No headset connected'**
+  String get pocketNoHeadset;
 
-  /// The same, with no headset: the phone's own microphone is the live one
+  /// The body of that message: why pocket mode is unavailable rather than broken
   ///
   /// In en, this message translates to:
-  /// **'Microphone open — tap the phone three times to stop'**
-  String get pocketOpenTapPhone;
+  /// **'Pocket mode exists to give a headset’s hands-free profile back while nobody is talking — that is what returns your music to full quality. With no headset there is no profile to give back, so the microphone simply stays open and there is nothing for taps to switch. Connect a headset and the slider appears.'**
+  String get pocketNoHeadsetBody;
 
-  /// Shown above the slider while listening. Always the phone, because with the microphone closed the phone's own is the only one listening
+  /// Shown with a bar counting down while the microphone is open in pocket mode. Keep it short: it sits in a fixed-height row under the three tap dots
   ///
   /// In en, this message translates to:
-  /// **'Microphone closed — tap the phone three times to talk'**
-  String get pocketClosedTapPhone;
+  /// **'{seconds} s until the microphone closes'**
+  String pocketCountdown(int seconds);
+
+  /// Shown in the same fixed-height row while the microphone is closed, so the panel does not change height
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the phone three times to speak'**
+  String get pocketTapToSpeak;
 
   /// Which microphone is open right now, shown beside the capture state so a rider can tell the helmet is really in use rather than the phone in their pocket. With capture off the phone's own is open and listening for taps, which is not nothing and must not say so
   ///

@@ -1347,22 +1347,26 @@
   "@pocketLockedNote": {
     "description": "Small reassuring note under the red slider, so a rider who finds every other control dead does not think the app has frozen"
   },
-  "pocketOpenQuiet": "Microphone open — stop talking for {seconds} seconds and it closes",
-  "@pocketOpenQuiet": {
-    "description": "Pocket-mode state line while the microphone is open and an external microphone is carrying the voice, so tapping cannot be heard. The number is the silence that hands the microphone back",
+  "pocketNoHeadset": "No headset connected",
+  "@pocketNoHeadset": {
+    "description": "Heading of the message shown in place of the pocket-mode slider when no Bluetooth, wired or USB headset is attached"
+  },
+  "pocketNoHeadsetBody": "Pocket mode exists to give a headset’s hands-free profile back while nobody is talking — that is what returns your music to full quality. With no headset there is no profile to give back, so the microphone simply stays open and there is nothing for taps to switch. Connect a headset and the slider appears.",
+  "@pocketNoHeadsetBody": {
+    "description": "The body of that message: why pocket mode is unavailable rather than broken"
+  },
+  "pocketCountdown": "{seconds} s until the microphone closes",
+  "@pocketCountdown": {
+    "description": "Shown with a bar counting down while the microphone is open in pocket mode. Keep it short: it sits in a fixed-height row under the three tap dots",
     "placeholders": {
       "seconds": {
         "type": "int"
       }
     }
   },
-  "pocketOpenTapPhone": "Microphone open — tap the phone three times to stop",
-  "@pocketOpenTapPhone": {
-    "description": "The same, with no headset: the phone's own microphone is the live one"
-  },
-  "pocketClosedTapPhone": "Microphone closed — tap the phone three times to talk",
-  "@pocketClosedTapPhone": {
-    "description": "Shown above the slider while listening. Always the phone, because with the microphone closed the phone's own is the only one listening"
+  "pocketTapToSpeak": "Tap the phone three times to speak",
+  "@pocketTapToSpeak": {
+    "description": "Shown in the same fixed-height row while the microphone is closed, so the panel does not change height"
   },
   "pocketMicPhone": "Phone microphone",
   "pocketMicHelmet": "Helmet microphone",

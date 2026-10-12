@@ -172,6 +172,35 @@ class AudioRouting(private val context: Context) {
         }
     }
 
+    /**
+     * Whether a headset is attached at all, whichever microphone is live.
+     *
+     * **Not derivable from [routeCode], and that is why this exists.** In
+     * pocket mode the communication device is released while only listening,
+     * so a rider with a helmet on their head reports the phone's own
+     * microphone — the answer would be "no helmet" for the whole of the state
+     * the question matters in.
+     *
+     * The output devices are what know: music is going to the helmet over
+     * A2DP whether or not this app holds the hands-free profile. Wired and USB
+     * headsets show up in the same list.
+     */
+    fun headsetPresent(): Boolean {
+        val outputs = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        return outputs.any {
+            when (it.type) {
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                -> true
+                else -> false
+            }
+        }
+    }
+
     /** Whether the hands-free profile is currently held. */
     private var capturing = false
 

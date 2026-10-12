@@ -29,6 +29,11 @@ void main() {
       ..pocketMode = true
       ..micMode = MicMode.continuous;
     state.runtimeFor('a').status = ConnStatus.connected;
+    // **Pocket mode does nothing without a headset**, deliberately: there is
+    // no hands-free profile to give back, so closing the phone's own
+    // microphone would buy nothing. Every test of the cooldown has to say
+    // there is one.
+    state.noteHeadsetForTest(present: true);
     await state.setPocketActive(true);
     await state.toggleCapture();
     return state;
@@ -90,6 +95,27 @@ void main() {
       state.riderWantsMic,
       isFalse,
       reason: 'the old thirty-second timer outlived the setting',
+    );
+  });
+
+  /// The other half of the same rule, and the reason the helper above says so.
+  testWidgets('with no headset there is no cooldown and no release', (
+    tester,
+  ) async {
+    final state = AppState()
+      ..pocketMode = true
+      ..micMode = MicMode.continuous;
+    state.runtimeFor('a').status = ConnStatus.connected;
+    await state.setPocketActive(true);
+    await state.toggleCapture();
+
+    expect(state.pocketReady, isFalse, reason: 'no headset, so nothing to do');
+    expect(state.riderWantsMic, isTrue);
+    await tester.pump(const Duration(seconds: 45));
+    expect(
+      state.riderWantsMic,
+      isTrue,
+      reason: 'the microphone was taken away with nothing able to reopen it',
     );
   });
 

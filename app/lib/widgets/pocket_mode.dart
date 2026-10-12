@@ -6,7 +6,6 @@ import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
-import 'tap_stages.dart';
 import 'watch.dart';
 
 /// Arming and disarming pocket mode, and saying what it is doing.
@@ -32,29 +31,31 @@ class PocketPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, bool, bool, bool, int, bool)>(
+    return Watch<(bool, bool, bool, bool, bool, int, bool)>(
       (state) => (
         state.pocketAvailable,
+        state.pocketReady,
         state.pocketActive,
         state.anyLive,
         state.capturing,
         state.audioRoute,
-        state.pocketTutorialSeen,
+        state.pocketPanelCollapsed,
       ),
       (context, state) {
         // Offered only once there is somewhere for the audio to go: arming it
         // with nothing connected would close a microphone nobody is listening
         // to and lock the screen a rider needs in order to connect.
         //
-        // The same fact the lock is derived from, read from one place — see
+        // The same fact the lock is derived from, read from one place - see
         // `AppState.pocketLocked` for the trap that came of having two.
         if (!state.pocketPanelVisible) {
           return const SizedBox.shrink();
         }
         final l = L.of(context);
         final active = state.pocketActive;
+        final collapsed = state.pocketPanelCollapsed;
         return Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: const BorderRadius.vertical(
@@ -65,41 +66,87 @@ class PocketPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // **The microphone line shows whether or not it is armed**, and
-              // the instruction only once it is. Which microphone is recording
-              // is worth knowing at all times; "tap three times" is a lie
-              // before arming, because the detector is not running.
-              _StateLine(
+              // **The handle, and when it is down it is the whole panel.** A
+              // rider asked to be able to put this away: it is useful for two
+              // seconds of a ride and takes a third of the screen. Pulled
+              // down it leaves a notch to pull back up, and the choice is
+              // remembered between rides.
+              _Handle(
+                collapsed: collapsed,
                 armed: active,
-                capturing: state.capturing,
-                route: state.audioRoute,
+                onChanged: (v) =>
+                    AppStateScope.read(context).setPocketPanelCollapsed(v),
               ),
-              const SizedBox(height: 10),
-              SlideToAct(
-                label: active ? l.pocketSlideOff : l.pocketSlideOn,
-                colour: active ? StatusColors.failed : StatusColors.connected,
-                icon: active ? Icons.lock_open : Icons.lock_outline,
-                onConfirmed: () => _confirm(context, active: active),
+              // `AnimatedSize` rather than two layouts: the panel is on screen
+              // while it changes height, and a jump reads as the app having
+              // done something.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: collapsed
+                    ? const SizedBox(width: double.infinity, height: 0)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // **Why it cannot be used, where the slider would
+                          // be.** Pocket mode exists to give a headset's
+                          // hands-free profile back; with no headset there is
+                          // nothing to give back and nothing for a tap to
+                          // switch, so the microphone stays open. Saying so
+                          // beats offering a slider that arms something inert.
+                          if (!state.pocketReady) const _NoHeadset(),
+                          if (state.pocketReady) ...[
+                            _StateLine(
+                              capturing: state.capturing,
+                              route: state.audioRoute,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          // Still reachable while armed without a headset: one
+                          // dropping mid-ride leaves the screen locked, and
+                          // the slider is the way back.
+                          if (state.pocketReady || active)
+                            SlideToAct(
+                              label: active ? l.pocketSlideOff : l.pocketSlideOn,
+                              colour: active
+                                  ? StatusColors.failed
+                                  : StatusColors.connected,
+                              icon: active
+                                  ? Icons.lock_open
+                                  : Icons.lock_outline,
+                              onConfirmed: () =>
+                                  _confirm(context, active: active),
+                            ),
+                          if (active && state.pocketReady) ...[
+                            // Asked for: the slider and the meter were
+                            // touching, and through a glove that reads as one
+                            // control.
+                            const SizedBox(height: 16),
+                            _TapFeedback(
+                              capturing: state.capturing,
+                              route: state.audioRoute,
+                            ),
+                            const SizedBox(height: 8),
+                            // **The anti-panic line.** Every other control on
+                            // the screen has just stopped working, which from
+                            // the outside is exactly what a frozen app looks
+                            // like.
+                            Text(
+                              l.pocketLockedNote,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
               ),
-              if (active) ...[
-                const SizedBox(height: 10),
-                _TapFeedback(
-                  capturing: state.capturing,
-                  route: state.audioRoute,
-                ),
-                const SizedBox(height: 8),
-                // **The anti-panic line.** Every other control on the screen
-                // has just stopped working, which from the outside is exactly
-                // what a frozen app looks like.
-                Text(
-                  l.pocketLockedNote,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
             ],
           ),
         );
@@ -131,19 +178,124 @@ class PocketPanel extends StatelessWidget {
   }
 }
 
-/// What capture is doing, what to do about it, and which microphone is live.
-class _StateLine extends StatelessWidget {
-  const _StateLine({
+/// The grab handle: tap it, or flick it down and up.
+///
+/// **Both gestures, because neither is obvious on its own.** A handle that
+/// only drags is one a rider prods; one that only taps is one they try to
+/// drag. The target is the full width of the panel and 28 logical pixels tall,
+/// which is reachable with a glove on.
+class _Handle extends StatelessWidget {
+  const _Handle({
+    required this.collapsed,
     required this.armed,
-    required this.capturing,
-    required this.route,
+    required this.onChanged,
   });
 
+  final bool collapsed;
+
+  /// **Coloured while armed, and that is not decoration.** A collapsed panel
+  /// hides the slider, and while pocket mode is armed the slider is the only
+  /// live control on the screen — so the handle has to read as the way back
+  /// rather than as a decoration at the bottom of a frozen app.
   final bool armed;
+
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onChanged(!collapsed),
+      // Direction decides, not distance: a flick down puts it away and a flick
+      // up brings it back, so the panel always ends in a state rather than
+      // part-way through one.
+      onVerticalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v > 0) onChanged(true);
+        if (v < 0) onChanged(false);
+      },
+      child: SizedBox(
+        height: 28,
+        child: Center(
+          child: Container(
+            width: 44,
+            height: 5,
+            decoration: BoxDecoration(
+              color: armed
+                  ? StatusColors.failed.withValues(alpha: 0.8)
+                  : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Why the slider is not there.
+class _NoHeadset extends StatelessWidget {
+  const _NoHeadset();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.headset_off,
+                size: 18,
+                color: StatusColors.reconnecting,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                l.pocketNoHeadset,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            l.pocketNoHeadsetBody,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Which microphone is recording, and nothing else.
+///
+/// **The instruction moved out of here.** It used to say "tap three times" or
+/// "stop talking", above the slider, in a line that appeared and disappeared
+/// with arming - so the panel changed height as it changed state. It is now a
+/// fixed-height block under the three dots, with a countdown in it; see
+/// [_TapFeedback].
+///
+/// What is left is the line `CLAUDE.md` records the fault for: audio carries
+/// no record of what captured it, so a phone recording from its own microphone
+/// while the rider believes the helmet is live looks identical from outside.
+/// The microphone icon beside it is gone at a rider's request - the words say
+/// it, and the icon said it again.
+class _StateLine extends StatelessWidget {
+  const _StateLine({required this.capturing, required this.route});
+
   final bool capturing;
   final int route;
 
-  /// `Recorded::route`'s numbers — a wire format shared with every recording
+  /// `Recorded::route`'s numbers - a wire format shared with every recording
   /// already on a rider's phone, so these cases are not free to be renumbered.
   static bool _external(int route) => route == 2 || route == 3 || route == 4;
 
@@ -152,13 +304,13 @@ class _StateLine extends StatelessWidget {
   ///
   /// **This used to answer "none" whenever capture was off, and that was
   /// wrong.** Pocket mode spends its time with capture off and a microphone
-  /// very much open: the phone's own, which is the only one a tap on the phone
-  /// can reach and the entire basis of the gesture. So the line sat on a false
-  /// value for the whole of the state it mattered in, which a rider reported
-  /// as the microphone never seeming to update.
+  /// very much open: the phone's own, which is the only one a tap can reach
+  /// and the entire basis of the gesture. So the line sat on a false value for
+  /// the whole of the state it mattered in, which a rider reported as the
+  /// microphone never seeming to update.
   ///
-  /// Capture off is the phone's own by construction — `activateListening`
-  /// asks for the built-in input explicitly — so the route is only consulted
+  /// Capture off is the phone's own by construction - `activateListening`
+  /// asks for the built-in input explicitly - so the route is only consulted
   /// for the capturing case, where it names the port that was taken.
   static String _mic(L l, int route, bool capturing) {
     if (!capturing) return l.pocketMicPhone;
@@ -174,85 +326,33 @@ class _StateLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
-    // Closed is always the phone: with capture off there is no hands-free
-    // link, so the phone's own microphone is the only one listening and the
-    // only one a tap can reach.
-    //
-    // **Open on an external microphone is the case that changed.** It used to
-    // say "tap your helmet three times to stop", and that never worked — a
-    // hands-free link's AGC and codec smear the transient a strike is
-    // recognised by. So the instruction is now the one that does work: stop
-    // talking, and the microphone hands itself back.
-    final what = !capturing
-        ? l.pocketClosedTapPhone
-        : _external(route)
-        ? l.pocketOpenQuiet(AppStateScope.of(context).captureIdleSeconds)
-        : l.pocketOpenTapPhone;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (armed)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                capturing ? Icons.mic : Icons.mic_off,
-                size: 16,
-                color: capturing
-                    ? StatusColors.talking
-                    : scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  what,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        if (armed) const SizedBox(height: 2),
-        Text(
-          _mic(l, route, capturing),
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
-        ),
-      ],
+    return Text(
+      _mic(l, route, capturing),
+      textAlign: TextAlign.center,
+      style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
     );
   }
 }
 
-/// What the detector is hearing, and how many taps it has counted.
+/// The meter, the three dots, and what to do next.
 ///
-/// **The pips are what the tick used to do, moved to where it can work.** The
-/// acknowledging tick is a sound played into the rider's ears, and on a helmet
-/// it comes back through the helmet's own microphone a round trip later and
-/// registers as the next tap. There is no tail that fixes it: taps arrive 200
-/// to 330 ms apart and the round trip is of the same order.
+/// **The meter is the phone's own microphone, as the detector hears it** -
+/// band-limited and measured before anything else touches it, which is the
+/// only level that says whether a tap will register. The mark on the track is
+/// the threshold, so a rider can see whether their taps reach it rather than
+/// guess. Shown only while listening, because that is when the phone's
+/// microphone is the one being tapped; while capturing it is the helmet's, and
+/// the talk panel's own meters cover that.
 ///
-/// **The meter is the phone's own microphone, as the detector hears it** —
-/// band-limited to 100 Hz–4 kHz and measured before anything else touches it,
-/// which is the only level that says whether a tap will register. Shown only
-/// while listening, because that is when the phone's microphone is the one
-/// being tapped; while capturing it is the helmet's, and the talk panel's own
-/// meters cover that.
+/// **The three dots are what the acknowledging tick used to do.** They still
+/// exist beside the three rising notes because a note can be missed under a
+/// visor at speed, and two heard out of three is a different diagnosis from
+/// none.
 ///
-/// The mark on the track is the threshold. A tap has to reach it, so a rider
-/// can see whether theirs do rather than guess — which is the question three
-/// days of this feature have turned on.
-/// The meter, the three dots and the stage lamps — the whole of what a rider
-/// can see about tap detection.
-///
-/// **Drawn only while a tap can actually be heard**, which is while the
-/// phone's own microphone is the live one. There is no detector on an external
-/// microphone any more: tapping a helmet could not be told from the road, so
-/// the way out of capture is a silence and the state line above says so. A
-/// meter and nine dark lamps would be an instrument reporting on a detector
-/// that is not running.
+/// **The nine stage lamps are gone from here.** They were an instrument for
+/// finding out why taps on a helmet were not registering, and there is no
+/// detector on a helmet any more; the row is still in the diagnostics panel,
+/// where somebody looking for it will be looking for it.
 class _TapFeedback extends StatefulWidget {
   const _TapFeedback({required this.capturing, required this.route});
 
@@ -279,11 +379,17 @@ class _TapFeedbackState extends State<_TapFeedback> {
   /// What a tap has to clear, which is `MARGIN_DB` in the detector.
   static const _threshold = 18.0;
 
+  /// The height the instruction block always takes.
+  ///
+  /// **Fixed on purpose, and a rider asked for it**: a countdown that replaces
+  /// one line of text with two moves everything above it, including the slider
+  /// they are reaching for. Two lines' worth, so neither state can overflow.
+  static const _instructionHeight = 38.0;
+
   Timer? _tick;
   int _run = 0;
   double _over = 0;
-  int _stages = 0;
-  final _reader = TapStageReader();
+  int _left = 0;
 
   @override
   void initState() {
@@ -298,39 +404,43 @@ class _TapFeedbackState extends State<_TapFeedback> {
   }
 
   void _poll() {
+    if (!mounted) return;
+    // The countdown comes from the state rather than from a timer of its own:
+    // `AppState` holds the counter that actually releases capture, and a
+    // second copy of it here would be a second answer to the same question.
+    final left = AppStateScope.read(context).captureIdleLeft;
     try {
       final s = acousticDiagnostics();
       // Against the floor rather than full scale: the threshold is a margin
       // over the trailing average, so the distance to it is the only reading
       // that means anything. A raw dBFS meter would move with the room.
       final over = (s.meterDb - s.floorDb).clamp(0.0, _span);
-      // The lamps are read on every poll whether or not anything else moved:
-      // the reader's whole job is comparing one poll's frame count with the
-      // next, and skipping a poll would make a live stream look dead.
-      final stages = _reader.read(s);
-      if (s.run == _run && stages == _stages && (over - _over).abs() < 0.5) {
-        return;
-      }
+      if (s.run == _run && left == _left && (over - _over).abs() < 0.5) return;
       setState(() {
         _run = s.run;
         _over = over;
-        _stages = stages;
+        _left = left;
       });
     } catch (_) {
-      // No engine; nothing to draw and nothing to report.
+      // No engine, so no meter and no dots - but the countdown is the app's
+      // own and still has to run.
+      if (left == _left) return;
+      setState(() => _left = left);
     }
   }
 
-  /// Whether anything here has a detector behind it.
-  bool get _live => !_StateLine._external(widget.route);
+  /// Whether a tap could be heard at all right now.
+  bool get _listening =>
+      !widget.capturing && !_StateLine._external(widget.route);
 
   @override
   Widget build(BuildContext context) {
-    if (!_live) return const SizedBox.shrink();
+    final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final total = AppStateScope.of(context).captureIdleSeconds;
     return Column(
       children: [
-        if (!widget.capturing) ...[
+        if (_listening) ...[
           LayoutBuilder(
             builder: (context, constraints) {
               final w = constraints.maxWidth;
@@ -351,7 +461,7 @@ class _TapFeedbackState extends State<_TapFeedback> {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: loud
-                              ? StatusColors.talking
+                              ? StatusColors.connected
                               : scheme.onSurfaceVariant,
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -372,7 +482,8 @@ class _TapFeedbackState extends State<_TapFeedback> {
               );
             },
           ),
-          const SizedBox(height: 8),
+          // Asked for: the meter and the dots were touching.
+          const SizedBox(height: 14),
         ],
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -385,15 +496,60 @@ class _TapFeedbackState extends State<_TapFeedback> {
                 margin: const EdgeInsets.symmetric(horizontal: 5),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
+                  // Green, at a rider's request. Blue was the talking colour
+                  // borrowed for want of a better one, and it is the colour of
+                  // somebody else's voice everywhere else in this app.
                   color: i < _run
-                      ? StatusColors.talking
+                      ? StatusColors.connected
                       : scheme.outlineVariant,
                 ),
               ),
           ],
         ),
-        const SizedBox(height: 6),
-        TapStageRow(mask: _stages),
+        const SizedBox(height: 10),
+        // **One block, one height, two states.** Closed: what to do. Open: how
+        // long is left before it closes itself, as a bar that empties - which
+        // is the one part of pocket mode a rider cannot hear, since the two
+        // falling tones say it *has* closed rather than that it is about to.
+        SizedBox(
+          height: _instructionHeight,
+          child: widget.capturing
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: total == 0 ? 0 : _left / total,
+                        minHeight: 5,
+                        backgroundColor: scheme.surfaceContainerHigh,
+                        valueColor: const AlwaysStoppedAnimation(
+                          StatusColors.connected,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      l.pocketCountdown(_left),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                )
+              : Center(
+                  child: Text(
+                    l.pocketTapToSpeak,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+        ),
       ],
     );
   }

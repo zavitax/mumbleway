@@ -10,6 +10,7 @@ class AudioSessionState {
     required this.inputChannels,
     required this.sampleRate,
     this.route = 0,
+    this.headset = false,
     this.error,
     this.capturing = true,
     this.sessionRebuilt = false,
@@ -57,6 +58,18 @@ class AudioSessionState {
   /// carries. See `Recorded::route` in `record.rs` for the table; 0 means it
   /// did not say, which is every platform without a session.
   final int route;
+
+  /// Whether a headset is attached at all, whichever microphone is live.
+  ///
+  /// **Not [route], and the difference is the point.** The listening session
+  /// prefers the phone's own microphone deliberately, so a rider in pocket
+  /// mode with a helmet on their head reports route 1 — and pocket mode only
+  /// makes sense when there is a helmet. The platform sides read the *output*
+  /// route for this, which names the helmet whether or not its microphone is
+  /// the live one.
+  ///
+  /// False on a platform with no session to ask, which is every desktop.
+  final bool headset;
 
   /// What the platform said went wrong, if configuring the session failed
   /// outright rather than merely being refused.
@@ -178,6 +191,7 @@ class AudioSessionBridge {
             inputChannels: (m['inputChannels'] as num?)?.toInt() ?? -1,
             sampleRate: (m['sampleRate'] as num?)?.toDouble() ?? 0,
             route: (m['route'] as num?)?.toInt() ?? 0,
+            headset: m['headset'] == true,
           ),
         );
       }
@@ -225,6 +239,7 @@ class AudioSessionBridge {
             : 0,
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
         route: (r?['route'] as num?)?.toInt() ?? 0,
+        headset: r?['headset'] == true,
         error: r?['error'] as String?,
         capturing: true,
       );
@@ -261,6 +276,7 @@ class AudioSessionBridge {
             : 0,
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
         route: (r?['route'] as num?)?.toInt() ?? 0,
+        headset: r?['headset'] == true,
         error: r?['error'] as String?,
         capturing: true,
         sessionRebuilt: r?['sessionRebuilt'] == true,
@@ -298,6 +314,7 @@ class AudioSessionBridge {
         inputChannels: 0,
         sampleRate: (r?['sampleRate'] as num?)?.toDouble() ?? 0,
         route: (r?['route'] as num?)?.toInt() ?? 0,
+        headset: r?['headset'] == true,
         error: r?['error'] as String?,
         sessionRebuilt: r?['sessionRebuilt'] == true,
       );

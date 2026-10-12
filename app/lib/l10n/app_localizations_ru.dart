@@ -2278,17 +2278,20 @@ class LRu extends L {
       'Остальной экран заблокирован специально, чтобы в кармане ничего не нажалось. Чтобы разблокировать, сдвиньте ползунок выше.';
 
   @override
-  String pocketOpenQuiet(int seconds) {
-    return 'Микрофон открыт — помолчите $seconds с, и он закроется';
+  String get pocketNoHeadset => 'Гарнитура не подключена';
+
+  @override
+  String get pocketNoHeadsetBody =>
+      'Карманный режим нужен, чтобы отдавать гарнитуре профиль хендсфри, пока никто не говорит, — именно это возвращает музыке полное качество. Без гарнитуры отдавать нечего: микрофон просто остаётся открытым, и переключать постукиванием нечего. Подключите гарнитуру — и появится ползунок.';
+
+  @override
+  String pocketCountdown(int seconds) {
+    return 'до закрытия микрофона $seconds с';
   }
 
   @override
-  String get pocketOpenTapPhone =>
-      'Микрофон открыт — постучите по телефону три раза, чтобы закончить';
-
-  @override
-  String get pocketClosedTapPhone =>
-      'Микрофон закрыт — постучите по телефону три раза, чтобы говорить';
+  String get pocketTapToSpeak =>
+      'Постучите по телефону три раза, чтобы говорить';
 
   @override
   String get pocketMicPhone => 'Микрофон телефона';

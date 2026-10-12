@@ -1,5 +1,5 @@
-Still 1.2.0. The phone and the helmet now have separate detection rules.
+Still 1.2.0. Build 178 is withdrawn; this is build 177 with only the one change you asked for.
 
-One rule served both microphones, and it was too strict for the phone and too loose for the helmet at once. On the phone it is now amplitude alone: a sharp peak with a fast decline is a tap, three inside three seconds is the gesture. The tail and speech tests the helmet needs are gone from it — they cost the phone recall it had no reason to lose.
+178 broke music resuming, the phone meter and tap detection on both microphones. It has been reverted wholesale rather than patched.
 
-The helmet keeps the strict rules, and is next.
+What remains is the separation on its own: the phone's rules and the helmet's rules now live in separate code, so one can change without the other. On the phone it is amplitude alone — a sharp peak with a fast decline. Nothing outside the detector was touched.

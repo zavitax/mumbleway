@@ -1,5 +1,5 @@
-Still 1.2.0. Build 178 is withdrawn; this is build 177 with only the one change you asked for.
+Still 1.2.0. A half-performed gesture now gives up after three seconds.
 
-178 broke music resuming, the phone meter and tap detection on both microphones. It has been reverted wholesale rather than patched.
+You asked how long the three dots take to clear with no further taps, and the answer was that they never did: the window was only checked when a tap arrived. So the panel claimed two were banked long after those two could complete anything — and the next tap started a fresh run, dropping the count from two to one, which looks like a lost tap.
 
-What remains is the separation on its own: the phone's rules and the helmet's rules now live in separate code, so one can change without the other. On the phone it is amplitude alone — a sharp peak with a fast decline. Nothing outside the detector was touched.
+Measured from the first tap, which is when they stop counting.

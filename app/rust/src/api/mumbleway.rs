@@ -3170,6 +3170,13 @@ pub fn set_tap_detection(enabled: bool) -> anyhow::Result<()> {
 pub struct UiAcousticStats {
     /// Whether a completed gesture would act.
     pub enabled: bool,
+    /// Whether these came from the helmet's detector rather than the phone's.
+    ///
+    /// **Two paths, at a rider's request**, because the microphones are not
+    /// the same problem — see `tap_phone` and `tap_helmet` in the engine. A
+    /// reading means different things on each, so the panel has to say which
+    /// produced it rather than let a number be read against the wrong rules.
+    pub on_helmet: bool,
     /// One-millisecond frames examined. **Zero means no microphone is open**,
     /// which while listening is a session problem rather than a tuning one.
     pub frames: u64,
@@ -3225,6 +3232,7 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
     let Ok(app) = app() else {
         return UiAcousticStats {
             enabled: false,
+            on_helmet: false,
             frames: 0,
             candidates: 0,
             discarded_long: 0,
@@ -3245,6 +3253,7 @@ pub fn acoustic_diagnostics() -> UiAcousticStats {
     let s = app.shared.tap_stats();
     UiAcousticStats {
         enabled: app.shared.tap_detection_enabled(),
+        on_helmet: s.on_helmet,
         frames: s.frames,
         candidates: s.candidates,
         discarded_long: s.discarded_long,

@@ -11,7 +11,12 @@
 
 use std::path::PathBuf;
 
-use mumbleway_core::audio::acoustic_tap::AcousticTapDetector;
+// **The phone's path.** The corpus is recordings from phone microphones —
+// route 1 on every one of them — so this rig scores the rules that actually
+// apply to them. The helmet's path has its own rules and needs its own
+// recordings; see `tap_helmet`, and the note there about the only helmet
+// recording in the corpus being two thirds digital silence.
+use mumbleway_core::audio::tap_phone::PhoneTapDetector;
 
 fn read_s16(path: &PathBuf) -> Vec<f32> {
     let raw = std::fs::read(path).expect("read");
@@ -80,7 +85,7 @@ fn it_finds_the_taps_a_rider_can_hear() {
         }
         let performed: Vec<&Vec<usize>> = groups.iter().filter(|g| g.len() >= 3).collect();
 
-        let mut d = AcousticTapDetector::new();
+        let mut d = PhoneTapDetector::new();
         let mut fired: Vec<u64> = Vec::new();
         for block in pcm.chunks(480) {
             let mut banked = false;
@@ -95,7 +100,7 @@ fn it_finds_the_taps_a_rider_can_hear() {
             // tap in which the next one cannot be heard, which is exactly the
             // window a rider tapping quickly uses.
             if banked {
-                d.hear_own_output(-20.0, false);
+                d.hear_own_output(-20.0);
             }
         }
 
@@ -187,7 +192,7 @@ struct Impulse {
 /// says where the threshold should sit, and the half a pass/fail count cannot
 /// show.
 fn impulses(pcm: &[f32]) -> Vec<Impulse> {
-    let mut d = AcousticTapDetector::new();
+    let mut d = PhoneTapDetector::new();
     let mut banked = false;
     let mut out = Vec::new();
     let mut candidates = 0;
@@ -286,7 +291,7 @@ fn taps_and_music_do_not_arrive_the_same_way() {
             // this recording, so every gesture it completes is a false arm
             // and no labelling is needed — the same shape of measurement as
             // a ride at speed with the gesture on and nobody tapping.
-            let mut d = AcousticTapDetector::new();
+            let mut d = PhoneTapDetector::new();
             let mut banked = false;
             let mut gestures = 0;
             for block in pcm.chunks(480) {

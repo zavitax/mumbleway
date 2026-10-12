@@ -5010,6 +5010,7 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_enabled = <bool>::sse_decode(deserializer);
+        let mut var_onHelmet = <bool>::sse_decode(deserializer);
         let mut var_frames = <u64>::sse_decode(deserializer);
         let mut var_candidates = <u64>::sse_decode(deserializer);
         let mut var_discardedLong = <u64>::sse_decode(deserializer);
@@ -5027,6 +5028,7 @@ impl SseDecode for crate::api::mumbleway::UiAcousticStats {
         let mut var_run = <u8>::sse_decode(deserializer);
         return crate::api::mumbleway::UiAcousticStats {
             enabled: var_enabled,
+            on_helmet: var_onHelmet,
             frames: var_frames,
             candidates: var_candidates,
             discarded_long: var_discardedLong,
@@ -6440,6 +6442,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::mumbleway::UiAcousticStats {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.enabled.into_into_dart().into_dart(),
+            self.on_helmet.into_into_dart().into_dart(),
             self.frames.into_into_dart().into_dart(),
             self.candidates.into_into_dart().into_dart(),
             self.discarded_long.into_into_dart().into_dart(),
@@ -7902,6 +7905,7 @@ impl SseEncode for crate::api::mumbleway::UiAcousticStats {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <bool>::sse_encode(self.enabled, serializer);
+        <bool>::sse_encode(self.on_helmet, serializer);
         <u64>::sse_encode(self.frames, serializer);
         <u64>::sse_encode(self.candidates, serializer);
         <u64>::sse_encode(self.discarded_long, serializer);

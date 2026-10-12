@@ -637,12 +637,21 @@ pub struct AudioShared {
     /// so music played through a helmet intercom dropped to telephone
     /// bandwidth for as long as this app was merely open.
     audio_wanted: AtomicBool,
-    /// Listens for the tap gesture in whichever microphone is open.
+    /// Listens for the tap gesture on the phone's own microphone.
     ///
-    /// **Fed from the input callback, so it hears the raw device** — the
-    /// helmet while capturing, the phone's own while listening — before any
-    /// of the chain and whether or not the chain runs at all.
-    tap: Mutex<crate::audio::acoustic_tap::AcousticTapDetector>,
+    /// **Two detectors, not one, at a rider's request.** The two microphones
+    /// are not the same problem: the phone's is a full-band contact impact
+    /// with nothing else touching the case, while a helmet has to survive
+    /// plosives from two centimetres away and this app's own cues arriving a
+    /// round trip late. One shared rule was simultaneously too strict for the
+    /// phone and too loose for the helmet. See `tap_phone` and `tap_helmet`.
+    ///
+    /// Both are fed from the input callback, so they hear the raw device
+    /// before any of the chain and whether or not the chain runs at all. Which
+    /// one is fed is decided by the route, and only one of them ever is.
+    tap_phone: Mutex<crate::audio::tap_phone::PhoneTapDetector>,
+    /// The same, for a helmet on the hands-free profile.
+    tap_helmet: Mutex<crate::audio::tap_helmet::HelmetTapDetector>,
     /// Whether a completed gesture should act. The counters move either way,
     /// so the panel can show the signal while somebody works out why nothing
     /// fires.
@@ -1416,7 +1425,8 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
-            tap: Mutex::new(crate::audio::acoustic_tap::AcousticTapDetector::new()),
+            tap_phone: Mutex::new(crate::audio::tap_phone::PhoneTapDetector::new()),
+            tap_helmet: Mutex::new(crate::audio::tap_helmet::HelmetTapDetector::new()),
             tap_enabled: AtomicBool::new(false),
             tap_gestures: AtomicU64::new(0),
             // True, so every existing caller gets today's behaviour without
@@ -2564,8 +2574,25 @@ impl AudioShared {
         self.tap_enabled.load(Ordering::Acquire)
     }
 
-    pub fn tap_stats(&self) -> crate::audio::acoustic_tap::AcousticStats {
-        self.tap.lock().stats()
+    /// What the detector on the live microphone is seeing.
+    ///
+    /// Whichever one the route selects, so the panel shows the path that is
+    /// actually running rather than an average of two. `on_helmet` in the
+    /// result says which, because a reading means different things on each.
+    pub fn tap_stats(&self) -> crate::audio::tap_envelope::TapStats {
+        if self.on_helmet() {
+            self.tap_helmet.lock().stats()
+        } else {
+            self.tap_phone.lock().stats()
+        }
+    }
+
+    /// Whether the live microphone is a helmet on the hands-free profile.
+    ///
+    /// Route 3; see `record::Recorded` for the numbers, which are a wire
+    /// format shared with every recording already on a rider's phone.
+    pub fn on_helmet(&self) -> bool {
+        self.route() == 3
     }
 
     /// How many gestures have completed since the engine started.
@@ -3314,41 +3341,43 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 // the counters once a second.
                 if cap_shared.tap_detection_enabled() {
                     let mut banked = false;
-                    // **Not while the rider is talking.** A boom microphone
-                    // hears a plosive as a small impact, so speech on a helmet
-                    // arms the detector. See `AudioShared::speech_now`.
-                    //
-                    // Only while capturing, which is both where the fault is
-                    // and the only state the flag means anything in: the
-                    // worker that writes it does not run while listening, so
-                    // consulting it there reads a value from the last call.
-                    if cap_shared.capture_wanted() && cap_shared.speech_now() {
-                        cap_shared.tap.lock().hear_speech();
-                    }
-                    // Route 3 is Bluetooth hands-free; see `record::Recorded`.
-                    // Our own sound comes back through the helmet's microphone
-                    // a round trip later, which changes both of the decisions
-                    // below.
-                    let bluetooth = cap_shared.route() == 3;
-                    // **What this app is playing, so the detector can stop
-                    // listening while it plays it.** The detector sits before
-                    // the canceller — in the listening state there is no
-                    // chain at all — so our own tick, a 2 kHz click in the
-                    // middle of the band a phone-body tap occupies, would
-                    // otherwise be heard as the next tap.
-                    cap_shared
-                        .tap
-                        .lock()
-                        .hear_own_output(cap_shared.output_level_db(), bluetooth);
-                    let gesture = cap_shared.tap.lock().push(&resampled, &mut banked);
-                    if banked && !bluetooth {
+                    // **Two paths, and only one of them runs.** Which
+                    // microphone is live decides which rules apply: see
+                    // `tap_phone` and `tap_helmet` for why one shared rule was
+                    // too strict for the phone and too loose for the helmet at
+                    // the same time.
+                    let on_helmet = cap_shared.on_helmet();
+                    let gesture = if on_helmet {
+                        let mut d = cap_shared.tap_helmet.lock();
+                        // Not while the rider is talking: a boom microphone
+                        // hears a plosive as a small impact. Only while
+                        // capturing, which is the only state the flag means
+                        // anything in — the worker that writes it does not run
+                        // while listening, so reading it there gives a value
+                        // from the last call.
+                        if cap_shared.capture_wanted() && cap_shared.speech_now() {
+                            d.hear_speech();
+                        }
+                        d.hear_own_output(cap_shared.output_level_db());
+                        d.push(&resampled, &mut banked)
+                    } else {
+                        let mut d = cap_shared.tap_phone.lock();
+                        // **What this app is playing, so the detector can stop
+                        // listening while it plays it.** It sits before the
+                        // canceller — in the listening state there is no chain
+                        // at all — so our own tick, a 2 kHz click in the middle
+                        // of the band a phone-body tap occupies, would be heard
+                        // as the next tap.
+                        d.hear_own_output(cap_shared.output_level_db());
+                        d.push(&resampled, &mut banked)
+                    };
+                    if banked && !on_helmet {
                         // **One tick per tap, and never into a helmet.**
                         //
                         // The tick is the only signal that can say *which* tap
                         // of three went unheard, so it is kept where it works:
                         // the phone's own speaker and microphone, where the
-                        // round trip is a handful of milliseconds and the
-                        // self-noise gate covers it.
+                        // round trip is a handful of milliseconds.
                         //
                         // Over Bluetooth it cannot work, and not for want of
                         // tuning. Taps arrive 200 to 330 ms apart and the round

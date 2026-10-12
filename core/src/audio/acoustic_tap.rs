@@ -489,6 +489,18 @@ impl AcousticTapDetector {
         self.frame_ms += 1;
         self.stats.frames += 1;
 
+        // **A half-performed gesture gives up on its own**, whether or not
+        // anybody is listening to this frame. Before this the window was only
+        // checked when a tap arrived, so a count stood for ever if none did:
+        // tap twice, wait, and the pips went on claiming two were banked long
+        // after those two could complete anything — and the next tap dropped
+        // the display from two to one, which reads as a lost tap rather than
+        // an expired pair. Ahead of the deafness check, because a run has to
+        // expire while this app is making a noise too.
+        if self.pattern.expire(self.frame_ms) {
+            self.stats.run = 0;
+        }
+
         // Band-limited first, and only then measured. The band is for recall
         // — see `BAND_LOW_HZ`, which also records the two ways band-limiting
         // was tried as a way of rejecting music, and why neither worked.

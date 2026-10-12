@@ -204,6 +204,18 @@ impl PhoneTapDetector {
         self.frame_ms += 1;
         self.stats.frames += 1;
 
+        // **A half-performed gesture gives up on its own**, whether or not
+        // anybody is listening to this frame. Before this the window was only
+        // checked when a tap arrived, so a count stood for ever if none did:
+        // tap twice, wait, and the pips went on claiming two were banked long
+        // after those two could complete anything — and the next tap dropped
+        // the display from two to one, which reads as a lost tap rather than
+        // an expired pair. Ahead of the deafness check, because a run has to
+        // expire while this app is making a noise too.
+        if self.pattern.expire(self.frame_ms) {
+            self.stats.run = 0;
+        }
+
         let mut peak = 0.0f32;
         for &sample in frame {
             let mut v = sample;
@@ -482,6 +494,51 @@ mod tests {
             d.stats().gestures,
             0,
             "the app heard its own cue as taps: {:?}",
+            d.stats()
+        );
+    }
+
+    /// **The pips have to clear themselves**, which they did not.
+    ///
+    /// A rider asked how long three dots took to reset with no further taps,
+    /// and the answer was that they never did: the window was only examined
+    /// when a tap arrived. So the panel claimed two taps were banked for as
+    /// long as the app was open, and the next tap — starting a fresh run —
+    /// dropped the count from two to one, which reads as a lost tap rather
+    /// than an expired pair.
+    ///
+    /// Asserted through `stats.run`, because that is the number the panel
+    /// draws; the pattern's own expiry has its own test in `gesture`.
+    #[test]
+    fn a_half_performed_gesture_clears_itself() {
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        let mut lead = Vec::new();
+        quiet(&mut lead, 400);
+        d.push(&lead, &mut banked);
+
+        let mut two = Vec::new();
+        tap(&mut two, 0.4);
+        quiet(&mut two, 160);
+        tap(&mut two, 0.4);
+        quiet(&mut two, 160);
+        d.push(&two, &mut banked);
+        assert_eq!(d.stats().run, 2, "two taps did not bank: {:?}", d.stats());
+
+        // Well inside the window: still counted, because they still count.
+        let mut soon = Vec::new();
+        quiet(&mut soon, 500);
+        d.push(&soon, &mut banked);
+        assert_eq!(d.stats().run, 2, "gave up inside the window");
+
+        // Past it, with nothing offered and nothing to hear.
+        let mut later = Vec::new();
+        quiet(&mut later, 3_000);
+        d.push(&later, &mut banked);
+        assert_eq!(
+            d.stats().run,
+            0,
+            "the count outlived the taps: {:?}",
             d.stats()
         );
     }

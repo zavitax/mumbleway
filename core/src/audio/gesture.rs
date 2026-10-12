@@ -129,6 +129,39 @@ impl GesturePattern {
         self.pending_len = 0;
     }
 
+    /// Throws away a run that can no longer become a gesture.
+    ///
+    /// **The window used to be checked only when a tap arrived**, which left
+    /// the count standing for ever if none did. A rider asked how long the
+    /// pips took to clear and the answer was that they did not: tap twice,
+    /// wait, and the panel went on claiming two were banked — minutes after
+    /// those two had stopped being able to complete anything. The next tap
+    /// then started a fresh run and the display *dropped* from two to one,
+    /// which reads as a lost tap rather than an expired pair.
+    ///
+    /// Measured from the first tap, not the last, because that is when the
+    /// taps actually die: [`GESTURE_WINDOW_MS`] is a budget for the whole
+    /// performance, so three seconds after the first is always sooner than
+    /// three seconds after the last, and clearing then can never show a state
+    /// this no longer holds.
+    ///
+    /// Answers whether anything was discarded, so a caller can clear what it
+    /// is showing without reaching inside.
+    pub fn expire(&mut self, now_ms: u64) -> bool {
+        if self.pending_len == 0 {
+            return false;
+        }
+        let Some(first) = self.pending[0] else {
+            self.pending_len = 0;
+            return true;
+        };
+        if now_ms.saturating_sub(first.at_ms) > GESTURE_WINDOW_MS as u64 {
+            self.pending_len = 0;
+            return true;
+        }
+        false
+    }
+
     pub fn offer(&mut self, c: Candidate) -> Banked {
         // **The budget is measured from the first tap, not the last.** Checked
         // before anything else, so a tap arriving late does not complete a
@@ -257,6 +290,39 @@ mod tests {
         p.offer(c(0, 40.0));
         assert_eq!(p.offer(c(2_900, 40.0)), Banked::Added { run: 2 });
         assert_eq!(p.offer(c(5_000, 40.0)), Banked::Added { run: 1 });
+    }
+
+    /// **A run has to give up on its own**, or the count outlives the taps.
+    #[test]
+    fn a_run_expires_without_being_offered_anything() {
+        let mut p = GesturePattern::new();
+        p.offer(c(0, 40.0));
+        p.offer(c(200, 40.0));
+        assert_eq!(p.run(), 2);
+
+        assert!(!p.expire(2_000), "gave up inside the window");
+        assert_eq!(p.run(), 2);
+
+        assert!(p.expire(3_200), "the window passed and the run survived it");
+        assert_eq!(p.run(), 0);
+        assert!(
+            !p.expire(9_999),
+            "reported a second time with nothing to drop"
+        );
+    }
+
+    /// Measured from the first tap, not the last — which is the earlier of the
+    /// two and the moment the taps actually stop counting.
+    #[test]
+    fn the_expiry_runs_from_the_first_tap() {
+        let mut p = GesturePattern::new();
+        p.offer(c(0, 40.0));
+        p.offer(c(2_900, 40.0));
+        // Only 400 ms since the last tap, but 3.3 s since the first.
+        assert!(
+            p.expire(3_300),
+            "waited for the last tap instead of the first"
+        );
     }
 
     #[test]

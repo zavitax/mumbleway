@@ -1,5 +1,5 @@
-Still 1.2.0. A microphone meter on the pocket panel, with the threshold on it.
+Still 1.2.0. The phone and the helmet now have separate detection rules.
 
-It draws the detector's own level — the phone's microphone, band-limited to the range a tap lives in and measured before anything else touches it. The mark on the track is what a tap has to reach, so you can see whether yours do instead of guessing. Shown while listening, which is when the phone is the microphone being tapped.
+One rule served both microphones, and it was too strict for the phone and too loose for the helmet at once. On the phone it is now amplitude alone: a sharp peak with a fast decline is a tap, three inside three seconds is the gesture. The tail and speech tests the helmet needs are gone from it — they cost the phone recall it had no reason to lose.
 
-The three dots still fill as taps are counted.
+The helmet keeps the strict rules, and is next.

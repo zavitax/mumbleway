@@ -1,5 +1,6 @@
 //! Audio capture, processing, coding and playback.
 
+pub mod acoustic_tap;
 pub mod aec;
 pub mod aec3;
 pub mod bandwidth;
@@ -25,8 +26,6 @@ pub mod relief;
 pub mod resample;
 pub mod spectrum;
 pub mod stretch;
-pub mod tap_envelope;
-pub mod tap_helmet;
 pub mod tap_phone;
 pub mod testsig;
 pub mod timing;

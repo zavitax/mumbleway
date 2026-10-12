@@ -637,21 +637,24 @@ pub struct AudioShared {
     /// so music played through a helmet intercom dropped to telephone
     /// bandwidth for as long as this app was merely open.
     audio_wanted: AtomicBool,
-    /// Listens for the tap gesture on the phone's own microphone.
+    /// Listens for the tap gesture in whichever microphone is open.
+    ///
+    /// **Fed from the input callback, so it hears the raw device** — the
+    /// helmet while capturing, the phone's own while listening — before any
+    /// of the chain and whether or not the chain runs at all.
+    tap: Mutex<crate::audio::acoustic_tap::AcousticTapDetector>,
+    /// The same, for the phone's own microphone, by amplitude alone.
     ///
     /// **Two detectors, not one, at a rider's request.** The two microphones
     /// are not the same problem: the phone's is a full-band contact impact
     /// with nothing else touching the case, while a helmet has to survive
-    /// plosives from two centimetres away and this app's own cues arriving a
-    /// round trip late. One shared rule was simultaneously too strict for the
-    /// phone and too loose for the helmet. See `tap_phone` and `tap_helmet`.
+    /// plosives from two centimetres away, this app's own cues arriving a
+    /// round trip late, and a narrowband link. One shared rule was
+    /// simultaneously too strict for the phone and too loose for the helmet.
     ///
-    /// Both are fed from the input callback, so they hear the raw device
-    /// before any of the chain and whether or not the chain runs at all. Which
-    /// one is fed is decided by the route, and only one of them ever is.
+    /// Only one of the two is ever fed, chosen by the route, so the paths can
+    /// be tuned independently — which is the whole point of having them.
     tap_phone: Mutex<crate::audio::tap_phone::PhoneTapDetector>,
-    /// The same, for a helmet on the hands-free profile.
-    tap_helmet: Mutex<crate::audio::tap_helmet::HelmetTapDetector>,
     /// Whether a completed gesture should act. The counters move either way,
     /// so the panel can show the signal while somebody works out why nothing
     /// fires.
@@ -1425,8 +1428,8 @@ impl AudioShared {
             device_wake: Mutex::new(()),
             device_changed: Condvar::new(),
             audio_wanted: AtomicBool::new(false),
+            tap: Mutex::new(crate::audio::acoustic_tap::AcousticTapDetector::new()),
             tap_phone: Mutex::new(crate::audio::tap_phone::PhoneTapDetector::new()),
-            tap_helmet: Mutex::new(crate::audio::tap_helmet::HelmetTapDetector::new()),
             tap_enabled: AtomicBool::new(false),
             tap_gestures: AtomicU64::new(0),
             // True, so every existing caller gets today's behaviour without
@@ -2576,12 +2579,11 @@ impl AudioShared {
 
     /// What the detector on the live microphone is seeing.
     ///
-    /// Whichever one the route selects, so the panel shows the path that is
-    /// actually running rather than an average of two. `on_helmet` in the
-    /// result says which, because a reading means different things on each.
-    pub fn tap_stats(&self) -> crate::audio::tap_envelope::TapStats {
+    /// Whichever of the two the route selects, so the panel shows the path
+    /// that is actually running rather than an average of two.
+    pub fn tap_stats(&self) -> crate::audio::acoustic_tap::AcousticStats {
         if self.on_helmet() {
-            self.tap_helmet.lock().stats()
+            self.tap.lock().stats()
         } else {
             self.tap_phone.lock().stats()
         }
@@ -2590,7 +2592,10 @@ impl AudioShared {
     /// Whether the live microphone is a helmet on the hands-free profile.
     ///
     /// Route 3; see `record::Recorded` for the numbers, which are a wire
-    /// format shared with every recording already on a rider's phone.
+    /// format shared with every recording already on a rider's phone. **Route
+    /// 0 means not reported**, and counts as the phone: the phone's path is
+    /// the forgiving one, so an unknown route fails towards detecting a tap
+    /// rather than towards silence.
     pub fn on_helmet(&self) -> bool {
         self.route() == 3
     }
@@ -3341,14 +3346,13 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                 // the counters once a second.
                 if cap_shared.tap_detection_enabled() {
                     let mut banked = false;
-                    // **Two paths, and only one of them runs.** Which
-                    // microphone is live decides which rules apply: see
-                    // `tap_phone` and `tap_helmet` for why one shared rule was
-                    // too strict for the phone and too loose for the helmet at
-                    // the same time.
+                    // **Two paths, and only one of them runs**, chosen by
+                    // which microphone is live. See `tap_phone` for why one
+                    // shared rule was too strict for the phone and too loose
+                    // for the helmet at the same time.
                     let on_helmet = cap_shared.on_helmet();
                     let gesture = if on_helmet {
-                        let mut d = cap_shared.tap_helmet.lock();
+                        let mut d = cap_shared.tap.lock();
                         // Not while the rider is talking: a boom microphone
                         // hears a plosive as a small impact. Only while
                         // capturing, which is the only state the flag means
@@ -3358,7 +3362,7 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                         if cap_shared.capture_wanted() && cap_shared.speech_now() {
                             d.hear_speech();
                         }
-                        d.hear_own_output(cap_shared.output_level_db());
+                        d.hear_own_output(cap_shared.output_level_db(), true);
                         d.push(&resampled, &mut banked)
                     } else {
                         let mut d = cap_shared.tap_phone.lock();
@@ -3377,7 +3381,8 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
                         // The tick is the only signal that can say *which* tap
                         // of three went unheard, so it is kept where it works:
                         // the phone's own speaker and microphone, where the
-                        // round trip is a handful of milliseconds.
+                        // round trip is a handful of milliseconds and the
+                        // self-noise gate covers it.
                         //
                         // Over Bluetooth it cannot work, and not for want of
                         // tuning. Taps arrive 200 to 330 ms apart and the round

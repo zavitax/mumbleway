@@ -11,11 +11,12 @@
 
 use std::path::PathBuf;
 
-// **The phone's path.** The corpus is recordings from phone microphones —
-// route 1 on every one of them — so this rig scores the rules that actually
-// apply to them. The helmet's path has its own rules and needs its own
-// recordings; see `tap_helmet`, and the note there about the only helmet
-// recording in the corpus being two thirds digital silence.
+// **The phone's path.** Every recording in the corpus is from a phone
+// microphone — route 1 — so these are the rules that actually apply to them.
+// Scoring the helmet's stricter rules against phone audio would answer a
+// question nobody asked. The helmet path needs its own recordings, and the one
+// helmet recording here is unusable: a session fault left it 66.9% digital
+// zero, so every gap end reads as an infinite attack.
 use mumbleway_core::audio::tap_phone::PhoneTapDetector;
 
 fn read_s16(path: &PathBuf) -> Vec<f32> {

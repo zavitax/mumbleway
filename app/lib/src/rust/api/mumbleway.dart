@@ -1603,14 +1603,6 @@ class UiAcousticStats {
   /// Whether a completed gesture would act.
   final bool enabled;
 
-  /// Whether these came from the helmet's detector rather than the phone's.
-  ///
-  /// **Two paths, at a rider's request**, because the microphones are not
-  /// the same problem — see `tap_phone` and `tap_helmet` in the engine. A
-  /// reading means different things on each, so the panel has to say which
-  /// produced it rather than let a number be read against the wrong rules.
-  final bool onHelmet;
-
   /// One-millisecond frames examined. **Zero means no microphone is open**,
   /// which while listening is a session problem rather than a tuning one.
   final BigInt frames;
@@ -1672,7 +1664,6 @@ class UiAcousticStats {
 
   const UiAcousticStats({
     required this.enabled,
-    required this.onHelmet,
     required this.frames,
     required this.candidates,
     required this.discardedLong,
@@ -1693,7 +1684,6 @@ class UiAcousticStats {
   @override
   int get hashCode =>
       enabled.hashCode ^
-      onHelmet.hashCode ^
       frames.hashCode ^
       candidates.hashCode ^
       discardedLong.hashCode ^
@@ -1716,7 +1706,6 @@ class UiAcousticStats {
       other is UiAcousticStats &&
           runtimeType == other.runtimeType &&
           enabled == other.enabled &&
-          onHelmet == other.onHelmet &&
           frames == other.frames &&
           candidates == other.candidates &&
           discardedLong == other.discardedLong &&

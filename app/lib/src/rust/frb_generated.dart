@@ -4437,26 +4437,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiAcousticStats dco_decode_ui_acoustic_stats(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 17)
-      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
+    if (arr.length != 16)
+      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
     return UiAcousticStats(
       enabled: dco_decode_bool(arr[0]),
-      onHelmet: dco_decode_bool(arr[1]),
-      frames: dco_decode_u_64(arr[2]),
-      candidates: dco_decode_u_64(arr[3]),
-      discardedLong: dco_decode_u_64(arr[4]),
-      banked: dco_decode_u_64(arr[5]),
-      gestures: dco_decode_u_64(arr[6]),
-      levelDb: dco_decode_f_32(arr[7]),
-      floorDb: dco_decode_f_32(arr[8]),
-      meterDb: dco_decode_f_32(arr[9]),
-      peakDb: dco_decode_f_32(arr[10]),
-      impulseAttackDb: dco_decode_f_32(arr[11]),
-      impulseOverDb: dco_decode_f_32(arr[12]),
-      impulseDecayDb: dco_decode_f_32(arr[13]),
-      discardedRinging: dco_decode_u_64(arr[14]),
-      speechBlocks: dco_decode_u_64(arr[15]),
-      run: dco_decode_u_8(arr[16]),
+      frames: dco_decode_u_64(arr[1]),
+      candidates: dco_decode_u_64(arr[2]),
+      discardedLong: dco_decode_u_64(arr[3]),
+      banked: dco_decode_u_64(arr[4]),
+      gestures: dco_decode_u_64(arr[5]),
+      levelDb: dco_decode_f_32(arr[6]),
+      floorDb: dco_decode_f_32(arr[7]),
+      meterDb: dco_decode_f_32(arr[8]),
+      peakDb: dco_decode_f_32(arr[9]),
+      impulseAttackDb: dco_decode_f_32(arr[10]),
+      impulseOverDb: dco_decode_f_32(arr[11]),
+      impulseDecayDb: dco_decode_f_32(arr[12]),
+      discardedRinging: dco_decode_u_64(arr[13]),
+      speechBlocks: dco_decode_u_64(arr[14]),
+      run: dco_decode_u_8(arr[15]),
     );
   }
 
@@ -5799,7 +5798,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   UiAcousticStats sse_decode_ui_acoustic_stats(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_enabled = sse_decode_bool(deserializer);
-    var var_onHelmet = sse_decode_bool(deserializer);
     var var_frames = sse_decode_u_64(deserializer);
     var var_candidates = sse_decode_u_64(deserializer);
     var var_discardedLong = sse_decode_u_64(deserializer);
@@ -5817,7 +5815,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_run = sse_decode_u_8(deserializer);
     return UiAcousticStats(
       enabled: var_enabled,
-      onHelmet: var_onHelmet,
       frames: var_frames,
       candidates: var_candidates,
       discardedLong: var_discardedLong,
@@ -7240,7 +7237,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.enabled, serializer);
-    sse_encode_bool(self.onHelmet, serializer);
     sse_encode_u_64(self.frames, serializer);
     sse_encode_u_64(self.candidates, serializer);
     sse_encode_u_64(self.discardedLong, serializer);

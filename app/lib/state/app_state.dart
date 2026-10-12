@@ -788,6 +788,31 @@ class AppState extends ChangeNotifier {
   bool get pocketActive => _pocketActive;
   bool _pocketActive = false;
 
+  /// Whether the pocket-mode panel is on screen at all.
+  ///
+  /// The slider needs somewhere for the audio to go: arming it with nothing
+  /// connected would close a microphone nobody is listening to and lock the
+  /// screen a rider needs in order to connect.
+  bool get pocketPanelVisible => pocketAvailable && anyLive;
+
+  /// Whether pocket mode is holding the rest of the screen shut.
+  ///
+  /// **Derived from the panel's own visibility, so the lock cannot outlive
+  /// it.** It used to be [pocketActive] alone, written out in the screen while
+  /// the panel decided its own visibility in another file — two conditions for
+  /// one fact, which is the shape of nearly every fault this feature has had.
+  ///
+  /// A rider found the trap: a server connection dropped while pocket mode was
+  /// armed, `anyLive` went false, the panel disappeared — and every other
+  /// control stayed dead, with the one control that could unlock them gone
+  /// from the screen. There was no way out but to kill the app.
+  ///
+  /// Written this way round rather than fixed by adding `anyLive` to the
+  /// screen's condition, because that would leave the same two conditions to
+  /// drift apart again on the next reason a panel might not be drawn. **If the
+  /// panel is not there, nothing is locked**, whatever the reason.
+  bool get pocketLocked => pocketPanelVisible && pocketActive;
+
   /// Whether pocket mode can be armed: the setting is on and the mic mode
   /// allows it.
   ///

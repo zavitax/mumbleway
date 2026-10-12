@@ -41,10 +41,13 @@ class PocketPanel extends StatelessWidget {
         state.pocketTutorialSeen,
       ),
       (context, state) {
-        // Offered only once there is somewhere for the audio to go. Arming it
+        // Offered only once there is somewhere for the audio to go: arming it
         // with nothing connected would close a microphone nobody is listening
-        // to and lock the screen the rider needs to connect with.
-        if (!state.pocketAvailable || !state.anyLive) {
+        // to and lock the screen a rider needs in order to connect.
+        //
+        // The same fact the lock is derived from, read from one place — see
+        // `AppState.pocketLocked` for the trap that came of having two.
+        if (!state.pocketPanelVisible) {
           return const SizedBox.shrink();
         }
         final l = L.of(context);

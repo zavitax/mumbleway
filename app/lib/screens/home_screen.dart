@@ -313,7 +313,7 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ],
-      ), locked: state.pocketActive),
+      ), locked: state.pocketLocked),
       body: SafeArea(
         child: Stack(
           children: [
@@ -335,9 +335,9 @@ class HomeScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: Opacity(
-                    opacity: state.pocketActive ? 0.38 : 1,
+                    opacity: state.pocketLocked ? 0.38 : 1,
                     child: AbsorbPointer(
-                      absorbing: state.pocketActive,
+                      absorbing: state.pocketLocked,
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           // Above the breakpoint the extra width goes to a

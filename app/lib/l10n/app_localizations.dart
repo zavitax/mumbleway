@@ -4189,6 +4189,18 @@ abstract class L {
   /// **'Start pocket mode'**
   String get pocketTutorialStart;
 
+  /// iOS-only pocket-mode sub-setting. Ducking on iOS lasts for the whole time the audio session is active, not only while somebody is talking, so with this on the rider's music is quieter for the whole ride. Off by default
+  ///
+  /// In en, this message translates to:
+  /// **'Lower music while pocket mode listens'**
+  String get duckWhileListening;
+
+  /// No description provided for @duckWhileListeningBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pocket mode keeps a microphone open to hear your taps, and the phone lowers other apps for as long as it is open — not only while somebody is talking. So this makes your music quieter for the whole ride. With it off, your music plays at full volume and another rider\'s voice has to carry over it. While you are talking, music is lowered either way.'**
+  String get duckWhileListeningBody;
+
   /// No description provided for @autoStopCapture.
   ///
   /// In en, this message translates to:

@@ -606,6 +606,7 @@ class AppState extends ChangeNotifier {
   static const _prefsMic = 'mumbleway.micMode';
   static const _prefsPocketMode = 'mumbleway.pocketMode';
   static const _prefsPocketTutorial = 'mumbleway.pocketTutorialSeen';
+  static const _prefsDuckListening = 'mumbleway.duckWhileListening';
   static const _prefsAutoStop = 'mumbleway.autoStopCapture';
   static const _prefsAutoStopSecs = 'mumbleway.autoStopSeconds';
   static const _prefsInputDevice = 'mumbleway.inputDevice';
@@ -824,6 +825,19 @@ class AppState extends ChangeNotifier {
 
   /// Whether the rider has ever armed it, so the explanation is shown once.
   bool pocketTutorialSeen = false;
+
+  /// Whether to lower other apps' audio while pocket mode is only listening.
+  ///
+  /// **Off by default, because ducking is not what it sounds like it is.** It
+  /// does not begin when this app plays something: Apple's wording is that it
+  /// "begins when you activate your app's audio session and ends when you
+  /// deactivate the session", so a session held open to hear taps lowers a
+  /// rider's music for the whole ride rather than while anybody is talking.
+  /// One reported precisely that and asked for the choice.
+  ///
+  /// The capturing session ducks regardless and is not covered by this, which
+  /// is where the option earns its place: there somebody really is talking.
+  bool duckWhileListening = false;
 
   /// Whether capture releases itself after a stretch of silence.
   ///
@@ -1102,6 +1116,13 @@ class AppState extends ChangeNotifier {
         _micSilenced = silenced;
         notifyListeners();
       };
+      // **Pushed at startup, or a stored "on" is a control that lies.** The
+      // platform side begins every launch with ducking off, so a rider who
+      // switched it on last week would find it reading on and doing nothing.
+      if (duckWhileListening) {
+        unawaited(AudioSessionBridge.instance.setDuckWhileListening(true));
+      }
+
       // Into the engine's log, where the panel already draws every other
       // line and a shared recording already carries them.
       AudioSessionBridge.instance.onSessionEvent = (line) {
@@ -1244,6 +1265,7 @@ class AppState extends ChangeNotifier {
     }
     pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
     pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
+    duckWhileListening = prefs.getBool(_prefsDuckListening) ?? false;
     autoStopCapture = prefs.getBool(_prefsAutoStop) ?? false;
     autoStopSeconds = (prefs.getInt(_prefsAutoStopSecs) ?? 20).clamp(5, 300);
     selectedInput = prefs.getString(_prefsInputDevice);
@@ -1408,6 +1430,7 @@ class AppState extends ChangeNotifier {
     await prefs.setInt(_prefsMic, micMode.index);
     await prefs.setBool(_prefsPocketMode, pocketMode);
     await prefs.setBool(_prefsPocketTutorial, pocketTutorialSeen);
+    await prefs.setBool(_prefsDuckListening, duckWhileListening);
     await prefs.setBool(_prefsAutoStop, autoStopCapture);
     await prefs.setInt(_prefsAutoStopSecs, autoStopSeconds);
     await prefs.setDouble(_prefsInputGain, inputGainDbValue);
@@ -4966,6 +4989,14 @@ class AppState extends ChangeNotifier {
     try {
       await setMicModeHint(mode: _micModeHint);
     } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Turns ducking while listening on or off.
+  Future<void> updateDuckWhileListening(bool on) async {
+    duckWhileListening = on;
+    await AudioSessionBridge.instance.setDuckWhileListening(on);
+    await _persist();
     notifyListeners();
   }
 

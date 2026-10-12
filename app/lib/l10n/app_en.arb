@@ -1327,6 +1327,11 @@
   "pocketTutorialSoundBody": "Two rising tones mean the microphone is open and the others can hear you. Two falling tones mean it has closed. Those are the sounds to ride by. There is no per-tap tick through a headset, because a helmet hears it through its own microphone and counts it as the next tap — so on a headset, watch the dots or just listen for the two tones.",
   "pocketTutorialNext": "Next",
   "pocketTutorialStart": "Start pocket mode",
+  "duckWhileListening": "Lower music while pocket mode listens",
+  "@duckWhileListening": {
+    "description": "iOS-only pocket-mode sub-setting. Ducking on iOS lasts for the whole time the audio session is active, not only while somebody is talking, so with this on the rider's music is quieter for the whole ride. Off by default"
+  },
+  "duckWhileListeningBody": "Pocket mode keeps a microphone open to hear your taps, and the phone lowers other apps for as long as it is open — not only while somebody is talking. So this makes your music quieter for the whole ride. With it off, your music plays at full volume and another rider's voice has to carry over it. While you are talking, music is lowered either way.",
   "autoStopCapture": "Close the microphone after a pause",
   "autoStopCaptureBody": "Stops capturing after {seconds} seconds with nobody talking, so you do not have to remember to tap again.",
   "@autoStopCaptureBody": {

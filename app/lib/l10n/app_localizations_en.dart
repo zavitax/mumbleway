@@ -2305,6 +2305,13 @@ class LEn extends L {
   String get pocketTutorialStart => 'Start pocket mode';
 
   @override
+  String get duckWhileListening => 'Lower music while pocket mode listens';
+
+  @override
+  String get duckWhileListeningBody =>
+      'Pocket mode keeps a microphone open to hear your taps, and the phone lowers other apps for as long as it is open — not only while somebody is talking. So this makes your music quieter for the whole ride. With it off, your music plays at full volume and another rider\'s voice has to carry over it. While you are talking, music is lowered either way.';
+
+  @override
   String get autoStopCapture => 'Close the microphone after a pause';
 
   @override

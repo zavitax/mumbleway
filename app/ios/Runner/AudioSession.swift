@@ -34,6 +34,20 @@ final class AudioSession {
         let args = call.arguments as? [String: Any]
         self.voiceProcessing = args?["voiceProcessing"] as? Bool ?? false
         self.activateForCall(result)
+      case "setDuckWhileListening":
+        let on = call.arguments as? Bool ?? false
+        let changed = on != self.duckWhileListening
+        self.duckWhileListening = on
+        // **Applied now if it applies now.** A category option only takes
+        // effect when the category is set, so without this the switch would
+        // do nothing until pocket mode was next armed — a control that looks
+        // broken for as long as a rider is watching it. Re-applying the
+        // listening category is the reconciler's own idempotent path: it keeps
+        // hands-free off, so the handler it wakes answers `.none`.
+        if changed, self.wantedActive, !self.capturing {
+          try? self.activateListening()
+        }
+        result(true)
       case "startCapture":
         self.startCapture(result)
       case "stopCapture":
@@ -326,6 +340,20 @@ final class AudioSession {
   /// Apple's echo cancellation — and what it costs is in `activate` below.
   private var voiceProcessing = false
 
+  /// Whether to lower other apps' audio while only listening for taps.
+  ///
+  /// **Off by default, because ducking here is not what a rider expects it to
+  /// be.** It does not begin when this app plays something: Apple's wording is
+  /// that it "begins when you activate your app's audio session and ends when
+  /// you deactivate the session", so a session sitting open to hear taps
+  /// lowers the rider's music for the whole ride rather than while anybody is
+  /// talking. One reported exactly that and asked for the choice.
+  ///
+  /// The capturing session ducks regardless, and is not covered by this: there
+  /// somebody really is talking, which is the case the option was designed
+  /// for.
+  private var duckWhileListening = false
+
   /// Whether a retry of [preferHandsFreeInput] is already scheduled.
   ///
   /// One at a time, which is what keeps a retry from becoming the fourth
@@ -378,32 +406,36 @@ final class AudioSession {
     // minute after the screen locked was the app being suspended; an app
     // holding a microphone is one the system keeps running, which is a larger
     // problem solved by the same change.
-    try session.setCategory(
-      .playAndRecord,
-      mode: .default,
-      options: [
-        // **Mixing, and deliberately not ducking.** A rider found their music
-        // playing at full quality but much quieter throughout pocket mode,
-        // and `.duckOthers` is why: Apple's documentation is exact — "ducking
-        // begins when you activate your app's audio session and ends when you
-        // deactivate the session". It is not tied to this app actually playing
-        // anything, so a session sitting open listening for taps ducked the
-        // rider's music for the whole of it.
-        //
-        // **`.mixWithOthers` has to stay explicit for this to be safe.** The
-        // same page warns that "if you clear this option, activating your
-        // session interrupts other audio sessions", because `.duckOthers`
-        // implies `.mixWithOthers` — so removing the duck while relying on
-        // that implication would stop the music outright instead of merely
-        // leaving it loud. It is listed here in its own right, so it does not.
-        //
-        // The cost is that another rider's voice no longer ducks the music
-        // while listening. The capturing session below keeps the duck, which
-        // is where it earns its place: there somebody is actually talking.
-        .mixWithOthers,
-        .allowBluetoothA2DP,
-        .defaultToSpeaker,
-      ])
+    // **Mixing, and ducking only if the rider asked for it.** One found their
+    // music playing at full quality but much quieter throughout pocket mode,
+    // and `.duckOthers` was why: Apple's documentation is exact — "ducking
+    // begins when you activate your app's audio session and ends when you
+    // deactivate the session". It is not tied to this app playing anything, so
+    // a session held open to hear taps lowered the music for the whole ride.
+    //
+    // **`.mixWithOthers` has to stay explicit for that to be safe.** The same
+    // page warns that "if you clear this option, activating your session
+    // interrupts other audio sessions", because `.duckOthers` implies
+    // `.mixWithOthers` — so dropping the duck while leaning on that
+    // implication would stop the music outright instead of merely leaving it
+    // loud. It is listed in its own right, so it does not.
+    //
+    // The capturing session below ducks regardless, which is where the option
+    // earns its place: there somebody really is talking.
+    //
+    // Built as a typed value rather than a literal with `.union` on the end:
+    // chaining a method onto the literal costs it its contextual type, and
+    // Swift infers `[Any]` and refuses every member. Caught by typechecking
+    // on a Mac, which is the only thing short of CI that compiles this file.
+    var listening: AVAudioSession.CategoryOptions = [
+      .mixWithOthers,
+      .allowBluetoothA2DP,
+      .defaultToSpeaker,
+    ]
+    if duckWhileListening {
+      listening.insert(.duckOthers)
+    }
+    try session.setCategory(.playAndRecord, mode: .default, options: listening)
     try session.setActive(true)
     preferBuiltInInput()
   }

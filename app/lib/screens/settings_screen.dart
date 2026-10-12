@@ -643,13 +643,14 @@ class _TapToCaptureTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Watch<(bool, bool, int, bool, MicMode)>(
+    return Watch<(bool, bool, int, bool, MicMode, bool)>(
       (state) => (
         state.pocketMode,
         state.autoStopCapture,
         state.autoStopSeconds,
         state.canChangeMicMode,
         state.micMode,
+        state.duckWhileListening,
       ),
       (context, state) {
         final l = L.of(context);
@@ -683,7 +684,7 @@ class _TapToCaptureTile extends StatelessWidget {
                   ? (v) => state.updatePocketMode(v)
                   : null,
             ),
-            if (on)
+            if (on) ...[
               SwitchListTile(
                 secondary: const SizedBox(width: 24),
                 contentPadding: const EdgeInsets.only(left: 72, right: 16),
@@ -693,6 +694,23 @@ class _TapToCaptureTile extends StatelessWidget {
                 value: state.autoStopCapture,
                 onChanged: (v) => state.updateAutoStopCapture(v),
               ),
+              // **iOS only, because it means one exact thing there.** The
+              // option is per category on iOS, so it can be withheld from the
+              // listening session alone. Android holds audio focus for the
+              // whole session, listening and capturing together, so the same
+              // switch would quieten a rider's music under their own voice as
+              // well — a different promise from the one the label makes.
+              if (Platform.isIOS)
+                SwitchListTile(
+                  secondary: const SizedBox(width: 24),
+                  contentPadding: const EdgeInsets.only(left: 72, right: 16),
+                  title: Text(l.duckWhileListening),
+                  subtitle: Text(l.duckWhileListeningBody),
+                  isThreeLine: true,
+                  value: state.duckWhileListening,
+                  onChanged: (v) => state.updateDuckWhileListening(v),
+                ),
+            ],
           ],
         );
       },

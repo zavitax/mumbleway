@@ -278,6 +278,21 @@ class AudioSessionBridge {
     }
   }
 
+  /// Whether to lower other apps' audio while only listening for taps.
+  ///
+  /// Takes effect at once if the session is already listening, because a
+  /// category option is only read when the category is set — a switch that
+  /// did nothing until pocket mode was next armed would look broken for as
+  /// long as a rider was watching it.
+  Future<void> setDuckWhileListening(bool on) async {
+    if (!isNeeded) return;
+    try {
+      await _channel.invokeMethod<bool>('setDuckWhileListening', on);
+    } catch (_) {
+      // An older platform side, or a desktop with no session to configure.
+    }
+  }
+
   /// Gives the profile back and keeps the session.
   ///
   /// Best effort, like [deactivate]: output carries on either way, and the

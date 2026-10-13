@@ -1,5 +1,5 @@
-Still 1.2.0. Pocket mode waits for a headset instead of refusing one.
+Still 1.2.0. Two small things in the pocket panel.
 
-Arm it with no headset and it stays armed: the microphone simply stays open, nothing listens for taps, and an amber notice says why. Turn a headset on — or off and on again, if it dropped — and it starts working with nothing else to do. So you can arm it and then put your helmet on.
+The handle now wears the slider's colour — green while pocket mode is off, red while it is on — so the notch alone says which state the phone is in when the panel is pulled down.
 
-The panel also pulls down to a handle now, and stays down until you pull it up.
+And the countdown bar moves smoothly instead of stepping once a second. The figure beside it still comes from the counter that actually closes the microphone; only the tenths between its ticks are drawn in, ten times a second.

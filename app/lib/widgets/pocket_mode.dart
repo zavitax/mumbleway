@@ -203,17 +203,18 @@ class _Handle extends StatelessWidget {
 
   final bool collapsed;
 
-  /// **Coloured while armed, and that is not decoration.** A collapsed panel
-  /// hides the slider, and while pocket mode is armed the slider is the only
-  /// live control on the screen — so the handle has to read as the way back
-  /// rather than as a decoration at the bottom of a frozen app.
+  /// **The handle wears the slider's colour**, which a rider asked for and
+  /// which is the right answer for a collapsed panel: green while pocket mode
+  /// is off, red while it is on, so the notch alone says which state the phone
+  /// is in from across the tank. It also has to read as the way back — a
+  /// collapsed panel hides the slider, and while armed that slider is the only
+  /// live control on the screen.
   final bool armed;
 
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => onChanged(!collapsed),
@@ -232,9 +233,9 @@ class _Handle extends StatelessWidget {
             width: 44,
             height: 5,
             decoration: BoxDecoration(
-              color: armed
-                  ? StatusColors.failed.withValues(alpha: 0.8)
-                  : scheme.onSurfaceVariant.withValues(alpha: 0.5),
+              // The slider's own two colours, not a tint of them: these are
+              // the same fact at two sizes.
+              color: armed ? StatusColors.failed : StatusColors.connected,
               borderRadius: BorderRadius.circular(3),
             ),
           ),
@@ -433,7 +434,28 @@ class _TapFeedbackState extends State<_TapFeedback> {
   Timer? _tick;
   int _run = 0;
   double _over = 0;
-  int _left = 0;
+
+  /// The countdown bar's position, 1 to 0, and the only thing here that moves
+  /// between polls.
+  ///
+  /// **A notifier rather than `setState`, because this now changes ten times a
+  /// second.** The bar used to step once a second, which a rider reported as
+  /// jumping; smoothing it means repainting at the poll rate, and repainting
+  /// the whole panel ten times a second to move one bar is work nobody asked
+  /// for. This rebuilds the bar and its label and nothing else.
+  final _fraction = ValueNotifier<double>(1);
+
+  /// The last whole second [AppState.captureIdleLeft] reported, and how long
+  /// ago it arrived.
+  ///
+  /// **The integer is authoritative and the interpolation is cosmetic.** The
+  /// counter that actually releases capture lives in `AppState` and counts
+  /// whole seconds; this fills in between its ticks from a monotonic
+  /// stopwatch, so a bar that is a few tens of milliseconds out of step with
+  /// the figure beside it cannot drift, stall, or outlive the thing it is
+  /// counting down to.
+  int _leftSeconds = 0;
+  final _sinceReading = Stopwatch();
 
   @override
   void initState() {
@@ -444,33 +466,54 @@ class _TapFeedbackState extends State<_TapFeedback> {
   @override
   void dispose() {
     _tick?.cancel();
+    _fraction.dispose();
     super.dispose();
   }
 
   void _poll() {
     if (!mounted) return;
-    // The countdown comes from the state rather than from a timer of its own:
-    // `AppState` holds the counter that actually releases capture, and a
-    // second copy of it here would be a second answer to the same question.
-    final left = AppStateScope.read(context).captureIdleLeft;
+    _advanceCountdown();
     try {
       final s = acousticDiagnostics();
       // Against the floor rather than full scale: the threshold is a margin
       // over the trailing average, so the distance to it is the only reading
       // that means anything. A raw dBFS meter would move with the room.
       final over = (s.meterDb - s.floorDb).clamp(0.0, _span);
-      if (s.run == _run && left == _left && (over - _over).abs() < 0.5) return;
+      if (s.run == _run && (over - _over).abs() < 0.5) return;
       setState(() {
         _run = s.run;
         _over = over;
-        _left = left;
       });
     } catch (_) {
-      // No engine, so no meter and no dots - but the countdown is the app's
-      // own and still has to run.
-      if (left == _left) return;
-      setState(() => _left = left);
+      // No engine, so no meter and no dots. The countdown is the app's own and
+      // has already been advanced above.
     }
+  }
+
+  /// Moves the bar, between the whole seconds the state reports.
+  ///
+  /// The countdown itself comes from `AppState`: it holds the counter that
+  /// actually releases capture, and a second copy here would be a second
+  /// answer to the same question. What this adds is the tenths.
+  void _advanceCountdown() {
+    final state = AppStateScope.read(context);
+    final total = state.captureIdleSeconds;
+    final left = state.captureIdleLeft;
+    if (left != _leftSeconds) {
+      _leftSeconds = left;
+      _sinceReading
+        ..reset()
+        ..start();
+    }
+    if (total <= 0) {
+      _fraction.value = 0;
+      return;
+    }
+    // Clamped at zero: the state's counter and this stopwatch are not the same
+    // clock, so the last tenth of a second before a release can run over.
+    final seconds = (_leftSeconds - _sinceReading.elapsedMilliseconds / 1000.0)
+        .clamp(0.0, total.toDouble());
+    _fraction.value = seconds / total;
   }
 
   /// Whether a tap could be heard at all right now.
@@ -558,30 +601,35 @@ class _TapFeedbackState extends State<_TapFeedback> {
         SizedBox(
           height: _instructionHeight,
           child: widget.capturing
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: total == 0 ? 0 : _left / total,
-                        minHeight: 5,
-                        backgroundColor: scheme.surfaceContainerHigh,
-                        valueColor: const AlwaysStoppedAnimation(
-                          StatusColors.connected,
+              ? ValueListenableBuilder<double>(
+                  valueListenable: _fraction,
+                  builder: (context, fraction, _) => Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: fraction,
+                          minHeight: 5,
+                          backgroundColor: scheme.surfaceContainerHigh,
+                          valueColor: const AlwaysStoppedAnimation(
+                            StatusColors.connected,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      l.pocketCountdown(_left),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                      const SizedBox(height: 6),
+                      Text(
+                        // Rounded up, so the figure reads 30 the moment the
+                        // bar is full and reaches 0 only when it is empty.
+                        l.pocketCountdown((fraction * total).ceil()),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 )
               : Center(
                   child: Text(

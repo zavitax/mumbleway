@@ -1,5 +1,5 @@
-Still 1.2.0. The countdown no longer counts when nothing is counting.
+Still 1.2.0. The first three seconds of a microphone are ignored.
 
-A rider watched a thirty-second cooldown reach zero while no cooldown was running — my fault, from the smoothing added two builds ago, which drained the bar on its own once the counter stopped. It now interpolates within one second and no further.
+Opening an input makes clicks and a burst of whatever was buffered — sharp broadband transients, the exact shape the tap detector looks for. Three inside three seconds is a gesture, and a false one in pocket mode opens the microphone and starts the silence counting. The detector now waits three seconds after it starts and after any rebuild.
 
-The bar is also drawn only when a silence is really being counted. The microphone can be open with nothing counting, and that now says "Microphone open".
+Also: a tap is ignored mid-transition.

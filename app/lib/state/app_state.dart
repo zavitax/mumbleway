@@ -2355,6 +2355,19 @@ class AppState extends ChangeNotifier {
   /// is the whole fix. `_acquireAudio`'s early return used to hand-write the
   /// forward case and not the reverse, so connecting while a meter held the
   /// microphone came up live with the gesture on.
+  /// A reconcile arrived while a transition was in flight, and has to be run
+  /// again when it ends.
+  ///
+  /// **Dropping it was a lost update with teeth.** A transition here is long —
+  /// an SCO negotiation is a second or two, and up to four on Android — and
+  /// the events that matter arrive exactly during one: a headset connecting, a
+  /// tap completing, a hold being given back. Each of those called
+  /// `_reconcileCapture`, found `_captureChanging` true, returned, and nothing
+  /// ever reconsidered. The microphone then stayed in the state the transition
+  /// was already heading for, with the facts saying otherwise, until some
+  /// unrelated event happened to reconcile again.
+  bool _reconcileWanted = false;
+
   Future<void> _reconcileCapture() async {
     // **The silence counter follows the claim, from every door.** Arming it
     // only where capture goes live left it unarmed whenever the devices were
@@ -2362,13 +2375,28 @@ class AppState extends ChangeNotifier {
     // [_armCaptureIdle]. Idempotent, and a no-op whenever the rider is not
     // holding the microphone open.
     _armCaptureIdle();
-    if (!_audioActive || _captureChanging) return;
+    if (!_audioActive) return;
+    if (_captureChanging) {
+      _reconcileWanted = true;
+      return;
+    }
     if (_micWanted == _capturing) return;
     if (_micWanted) {
       await requestCapture();
     } else {
       await releaseCapture();
     }
+  }
+
+  /// Ends a capture transition, and picks up anything that arrived during it.
+  ///
+  /// Deferred to a microtask rather than called straight through, so a
+  /// transition's tail never starts the next one inside its own stack.
+  void _endCaptureTransition() {
+    _captureChanging = false;
+    if (!_reconcileWanted) return;
+    _reconcileWanted = false;
+    scheduleMicrotask(() => unawaited(_reconcileCapture()));
   }
 
   Future<String?> _acquireAudio() async {
@@ -2522,7 +2550,7 @@ class AppState extends ChangeNotifier {
       // Back to the default so the next session starts from capture-on, and
       // no timer survives a session it belonged to.
       _capturing = true;
-      _captureChanging = false;
+      _endCaptureTransition();
       // The gesture's latch belongs to the session it was performed in.
       _riderWantsMic = false;
       _captureBeat?.cancel();
@@ -2738,7 +2766,7 @@ class AppState extends ChangeNotifier {
       if (!s.usable) {
         // **No cue at all.** Telling a rider they may speak when they may not
         // costs them a sentence they believe was heard.
-        _captureChanging = false;
+        _endCaptureTransition();
         notifyListeners();
         return s.error ?? _strings.micUnavailable;
       }
@@ -2761,7 +2789,7 @@ class AppState extends ChangeNotifier {
       }
 
       _capturing = true;
-      _captureChanging = false;
+      _endCaptureTransition();
       try {
         playCaptureLiveCue();
       } catch (_) {}
@@ -2774,7 +2802,7 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       _captureBeat?.cancel();
       _captureBeat = null;
-      _captureChanging = false;
+      _endCaptureTransition();
       notifyListeners();
       return e.toString();
     }
@@ -2822,7 +2850,7 @@ class AppState extends ChangeNotifier {
       // the app already was. Claiming otherwise would be the one lie that
       // matters.
     }
-    _captureChanging = false;
+    _endCaptureTransition();
     notifyListeners();
   }
 
@@ -5351,7 +5379,13 @@ class AppState extends ChangeNotifier {
       // audio thread that heard it. The accelerometer path still fills the
       // recorder's motion track and no longer decides anything.
       case AppEvent_TapGesture():
-        if (_captureOnDemand) unawaited(toggleCapture());
+        // **Not while a transition is in flight.** The state is already
+        // moving, and a gesture landing in the middle of it acts on what is
+        // about to be false — and the artefacts that produce a false gesture
+        // arrive precisely then, because opening or rebuilding a stream is
+        // what makes them. The detector's own settling window is the other
+        // half of this; see `SETTLE_MS` in `tap_phone.rs`.
+        if (_captureOnDemand && !_captureChanging) unawaited(toggleCapture());
 
       case AppEvent_Status(:final field0):
         final rt = runtimeFor(field0.serverId);

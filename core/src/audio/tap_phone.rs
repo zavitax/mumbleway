@@ -57,6 +57,27 @@ const BAND_HIGH_HZ: f32 = 4_000.0;
 /// tap occupies — would otherwise be heard as the next tap. On this path the
 /// round trip is a handful of milliseconds, so a short tail covers it; the
 /// helmet's path needs six hundred, which is why it has its own.
+/// How long after the detector starts listening it ignores everything, in ms.
+///
+/// **Asked for by a rider, and it closes a fault with teeth.** A stream's first
+/// moments are not audio: opening an input produces clicks and a burst of
+/// whatever the device had buffered, and a route moving under it produces more.
+/// Those are broadband transients with fast attacks — the exact shape this
+/// detector is built to find — so the artefacts of starting to listen read as
+/// taps.
+///
+/// What that cost: in pocket mode a false gesture sets the rider's claim on the
+/// microphone, which opens capture and starts the thirty-second silence
+/// counting. A rider watched precisely that happen with a headset they had just
+/// connected, and the microphone they were trying to hand over to the helmet
+/// stayed open on the phone instead.
+///
+/// Three seconds also covers the trailing reference's own convergence:
+/// [`REFERENCE_ALPHA`] is 0.001, so the floor needs about a thousand frames
+/// before a margin measured against it means anything, and before that a
+/// quiet-to-loud transition looks like a strike.
+const SETTLE_MS: u64 = 3_000;
+
 const SELF_NOISE_GATE_DBFS: f32 = -60.0;
 const SELF_NOISE_TAIL_MS: u32 = 120;
 
@@ -156,6 +177,8 @@ pub struct PhoneTapDetector {
     peak_over: f32,
     latent_until_ms: u64,
     frame_ms: u64,
+    /// Frames left in which nothing may arm. See [`SETTLE_MS`].
+    settle_frames: u64,
     lamps: StageLamps<{ stage::COUNT }>,
     stats: AcousticStats,
 }
@@ -183,6 +206,9 @@ impl PhoneTapDetector {
             peak_over: f32::NEG_INFINITY,
             latent_until_ms: 0,
             frame_ms: 0,
+            // **Settling from the moment it exists**, because the first thing
+            // any detector sees is a stream being opened.
+            settle_frames: SETTLE_MS,
             lamps: StageLamps::new(),
             stats: AcousticStats {
                 // **Not the derived zero**, which is full scale: the meter
@@ -203,6 +229,25 @@ impl PhoneTapDetector {
         s.recent_attack_db = self.lamps.recent(0, self.frame_ms);
         s.recent_over_db = self.lamps.recent(1, self.frame_ms);
         s
+    }
+
+    /// Starts the settling window again.
+    ///
+    /// Called when the detector is switched on and whenever the input stream is
+    /// built, which are the two moments artefacts arrive. Everything that
+    /// describes an event in progress is dropped with it: a run half performed
+    /// across a stream rebuild is a run whose taps were heard by a device that
+    /// no longer exists.
+    pub fn begin_settling(&mut self) {
+        self.settle_frames = SETTLE_MS;
+        self.rising_at_ms = None;
+        self.peak_over = f32::NEG_INFINITY;
+        self.pattern.reset();
+        self.stats.run = 0;
+        // Re-learned rather than carried over: the floor belongs to the device
+        // and the route that produced it.
+        self.reference_db = f32::NEG_INFINITY;
+        self.previous_db = f32::NEG_INFINITY;
     }
 
     /// Tells the detector how loud this app's own output is.
@@ -281,6 +326,21 @@ impl PhoneTapDetector {
             return None;
         }
 
+        // **Settling, and ahead of the hearing lamp**: the detector is not
+        // listening, which is what that lamp says. The level, the meter and the
+        // floor below all keep running, so the panel shows a live microphone
+        // and the reference converges — it is only arming that waits.
+        if self.settle_frames > 0 {
+            self.settle_frames -= 1;
+            self.rising_at_ms = None;
+            self.peak_over = f32::NEG_INFINITY;
+            if !self.reference_db.is_finite() {
+                self.reference_db = level_db;
+            }
+            self.reference_db += (level_db - self.reference_db) * REFERENCE_ALPHA;
+            self.stats.floor_db = self.reference_db;
+            return None;
+        }
         self.lamps.pass(stage::HEARING, self.frame_ms);
 
         if !self.reference_db.is_finite() {
@@ -419,6 +479,21 @@ mod tests {
         }
     }
 
+    /// A detector that has already settled.
+    ///
+    /// **Every test that offers a tap needs this**, because a real detector
+    /// spends its first three seconds ignoring everything — see `SETTLE_MS`,
+    /// and the fault it exists for. Fed through the real path rather than
+    /// reaching inside: the window is only over when the frames say so.
+    fn settled() -> PhoneTapDetector {
+        let mut d = PhoneTapDetector::new();
+        let mut audio = Vec::new();
+        quiet(&mut audio, SETTLE_MS as usize + 50);
+        let mut banked = false;
+        d.push(&audio, &mut banked);
+        d
+    }
+
     fn quiet(into: &mut Vec<f32>, ms: usize) {
         for m in 0..ms {
             for i in 0..FRAME {
@@ -438,7 +513,7 @@ mod tests {
         }
         quiet(&mut audio, 200);
 
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         assert!(
             d.push(&audio, &mut banked).is_some(),
@@ -461,7 +536,7 @@ mod tests {
         quiet(&mut audio, 400);
         tap(&mut audio, 0.4);
 
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         d.push(&audio, &mut banked);
         assert!(banked, "the tap did not bank: {:?}", d.stats());
@@ -477,7 +552,7 @@ mod tests {
     fn a_quiet_room_stops_at_the_floor() {
         let mut audio = Vec::new();
         quiet(&mut audio, 2_000);
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         d.push(&audio, &mut banked);
 
@@ -538,7 +613,7 @@ mod tests {
             at += 1;
         }
 
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         d.push(&audio, &mut banked);
 
@@ -567,7 +642,7 @@ mod tests {
     /// hearing dark, nothing after it.
     #[test]
     fn our_own_noise_puts_the_hearing_lamp_out() {
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
 
         let mut settle = Vec::new();
@@ -604,6 +679,10 @@ mod tests {
     #[test]
     fn a_dead_stream_lights_nothing() {
         let audio = vec![0.0f32; FRAME * 500];
+        // **Not `settled()`**: that leaves three seconds of audio behind it,
+        // and the input lamp holds for 1.5 s, so the row would still be lit
+        // from before the stream died. A fresh detector has never heard
+        // anything, which is the state this test is about.
         let mut d = PhoneTapDetector::new();
         let mut banked = false;
         d.push(&audio, &mut banked);
@@ -622,7 +701,7 @@ mod tests {
         let mut audio = Vec::new();
         quiet(&mut audio, 400);
         tap(&mut audio, 0.4);
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         d.push(&audio, &mut banked);
         assert!(lit(&d, stage::BANKED));
@@ -634,11 +713,55 @@ mod tests {
         assert!(lit(&d, stage::HEARING), "and this one should still be lit");
     }
 
+    /// **The window itself, which a rider asked for in these terms**: "when in
+    /// pocket mode and listening for taps, skip the first 3 seconds of
+    /// capture: they contain artifacts which we do not want to process".
+    ///
+    /// The same tap, twice: inside the window it is ignored, after it, it
+    /// banks. Anything weaker than this passes on a detector that ignores
+    /// everything for ever.
+    #[test]
+    fn the_first_three_seconds_are_ignored() {
+        let mut early = Vec::new();
+        quiet(&mut early, 400);
+        tap(&mut early, 0.4);
+        quiet(&mut early, 100);
+
+        let mut d = PhoneTapDetector::new();
+        let mut banked = false;
+        d.push(&early, &mut banked);
+        assert!(!banked, "a tap inside the settling window banked");
+        assert_eq!(d.stats().candidates, 0, "{:?}", d.stats());
+
+        // Out of the window, and the same tap again.
+        let mut rest = Vec::new();
+        quiet(&mut rest, SETTLE_MS as usize);
+        tap(&mut rest, 0.4);
+        quiet(&mut rest, 100);
+        d.push(&rest, &mut banked);
+        assert!(banked, "the window never ended: {:?}", d.stats());
+    }
+
+    /// And it starts again on demand, because a stream being rebuilt is the
+    /// other moment artefacts arrive.
+    #[test]
+    fn settling_can_be_restarted() {
+        let mut d = settled();
+        let mut banked = false;
+        d.begin_settling();
+
+        let mut audio = Vec::new();
+        quiet(&mut audio, 400);
+        tap(&mut audio, 0.4);
+        d.push(&audio, &mut banked);
+        assert!(!banked, "a tap right after a rebuild banked");
+    }
+
     #[test]
     fn a_quiet_microphone_hears_nothing() {
         let mut audio = Vec::new();
         quiet(&mut audio, 4_000);
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
         assert_eq!(d.stats().candidates, 0, "silence produced candidates");
@@ -658,7 +781,7 @@ mod tests {
         }
         quiet(&mut audio, 400);
 
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
         assert!(
@@ -682,7 +805,7 @@ mod tests {
         }
         quiet(&mut audio, 400);
 
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
         assert_eq!(d.stats().gestures, 0);
@@ -709,7 +832,7 @@ mod tests {
         }
         quiet(&mut audio, 400);
 
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         assert!(d.push(&audio, &mut banked).is_none());
         assert_eq!(
@@ -726,7 +849,7 @@ mod tests {
     /// before any canceller.
     #[test]
     fn the_app_does_not_hear_its_own_noise() {
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         let mut quiet_audio = Vec::new();
         quiet(&mut quiet_audio, 400);
@@ -760,7 +883,7 @@ mod tests {
     /// draws; the pattern's own expiry has its own test in `gesture`.
     #[test]
     fn a_half_performed_gesture_clears_itself() {
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         let mut lead = Vec::new();
         quiet(&mut lead, 400);
@@ -796,7 +919,7 @@ mod tests {
     /// hundred times more slowly than the frames go by.
     #[test]
     fn the_meter_rises_on_a_tap_and_falls_back() {
-        let mut d = PhoneTapDetector::new();
+        let mut d = settled();
         let mut banked = false;
         let mut quiet_audio = Vec::new();
         quiet(&mut quiet_audio, 400);

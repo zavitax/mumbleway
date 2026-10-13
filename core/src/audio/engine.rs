@@ -2569,7 +2569,16 @@ impl AudioShared {
     /// The length is no longer a parameter: it is always three taps, inside
     /// three seconds. See `gesture::TAPS_WANTED`.
     pub fn set_tap_detection(&self, enabled: bool) {
-        self.tap_enabled.store(enabled, Ordering::Release);
+        // **Settles from the moment it is switched on.** Arming it is one of
+        // the two moments artefacts arrive — the other is a stream being
+        // built, below — and in pocket mode a false gesture does not merely
+        // mis-count: it takes the rider's claim on the microphone, opens
+        // capture and starts the silence counting. See `SETTLE_MS`.
+        if enabled && !self.tap_enabled.swap(true, Ordering::Release) {
+            self.tap_phone.lock().begin_settling();
+        } else {
+            self.tap_enabled.store(enabled, Ordering::Release);
+        }
     }
 
     pub fn tap_detection_enabled(&self) -> bool {
@@ -3284,6 +3293,12 @@ fn build_input_stream(config: &AudioConfig, shared: &Arc<AudioShared>) -> Result
     // Published as well as logged, so the panel can say which microphone the
     // engine is really on. See `AudioShared::input_rate`.
     shared.set_input_rate(in_rate);
+
+    // **A new stream is three seconds of artefacts.** Opening an input
+    // produces clicks and whatever the device had buffered, and those are
+    // broadband transients with fast attacks — the shape the tap detector
+    // exists to find. See `SETTLE_MS` in `tap_phone`.
+    shared.tap_phone.lock().begin_settling();
 
     let cap_shared = shared.clone();
     let mut in_resampler = Resampler::new(in_rate, SAMPLE_RATE);

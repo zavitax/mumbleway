@@ -1,5 +1,5 @@
-Still 1.2.0. The pocket panel does less, and says more.
+Still 1.2.0. Pocket mode waits for a headset instead of refusing one.
 
-It can be pulled down to a handle and stays down until you pull it back up. While the microphone is open, a bar counts the silence down — "12 s until the microphone closes" — and while it is closed the same spot says to tap three times, so the panel never changes height under your thumb.
+Arm it with no headset and it stays armed: the microphone simply stays open, nothing listens for taps, and an amber notice says why. Turn a headset on — or off and on again, if it dropped — and it starts working with nothing else to do. So you can arm it and then put your helmet on.
 
-With no headset connected it now explains why pocket mode is pointless instead of offering it, and leaves the microphone open.
+The panel also pulls down to a handle now, and stays down until you pull it up.

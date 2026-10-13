@@ -90,35 +90,43 @@ class PocketPanel extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // **Why it cannot be used, where the slider would
-                          // be.** Pocket mode exists to give a headset's
-                          // hands-free profile back; with no headset there is
-                          // nothing to give back and nothing for a tap to
-                          // switch, so the microphone stays open. Saying so
-                          // beats offering a slider that arms something inert.
-                          if (!state.pocketReady) const _NoHeadset(),
-                          if (state.pocketReady) ...[
-                            _StateLine(
-                              capturing: state.capturing,
-                              route: state.audioRoute,
-                            ),
-                            const SizedBox(height: 10),
+                          _StateLine(
+                            capturing: state.capturing,
+                            route: state.audioRoute,
+                          ),
+                          const SizedBox(height: 10),
+                          SlideToAct(
+                            label: active ? l.pocketSlideOff : l.pocketSlideOn,
+                            colour: active
+                                ? StatusColors.failed
+                                : StatusColors.connected,
+                            icon: active
+                                ? Icons.lock_open
+                                : Icons.lock_outline,
+                            onConfirmed: () => _confirm(context, active: active),
+                          ),
+                          // **A notice, not a refusal, and that distinction
+                          // was the whole of a wrong build.** This used to
+                          // take the slider away when no headset was
+                          // attached, on the reasoning that pocket mode has
+                          // nothing to do without one. A rider put the
+                          // argument that settles it: they arm pocket mode
+                          // *and then* put their helmet on, and a headset
+                          // that drops mid-ride — which a BMW's Bluetooth
+                          // will do — has to be recoverable by switching it
+                          // off and on again, with the panel still armed and
+                          // still saying so.
+                          //
+                          // So arming is always allowed. What changes without
+                          // a headset is underneath: capture stays open, no
+                          // silence counts down, and nothing listens for
+                          // taps. Amber, because amber is this app's word for
+                          // "something outside this app decided it" — the
+                          // same dress the server's suppression notice wears.
+                          if (!state.pocketReady) ...[
+                            const SizedBox(height: 12),
+                            const _NoHeadset(),
                           ],
-                          // Still reachable while armed without a headset: one
-                          // dropping mid-ride leaves the screen locked, and
-                          // the slider is the way back.
-                          if (state.pocketReady || active)
-                            SlideToAct(
-                              label: active ? l.pocketSlideOff : l.pocketSlideOn,
-                              colour: active
-                                  ? StatusColors.failed
-                                  : StatusColors.connected,
-                              icon: active
-                                  ? Icons.lock_open
-                                  : Icons.lock_outline,
-                              onConfirmed: () =>
-                                  _confirm(context, active: active),
-                            ),
                           if (active && state.pocketReady) ...[
                             // Asked for: the slider and the meter were
                             // touching, and through a glove that reads as one
@@ -128,6 +136,8 @@ class PocketPanel extends StatelessWidget {
                               capturing: state.capturing,
                               route: state.audioRoute,
                             ),
+                          ],
+                          if (active) ...[
                             const SizedBox(height: 8),
                             // **The anti-panic line.** Every other control on
                             // the screen has just stopped working, which from
@@ -234,41 +244,75 @@ class _Handle extends StatelessWidget {
   }
 }
 
-/// Why the slider is not there.
+/// Pocket mode is armed and has nothing to work with.
+///
+/// **Amber and a sentence, not a closed door.** The five states a rider
+/// listed, and they all fall out of one flag — `pocketReady`, which is pocket
+/// mode plus a headset:
+///
+/// | | capture | cooldown |
+/// |---|---|---|
+/// | armed, no headset | always on | none |
+/// | armed, headset | released until tapped | runs |
+/// | headset drops while armed | always on | none |
+/// | headset arrives while armed | released | runs |
+/// | not armed | always on | none |
+///
+/// So arming without a headset is not a mistake to be prevented; it is how a
+/// rider sets the phone down before putting the helmet on, and how they
+/// recover a headset that has dropped. This says which of the five they are
+/// in, and the microphone stays open underneath it.
 class _NoHeadset extends StatelessWidget {
   const _NoHeadset();
 
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        // The same wash and hairline as the server card's suppression notice,
+        // deliberately: both say "something outside this app decided this",
+        // and a rider meeting one after the other should not have to work out
+        // that they are the same kind of message.
+        color: StatusColors.reconnecting.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: StatusColors.noticeBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.headset_off,
-                size: 18,
-                color: StatusColors.reconnecting,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                l.pocketNoHeadset,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          const Icon(
+            Icons.headset_off,
+            size: 18,
+            color: StatusColors.reconnecting,
           ),
-          const SizedBox(height: 6),
-          Text(
-            l.pocketNoHeadsetBody,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l.pocketNoHeadset,
+                  style: const TextStyle(
+                    color: StatusColors.reconnecting,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // The explanation in ordinary body colour: a sentence to read,
+                // not a second alarm.
+                Text(
+                  l.pocketNoHeadsetBody,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

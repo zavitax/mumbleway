@@ -2287,11 +2287,11 @@ class LEn extends L {
       'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.';
 
   @override
-  String get pocketNoHeadset => 'No headset connected';
+  String get pocketNoHeadset => 'Pocket mode needs a headset';
 
   @override
   String get pocketNoHeadsetBody =>
-      'Pocket mode exists to give a headset’s hands-free profile back while nobody is talking — that is what returns your music to full quality. With no headset there is no profile to give back, so the microphone simply stays open and there is nothing for taps to switch. Connect a headset and the slider appears.';
+      'It is armed and waiting, but with no headset connected there is no hands-free profile to give back — which is the whole reason for closing the microphone. So the microphone stays open and nothing is listening for taps. Turn a headset on and it starts working by itself, including one that has dropped and come back.';
 
   @override
   String pocketCountdown(int seconds) {

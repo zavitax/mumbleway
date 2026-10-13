@@ -4165,16 +4165,16 @@ abstract class L {
   /// **'The rest of the screen is locked on purpose, so nothing is pressed while the phone is in your pocket. Slide above to unlock it.'**
   String get pocketLockedNote;
 
-  /// Heading of the message shown in place of the pocket-mode slider when no Bluetooth, wired or USB headset is attached
+  /// Heading of the amber notice shown inside the pocket-mode panel when no Bluetooth, wired or USB headset is attached. The panel and its slider stay fully usable; this says what is different
   ///
   /// In en, this message translates to:
-  /// **'No headset connected'**
+  /// **'Pocket mode needs a headset'**
   String get pocketNoHeadset;
 
-  /// The body of that message: why pocket mode is unavailable rather than broken
+  /// The body of that notice: the microphone stays open, nothing listens for taps, and connecting a headset fixes it with no further action
   ///
   /// In en, this message translates to:
-  /// **'Pocket mode exists to give a headset’s hands-free profile back while nobody is talking — that is what returns your music to full quality. With no headset there is no profile to give back, so the microphone simply stays open and there is nothing for taps to switch. Connect a headset and the slider appears.'**
+  /// **'It is armed and waiting, but with no headset connected there is no hands-free profile to give back — which is the whole reason for closing the microphone. So the microphone stays open and nothing is listening for taps. Turn a headset on and it starts working by itself, including one that has dropped and come back.'**
   String get pocketNoHeadsetBody;
 
   /// Shown with a bar counting down while the microphone is open in pocket mode. Keep it short: it sits in a fixed-height row under the three tap dots

@@ -2866,6 +2866,15 @@ class AppState extends ChangeNotifier {
   int get captureIdleLeft =>
       (captureIdleSeconds - _quietSeconds).clamp(0, captureIdleSeconds);
 
+  /// Whether a silence is actually being counted right now.
+  ///
+  /// **The panel must ask this before drawing a countdown.** The microphone
+  /// can be open with no cooldown behind it at all — with no headset, or while
+  /// a meter or a recording holds it — and a bar emptying in that state is an
+  /// instrument reporting on a mechanism that is not running. A rider saw
+  /// exactly that: a countdown that reached zero while nothing was counting.
+  bool get captureIdleRunning => _captureIdle != null;
+
   /// Notes a voice, for tests. The real path is the level event.
   @visibleForTesting
   void noteRiderVoiceForTest() => _voiceSinceTick = true;

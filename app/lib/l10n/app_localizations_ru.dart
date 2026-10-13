@@ -2290,6 +2290,9 @@ class LRu extends L {
   }
 
   @override
+  String get pocketMicOpen => 'Микрофон открыт';
+
+  @override
   String get pocketTapToSpeak =>
       'Постучите по телефону три раза, чтобы говорить';
 

@@ -1364,6 +1364,10 @@
       }
     }
   },
+  "pocketMicOpen": "Microphone open",
+  "@pocketMicOpen": {
+    "description": "Shown in the pocket panel’s fixed-height row when the microphone is open but no silence is being counted — with no headset, or while a meter or recording holds it. In place of the countdown bar, which would otherwise be drawing a cooldown that is not running"
+  },
   "pocketTapToSpeak": "Tap the phone three times to speak",
   "@pocketTapToSpeak": {
     "description": "Shown in the same fixed-height row while the microphone is closed, so the panel does not change height"

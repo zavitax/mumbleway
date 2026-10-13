@@ -2299,6 +2299,9 @@ class LEn extends L {
   }
 
   @override
+  String get pocketMicOpen => 'Microphone open';
+
+  @override
   String get pocketTapToSpeak => 'Tap the phone three times to speak';
 
   @override

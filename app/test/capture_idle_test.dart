@@ -46,6 +46,35 @@ void main() {
     expect(state.captureIdleSeconds, 30);
   });
 
+  /// **The panel must be able to ask whether anything is counting**, and a
+  /// rider found out why: the countdown bar drew itself from a smoothed
+  /// reading, so with the counter stopped it emptied anyway and reached zero
+  /// while nothing was running. The bar is now drawn only when this says so.
+  testWidgets('it says whether a silence is being counted at all', (
+    tester,
+  ) async {
+    final idle = AppState()
+      ..pocketMode = true
+      ..micMode = MicMode.continuous;
+    idle.runtimeFor('a').status = ConnStatus.connected;
+    await idle.setPocketActive(true);
+    await idle.toggleCapture();
+    expect(
+      idle.captureIdleRunning,
+      isFalse,
+      reason: 'no headset: the microphone stays open and nothing counts',
+    );
+
+    final state = await armed();
+    expect(state.captureIdleRunning, isTrue, reason: 'armed with a headset');
+    await tester.pump(const Duration(seconds: 31));
+    expect(
+      state.captureIdleRunning,
+      isFalse,
+      reason: 'it has fired, so there is nothing left to count',
+    );
+  });
+
   testWidgets('silence hands the microphone back', (tester) async {
     final state = await armed();
     expect(state.riderWantsMic, isTrue, reason: 'the rider asked for it');

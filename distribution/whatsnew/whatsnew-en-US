@@ -1,5 +1,5 @@
-Still 1.2.0. The headset warning waits until it is relevant.
+Still 1.2.0. The countdown no longer counts down when nothing is counting.
 
-The amber "pocket mode needs a headset" notice now appears only once pocket mode is on. With it off, it was advice nobody had asked for, sitting next to a slider that works perfectly well; with it on and nothing happening, it is the explanation.
+A rider watched a thirty-second cooldown reach zero while no cooldown was running. My fault, from the smoothing added two builds ago: it subtracted the whole elapsed time from the last whole second it had been told, so with the counter stopped it emptied the bar on its own. It now interpolates within one second and no further.
 
-Nothing else changed: arming without a headset still works and still leaves the microphone open until one arrives.
+And the bar is only drawn when a silence is really being counted. The microphone can be open with nothing counting — with no headset, or while a meter holds it — and that now says "Microphone open" instead.

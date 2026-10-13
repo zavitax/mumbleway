@@ -515,10 +515,17 @@ class _TapFeedbackState extends State<_TapFeedback> {
       _fraction.value = 0;
       return;
     }
-    // Clamped at zero: the state's counter and this stopwatch are not the same
-    // clock, so the last tenth of a second before a release can run over.
-    final seconds = (_leftSeconds - _sinceReading.elapsedMilliseconds / 1000.0)
-        .clamp(0.0, total.toDouble());
+    // **Bounded to the one second it is interpolating, which it was not.**
+    // Subtracting the whole elapsed time from the last reading assumes the
+    // reading keeps coming; when the counter is not running the smoothing
+    // walked the bar from full to empty on its own, and a rider watched a
+    // thirty-second countdown that nothing was behind. A step of at most one
+    // second cannot invent more than it is told.
+    final step = (_sinceReading.elapsedMilliseconds / 1000.0).clamp(0.0, 1.0);
+    // Clamped at zero as well: the state's counter and this stopwatch are not
+    // the same clock, so the last tenth of a second before a release can run
+    // over.
+    final seconds = (_leftSeconds - step).clamp(0.0, total.toDouble());
     _fraction.value = seconds / total;
   }
 
@@ -606,8 +613,34 @@ class _TapFeedbackState extends State<_TapFeedback> {
         // falling tones say it *has* closed rather than that it is about to.
         SizedBox(
           height: _instructionHeight,
-          child: widget.capturing
-              ? ValueListenableBuilder<double>(
+          // **Three states, not two, and the third is the one that caught a
+          // rider out.** The microphone can be open with no silence being
+          // counted - with no headset, or while a meter or a recording holds
+          // it - and a bar emptying then is an instrument reporting on a
+          // mechanism that is not running. It says so instead.
+          child: !widget.capturing
+              ? Center(
+                  child: Text(
+                    l.pocketTapToSpeak,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              : !AppStateScope.of(context).captureIdleRunning
+              ? Center(
+                  child: Text(
+                    l.pocketMicOpen,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              : ValueListenableBuilder<double>(
                   valueListenable: _fraction,
                   builder: (context, fraction, _) => Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -635,16 +668,6 @@ class _TapFeedbackState extends State<_TapFeedback> {
                         ),
                       ),
                     ],
-                  ),
-                )
-              : Center(
-                  child: Text(
-                    l.pocketTapToSpeak,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
                   ),
                 ),
         ),

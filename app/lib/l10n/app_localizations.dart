@@ -4183,6 +4183,12 @@ abstract class L {
   /// **'{seconds} s until the microphone closes'**
   String pocketCountdown(int seconds);
 
+  /// Shown in the pocket panel’s fixed-height row when the microphone is open but no silence is being counted — with no headset, or while a meter or recording holds it. In place of the countdown bar, which would otherwise be drawing a cooldown that is not running
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone open'**
+  String get pocketMicOpen;
+
   /// Shown in the same fixed-height row while the microphone is closed, so the panel does not change height
   ///
   /// In en, this message translates to:

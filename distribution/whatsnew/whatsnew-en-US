@@ -1,5 +1,5 @@
-Still 1.2.0. The countdown no longer counts down when nothing is counting.
+Still 1.2.0. The countdown no longer counts when nothing is counting.
 
-A rider watched a thirty-second cooldown reach zero while no cooldown was running. My fault, from the smoothing added two builds ago: it subtracted the whole elapsed time from the last whole second it had been told, so with the counter stopped it emptied the bar on its own. It now interpolates within one second and no further.
+A rider watched a thirty-second cooldown reach zero while no cooldown was running — my fault, from the smoothing added two builds ago, which drained the bar on its own once the counter stopped. It now interpolates within one second and no further.
 
-And the bar is only drawn when a silence is really being counted. The microphone can be open with nothing counting — with no headset, or while a meter holds it — and that now says "Microphone open" instead.
+The bar is also drawn only when a silence is really being counted. The microphone can be open with nothing counting, and that now says "Microphone open".

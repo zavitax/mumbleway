@@ -123,7 +123,13 @@ class PocketPanel extends StatelessWidget {
                           // taps. Amber, because amber is this app's word for
                           // "something outside this app decided it" — the
                           // same dress the server's suppression notice wears.
-                          if (!state.pocketReady) ...[
+                          //
+                          // **Only while armed**, at a rider's request. With
+                          // pocket mode off, a notice about what it would
+                          // need is advice nobody asked for, next to a slider
+                          // that works; once it is on and nothing is
+                          // happening, it is the explanation.
+                          if (active && !state.pocketReady) ...[
                             const SizedBox(height: 12),
                             const _NoHeadset(),
                           ],

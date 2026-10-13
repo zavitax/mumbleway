@@ -1,5 +1,5 @@
-Still 1.2.0. Two small things in the pocket panel.
+Still 1.2.0. The headset warning waits until it is relevant.
 
-The handle now wears the slider's colour — green while pocket mode is off, red while it is on — so the notch alone says which state the phone is in when the panel is pulled down.
+The amber "pocket mode needs a headset" notice now appears only once pocket mode is on. With it off, it was advice nobody had asked for, sitting next to a slider that works perfectly well; with it on and nothing happening, it is the explanation.
 
-And the countdown bar moves smoothly instead of stepping once a second. The figure beside it still comes from the counter that actually closes the microphone; only the tenths between its ticks are drawn in, ten times a second.
+Nothing else changed: arming without a headset still works and still leaves the microphone open until one arrives.

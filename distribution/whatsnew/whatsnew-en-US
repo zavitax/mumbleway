@@ -1,5 +1,5 @@
-Still 1.2.0. The first three seconds of a microphone are ignored.
+Still 1.2.0. Pocket mode now notices a headset on Android too.
 
-Opening an input makes clicks and a burst of whatever was buffered — sharp broadband transients, the exact shape the tap detector looks for. Three inside three seconds is a gesture, and a false one in pocket mode opens the microphone and starts the silence counting. The detector now waits three seconds after it starts and after any rebuild.
+The route code does not move when a headset connects or drops — while listening, the microphone is the phone's own either way — so Android swallowed the news and pocket mode sat in the wrong half of itself: connected and never handing over to listening, or gone with the microphone left closed.
 
-Also: a tap is ignored mid-transition.
+Android route changes also reach the log in Diagnostics now, with its copy button, instead of only logcat.

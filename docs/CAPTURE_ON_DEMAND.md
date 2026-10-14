@@ -926,3 +926,54 @@ as a chirp rather than as three separate acknowledgements"; it does, and that is
 now the point, because the chirp is the count. The third note usually loses to
 the capture cue a few milliseconds behind it, which is correct — that one is
 the answer, where the notes were only counting towards it.
+
+## "Is a headset attached" is not a question the route can answer
+
+Pocket mode only means anything with a headset: it exists to give the hands-free
+profile back while nobody is talking, and with nothing connected there is no
+profile to give back. So the panel needs the fact, and **the route code cannot
+supply it** — which took two builds to get right, once per platform.
+
+While only listening, the microphone is deliberately the phone's own: iOS's
+listening session asks for the built-in input explicitly and Android releases
+the communication device. So a rider with a helmet on their head reports route
+1, *the phone's own microphone*, for the entire state the question matters in.
+Deriving "is a headset connected" from the route answers no, always, exactly
+when it is needed.
+
+Both platform sides therefore report it separately, as `headset` beside `route`
+in every session reply and every route change:
+
+- **iOS reads the outputs first.** The music is going to the helmet over A2DP
+  whether or not its microphone is live, so the output port names it; the
+  available *inputs* are the half that knows while capturing, and a wired or
+  USB microphone can appear on either. Either is enough.
+- **Android reads `getDevices(GET_DEVICES_OUTPUTS)`** for A2DP, SCO, wired and
+  USB, for the same reason.
+
+### The Android half had a second trap, and it is the general lesson
+
+`reportRouteIfChanged` did what its name says: it compared the route code and
+returned early when it had not moved. **A headset arriving or dropping does not
+move it** — the comm device is released while listening, so the code is the
+phone's own microphone before and after — so the report was swallowed on the
+platform side, before anything reached Dart.
+
+What that produced is worth stating, because it is not a cosmetic fault: pocket
+mode sat in the wrong half of itself. A headset connected and capture never
+handed over to listening, or a headset gone and the microphone left closed with
+nothing able to open it but three taps on a phone in a pocket. The iOS side gets
+the same notification for free and reports it; this was the Android half.
+
+The generalisable form: **an unchanged derived value is not evidence that
+nothing changed.** The route code is a projection of the device list, and two
+different device lists project onto it identically.
+
+### And Android's route changes now reach the log a rider can send
+
+`Log.i` goes to logcat, and logcat needs a cable. Every Android fault in this
+feature has been diagnosed by reasoning about the API, while the iOS half has
+reported its route changes into the engine log since the day three defects in a
+row came out of them — where the diagnostics panel draws them with a copy
+button and a shared recording carries them. `AudioRouting.onEvent` closes that
+asymmetry.

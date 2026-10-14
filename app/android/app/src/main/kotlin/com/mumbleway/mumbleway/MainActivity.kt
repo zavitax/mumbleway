@@ -141,6 +141,11 @@ class MainActivity : FlutterActivity() {
         // something a poll would catch in time, and the Dart side has no way to
         // ask — `activate` is the only call that reports a route, so without
         // this the engine's idea of it is frozen at the last connect.
+        // Into the engine's log, where the panel draws it and a shared
+        // recording carries it. See `AudioRouting.onEvent`.
+        audioRouting.onEvent = { line ->
+            runOnUiThread { sessionChannel.invokeMethod("sessionEvent", line) }
+        }
         audioRouting.onRouteChanged = { route ->
             runOnUiThread {
                 sessionChannel.invokeMethod(

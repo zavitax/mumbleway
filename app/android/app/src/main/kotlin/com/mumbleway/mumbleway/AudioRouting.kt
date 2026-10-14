@@ -227,6 +227,9 @@ class AudioRouting(private val context: Context) {
         if (!active) {
             previousMode = audio.mode
             active = true
+            // Before the watcher, which fires once on registration with the
+            // devices that are already there.
+            headsetWas = headsetPresent()
             watchForRouteChanges()
         }
         startCapture(done)
@@ -345,11 +348,36 @@ class AudioRouting(private val context: Context) {
      * column exists precisely because the audio itself does not say what
      * captured it.
      *
-     * Carries `Recorded::route`'s code. Fired only when the value actually
-     * changes, because the platform reports device arrivals liberally and a
-     * notification per Bluetooth housekeeping event is noise.
+     * Carries `Recorded::route`'s code. Fired when that code changes **or when
+     * [headsetPresent] does**, because the platform reports device arrivals
+     * liberally and a notification per Bluetooth housekeeping event is noise —
+     * but those are the two facts Dart cannot ask for.
+     *
+     * **The second condition is the whole of pocket mode on this platform.**
+     * While only listening, the communication device is released, so the route
+     * is the phone's own microphone *whether or not a headset is attached* —
+     * which means a headset arriving or dropping changes the route code not at
+     * all, the early return below swallowed it, and Dart never learned. Pocket
+     * mode then sat in the wrong half of itself: a headset connected and
+     * capture never handed over to listening, or a headset gone and the
+     * microphone left closed with nothing able to open it. The iOS side has
+     * the same fact reported from a route-change notification it gets for
+     * free; this is the Android half of it.
      */
     var onRouteChanged: ((Int) -> Unit)? = null
+
+    /**
+     * A line for the engine's log, which is the one a rider can send.
+     *
+     * **`Log.i` reaches logcat, and logcat needs a cable.** Every Android
+     * fault in this feature has been diagnosed by reasoning, because the only
+     * account of what the routing actually did was on a developer's machine —
+     * while the iOS half has reported its route changes into the engine log
+     * since the day three defects in a row came out of them. The log is on
+     * screen in the diagnostics panel with a copy button, and it travels with
+     * a shared recording.
+     */
+    var onEvent: ((String) -> Unit)? = null
 
     private var deviceCallback: android.media.AudioDeviceCallback? = null
     private var commDeviceListener: Any? = null
@@ -391,12 +419,25 @@ class AudioRouting(private val context: Context) {
         return if (audio.isBluetoothScoOn) 3 else routeCode
     }
 
+    /**
+     * The last headset presence reported, so a change in it can be noticed.
+     *
+     * Seeded in [activate] rather than left false, so the callback Android
+     * fires the instant it is registered — with the current device list — does
+     * not count as news.
+     */
+    private var headsetWas = false
+
     private fun reportRouteIfChanged() {
         if (!active) return
         val now = currentRouteCode()
-        if (now == routeCode) return
-        Log.i(TAG, "route changed: $routeCode -> $now")
+        val headset = headsetPresent()
+        if (now == routeCode && headset == headsetWas) return
+        val line = "route changed: $routeCode -> $now, headset $headsetWas -> $headset"
+        Log.i(TAG, line)
+        onEvent?.invoke(line)
         routeCode = now
+        headsetWas = headset
         onRouteChanged?.invoke(now)
     }
 

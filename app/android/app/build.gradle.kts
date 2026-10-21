@@ -87,6 +87,28 @@ android {
     }
 
     buildTypes {
+        debug {
+            // **A debug build installs beside the Play one, not over it.**
+            //
+            // The phone a rider tests on carries a Play build signed with the
+            // upload key and versioned from `run_number`. A local build is
+            // debug-signed, so there is no update path: `adb install` answers
+            // `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and raising the version
+            // code does not help because the signature is the objection. The
+            // only way to install over it is to uninstall first — which wipes
+            // the rider's server list, passwords and settings, on their own
+            // phone, to test a build.
+            //
+            // A different application id makes the question disappear: two
+            // apps, two sandboxes, the Play build untouched and still the one
+            // that gets updates. `CLAUDE.local.md` named this as the obvious
+            // fix if the loop were ever needed often, and it is now.
+            //
+            // Debug only. The release id is what Play knows the app by and
+            // must never carry a suffix.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
         release {
             // Debug keys when no upload key is configured, so `flutter run
             // --release` still works for a developer who has none. Play will

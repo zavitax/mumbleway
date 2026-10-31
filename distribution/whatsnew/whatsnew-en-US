@@ -1,5 +1,5 @@
-Still 1.2.0. Pocket mode now notices a headset on Android too.
+Still 1.2.0. Pocket mode now says what it is — and notices a headset on Android.
 
-The route code does not move when a headset connects or drops — while listening, the microphone is the phone's own either way — so Android swallowed the news and pocket mode sat in the wrong half of itself: connected and never handing over to listening, or gone with the microphone left closed.
+"How to use it" in Settings opens four cards: what the mode is for, the three taps, the locked screen, and the sounds to ride by. A question mark in the pocket panel opens the same four, so they can be read again rather than once on the way in.
 
-Android route changes also reach the log in Diagnostics now, with its copy button, instead of only logcat.
+On Android, a headset arriving or dropping no longer leaves pocket mode in the wrong half of itself.

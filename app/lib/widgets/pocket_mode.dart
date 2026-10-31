@@ -71,11 +71,22 @@ class PocketPanel extends StatelessWidget {
               // seconds of a ride and takes a third of the screen. Pulled
               // down it leaves a notch to pull back up, and the choice is
               // remembered between rides.
-              _Handle(
-                collapsed: collapsed,
-                armed: active,
-                onChanged: (v) =>
-                    AppStateScope.read(context).setPocketPanelCollapsed(v),
+              // A stack rather than a row, so the notch stays centred: it is
+              // read from across the tank as the one thing saying which state
+              // the phone is in, and a help button in a row would push it off
+              // centre by half the button's width.
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  _Handle(
+                    collapsed: collapsed,
+                    armed: active,
+                    onChanged: (v) =>
+                        AppStateScope.read(context).setPocketPanelCollapsed(v),
+                  ),
+                  if (!collapsed && !active)
+                    const Positioned(right: 0, child: _HowTo()),
+                ],
               ),
               // `AnimatedSize` rather than two layouts: the panel is on screen
               // while it changes height, and a jump reads as the app having
@@ -246,6 +257,49 @@ class _Handle extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The question mark that re-opens [PocketTutorial], from the panel itself.
+///
+/// **The slides used to be shown once in the app's life.** `pocketTutorialSeen`
+/// is persisted and nothing else built the dialog, so after the first arm the
+/// only explanation of pocket mode in the app was unreachable — and this panel
+/// says nothing about what the feature is until it is armed, by which point the
+/// screen is locked. So the way in is here, beside the slider, on the screen a
+/// rider is already looking at when they are wondering.
+///
+/// **Not while armed**, and not as a style choice: every control but the slider
+/// stops responding on purpose, and a second live one that puts a dialog over
+/// that slider is precisely what the lock exists to prevent. **Not while
+/// collapsed** either, so the handle row stays exactly what it is today and the
+/// full-width flick target survives where it matters most — pulling the panel
+/// back up. In both cases the row keeps its height, so nothing moves.
+class _HowTo extends StatelessWidget {
+  const _HowTo();
+
+  @override
+  Widget build(BuildContext context) {
+    final l = L.of(context);
+    return SizedBox(
+      // The notch's own width, and the handle row's height: a 44 by 28 target
+      // is reachable with a glove, and this is read at a standstill anyway.
+      width: 44,
+      height: 28,
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        iconSize: 18,
+        visualDensity: VisualDensity.compact,
+        tooltip: l.pocketHowTo,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (_) => const PocketTutorial(readOnly: true),
+        ),
+        icon: const Icon(Icons.help_outline),
       ),
     );
   }
@@ -788,9 +842,25 @@ class _SlideToActState extends State<SlideToAct> {
   }
 }
 
-/// The three things a rider has to know before the screen locks.
+/// What pocket mode is for, and the three things to know before the screen
+/// locks.
+///
+/// **The first slide was added when this stopped being a one-shot.** The other
+/// three are all mechanism — the taps, the lock, the cues — because they were
+/// written to be read at the moment of arming, when a rider has already decided
+/// they want the feature. Opened from settings or from the panel's question
+/// mark, that is the one question not yet answered, and it goes first.
 class PocketTutorial extends StatefulWidget {
-  const PocketTutorial({super.key});
+  const PocketTutorial({super.key, this.readOnly = false});
+
+  /// Opened to be read, rather than on the way into pocket mode.
+  ///
+  /// Nothing is armed by closing it, so the last slide's button goes away and
+  /// Cancel becomes Close. It also deliberately does **not** mark the slides as
+  /// seen: somebody who opens this and closes it on the first slide has not
+  /// been told what the locked screen means, and that explanation is owed
+  /// before the screen locks rather than after.
+  final bool readOnly;
 
   @override
   State<PocketTutorial> createState() => _PocketTutorialState();
@@ -810,6 +880,7 @@ class _PocketTutorialState extends State<PocketTutorial> {
   Widget build(BuildContext context) {
     final l = L.of(context);
     final slides = [
+      (Icons.music_note, l.pocketTutorialWhyTitle, l.pocketTutorialWhyBody),
       (Icons.touch_app, l.pocketTutorialTapsTitle, l.pocketTutorialTapsBody),
       (Icons.lock_outline, l.pocketTutorialLockTitle, l.pocketTutorialLockBody),
       (Icons.hearing, l.pocketTutorialSoundTitle, l.pocketTutorialSoundBody),
@@ -877,17 +948,21 @@ class _PocketTutorialState extends State<PocketTutorial> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: Text(L.of(context).cancel),
+          child: Text(widget.readOnly ? l.close : l.cancel),
         ),
-        FilledButton(
-          onPressed: last
-              ? () => Navigator.of(context).pop(true)
-              : () => _pages.nextPage(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOut,
-                ),
-          child: Text(last ? l.pocketTutorialStart : l.pocketTutorialNext),
-        ),
+        // Read-only, on the last slide, there is nothing left to do: arming
+        // from here would be a second way into a locked screen, from a dialog
+        // opened to be read. Everywhere else this is Next, then Start.
+        if (!(widget.readOnly && last))
+          FilledButton(
+            onPressed: last
+                ? () => Navigator.of(context).pop(true)
+                : () => _pages.nextPage(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOut,
+                  ),
+            child: Text(last ? l.pocketTutorialStart : l.pocketTutorialNext),
+          ),
       ],
     );
   }

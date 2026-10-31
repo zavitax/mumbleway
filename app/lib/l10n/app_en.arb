@@ -1331,9 +1331,21 @@
     }
   },
   "pocketMode": "Pocket mode",
-  "pocketModeBody": "Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking; it closes itself again after a stretch of not talking. Music stays at full quality while nobody is talking.",
+  "pocketModeBody": "A Bluetooth headset carries a microphone or music, never both. Holding the microphone open for a whole ride therefore costs you the sound of everything else. Pocket mode takes it only while you are talking.",
   "@pocketModeBody": {
-    "description": "Explanation under the one pocket-mode switch in settings. It has to say what the slider does, that the screen locks, and that three taps toggle the microphone"
+    "description": "The explainer above the pocket-mode switch in settings, in the same place as every other section's. It says why the feature exists and nothing about how to work it: that is pocketModeHint and the four slides behind pocketHowTo"
+  },
+  "pocketModeHint": "A slider appears at the bottom of the main screen. Slide it and the screen locks; tap the phone three times to talk.",
+  "@pocketModeHint": {
+    "description": "The pocket-mode switch's own subtitle: what the rider does, in two sentences. It used to carry the why as well, which made it a paragraph nobody read as instructions"
+  },
+  "pocketHowTo": "How to use it",
+  "@pocketHowTo": {
+    "description": "Opens the four pocket-mode slides. Also the tooltip on the question mark in the pocket panel, which is the same dialog from the screen the rider is actually looking at"
+  },
+  "pocketHowToBody": "Three taps, the locked screen, and the sounds to ride by.",
+  "@pocketHowToBody": {
+    "description": "Subtitle of that tile, naming the three slides that follow the first one so it is clear what opening it gets you"
   },
   "pocketSlideOn": "Slide right to enable pocket mode",
   "@pocketSlideOn": {
@@ -1380,6 +1392,11 @@
     "description": "Which microphone is open right now, shown beside the capture state so a rider can tell the helmet is really in use rather than the phone in their pocket. With capture off the phone's own is open and listening for taps, which is not nothing and must not say so"
   },
   "pocketTutorialTitle": "Riding with the phone away",
+  "pocketTutorialWhyTitle": "Music stays sharp until you talk",
+  "pocketTutorialWhyBody": "While nobody is talking the app hands the headset back, so music and the group play at full quality. Tapping the phone takes the microphone for as long as you are speaking, and it is given back after a stretch of quiet.",
+  "@pocketTutorialWhyBody": {
+    "description": "The first of four slides, and the only one about what the feature is for rather than how to work it. The other three were written to be read at the moment of arming, when that question is already settled; this one exists because the dialog can now be opened from settings, where it is the first thing a reader wants"
+  },
   "pocketTutorialTapsTitle": "Three taps, within three seconds",
   "pocketTutorialTapsBody": "Tap the phone firmly three times — through a jacket, a tank bag or a pocket — and the microphone opens. Three dots above the slider fill as each tap is counted, and you will hear a note for each one: three rising notes that make a chord when all three land.",
   "pocketTutorialLockTitle": "The screen locks itself",

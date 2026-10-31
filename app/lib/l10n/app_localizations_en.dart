@@ -2274,7 +2274,18 @@ class LEn extends L {
 
   @override
   String get pocketModeBody =>
-      'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking; it closes itself again after a stretch of not talking. Music stays at full quality while nobody is talking.';
+      'A Bluetooth headset carries a microphone or music, never both. Holding the microphone open for a whole ride therefore costs you the sound of everything else. Pocket mode takes it only while you are talking.';
+
+  @override
+  String get pocketModeHint =>
+      'A slider appears at the bottom of the main screen. Slide it and the screen locks; tap the phone three times to talk.';
+
+  @override
+  String get pocketHowTo => 'How to use it';
+
+  @override
+  String get pocketHowToBody =>
+      'Three taps, the locked screen, and the sounds to ride by.';
 
   @override
   String get pocketSlideOn => 'Slide right to enable pocket mode';
@@ -2318,6 +2329,13 @@ class LEn extends L {
 
   @override
   String get pocketTutorialTitle => 'Riding with the phone away';
+
+  @override
+  String get pocketTutorialWhyTitle => 'Music stays sharp until you talk';
+
+  @override
+  String get pocketTutorialWhyBody =>
+      'While nobody is talking the app hands the headset back, so music and the group play at full quality. Tapping the phone takes the microphone for as long as you are speaking, and it is given back after a stretch of quiet.';
 
   @override
   String get pocketTutorialTapsTitle => 'Three taps, within three seconds';

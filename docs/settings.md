@@ -403,7 +403,23 @@ would leave their screens describing something you are no longer doing.
 Disconnect to change it, and the control says so while it is locked.</p>
 </div>
 
-### Tap the phone to talk
+### Let MumbleWay users unmute me
+
+On by default. Another rider using MumbleWay can mute your microphone with
+**Mute on server (for everyone)** in the menu beside your name — for when
+noise cancellation is losing to the wind and the whole channel hears it — and
+can unmute it the same way, for when you muted yourself and forgot. The request
+goes to your app directly, so it works on servers where they have no permission
+to mute anybody.
+
+Either way you hear a sound and see who did it. Turn this off and only you can
+unmute your microphone. Being muted cannot be turned off, but your own mute
+button always turns the microphone back on, and your app acts on at most one
+request from others every 30 seconds. If whoever muted you is also allowed to
+mute people on that server, you are muted on the server as well, and only
+somebody with that permission can lift it.
+
+## Pocket mode
 
 Off by default, and off it changes nothing: the app takes the headset's
 hands-free profile when you connect and holds it for the call, as it always has.
@@ -428,6 +444,12 @@ helmet on.
 
 The panel can also be pulled down to a handle when you do not want it taking
 up the screen, and it stays down until you pull it back up.
+
+**How to use it**, under the switch, opens four cards: what the mode is for,
+the three taps, the locked screen, and the sounds to ride by. The question mark
+in the panel opens the same four. They also appear once by themselves the first
+time you arm it — before the screen locks rather than after — and you can read
+them again whenever you like.
 
 **Taps are heard by the phone’s own microphone**, which is why the way back is
 a silence rather than three more taps: while a headset is carrying your voice,
@@ -456,22 +478,6 @@ Two things worth knowing before you rely on it:
 Not available with **push to talk**, and the two switch each other off. A button
 exists to put you on air the instant it goes down, which it cannot do if the
 microphone is closed until you tap.
-
-### Let MumbleWay users unmute me
-
-On by default. Another rider using MumbleWay can mute your microphone with
-**Mute on server (for everyone)** in the menu beside your name — for when
-noise cancellation is losing to the wind and the whole channel hears it — and
-can unmute it the same way, for when you muted yourself and forgot. The request
-goes to your app directly, so it works on servers where they have no permission
-to mute anybody.
-
-Either way you hear a sound and see who did it. Turn this off and only you can
-unmute your microphone. Being muted cannot be turned off, but your own mute
-button always turns the microphone back on, and your app acts on at most one
-request from others every 30 seconds. If whoever muted you is also allowed to
-mute people on that server, you are muted on the server as well, and only
-somebody with that permission can lift it.
 
 ## Floating call window
 

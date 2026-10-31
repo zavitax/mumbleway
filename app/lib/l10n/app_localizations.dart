@@ -4141,11 +4141,29 @@ abstract class L {
   /// **'Pocket mode'**
   String get pocketMode;
 
-  /// Explanation under the one pocket-mode switch in settings. It has to say what the slider does, that the screen locks, and that three taps toggle the microphone
+  /// The explainer above the pocket-mode switch in settings, in the same place as every other section's. It says why the feature exists and nothing about how to work it: that is pocketModeHint and the four slides behind pocketHowTo
   ///
   /// In en, this message translates to:
-  /// **'Lets you ride with the phone in a pocket: a slider appears at the bottom of the screen, and sliding it locks the screen and closes the microphone. Tap the phone three times to start talking; it closes itself again after a stretch of not talking. Music stays at full quality while nobody is talking.'**
+  /// **'A Bluetooth headset carries a microphone or music, never both. Holding the microphone open for a whole ride therefore costs you the sound of everything else. Pocket mode takes it only while you are talking.'**
   String get pocketModeBody;
+
+  /// The pocket-mode switch's own subtitle: what the rider does, in two sentences. It used to carry the why as well, which made it a paragraph nobody read as instructions
+  ///
+  /// In en, this message translates to:
+  /// **'A slider appears at the bottom of the main screen. Slide it and the screen locks; tap the phone three times to talk.'**
+  String get pocketModeHint;
+
+  /// Opens the four pocket-mode slides. Also the tooltip on the question mark in the pocket panel, which is the same dialog from the screen the rider is actually looking at
+  ///
+  /// In en, this message translates to:
+  /// **'How to use it'**
+  String get pocketHowTo;
+
+  /// Subtitle of that tile, naming the three slides that follow the first one so it is clear what opening it gets you
+  ///
+  /// In en, this message translates to:
+  /// **'Three taps, the locked screen, and the sounds to ride by.'**
+  String get pocketHowToBody;
 
   /// Label on the green slide-to-confirm control at the bottom of the main screen
   ///
@@ -4224,6 +4242,18 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Riding with the phone away'**
   String get pocketTutorialTitle;
+
+  /// No description provided for @pocketTutorialWhyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Music stays sharp until you talk'**
+  String get pocketTutorialWhyTitle;
+
+  /// The first of four slides, and the only one about what the feature is for rather than how to work it. The other three were written to be read at the moment of arming, when that question is already settled; this one exists because the dialog can now be opened from settings, where it is the first thing a reader wants
+  ///
+  /// In en, this message translates to:
+  /// **'While nobody is talking the app hands the headset back, so music and the group play at full quality. Tapping the phone takes the microphone for as long as you are speaking, and it is given back after a stretch of quiet.'**
+  String get pocketTutorialWhyBody;
 
   /// No description provided for @pocketTutorialTapsTitle.
   ///

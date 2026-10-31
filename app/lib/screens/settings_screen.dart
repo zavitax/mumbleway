@@ -21,6 +21,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/error_snack.dart';
 import '../widgets/language_button.dart';
+import '../widgets/pocket_mode.dart';
 import '../widgets/ptt_button.dart';
 import '../widgets/watch.dart';
 
@@ -235,10 +236,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? const SizedBox.shrink()
                 : _Explainer(l.micModeLockedWhileConnected),
           ),
-          const _TapToCaptureTile(),
           // With the microphone's other settings, because it is one: it
           // decides who besides the rider may open it.
           const _AllowRemoteUnmuteTile(),
+
+          // **Its own section, where it used to be a switch under Microphone
+          // mode.** Sitting there it read as a sub-setting of the mode — the
+          // two do exclude each other, but one is *how* the microphone opens
+          // and the other is *when the app holds the headset at all* — and the
+          // cost of that placement was its explanation: with no section of its
+          // own there was no explainer, so the why had to be crammed into the
+          // switch's subtitle, where nobody reads it as instructions. Header,
+          // explainer, control, like every other feature on this screen.
+          const Divider(height: 32),
+          _SectionHeader(l.pocketMode),
+          _Explainer(l.pocketModeBody),
+          const _TapToCaptureTile(),
 
           if (state.overlaySupported) ...[
             const Divider(height: 32),
@@ -671,8 +684,11 @@ class _TapToCaptureTile extends StatelessWidget {
             SwitchListTile(
               secondary: const Icon(Icons.phone_android),
               title: Text(l.pocketMode),
+              // The how, not the why: the why is the section's explainer
+              // above, where it is read before the control rather than
+              // underneath it.
               subtitle: Text(
-                blocked ? l.pocketBlockedByPushToTalk : l.pocketModeBody,
+                blocked ? l.pocketBlockedByPushToTalk : l.pocketModeHint,
               ),
               isThreeLine: true,
               value: on,
@@ -711,6 +727,26 @@ class _TapToCaptureTile extends StatelessWidget {
                 ),
               ),
             ],
+            // **The slides, reachable again.** They are shown once, on the
+            // way into pocket mode, and `pocketTutorialSeen` is persisted —
+            // so the only explanation of the feature in the app was gone for
+            // good after the first arm, which is how a rider comes to be
+            // using a locked screen they no longer remember the way out of.
+            //
+            // Read-only from here: closing it arms nothing, and it does not
+            // count as having been shown, because somebody who closes it on
+            // the first slide has not been told what the locked screen means.
+            // Offered with the switch off as well — understanding it is the
+            // thing you do *before* turning it on.
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: Text(l.pocketHowTo),
+              subtitle: Text(l.pocketHowToBody),
+              onTap: () => showDialog<void>(
+                context: context,
+                builder: (_) => const PocketTutorial(readOnly: true),
+              ),
+            ),
           ],
         );
       },

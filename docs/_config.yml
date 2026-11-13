@@ -56,6 +56,17 @@ defaults:
 repo: https://github.com/zavitax/mumbleway
 mumble: https://www.mumble.info/
 mumble_docs: https://www.mumble.info/documentation/
-# Приглашение постоянное. Если его когда-нибудь придётся отозвать, оно
-# меняется здесь и в docs/STORE_DESCRIPTION.md — больше нигде не вписано.
-discord: https://discord.gg/NTASPRFjm
+# Меняется здесь и в docs/STORE_DESCRIPTION.md — больше нигде не вписано.
+#
+# Здесь было написано, что приглашение постоянное. У нового стоит
+# expires_at: null, то есть срок ему и правда не задан, — но предыдущее,
+# NTASPRFjm, к 13.11.2026 отвечало 404 Unknown Invite, и всё это время
+# оно стояло на сайте и в описаниях всех трёх магазинов. Так что ссылку
+# стоит проверять, а не считать вечной:
+#
+#     curl -s https://discord.com/api/v10/invites/<code>
+#
+# И проверять до публикации: в магазинах приглашение лежит внутри
+# описания, а описание в App Store принадлежит записи версии, так что
+# заменить его там можно только вместе с новой версией.
+discord: https://discord.gg/2QPGSTgXtq

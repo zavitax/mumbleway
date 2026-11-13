@@ -163,7 +163,7 @@ MADE BY
 Ilya Melamed
 Site: https://zavitax.github.io/mumbleway/
 Source: https://github.com/zavitax/mumbleway
-Chat: https://discord.gg/NTASPRFjm
+Chat: https://discord.gg/2QPGSTgXtq
 ```
 
 Inside the 4000 that App Store, Google Play and Microsoft Store each allow —
@@ -229,7 +229,7 @@ MumbleWay — свободное приложение с открытым код
 Илья Меламед
 Сайт: https://zavitax.github.io/mumbleway/ru/
 Исходный код: https://github.com/zavitax/mumbleway
-Чат: https://discord.gg/NTASPRFjm
+Чат: https://discord.gg/2QPGSTgXtq
 ```
 
 ### A note on the bullet character

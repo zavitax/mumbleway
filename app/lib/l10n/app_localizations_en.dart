@@ -2277,6 +2277,13 @@ class LEn extends L {
       'A Bluetooth headset carries a microphone or music, never both. Holding the microphone open for a whole ride therefore costs you the sound of everything else. Pocket mode takes it only while you are talking.';
 
   @override
+  String get experimental => 'Experimental';
+
+  @override
+  String get pocketExperimentalBody =>
+      'The tap detector was tuned against one short recording, and how often a bump in the road is heard as a tap has never been measured on a ride. It can open the microphone when nobody asked, or miss three deliberate taps.';
+
+  @override
   String get pocketModeHint =>
       'A slider appears at the bottom of the main screen. Slide it and the screen locks; tap the phone three times to talk.';
 

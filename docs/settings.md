@@ -424,6 +424,12 @@ somebody with that permission can lift it.
 Off by default, and off it changes nothing: the app takes the headset's
 hands-free profile when you connect and holds it for the call, as it always has.
 
+**It is marked experimental in the app, and it means it.** The tap detector was
+tuned against one short recording, and how often a bump in the road is heard as
+a tap has never been measured on a ride. So it can open the microphone when
+nobody asked, or miss three deliberate taps. Try it where that would be awkward
+rather than where it would matter.
+
 The cost of holding it is that **everything** you hear drops to telephone
 bandwidth — the group, and any music from another app — because a Bluetooth
 headset carries a microphone only on a profile that sounds like a phone call.
@@ -445,7 +451,7 @@ helmet on.
 The panel can also be pulled down to a handle when you do not want it taking
 up the screen, and it stays down until you pull it back up.
 
-**How to use it**, under the switch, opens four cards: what the mode is for,
+**How to use it** — the button under the switch — opens four cards: what the mode is for,
 the three taps, the locked screen, and the sounds to ride by. The question mark
 in the panel opens the same four. They also appear once by themselves the first
 time you arm it — before the screen locks rather than after — and you can read

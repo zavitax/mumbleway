@@ -4147,6 +4147,18 @@ abstract class L {
   /// **'A Bluetooth headset carries a microphone or music, never both. Holding the microphone open for a whole ride therefore costs you the sound of everything else. Pocket mode takes it only while you are talking.'**
   String get pocketModeBody;
 
+  /// Badge beside a feature's name. Short enough to sit on one line next to a section header, so it is a word rather than a sentence — the sentence is the feature's own experimental body text
+  ///
+  /// In en, this message translates to:
+  /// **'Experimental'**
+  String get experimental;
+
+  /// Why pocket mode is badged experimental and ships off. States the specific thing that is unmeasured — false arms per hour — rather than a general warning, because a general warning tells a rider nothing they can act on
+  ///
+  /// In en, this message translates to:
+  /// **'The tap detector was tuned against one short recording, and how often a bump in the road is heard as a tap has never been measured on a ride. It can open the microphone when nobody asked, or miss three deliberate taps.'**
+  String get pocketExperimentalBody;
+
   /// The pocket-mode switch's own subtitle: what the rider does, in two sentences. It used to carry the why as well, which made it a paragraph nobody read as instructions
   ///
   /// In en, this message translates to:

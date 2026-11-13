@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'experimental_badge.dart';
 import 'watch.dart';
 
 /// Arming and disarming pocket mode, and saying what it is doing.
@@ -887,7 +888,23 @@ class _PocketTutorialState extends State<PocketTutorial> {
     ];
     final last = _page == slides.length - 1;
     return AlertDialog(
-      title: Text(l.pocketTutorialTitle),
+      // The badge rides the title so that it is on screen for every slide,
+      // including the one with the button that arms the feature. A rider who
+      // skips to the end and presses it has still been told.
+      //
+      // **Above the title rather than beside it.** Beside it, the English
+      // title wraps to two lines — it is half again as long as the Russian —
+      // and a vertically centred badge then sits against the join between
+      // them. Stacked, neither language can push the other around.
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ExperimentalBadge(),
+          const SizedBox(height: 6),
+          Text(l.pocketTutorialTitle),
+        ],
+      ),
       content: SizedBox(
         width: 400,
         height: 260,

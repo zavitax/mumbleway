@@ -20,6 +20,7 @@ import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/error_snack.dart';
+import '../widgets/experimental_badge.dart';
 import '../widgets/language_button.dart';
 import '../widgets/pocket_mode.dart';
 import '../widgets/ptt_button.dart';
@@ -249,8 +250,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // switch's subtitle, where nobody reads it as instructions. Header,
           // explainer, control, like every other feature on this screen.
           const Divider(height: 32),
-          _SectionHeader(l.pocketMode),
+          _SectionHeader(l.pocketMode, experimental: true),
           _Explainer(l.pocketModeBody),
+          _ExperimentalNote(l.pocketExperimentalBody),
           const _TapToCaptureTile(),
 
           if (state.overlaySupported) ...[
@@ -738,13 +740,36 @@ class _TapToCaptureTile extends StatelessWidget {
             // the first slide has not been told what the locked screen means.
             // Offered with the switch off as well — understanding it is the
             // thing you do *before* turning it on.
-            ListTile(
-              leading: const Icon(Icons.help_outline),
-              title: Text(l.pocketHowTo),
-              subtitle: Text(l.pocketHowToBody),
-              onTap: () => showDialog<void>(
-                context: context,
-                builder: (_) => const PocketTutorial(readOnly: true),
+            //
+            // **A button, because as a `ListTile` nothing said it was one.**
+            // Leading icon, title, subtitle — that is the exact shape of the
+            // idle-timeout row three lines above, which opens nothing and
+            // cannot be pressed. So the one row in this section that leads
+            // somewhere was drawn as the rows that do not, and the only
+            // account of the feature in the app stayed as unreachable as it
+            // had been when it was shown once and never again.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
+              child: Text(
+                l.pocketHowToBody,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 14),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: FilledButton.tonalIcon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => const PocketTutorial(readOnly: true),
+                  ),
+                  icon: const Icon(Icons.help_outline),
+                  label: Text(l.pocketHowTo),
+                ),
               ),
             ),
           ],
@@ -1552,21 +1577,77 @@ class _FingerprintTileState extends State<_FingerprintTile> {
 /// read once for a value that cannot change, [AppStateScope.read] is cheaper
 /// still and says so; this is for values that genuinely move.
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text);
+  const _SectionHeader(this.text, {this.experimental = false});
+  final String text;
+
+  /// Puts the experimental badge beside the heading.
+  ///
+  /// **On the heading rather than in the explainer below it**, because the
+  /// explainer is the part a rider scrolling for a switch goes past. A heading
+  /// is read even when nothing under it is, so that is where a word that
+  /// changes whether somebody should turn the thing on belongs.
+  final bool experimental;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 1.1,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+      child: experimental
+          ? Row(
+              children: [
+                Flexible(child: title),
+                const SizedBox(width: 8),
+                const ExperimentalBadge(),
+              ],
+            )
+          : title,
+    );
+  }
+}
+
+/// The explainer's cautious sibling: why a feature is badged experimental.
+///
+/// Same size and colour as `_Explainer` because it is the same kind of text —
+/// the icon is the whole difference, and that is on purpose. Painting it in
+/// `error` would say the feature is broken, and it is not; it is unmeasured,
+/// which is a different claim and the one worth making.
+class _ExperimentalNote extends StatelessWidget {
+  const _ExperimentalNote(this.text);
   final String text;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.1,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(
+              Icons.science_outlined,
+              size: 14,
+              color: scheme.tertiary,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
       ),
     );
   }

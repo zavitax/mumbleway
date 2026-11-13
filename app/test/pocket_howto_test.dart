@@ -53,6 +53,41 @@ void main() {
   /// something else.
   Future<L> strings() => L.delegate.load(const Locale('en'));
 
+  testWidgets('a fresh install is not offered the slider at all', (
+    tester,
+  ) async {
+    // **Pocket mode ships off, because it is experimental.** The number that
+    // would justify a default — false arms per hour — has never been measured
+    // on a ride, so turning it on is the rider's decision to make rather than
+    // one made for them. `_loadSettings` falls back to this same value, so a
+    // phone with no preference written has no slider on its main screen.
+    final state = AppState()..micMode = MicMode.continuous;
+    addTearDown(state.dispose);
+    state.runtimeFor('a').status = ConnStatus.connected;
+    expect(state.pocketMode, isFalse);
+
+    await tester.pumpWidget(host(state, const PocketPanel()));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.help_outline), findsNothing);
+    expect(
+      tester.getSize(find.byType(PocketPanel)),
+      Size.zero,
+      reason: 'nothing of the panel may occupy the bottom of a fresh install',
+    );
+  });
+
+  testWidgets('the slides say the feature is experimental', (tester) async {
+    final l = await strings();
+    await tester.pumpWidget(host(offered(), const PocketTutorial()));
+
+    expect(
+      find.text(l.experimental.toUpperCase()),
+      findsOneWidget,
+      reason: 'the badge rides the title, so it is on every slide including '
+          'the one carrying the button that arms it',
+    );
+  });
+
   testWidgets('the slides can be re-opened from the panel', (tester) async {
     final l = await strings();
     await tester.pumpWidget(host(offered(), const PocketPanel()));
@@ -112,6 +147,12 @@ void main() {
   // So no widget test can scroll past the top of that screen. This is the
   // missing seam `.claude/plans/typed-tinkering-fairy.md` names in step 2, and
   // the answer is that seam rather than a mock placed here.
+  //
+  // Two things in that section are therefore unasserted and worth naming so
+  // they are not mistaken for covered: that the how-to is a `FilledButton`
+  // rather than a `ListTile` that merely responds to a tap, and that the
+  // section header carries the experimental badge. The badge is asserted on
+  // the dialog above, which is the same widget from the same string.
 
   group('the dialog', () {
     /// Walks to the last slide, whatever the count, by pressing the button

@@ -769,16 +769,31 @@ class AppState extends ChangeNotifier {
 
   /// Whether pocket mode is offered at all.
   ///
-  /// **On by default, and on its own it changes nothing**: it only decides
-  /// whether the slider appears at the bottom of the screen. Nothing about the
-  /// session changes until a rider slides it, so the default can be on without
-  /// the risk that made its predecessor default to off — the microphone is
-  /// held exactly as it always was until somebody deliberately asks otherwise.
+  /// **Off by default, because the feature is experimental.** This used to
+  /// default to on, and the argument for it was that the switch on its own
+  /// changes nothing: it decides whether the slider appears at the bottom of
+  /// the screen, and the microphone is held exactly as it always was until
+  /// somebody slides it. That much is still true and it is still not the whole
+  /// cost. Two things it left out:
+  ///
+  /// - **The number that decides whether this is trustworthy does not exist.**
+  ///   False arms per hour has never been measured on a ride — it is step 6 of
+  ///   `.claude/plans/typed-tinkering-fairy.md` and still open. A default is a
+  ///   recommendation, and recommending a gesture whose error rate is unknown
+  ///   to a rider at speed is not something this can claim yet.
+  /// - **The slider is the bottom of the main screen for everybody.** Shipping
+  ///   it on spends that space on a feature most riders have not asked for, and
+  ///   a rider who never opens Settings never finds out what it is.
+  ///
+  /// So it is opted into, and `_PocketExperimental` in `settings_screen.dart`
+  /// says why at the point of opting in. Flip this back when there is a measured
+  /// false-arm rate to put beside it, not before.
   ///
   /// The setting it replaces was `tapToCapture`, and it is a **new preferences
-  /// key** rather than a rename: the default has flipped, and reusing the key
-  /// would leave everybody who had ever seen the old switch pinned to off.
-  bool pocketMode = true;
+  /// key** rather than a rename — which now matters in the other direction:
+  /// anyone who turned pocket mode on while it defaulted to on has `true`
+  /// stored and keeps it. Only riders who never touched the switch move.
+  bool pocketMode = false;
 
   /// Whether the rider has armed pocket mode with the slider.
   ///
@@ -1302,7 +1317,7 @@ class AppState extends ChangeNotifier {
     if (m != null && m >= 0 && m < MicMode.values.length) {
       micMode = MicMode.values[m];
     }
-    pocketMode = prefs.getBool(_prefsPocketMode) ?? true;
+    pocketMode = prefs.getBool(_prefsPocketMode) ?? false;
     pocketTutorialSeen = prefs.getBool(_prefsPocketTutorial) ?? false;
     pocketPanelCollapsed = prefs.getBool(_prefsPocketCollapsed) ?? false;
     captureIdleSeconds = (prefs.getInt(_prefsCaptureIdle) ?? 30).clamp(10, 300);

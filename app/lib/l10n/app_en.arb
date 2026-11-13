@@ -1335,6 +1335,14 @@
   "@pocketModeBody": {
     "description": "The explainer above the pocket-mode switch in settings, in the same place as every other section's. It says why the feature exists and nothing about how to work it: that is pocketModeHint and the four slides behind pocketHowTo"
   },
+  "experimental": "Experimental",
+  "@experimental": {
+    "description": "Badge beside a feature's name. Short enough to sit on one line next to a section header, so it is a word rather than a sentence — the sentence is the feature's own experimental body text"
+  },
+  "pocketExperimentalBody": "The tap detector was tuned against one short recording, and how often a bump in the road is heard as a tap has never been measured on a ride. It can open the microphone when nobody asked, or miss three deliberate taps.",
+  "@pocketExperimentalBody": {
+    "description": "Why pocket mode is badged experimental and ships off. States the specific thing that is unmeasured — false arms per hour — rather than a general warning, because a general warning tells a rider nothing they can act on"
+  },
   "pocketModeHint": "A slider appears at the bottom of the main screen. Slide it and the screen locks; tap the phone three times to talk.",
   "@pocketModeHint": {
     "description": "The pocket-mode switch's own subtitle: what the rider does, in two sentences. It used to carry the why as well, which made it a paragraph nobody read as instructions"

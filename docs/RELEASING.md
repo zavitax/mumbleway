@@ -511,6 +511,15 @@ The route by hand is still worth knowing, for a text-only fix between releases
 and for finishing a run that left a draft staged but uncommitted. Run the script
 with no flags first: it prints the fields that differ and changes nothing.
 
+**By hand means a machine holding Partner Center credentials, and this project
+does not have one** — they are repository secrets, deliberately, the same
+arrangement `listing.yml` describes for the Play key. So
+`.github/workflows/msstore.yml` runs the same script from CI, against whatever
+submission is open, and builds nothing: dispatch it with everything unchecked to
+*read* the draft, or with `push`, `submit` and `expect_version` to finish one.
+That is the recovery path for the failure described below, and it is also the
+only way to look at the submission's state from here.
+
 Four things fail in ways that do not name themselves:
 
 - **`msstore publish` wants the package *file*, not the folder it is in.** Given
@@ -534,6 +543,23 @@ Four things fail in ways that do not name themselves:
 Verify before committing rather than after. `get` returns the draft, and the
 package list should show the new version as `PendingUpload` beside the old one
 as `PendingDelete`; anything else means the package did not attach.
+
+**Read `FileName` to tell which is which, not `Version`.** `Version` is the
+manifest version and the store fills it in while *processing* a package, which
+happens at the commit — so a package staged by `--noCommit` sits there as
+`PendingUpload` with `Version: null` right up until the call being gated, while
+the outgoing `PendingDelete` package has had a version all along. A check on
+`Version` therefore sees only the package that is leaving, and refuses every
+correctly staged draft.
+
+That is not hypothetical and it is this paragraph's own fault: the
+`--expect-version` guard in `tool/push_ms_store_listing.py` was written from the
+sentence above, read `Version`, and failed on its first live run — 13 November
+2026, run 43493673857, which had just put 1.2.0 on the other three stores. Its
+message read ``The draft carries ['1.1.148.0']``, because it dropped the staged
+package's `None` out of the very list that was the evidence. The guard now
+matches on `FileName`, ignores anything `PendingDelete`, and prints the packages
+whole when it refuses.
 
 #### If you realise too late, a submission you made can be cancelled
 

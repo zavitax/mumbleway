@@ -139,6 +139,24 @@ def tidy(s):
     return s.replace("\r\n", "\n").strip()
 
 
+def carries(package, version):
+    """Is this draft package the one we just staged?
+
+    `PendingDelete` is the outgoing package the draft cloned from the last
+    published submission, so it never counts however it is named -- without
+    that clause a re-release of the same version would match the package it
+    is replacing and the guard would pass on a staging that did nothing.
+
+    Either field may carry the answer: `FileName` from upload time, `Version`
+    once the store has processed the package. The guard runs before processing,
+    so in practice it is the filename that matches -- but a draft inspected
+    after a commit has the version, and both are the same claim.
+    """
+    if package.get("FileStatus") == "PendingDelete":
+        return False
+    return version in (package.get("FileName") or "") or package.get("Version") == version
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
@@ -187,12 +205,39 @@ def main():
     # else means the package did not attach. Committing then spends a
     # certification run on the text alone and leaves the build behind -- which
     # is the failure this whole script exists to stop, in a new costume.
+    #
+    # **Match on `FileName`, not on `Version`, and this is a correction.**
+    # `Version` is the manifest version, and the store fills it in while
+    # *processing* a package -- which happens at commit. A package staged by
+    # `msstore publish --noCommit` is therefore `PendingUpload` with
+    # `Version: null` right up until the call this guard is gating, so reading
+    # `Version` here asks a question the store cannot answer yet and always
+    # answers no. `FileName` is set at upload, and `publish.yml` names the MSIX
+    # after the version it built.
+    #
+    # Measured 2026-11-13, on this guard's first live run -- `--noCommit` and
+    # `--expect-version` arrived together in c917456, and the Store release
+    # before it went out by the plain-publish route that commit replaced, so
+    # nothing had ever exercised this. The draft held exactly what the
+    # paragraph above says it should, 1.1.148.0 PendingDelete beside
+    # 1.2.193.0 PendingUpload, and the check rejected it. The old message read
+    # "The draft carries ['1.1.148.0']", having filtered the staged package's
+    # `None` out of the very list that was the evidence -- so the failure hid
+    # its own cause. Hence printing the packages whole below: a guard that
+    # refuses has to show what it looked at.
     if args.expect_version:
-        live = {p.get("Version") for p in packages}
-        if args.expect_version not in live:
+        if not any(carries(p, args.expect_version) for p in packages):
+            held = (
+                ", ".join(
+                    f"{p.get('FileName')} ({p.get('FileStatus')}, Version={p.get('Version')})"
+                    for p in packages
+                )
+                or "no packages at all"
+            )
             sys.exit(
-                f"The draft carries {sorted(v for v in live if v)} but {args.expect_version} "
-                "was expected, so the package did not attach. Refusing to commit."
+                f"The draft carries {held} -- nothing matching {args.expect_version} "
+                "that is not PendingDelete, so the package did not attach. "
+                "Refusing to commit."
             )
         print(f"  {args.expect_version} is attached, as expected.\n")
 

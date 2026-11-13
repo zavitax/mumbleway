@@ -1,0 +1,141 @@
+name: msstore
+
+# The Microsoft Store submission that `publish.yml` staged — read it, or finish
+# it. This workflow builds nothing.
+#
+# ## Why it exists
+#
+# `publish.yml` stages the MSIX with `msstore publish --noCommit` and then
+# commits it together with this repository's listing text, so a release ships
+# behind its own words rather than the previous release's — `docs/RELEASING.md`
+# 4e-bis worked that out after 1.1.148.0 reached the Store wearing 1.0.1's
+# description. That is one call doing two things, and when the second half
+# fails the first half has already happened: the package is uploaded, the draft
+# sits at `PendingCommit` holding the right MSIX, it blocks the next
+# submission, and finishing it needs nothing built.
+#
+# Before this file there was no way to finish one. The route the failure
+# message suggests — `python tool/push_ms_store_listing.py <id> --push
+# --submit` — needs Partner Center credentials and the product id on a
+# developer machine, and this project deliberately keeps both as repository
+# secrets, the same arrangement `listing.yml` describes for the Play key. So a
+# recoverable state was unrecoverable from the only place it could be worked
+# on.
+#
+# Re-running `publish.yml` is not the answer either, and the reasons are worth
+# writing down because it is the obvious move: it rebuilds at a fresh
+# `run_number`, so it expires the TestFlight build riders were just given and
+# puts a different build number on Play; and `msstore publish` on a draft that
+# already holds a staged package adds a *second* `PendingUpload` beside the
+# first rather than replacing it.
+#
+# Measured 2026-11-13: run 43493673857 put 1.2.0 on Google Play, TestFlight and
+# the Mac App Store and left the Store draft uncommitted, because the
+# `--expect-version` guard read a `Version` field the store does not fill in
+# until the commit that guard was gating. The guard is fixed; this is how the
+# draft it stranded gets finished.
+#
+# ## The two things it deliberately does not do
+#
+# **No "refuse to submit over one in certification" check**, which `publish.yml`
+# has and needs. That guard stops a *new* submission landing on an in-flight
+# one. Here the in-flight submission is the point — the draft being finished is
+# exactly what it would refuse over — so including it would decline every run
+# that this file is useful for. The gates instead are that a person dispatched
+# it and that `expect_version` says which package it may commit.
+#
+# **Nothing is written unless asked.** With `push` unchecked the tool prints
+# what differs and changes nothing, so this doubles as the way to read the
+# submission's state — which CLAUDE.md notes is the one thing the `msstore-cli`
+# skill is for, and which until now meant a laptop.
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Default off, like every other write in this repository.
+      push:
+        description: 'Write the listing text into the draft (unchecked: report what differs, change nothing)'
+        required: false
+        default: false
+        type: boolean
+      # Separate from `push` because they are different decisions: filling the
+      # fields is the chore, starting certification is the choice. The tool
+      # refuses `--submit` without `--push` rather than guessing.
+      submit:
+        description: 'With push: commit the draft and start certification'
+        required: false
+        default: false
+        type: boolean
+      # Not optional in spirit. A commit with this blank will happily spend a
+      # certification run on text alone if the package never attached, which is
+      # the failure the whole staging route exists to prevent.
+      expect_version:
+        description: 'Refuse to commit unless the draft carries this package version, e.g. 1.2.193.0'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  submission:
+    name: Microsoft Store submission
+    runs-on: windows-latest
+    env:
+      STORE_PRODUCT_ID: ${{ secrets.MSIX_STORE_PRODUCT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # `publish.yml` skips its store jobs cleanly when their secrets are
+      # absent, because it has four stores to get on with and a fork should be
+      # able to build the app. This workflow is nothing but the Store, so a
+      # silent skip would read as "the submission was dealt with".
+      - name: There is no submission to reach without a product id
+        if: env.STORE_PRODUCT_ID == ''
+        shell: bash
+        run: |
+          echo "::error::MSIX_STORE_PRODUCT_ID is not set, so there is no submission to read or finish."
+          exit 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Before any credential is handled. The tool checks Microsoft's own field
+      # limits; this is the house limit, and it is the one that catches a
+      # Russian field that fits in English and not translated.
+      - name: Measure the copy
+        shell: bash
+        run: python tool/check_listing.py
+
+      - name: Set up the Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      # `reconfigure` rather than `configure`: configure prompts when it finds
+      # no existing credentials, and a prompt on a headless runner is a job
+      # that hangs until it is cancelled. The four values are arguments because
+      # that is the only interface the CLI offers, and none is ever echoed.
+      - name: Sign in to Partner Center
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId "${{ secrets.AZURE_AD_TENANT_ID }}" `
+            --sellerId "${{ secrets.MSIX_SELLER_ID }}" `
+            --clientId "${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}" `
+            --clientSecret "${{ secrets.AZURE_AD_APPLICATION_SECRET }}"
+
+      # The inputs arrive as environment variables rather than being
+      # interpolated into the command. `${{ }}` substitution happens before the
+      # shell sees the line, so a dispatch input spliced in directly is someone
+      # else's text inside this repository's command — and `zavitax/mumbleway`
+      # is public, so who can dispatch is not the only question worth asking.
+      - name: Read or finish the submission
+        shell: bash
+        env:
+          DO_PUSH: ${{ inputs.push }}
+          DO_SUBMIT: ${{ inputs.submit }}
+          EXPECT: ${{ inputs.expect_version }}
+        run: |
+          args=("$STORE_PRODUCT_ID")
+          if [ "$DO_PUSH" = "true" ]; then args+=(--push); fi
+          if [ "$DO_SUBMIT" = "true" ]; then args+=(--submit); fi
+          if [ -n "$EXPECT" ]; then args+=(--expect-version "$EXPECT"); fi
+          python tool/push_ms_store_listing.py "${args[@]}"

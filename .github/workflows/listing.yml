@@ -20,7 +20,8 @@ name: listing
 # - **Microsoft's starts a certification run** of hours to days, and a
 #   submission in flight blocks the next one. `publish.yml` already writes that
 #   text into the same submission as the package, which is one certification
-#   run instead of two.
+#   run instead of two. When that commit fails and leaves a draft staged,
+#   `msstore.yml` finishes it — still one run, and still not a button.
 #
 # Play has neither property, so it is the one that can be a button.
 #

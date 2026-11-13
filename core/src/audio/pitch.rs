@@ -252,9 +252,9 @@ impl PitchTracker {
         }
         if taken >= HISTORY {
             // A block longer than the whole history: keep only its tail.
-            for i in 0..HISTORY {
+            for (i, slot) in self.history.iter_mut().enumerate() {
                 let start = (taken - HISTORY + i) * DECIMATE;
-                self.history[i] = mean(&block[start..start + DECIMATE]);
+                *slot = mean(&block[start..start + DECIMATE]);
             }
             self.filled = HISTORY;
             return;

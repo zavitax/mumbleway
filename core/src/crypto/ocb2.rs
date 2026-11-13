@@ -156,9 +156,9 @@ impl CryptState {
     /// Encrypts `plain`, returning `[iv_byte][tag0..3][ciphertext]`.
     pub fn encrypt(&mut self, plain: &[u8]) -> Result<Vec<u8>> {
         // Bump the IV (little-endian carry across the whole block).
-        for i in 0..BLOCK_SIZE {
-            self.encrypt_iv[i] = self.encrypt_iv[i].wrapping_add(1);
-            if self.encrypt_iv[i] != 0 {
+        for byte in self.encrypt_iv.iter_mut() {
+            *byte = byte.wrapping_add(1);
+            if *byte != 0 {
                 break;
             }
         }
@@ -194,9 +194,9 @@ impl CryptState {
             } else if ivbyte < self.decrypt_iv[0] {
                 // Wrapped past 0xFF, so carry into the upper bytes.
                 self.decrypt_iv[0] = ivbyte;
-                for i in 1..BLOCK_SIZE {
-                    self.decrypt_iv[i] = self.decrypt_iv[i].wrapping_add(1);
-                    if self.decrypt_iv[i] != 0 {
+                for byte in self.decrypt_iv.iter_mut().skip(1) {
+                    *byte = byte.wrapping_add(1);
+                    if *byte != 0 {
                         break;
                     }
                 }
@@ -223,9 +223,9 @@ impl CryptState {
                 late = 1;
                 lost = -1;
                 self.decrypt_iv[0] = ivbyte;
-                for i in 1..BLOCK_SIZE {
-                    let old = self.decrypt_iv[i];
-                    self.decrypt_iv[i] = old.wrapping_sub(1);
+                for byte in self.decrypt_iv.iter_mut().skip(1) {
+                    let old = *byte;
+                    *byte = old.wrapping_sub(1);
                     if old != 0 {
                         break;
                     }
@@ -239,9 +239,9 @@ impl CryptState {
                 // Dropped a few packets and wrapped around.
                 lost = 256 - self.decrypt_iv[0] as i32 + ivbyte as i32 - 1;
                 self.decrypt_iv[0] = ivbyte;
-                for i in 1..BLOCK_SIZE {
-                    self.decrypt_iv[i] = self.decrypt_iv[i].wrapping_add(1);
-                    if self.decrypt_iv[i] != 0 {
+                for byte in self.decrypt_iv.iter_mut().skip(1) {
+                    *byte = byte.wrapping_add(1);
+                    if *byte != 0 {
                         break;
                     }
                 }

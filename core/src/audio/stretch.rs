@@ -158,13 +158,13 @@ impl TimeCompressor {
         let window = len - MAX_PERIOD;
 
         let clen = (len / COARSE).min(MAX_COARSE);
-        for i in 0..clen {
+        for (i, slot) in self.coarse.iter_mut().take(clen).enumerate() {
             let start = i * COARSE;
             let mut sum = 0.0;
             for s in &x[start..start + COARSE] {
                 sum += *s;
             }
-            self.coarse[i] = sum / COARSE as f32;
+            *slot = sum / COARSE as f32;
         }
 
         let cwindow = window / COARSE;

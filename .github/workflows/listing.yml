@@ -1,0 +1,95 @@
+name: listing
+
+# The store *listing* — the page, not a release.
+#
+# Separate from `publish.yml` because it carries no package and makes no
+# build. The description, the short description and the title are one page per
+# language for the whole app, independent of any version, and they go stale on
+# their own: a link rots, a control gets renamed, and nothing in a release
+# pipeline notices. This is how they are put right without shipping anything.
+#
+# ## Why only Google Play
+#
+# Because Play is the only one of the three where a listing change is a listing
+# change. The other two are decisions, and `tool/push_app_store_listing.mjs`
+# and `tool/push_ms_store_listing.py` are run by a person for that reason:
+#
+# - **Apple's description belongs to a version record**, and a released
+#   version's is frozen. Changing the text means creating the next version —
+#   that is deciding to ship, not fixing a page.
+# - **Microsoft's starts a certification run** of hours to days, and a
+#   submission in flight blocks the next one. `publish.yml` already writes that
+#   text into the same submission as the package, which is one certification
+#   run instead of two.
+#
+# Play has neither property, so it is the one that can be a button.
+#
+# ## Why a workflow rather than a laptop
+#
+# The service-account key exists only as a repository secret. That is the
+# arrangement this project wants — nobody's credentials sit on a developer
+# machine — and the cost of it is that the one store that *can* be fixed
+# without a release could not be fixed at all. This closes that.
+#
+# The key is written to a file and only its path is passed as an argument:
+# an argument is visible in the process list, and `zavitax/mumbleway` is
+# public. CLAUDE.md records the same rule for the App Store key.
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Default off, like every other write in this repository. A run with it
+      # unchecked prints what differs and changes nothing, which is also the
+      # way to see what a commit would do before committing it.
+      commit:
+        description: 'Write it to Play for real (unchecked: report what differs, change nothing)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  play:
+    name: Google Play listing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Before anything is sent. Play truncates nothing and refuses nothing
+      # quietly -- it rejects the whole edit -- and the Russian description
+      # runs longer than the English for the same meaning, so this is the
+      # check that catches a field that fits in one language and not the
+      # other. Cheap, and it fails before the key is even written.
+      - name: Measure the copy
+        run: python tool/check_listing.py
+
+      - name: Write the key
+        env:
+          PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT" ]; then
+            echo '::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is not set, so there is nothing to authenticate with. Every job in publish.yml skips cleanly without its secrets; this one fails, because a listing push that silently did nothing would read as a listing that was pushed.'
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$PLAY_SERVICE_ACCOUNT" > "$RUNNER_TEMP/play-key.json"
+
+      - name: Push the listing
+        run: |
+          node tool/push_play_listing.mjs "$RUNNER_TEMP/play-key.json" \
+            ${{ inputs.commit && '--push --commit' || '' }}
+
+      # An edit left open holds the listing against the next one, and
+      # `withEdit` already deletes it in a `finally`. This is the key itself:
+      # the runner is ephemeral, but a file holding a private key should not
+      # outlive the step that needed it even so.
+      - name: Shred the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/play-key.json"

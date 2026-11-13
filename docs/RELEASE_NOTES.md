@@ -23,81 +23,71 @@ serves all four.
 
 ---
 
-## 1.2.1
+## 1.2.1, 1.2.2 and 1.2.3 do not exist
 
-**A patch, not a minor**: it repairs 1.2.0 rather than adding to it, and the
-number should say which before anybody opens the notes.
+They were never released and they are not coming. Three patch bumps went out as
+TestFlight builds over four days, one per attempt at the same unreleased 1.2.0,
+and `eef1622` put `app/pubspec.yaml` back to 1.2.0 afterwards. Nothing required
+them: the build number comes from `run_number` and rises by itself, so each bump
+bought nothing and moved the TestFlight train for no one's benefit. CLAUDE.md
+now carries the rule that came out of it — **the version in `pubspec.yaml` moves
+only when the user says so.**
 
-1.2.0 shipped the tap gesture in a state where it could not work. Four faults,
-reported from one ride as "the feature does not work at all", and the first on
-its own accounts for that:
-
-- **Switching the gesture on while push-to-talk was selected did nothing.**
-  `_captureOnDemand` excludes push-to-talk and the exclusion was enforced in
-  only one direction, so the switch read "on" with nothing behind it. Since
-  `settings.md` recommends push-to-talk at speed, that is the mode a rider
-  following the documentation would have been in.
-- The microphone icon read the *manual* mute, so it drew an open microphone
-  through the whole listening state.
-- A recording started while connected got no capture and came out empty, which
-  is what reached the intake bot.
-- Nothing distinguished "no samples arriving" from "samples arriving and
-  rejected" — opposite fixes, identical from outside.
-
-**Shipped to TestFlight and Play internal.** macOS and the Microsoft Store are
-left on 1.1.0 again, and this time it is not only about relevance: on those
-platforms `AudioSessionBridge.isNeeded` is false, so capture is never released,
-`effectivelyMuted` reduces to `muted` and none of these fixes changes a single
-behaviour. Sending them a build would be an upload against Apple's six-per-hour
-limit and a Microsoft certification run for a byte-identical experience.
-
-The notes tell a tester what to do rather than what was repaired, because the
-remaining unknown needs them: if a tap does nothing, the new **Motion** section
-in diagnostics says whether the sensors are delivering at all, and if they are,
-which rejection counter is moving. `rejected … too long` is the one that means
-the thresholds are wrong rather than the plumbing.
+This section used to be the 1.2.1 notes, at the top of this file, describing
+repairs to a version nobody outside the test group ever had. Anything in it that
+survived is in 1.2.0 below, because that is the version it will ship as.
 
 ## 1.2.0
 
 **A minor bump, for the same reason 1.1.0 was**: it adds a feature rather than
-repairing the last one.
-
-Shipped to **TestFlight and to Google Play's internal and beta tracks only.**
-macOS and the Microsoft Store are deliberately left on 1.1.0 — the change is
-about giving a Bluetooth headset's hands-free profile back while only
-listening, and neither of those platforms has one. Sending them an identical
-build with nothing in it for their users would cost a Mac App Store upload
-against the six-per-hour limit and a Microsoft certification run of hours to
-days, for nothing. The `mac_app_store` input exists for exactly this and
-defaults to true, so only a deliberate dispatch can leave macOS out.
+repairing the last one. The feature is pocket mode.
 
 ```
-Music at full quality while you listen.
+New: pocket mode (experimental).
 
-Holding a headset's hands-free profile for a whole call drops everything you
-hear — the group and any music — to telephone bandwidth. MumbleWay now gives it
-back while you are only listening, and takes it again when you want to talk.
+A Bluetooth headset carries a microphone or music, never both, so holding it
+open for a whole ride drops the group and any music to telephone bandwidth.
+Pocket mode takes it only while you are talking.
 
-Turn on "Tap the phone to talk" in Settings to open the microphone by tapping
-the phone through a pocket or a bag. Off by default, so nothing changes until
-you ask for it.
+Turn it on in Settings and slide the control at the bottom of the screen: it
+locks the screen, three taps on the phone — through a jacket — open the
+microphone, and a silence hands it back.
+
+Off by default; tap detection is not yet measured on the road.
 ```
 
-448 characters against Google Play's 500. The Russian is 360 — shorter, because
-it says the same thing without the clause about what is lost, which Russian
-makes longer than English for no gain.
+490 characters against Google Play's 500, and the Russian is 497 — it keeps the
+same four facts, so there is nothing left to cut if either grows again.
 
-**What is not in the notes, deliberately.** The tap gesture's thresholds are
-unmeasured: `tools/tap/` exists to settle them against hand-labelled rides and
-has no corpus yet, so the notes describe the feature as something to turn on
-rather than something that works well. The honest claim is the bandwidth, which
-is measurable and certain; the gesture's reliability is not, and promising it
-before `false arms per hour` has a number would be the sort of thing
-`docs/CAPTURE_ON_DEMAND.md` warns about at length.
+**The first draft of this section was written against a feature that no longer
+exists, and it sat here for a month.** It told a rider to turn on *"Tap the
+phone to talk" in Settings*, described the way back as a second tap, and said
+the mode was off by default. By the time anybody would have read it, the control
+was called *Pocket mode*, the way back was a stretch of silence, arming had
+become a slider that locks the screen — and the setting had quietly started
+defaulting to **on**, so the one line that was still literally true had stopped
+being true as well. That is the fault `CLAUDE.md` keeps a grep for: a note is
+prose about a program, and nothing regenerates it when the program changes.
 
-Also absent: the three route-reporting bugs fixed on the way. A rider cannot act
-on "the diagnostic log labelled recordings with the wrong microphone", and the
-notes are 500 characters shared with the thing they came here for.
+**Experimental, and the notes say so**, because `false arms per hour` still has
+no number. The tap detector was tuned against one 55-second recording and has
+never been scored on a ride with the gesture on and no taps in it, which is the
+measurement that decides whether it is trustworthy — step 6 of
+`.claude/plans/typed-tinkering-fairy.md`. So the feature ships **off**, badged
+in Settings and in its own tutorial, and the note promises the bandwidth, which
+is measurable and certain, while naming the thing that is not.
+
+**What is not in the notes.** The twenty-odd repairs between the first 1.2.0
+build and this one, and the four features that were tried and withdrawn —
+ducking, the helmet-tap gesture, the motion-based detector and the stage lamps.
+A rider on 1.1.0 never saw any intermediate state, so none of it is news to
+them; a tester saw all of it, which is what `distribution/whatsnew/` is for.
+
+**Where it ships.** Everywhere, this time. The earlier 1.2.0 plan left macOS and
+the Microsoft Store on 1.1.0 on the grounds that neither platform has a
+hands-free profile to give back — true of pocket mode, and not true of the rest
+of the release, which includes a support link that had rotted to a 404 on every
+page and in every store description.
 
 ## 1.1.0
 

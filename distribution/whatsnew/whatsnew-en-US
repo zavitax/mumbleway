@@ -1,5 +1,7 @@
-Still 1.2.0. Pocket mode now says what it is — and notices a headset on Android.
+New: pocket mode (experimental).
 
-"How to use it" in Settings opens four cards: what the mode is for, the three taps, the locked screen, and the sounds to ride by. A question mark in the pocket panel opens the same four, so they can be read again rather than once on the way in.
+A Bluetooth headset carries a microphone or music, never both, so holding it open for a whole ride drops the group and any music to telephone bandwidth. Pocket mode takes it only while you are talking.
 
-On Android, a headset arriving or dropping no longer leaves pocket mode in the wrong half of itself.
+Turn it on in Settings and slide the control at the bottom of the screen: it locks the screen, three taps on the phone — through a jacket — open the microphone, and a silence hands it back.
+
+Off by default; tap detection is not yet measured on the road.

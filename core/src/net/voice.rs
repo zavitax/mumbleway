@@ -40,6 +40,69 @@ pub enum UdpEvent {
     ResyncNeeded,
 }
 
+/// First wait before opening a new UDP socket after the last one failed.
+pub const UDP_RETRY_FIRST: Duration = Duration::from_secs(5);
+
+/// Longest wait between two attempts to get UDP back.
+pub const UDP_RETRY_MAX: Duration = Duration::from_secs(60);
+
+/// When to try UDP again after the socket died.
+///
+/// A socket error is usually the network changing under the phone — Wi-Fi to
+/// mobile, a tunnel, a carrier dropping the NAT binding — and the next network
+/// is often perfectly happy to carry UDP. Without a retry, one error kept the
+/// rest of the session on the TCP tunnel, with its head-of-line blocking, for
+/// however long the ride lasted.
+///
+/// The wait doubles on every failure so that a network which genuinely blocks
+/// UDP costs one bind a minute, and starts short again only once a pong has
+/// proved UDP works — not merely once a socket opened, which proves nothing.
+#[derive(Debug)]
+pub struct UdpRetry {
+    delay: Duration,
+    next: Option<Instant>,
+}
+
+impl Default for UdpRetry {
+    fn default() -> Self {
+        Self {
+            delay: UDP_RETRY_FIRST,
+            next: None,
+        }
+    }
+}
+
+impl UdpRetry {
+    /// UDP failed at `now`: schedule the next attempt and lengthen the one after.
+    pub fn failed(&mut self, now: Instant) {
+        self.next = Some(now + self.delay);
+        self.delay = (self.delay * 2).min(UDP_RETRY_MAX);
+    }
+
+    /// Whether a new socket should be opened now.
+    pub fn is_due(&self, now: Instant) -> bool {
+        self.next.is_some_and(|t| now >= t)
+    }
+
+    /// A socket is open again; nothing to schedule until it fails.
+    pub fn reopened(&mut self) {
+        self.next = None;
+    }
+
+    /// A pong arrived: UDP works, so the next failure gets the short wait.
+    pub fn proven(&mut self) {
+        self.delay = UDP_RETRY_FIRST;
+    }
+
+    /// Try at once if a retry is pending — the network has just come back.
+    pub fn hurry(&mut self, now: Instant) {
+        if self.next.is_some() {
+            self.next = Some(now);
+            self.delay = UDP_RETRY_FIRST;
+        }
+    }
+}
+
 pub struct VoiceSocket {
     socket: UdpSocket,
     crypt: CryptState,
@@ -53,14 +116,33 @@ pub struct VoiceSocket {
 impl VoiceSocket {
     /// Binds a local socket and connects it to `peer` so it only sees that server.
     pub async fn bind(peer: SocketAddr, crypt: CryptState) -> Result<Self> {
+        Self::try_bind(peer, crypt).await.map_err(|(e, _)| e)
+    }
+
+    /// Like [`Self::bind`], but hands the cipher back when the socket cannot
+    /// be opened.
+    ///
+    /// **The cipher is the one thing that cannot be rebuilt mid-session**: it
+    /// came from the server's `CryptSetup` at the handshake, and losing it
+    /// here would leave UDP unrecoverable until the next reconnect — which is
+    /// exactly how one socket error used to pin a session to the tunnel.
+    pub async fn try_bind(
+        peer: SocketAddr,
+        crypt: CryptState,
+    ) -> std::result::Result<Self, (crate::error::CoreError, CryptState)> {
         // Match the address family of the server we resolved.
         let bind_addr: SocketAddr = if peer.is_ipv4() {
             "0.0.0.0:0".parse().unwrap()
         } else {
             "[::]:0".parse().unwrap()
         };
-        let socket = UdpSocket::bind(bind_addr).await?;
-        socket.connect(peer).await?;
+        let socket = match UdpSocket::bind(bind_addr).await {
+            Ok(s) => s,
+            Err(e) => return Err((e.into(), crypt)),
+        };
+        if let Err(e) = socket.connect(peer).await {
+            return Err((e.into(), crypt));
+        }
 
         Ok(Self {
             socket,
@@ -87,6 +169,12 @@ impl VoiceSocket {
 
     pub fn crypt_stats(&self) -> crate::crypto::CryptStats {
         self.crypt.stats()
+    }
+
+    /// Our encrypt nonce, which the server asks for when *its* decryption has
+    /// lost step.
+    pub fn encrypt_iv(&self) -> &[u8] {
+        self.crypt.encrypt_iv()
     }
 
     /// Takes the nonce the server sent in answer to a resync request.
@@ -176,6 +264,66 @@ impl VoiceSocket {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn udp_is_retried_with_a_doubling_wait() {
+        let t0 = Instant::now();
+        let mut r = UdpRetry::default();
+        assert!(!r.is_due(t0), "nothing failed, nothing to retry");
+
+        r.failed(t0);
+        assert!(!r.is_due(t0 + UDP_RETRY_FIRST - Duration::from_millis(1)));
+        assert!(r.is_due(t0 + UDP_RETRY_FIRST));
+
+        r.reopened();
+        assert!(!r.is_due(t0 + Duration::from_secs(3600)));
+        r.failed(t0);
+        assert!(!r.is_due(t0 + UDP_RETRY_FIRST));
+        assert!(r.is_due(t0 + UDP_RETRY_FIRST * 2));
+
+        for _ in 0..10 {
+            r.failed(t0);
+        }
+        assert!(r.is_due(t0 + UDP_RETRY_MAX), "the wait is capped");
+    }
+
+    #[test]
+    fn a_pong_resets_the_wait_and_network_return_hurries_it() {
+        let t0 = Instant::now();
+        let mut r = UdpRetry::default();
+        r.failed(t0);
+        r.failed(t0);
+        r.reopened();
+        r.proven();
+        r.failed(t0);
+        assert!(r.is_due(t0 + UDP_RETRY_FIRST));
+
+        let mut r = UdpRetry::default();
+        r.hurry(t0);
+        assert!(!r.is_due(t0), "no pending retry, nothing to hurry");
+        r.failed(t0);
+        r.failed(t0);
+        r.hurry(t0);
+        assert!(r.is_due(t0));
+    }
+
+    #[tokio::test]
+    async fn a_reopened_socket_keeps_the_same_cipher() {
+        // What a rebind after a socket error relies on: the cipher handed back
+        // by the dead socket goes into the new one unchanged, nonce and all.
+        let (a, _) = crypt_pair();
+        let iv = *a.encrypt_iv();
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let first = VoiceSocket::bind(peer.local_addr().unwrap(), a)
+            .await
+            .unwrap();
+        let crypt = first.into_crypt();
+        let second = match VoiceSocket::try_bind(peer.local_addr().unwrap(), crypt).await {
+            Ok(s) => s,
+            Err((e, _)) => panic!("rebinding failed: {e}"),
+        };
+        assert_eq!(second.encrypt_iv(), &iv);
+    }
 
     fn crypt_pair() -> (CryptState, CryptState) {
         let key = [0x42u8; 16];

@@ -545,6 +545,12 @@ pub enum SessionEvent {
 #[derive(Debug, Clone)]
 pub enum SessionCommand {
     Connect,
+    /// The operating system reports that the network is back.
+    ///
+    /// A session waiting out its reconnect backoff tries again at once, with
+    /// the backoff reset; a connected or idle session ignores it. See
+    /// [`crate::session::ReconnectState::on_network_available`].
+    NetworkAvailable,
     /// Ask what the rider may do in one particular channel.
     ///
     /// The client asks about the root and the channel it is standing in on its

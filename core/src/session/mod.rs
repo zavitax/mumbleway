@@ -733,6 +733,18 @@ impl Session {
         udp: &mut Option<VoiceSocket>,
         state: &mut LiveState,
     ) -> Result<DisconnectReason> {
+        // **Speech recorded while this session was not connected is thrown
+        // away, not sent.** The engine fans every frame out to every session
+        // whether or not it is up, and this channel is read only from here, so
+        // a session that was reconnecting, handshaking or idle has a queue full
+        // of frames from seconds or minutes ago — possibly words meant for
+        // another server. Sending them would play stale speech in a burst
+        // into whatever channel this server has us in.
+        let stale = discard_queued(&mut self.audio.outgoing);
+        if stale > 0 {
+            tracing::info!("dropped {stale} voice frames queued while not connected");
+        }
+
         let mut ping_timer = tokio::time::interval(PING_INTERVAL);
         ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut health_timer = tokio::time::interval(Duration::from_secs(1));
@@ -2341,6 +2353,15 @@ fn spawn_reader(mut reader: ControlReader) -> mpsc::Receiver<Result<(u16, Vec<u8
     rx
 }
 
+/// Empties a channel without waiting, returning how many items it held.
+fn discard_queued<T>(rx: &mut mpsc::Receiver<T>) -> usize {
+    let mut n = 0;
+    while rx.try_recv().is_ok() {
+        n += 1;
+    }
+    n
+}
+
 /// Milliseconds since the Unix epoch, used for ping timestamps.
 fn now_millis() -> u64 {
     SystemTime::now()
@@ -2353,3 +2374,34 @@ fn now_millis() -> u64 {
 pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn speech_queued_while_disconnected_is_discarded() {
+        // The engine's fan-out fills a disconnected session's queue to the
+        // brim; none of it may survive to the next connection.
+        let (tx, mut rx) = mpsc::channel::<(u64, Vec<u8>, bool)>(64);
+        for seq in 0..64 {
+            tx.try_send((seq, vec![0u8; 40], false)).unwrap();
+        }
+        assert_eq!(discard_queued(&mut rx), 64);
+        assert!(rx.try_recv().is_err());
+
+        // And the channel still works for what is said after connecting.
+        tx.try_send((64, vec![1u8; 40], false)).unwrap();
+        assert_eq!(rx.recv().await.map(|f| f.0), Some(64));
+    }
+
+    #[test]
+    fn discarding_an_empty_or_closed_queue_is_harmless() {
+        let (tx, mut rx) = mpsc::channel::<u8>(4);
+        assert_eq!(discard_queued(&mut rx), 0);
+        tx.try_send(1).unwrap();
+        drop(tx);
+        assert_eq!(discard_queued(&mut rx), 1);
+        assert_eq!(discard_queued(&mut rx), 0);
+    }
+}

@@ -35,6 +35,17 @@ name: listing
 # The key is written to a file and only its path is passed as an argument:
 # an argument is visible in the process list, and `zavitax/mumbleway` is
 # public. CLAUDE.md records the same rule for the App Store key.
+#
+# ## It is also the only way to read Play from here
+#
+# With `commit` unchecked this reports rather than writes, so it doubles as the
+# status read — and that turned out to be the only one available. Asked "is
+# 1.2.0 rolled out?" on 14 November 2026 there was no way to answer: the key is
+# a repository secret by design, and `play.google.com` resets the TLS
+# connection from this network, so the public page is no help either.
+# `read_play_listing.mjs` already notes why that happens and that
+# `androidpublisher.googleapis.com` is a different host and generally reachable
+# — which is the route this takes.
 
 on:
   workflow_dispatch:
@@ -86,6 +97,39 @@ jobs:
         run: |
           node tool/push_play_listing.mjs "$RUNNER_TEMP/play-key.json" \
             ${{ inputs.commit && '--push --commit' || '' }}
+
+      # Runs in both modes, and means a different thing in each.
+      #
+      # With `commit` unchecked this is the status read: `push_play_listing.mjs`
+      # prints `production track: <name>`, and that name is taken from any
+      # production release carrying version codes — **a draft counts**. So it
+      # answers which version is on production and not whether anybody can
+      # install it, which is the question actually being asked after a release.
+      # `read_play_listing.mjs` prints every track with each release's `status`,
+      # so `draft` and `completed` are told apart.
+      #
+      # With `commit` checked it is the read-back. A listing goes live without
+      # review, so "committed" is a claim worth checking rather than trusting,
+      # and the same output then shows the new text in the console.
+      #
+      # `if: always()` so a failed push is still followed by a statement of
+      # what the store is left holding — which is the moment it matters most.
+      # It opens its own edit and deletes it in a `finally`; there is no commit
+      # path in that file and there must never be one.
+      #
+      # The key is checked for in the shell rather than with `hashFiles` in the
+      # `if:`, because `hashFiles` only looks inside `GITHUB_WORKSPACE` and the
+      # key is deliberately outside it. As an `if:` guard it would return empty
+      # for ever and the step would silently never run — a check that always
+      # passes and a check that never does look identical from the run list.
+      - name: What Play actually holds
+        if: always()
+        run: |
+          if [ ! -f "$RUNNER_TEMP/play-key.json" ]; then
+            echo "No key was written, so there is nothing to read."
+            exit 0
+          fi
+          node tool/read_play_listing.mjs "$RUNNER_TEMP/play-key.json"
 
       # An edit left open holds the listing against the next one, and
       # `withEdit` already deletes it in a `finally`. This is the key itself:

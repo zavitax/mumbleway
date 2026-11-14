@@ -125,6 +125,20 @@ const RESOLVE_TIMEOUT: Duration = Duration::from_secs(2);
 /// the connection *to the proxy* is itself TLS and the stream becomes
 /// `TlsStream<TlsStream<TcpStream>>`; the way in would be a boxed
 /// `trait Socket: AsyncRead + AsyncWrite + Send + Unpin` here and nowhere else.
+/// Idle time before the first keepalive probe, and the gap between probes.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(15);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Turns on TCP keepalive. Best effort: a platform that refuses still works.
+fn set_keepalive(tcp: &TcpStream) {
+    let ka = socket2::TcpKeepalive::new()
+        .with_time(KEEPALIVE_IDLE)
+        .with_interval(KEEPALIVE_INTERVAL);
+    if let Err(e) = socket2::SockRef::from(tcp).set_tcp_keepalive(&ka) {
+        tracing::debug!("could not enable TCP keepalive: {e}");
+    }
+}
+
 pub async fn connect(
     host: &str,
     port: u16,
@@ -142,6 +156,11 @@ pub async fn connect(
     // Voice latency is dominated by packetisation, so Nagle buffering only ever
     // hurts here — especially for tunnelled audio.
     tcp.set_nodelay(true).ok();
+    // Let the kernel notice a dead peer too. The session's own ping and
+    // silence timeout decide when *we* give up; this makes sure the socket
+    // itself does not outlive the link in the OS for hours afterwards, and
+    // keeps NAT and carrier middleboxes from forgetting an idle connection.
+    set_keepalive(&tcp);
     let voice_peer = voice_address(&tcp, chain, host, port).await;
 
     let server_name = rustls::pki_types::ServerName::try_from(host.to_string())
@@ -213,6 +232,16 @@ async fn voice_address(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_control_socket_has_keepalive_on() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tcp = TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        set_keepalive(&tcp);
+        assert!(socket2::SockRef::from(&tcp).keepalive().unwrap());
+    }
 
     #[tokio::test]
     async fn connecting_to_a_closed_port_fails_promptly() {

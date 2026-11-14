@@ -210,6 +210,13 @@ impl SessionManager {
         }
     }
 
+    /// Tells every session the network is back, so any waiting out a
+    /// reconnect backoff tries again now. Call it from the platform's
+    /// connectivity callback.
+    pub async fn network_available(&self) {
+        self.broadcast(SessionCommand::NetworkAvailable).await;
+    }
+
     /// Stops and removes one session.
     pub async fn remove(&mut self, server_id: &str) -> Result<()> {
         if let Some(slot) = self.slots.remove(server_id) {
@@ -268,6 +275,56 @@ mod tests {
 
         m.shutdown_all().await;
         assert!(m.is_empty());
+    }
+
+    /// The next connection state reported, if one arrives within `within`.
+    async fn next_state(
+        rx: &mut mpsc::Receiver<TaggedEvent>,
+        within: std::time::Duration,
+    ) -> std::result::Result<Option<ConnectionState>, tokio::time::error::Elapsed> {
+        tokio::time::timeout(within, async {
+            loop {
+                match rx.recv().await.map(|e| e.event) {
+                    Some(SessionEvent::State(s)) => return Some(s),
+                    Some(_) => continue,
+                    None => return None,
+                }
+            }
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn network_return_cuts_the_reconnect_backoff_short() {
+        use std::time::Duration;
+        let (mut m, mut rx) = manager();
+        // Nothing listens on port 1, so every attempt fails at once and the
+        // session settles into its backoff, which is seconds long.
+        let id = m
+            .add(ServerProfile::new("A", "127.0.0.1", 1, "u"), bridge())
+            .unwrap();
+        m.send(&id, SessionCommand::Connect).await.unwrap();
+
+        loop {
+            match next_state(&mut rx, Duration::from_secs(5)).await {
+                Ok(Some(ConnectionState::Reconnecting { retry_in_ms, .. })) => {
+                    assert!(retry_in_ms >= 3_000, "the backoff should be seconds long");
+                    break;
+                }
+                Ok(Some(_)) => continue,
+                other => panic!("never reached the backoff: {other:?}"),
+            }
+        }
+
+        m.network_available().await;
+        let s = next_state(&mut rx, Duration::from_secs(1))
+            .await
+            .expect("network return should start an attempt at once");
+        assert!(
+            matches!(s, Some(ConnectionState::Connecting)),
+            "expected a new attempt, got {s:?}"
+        );
+        m.shutdown_all().await;
     }
 
     #[tokio::test]

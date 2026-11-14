@@ -1955,6 +1955,20 @@ pub fn remove_server(server_id: String) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Tells every session the device's network has just come back.
+///
+/// Any session waiting out a reconnect backoff tries again at once with the
+/// backoff reset; connected and idle sessions ignore it. Without this a rider
+/// leaving a tunnel sits through the rest of a backoff that grew while the
+/// link was dead. Called from the app's connectivity listener.
+pub fn network_available() -> anyhow::Result<()> {
+    let app = app()?;
+    app.rt.block_on(async {
+        app.manager.lock().await.network_available().await;
+    });
+    Ok(())
+}
+
 /// Mutes or unmutes the local microphone.
 #[frb(sync)]
 pub fn set_microphone_muted(muted: bool) -> anyhow::Result<()> {

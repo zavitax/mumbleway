@@ -546,6 +546,14 @@ impl Session {
                         self.accept_cert_once = true;
                         return true; // retry immediately with the new trust decision
                     }
+                    // The network came back: whatever was failing a moment ago
+                    // may well work now, and a rider who has just ridden out of
+                    // a tunnel should not sit through the rest of a backoff
+                    // that was sized for a dead link.
+                    Some(SessionCommand::NetworkAvailable) => {
+                        self.reconnect.on_network_available();
+                        return true;
+                    }
                     Some(SessionCommand::Shutdown) | None => return false,
                     Some(_) => continue,
                 }
@@ -2271,6 +2279,7 @@ impl Session {
             // Transmission gating happens in the audio engine, not here.
             SessionCommand::SetTransmitting(_)
             | SessionCommand::Connect
+            | SessionCommand::NetworkAvailable
             | SessionCommand::AcceptCertificate
             | SessionCommand::Disconnect
             | SessionCommand::Shutdown => {}

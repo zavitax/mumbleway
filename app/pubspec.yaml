@@ -98,6 +98,7 @@ dependencies:
   # third_party/tflite_flutter/lib/src/bindings/bindings.dart.
   tflite_flutter:
     path: third_party/tflite_flutter
+  connectivity_plus: ^7.3.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -316,6 +316,15 @@ Future<void> setSelfDeaf({required String serverId, required bool deaf}) =>
 Future<void> removeServer({required String serverId}) =>
     RustLib.instance.api.crateApiMumblewayRemoveServer(serverId: serverId);
 
+/// Tells every session the device's network has just come back.
+///
+/// Any session waiting out a reconnect backoff tries again at once with the
+/// backoff reset; connected and idle sessions ignore it. Without this a rider
+/// leaving a tunnel sits through the rest of a backoff that grew while the
+/// link was dead. Called from the app's connectivity listener.
+Future<void> networkAvailable() =>
+    RustLib.instance.api.crateApiMumblewayNetworkAvailable();
+
 /// Mutes or unmutes the local microphone.
 void setMicrophoneMuted({required bool muted}) =>
     RustLib.instance.api.crateApiMumblewaySetMicrophoneMuted(muted: muted);

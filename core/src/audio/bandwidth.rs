@@ -124,7 +124,8 @@ pub fn tightest(caps: impl IntoIterator<Item = u32>) -> Option<u32> {
     caps.into_iter().filter(|c| *c > 0).min()
 }
 
-/// What this build would send if nothing capped it.
+/// What a fresh engine would send if nothing capped it, before
+/// [`super::engine::AudioShared::set_quality`] says what the rider chose.
 pub const fn preferred_bps() -> u32 {
     Quality::Balanced.bitrate() as u32
 }

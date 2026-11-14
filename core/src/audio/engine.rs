@@ -756,6 +756,14 @@ pub struct AudioShared {
     /// per second; 0 when none of them said. Written by the session layer, read
     /// by the capture worker. See [`super::bandwidth`].
     bandwidth_cap_bps: AtomicU32,
+    /// What this engine would send if no server capped it: the bitrate of
+    /// [`AudioConfig::quality`]. Seeded by [`AudioEngine::start`].
+    ///
+    /// It used to be [`super::bandwidth::preferred_bps`], a constant for
+    /// `Balanced`, which the worker's first budget poll then wrote over the
+    /// encoder — so `High` and `Low` lasted exactly one block and every rider
+    /// sent 24 kbit/s whatever they had chosen.
+    preferred_bitrate_bps: AtomicU32,
     /// What the encoder is actually set to, published for the interface: a
     /// rider whose quality has been reduced by a server should be able to see
     /// that rather than wonder.
@@ -1480,6 +1488,7 @@ impl AudioShared {
             inbound_loss_pct: AtomicU32::new(0),
             loss_mark: Mutex::new((0, 0)),
             bandwidth_cap_bps: AtomicU32::new(0),
+            preferred_bitrate_bps: AtomicU32::new(super::bandwidth::preferred_bps()),
             encoder_bitrate_bps: AtomicU32::new(super::bandwidth::preferred_bps()),
             underrun_samples: AtomicU64::new(0),
             capture_dropped_samples: AtomicU64::new(0),
@@ -1657,7 +1666,23 @@ impl AudioShared {
 
     /// What the encoder should be set to right now, and why.
     pub fn bitrate_budget(&self) -> super::bandwidth::Budget {
-        super::bandwidth::fit(self.bandwidth_cap_bps(), super::bandwidth::preferred_bps())
+        super::bandwidth::fit(self.bandwidth_cap_bps(), self.preferred_bitrate_bps())
+    }
+
+    /// Sets what to send when no server caps it, from the rider's quality.
+    pub fn set_quality(&self, quality: Quality) {
+        let bps = quality.bitrate() as u32;
+        self.preferred_bitrate_bps.store(bps, Ordering::Relaxed);
+        // Until the worker applies a cap, this is also what the encoder runs
+        // at, and the interface should not report the default meanwhile.
+        if self.bandwidth_cap_bps().is_none() {
+            self.note_encoder_bitrate(bps);
+        }
+    }
+
+    /// What would be sent if no server capped it.
+    pub fn preferred_bitrate_bps(&self) -> u32 {
+        self.preferred_bitrate_bps.load(Ordering::Relaxed)
     }
 
     /// What the encoder is set to, as the worker last applied it.
@@ -3099,6 +3124,7 @@ impl AudioEngine {
         // rather than being read out of the config by the capture loop.
         shared.set_transmit_mode(config.transmit_mode);
         shared.set_noise_profile(config.noise_profile);
+        shared.set_quality(config.quality);
         // Seed the request with the starting choice so `devices()` reports it.
         *shared.device_request.lock() = (config.input_device.clone(), config.output_device.clone());
 
@@ -4637,6 +4663,37 @@ mod tests {
                 enc.encode(&pcm).unwrap()
             })
             .collect()
+    }
+
+    #[test]
+    fn the_chosen_quality_survives_the_budget_poll() {
+        // The worker sets the encoder to whatever `bitrate_budget` says on
+        // every block. When that ignored the configured quality, High and Low
+        // were overwritten with Balanced on the first block.
+        for q in [Quality::Low, Quality::Balanced, Quality::High] {
+            let shared = AudioShared::new();
+            shared.set_quality(q);
+            let b = shared.bitrate_budget();
+            assert_eq!(b.bitrate_bps, q.bitrate() as u32, "{q:?} with no cap");
+            assert!(!b.capped);
+            assert_eq!(shared.encoder_bitrate_bps(), q.bitrate() as u32);
+        }
+    }
+
+    #[test]
+    fn a_server_cap_still_wins_over_the_chosen_quality() {
+        let shared = AudioShared::new();
+        shared.set_quality(Quality::High);
+        // 32 kbit/s leaves (32 000 − 12 800) × 0.9 ≈ 17 kbit/s for audio.
+        shared.set_bandwidth_cap(32_000);
+        let b = shared.bitrate_budget();
+        assert!(b.capped);
+        assert!(b.bitrate_bps < Quality::High.bitrate() as u32);
+        // And a cap looser than the choice does not raise it.
+        shared.set_bandwidth_cap(128_000);
+        let b = shared.bitrate_budget();
+        assert!(!b.capped);
+        assert_eq!(b.bitrate_bps, Quality::High.bitrate() as u32);
     }
 
     #[test]

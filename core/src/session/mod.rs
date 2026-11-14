@@ -26,7 +26,7 @@ use crate::error::{CoreError, DisconnectReason, Result};
 use crate::net::audio_packet::VoicePacket;
 use crate::net::control::{self, ControlReader, ControlWriter};
 use crate::net::tls::{self, Identity, TrustPolicy};
-use crate::net::voice::{UdpEvent, VoiceSocket};
+use crate::net::voice::{UdpEvent, UdpRetry, VoiceSocket};
 use crate::proto::{mumble, version_v1, version_v2, MessageType};
 
 /// How often we ping the server. Mumble drops clients after 30 s of silence.
@@ -109,6 +109,12 @@ struct LiveState {
     /// A decrypt nonce from the server, waiting to be applied to whichever half
     /// of this session is holding the cipher. See the `CryptSetup` arm.
     pending_decrypt_iv: Option<Vec<u8>>,
+    /// The server asked for our encrypt nonce, because *its* decryption of
+    /// our packets lost step. Answered by whichever half holds the cipher,
+    /// like `pending_decrypt_iv`.
+    nonce_requested: bool,
+    /// When to open a new UDP socket after the last one failed.
+    udp_retry: UdpRetry,
     /// Which comments and pictures we hold, and which still have to be asked
     /// for. See [`notes`].
     blobs: notes::Blobs,
@@ -187,6 +193,8 @@ impl LiveState {
             perms: HashMap::new(),
             rights_sent: None,
             pending_decrypt_iv: None,
+            nonce_requested: false,
+            udp_retry: UdpRetry::default(),
             blobs: notes::Blobs::default(),
             listening: Vec::new(),
             context_actions: context_actions::ContextActions::default(),
@@ -687,12 +695,19 @@ impl Session {
         // asked for that, or the server's own address could not be resolved —
         // and the cipher is kept either way, because the tunnel needs it too.
         let mut udp = match (voice_peer, state.crypt.take()) {
-            (Some(peer), Some(crypt)) => match VoiceSocket::bind(peer, crypt).await {
+            (Some(peer), Some(crypt)) => match VoiceSocket::try_bind(peer, crypt).await {
                 Ok(mut s) => {
                     let _ = s.send_ping(now_millis()).await;
                     Some(s)
                 }
-                Err(_) => None, // UDP unavailable; the tunnel still works
+                // UDP unavailable for now; the tunnel still works, and the
+                // cipher is kept so UDP can be tried again later.
+                Err((e, crypt)) => {
+                    tracing::warn!("could not open the UDP socket ({e}), tunnelling voice");
+                    state.crypt = Some(crypt);
+                    state.udp_retry.failed(Instant::now());
+                    None
+                }
             },
             (None, crypt) => {
                 state.crypt = crypt;
@@ -721,7 +736,7 @@ impl Session {
 
         // From here the reader lives in its own task; see [`spawn_reader`].
         let mut messages = spawn_reader(reader);
-        self.run_connected(&mut messages, &mut writer, &mut udp, &mut state)
+        self.run_connected(&mut messages, &mut writer, &mut udp, voice_peer, &mut state)
             .await
     }
 
@@ -731,6 +746,7 @@ impl Session {
         messages: &mut mpsc::Receiver<Result<(u16, Vec<u8>)>>,
         writer: &mut ControlWriter,
         udp: &mut Option<VoiceSocket>,
+        voice_peer: Option<std::net::SocketAddr>,
         state: &mut LiveState,
     ) -> Result<DisconnectReason> {
         let mut ping_timer = tokio::time::interval(PING_INTERVAL);
@@ -783,6 +799,19 @@ impl Session {
                             tracing::warn!("server sent a resync nonce we could not use: {e}");
                         }
                     }
+                    // The other direction: the server cannot decrypt us and
+                    // has asked for our nonce. Unanswered, our voice stays
+                    // undecryptable to everybody for as long as UDP is up.
+                    if std::mem::take(&mut state.nonce_requested) {
+                        let iv = match udp.as_ref() {
+                            Some(s) => Some(s.encrypt_iv().to_vec()),
+                            None => state.crypt.as_ref().map(|c| c.encrypt_iv().to_vec()),
+                        };
+                        if let Some(iv) = iv {
+                            tracing::info!("server asked for our voice nonce, sending it");
+                            writer.send(MessageType::CryptSetup, &nonce_reply(iv)).await?;
+                        }
+                    }
                 }
 
                 // --- UDP voice ---------------------------------------------
@@ -795,6 +824,7 @@ impl Session {
                         Ok(Some(UdpEvent::Pong { rtt })) => {
                             state.stats.udp_ping_ms = rtt.as_secs_f32() * 1000.0;
                             state.udp_ping.record(state.stats.udp_ping_ms);
+                            state.udp_retry.proven();
                             if state.transport != Transport::Udp {
                                 state.transport = Transport::Udp;
                                 tracing::info!("voice now direct over UDP");
@@ -811,10 +841,16 @@ impl Session {
                             writer.send(MessageType::CryptSetup, &m).await?;
                         }
                         Ok(Some(UdpEvent::Rejected(_))) | Ok(None) => {}
-                        Err(_) => {
+                        Err(e) => {
                             // The UDP socket died; drop to the tunnel rather than
-                            // tearing down a working control connection.
-                            *udp = None;
+                            // tearing down a working control connection — and
+                            // keep the cipher, so a new socket can be opened
+                            // once the network settles. See `UdpRetry`.
+                            tracing::warn!("UDP socket error: {e}");
+                            if let Some(s) = udp.take() {
+                                state.crypt = Some(s.into_crypt());
+                            }
+                            state.udp_retry.failed(Instant::now());
                             if state.transport != Transport::TcpTunnel {
                                 state.transport = Transport::TcpTunnel;
                                 tracing::warn!("UDP socket failed, tunnelling voice over TCP");
@@ -925,6 +961,25 @@ impl Session {
                         return Ok(DisconnectReason::PingTimeout {
                             voice_still_arriving,
                         });
+                    }
+                    // Try UDP again if its socket died earlier.
+                    if udp.is_none() && state.udp_retry.is_due(now) {
+                        if let (Some(peer), Some(crypt)) = (voice_peer, state.crypt.take()) {
+                            match VoiceSocket::try_bind(peer, crypt).await {
+                                Ok(mut s) => {
+                                    // Back on the tunnel until a pong proves it.
+                                    let _ = s.send_ping(now_millis()).await;
+                                    state.udp_retry.reopened();
+                                    tracing::info!("opened a new UDP socket, probing it");
+                                    *udp = Some(s);
+                                }
+                                Err((e, crypt)) => {
+                                    state.crypt = Some(crypt);
+                                    state.udp_retry.failed(now);
+                                    tracing::warn!("still cannot open a UDP socket: {e}");
+                                }
+                            }
+                        }
                     }
                     // Fall back to the tunnel if UDP goes quiet mid-session.
                     if state.transport == Transport::Udp
@@ -1141,6 +1196,11 @@ impl Session {
                         // client_nonce is our encrypt IV, server_nonce our decrypt IV.
                         state.crypt = Some(CryptState::new(&k, &cn, &sn)?);
                     }
+                    // An empty CryptSetup from the server is the same question
+                    // we ask it: "tell me your nonce". The official client
+                    // answers it with its encrypt IV; this one used to fall
+                    // through to the arm below and say nothing.
+                    (None, None, None) => state.nonce_requested = true,
                     (None, None, Some(sn)) => {
                         // A resync of the decrypt IV alone: either the answer
                         // to our own request, or the server volunteering one.
@@ -2341,6 +2401,16 @@ fn spawn_reader(mut reader: ControlReader) -> mpsc::Receiver<Result<(u16, Vec<u8
     rx
 }
 
+/// Our answer to a server's empty `CryptSetup`: our encrypt nonce, which is
+/// what the server decrypts our packets with, and nothing else.
+fn nonce_reply(encrypt_iv: Vec<u8>) -> mumble::CryptSetup {
+    mumble::CryptSetup {
+        key: None,
+        client_nonce: Some(encrypt_iv.into()),
+        server_nonce: None,
+    }
+}
+
 /// Milliseconds since the Unix epoch, used for ping timestamps.
 fn now_millis() -> u64 {
     SystemTime::now()
@@ -2353,3 +2423,29 @@ fn now_millis() -> u64 {
 pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_nonce_reply_carries_only_our_encrypt_iv() {
+        let iv = vec![7u8; 16];
+        let m = nonce_reply(iv.clone());
+        assert_eq!(m.client_nonce.as_deref(), Some(iv.as_slice()));
+        assert_eq!(m.key, None);
+        assert_eq!(m.server_nonce, None);
+    }
+
+    #[test]
+    fn an_empty_crypt_setup_is_what_a_nonce_request_looks_like() {
+        // The server's request is the same empty message we send it; check it
+        // survives encoding as "no fields at all", which is what the
+        // `(None, None, None)` arm matches.
+        use prost::Message;
+        let bytes = mumble::CryptSetup::default().encode_to_vec();
+        assert!(bytes.is_empty());
+        let m = mumble::CryptSetup::decode(bytes.as_slice()).unwrap();
+        assert_eq!((m.key, m.client_nonce, m.server_nonce), (None, None, None));
+    }
+}

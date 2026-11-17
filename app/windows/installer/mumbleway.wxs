@@ -14,8 +14,9 @@
   first is the load-bearing one:
 
     * **`<Files Include="...">` harvests the bundle at build time.** The bundle
-      is 38 files across `data/flutter_assets` and `blobs/`, and its contents
-      change whenever an asset or a plugin does. WiX 3 has no such element, so
+      is dozens of files across `data/flutter_assets` and the executable
+      directory, and its contents change whenever an asset or a plugin does. WiX
+      3 has no such element, so
       the alternative is `heat.exe` generating a fragment as a build step, or a
       hand-maintained file list that goes stale the first time somebody adds an
       asset and nobody notices until a user reports a missing icon.
@@ -70,9 +71,8 @@
         AllowSameVersionUpgrades="yes"
         DowngradeErrorMessage="A newer version of MumbleWay is already installed. Uninstall it first if you want to go back to this one." />
 
-    <!-- One embedded cab. The payload is ~106 MB, nearly all of it the Flutter
-         assets and the TensorFlow Lite blob, and a single self-contained .msi
-         is the thing that is easy to hand somebody. -->
+    <!-- One embedded cab. A single self-contained .msi is easy to hand
+         somebody. -->
     <MediaTemplate EmbedCab="yes" />
 
     <!--
@@ -128,12 +128,11 @@
     <!--
       The whole build output, harvested at build time.
 
-      `Include` takes the bundle root and everything under it, so `data/`,
-      `data/flutter_assets/` and `blobs/` come across with their structure
-      intact — which matters, because the app looks for the TensorFlow Lite
-      library at `blobs/libtensorflowlite_c-win.dll` relative to the executable
-      and for its assets under `data/`. Nothing here enumerates a filename, so
-      adding an asset or a plugin needs no edit to this file.
+      `Include` takes the bundle root and everything under it, so `data/` and
+      `data/flutter_assets/` come across with their structure intact — which
+      matters, because the app looks for its assets under `data/`. Nothing here
+      enumerates a filename, so adding an asset or a plugin needs no edit to
+      this file.
 
       The Visual C++ runtime DLLs beside the executable are part of that sweep.
       They are there because `app/windows/CMakeLists.txt` installs them; see the

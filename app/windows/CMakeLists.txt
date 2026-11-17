@@ -107,23 +107,11 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
-# The TensorFlow Lite C library the background classifier loads.
-#
-# `tflite_flutter`'s binding looks for it beside the executable at
-# `blobs/libtensorflowlite_c-win.dll` (see bindings.dart), and upstream ships no
-# prebuilt for Windows or Linux -- its README says the .dll "needs to be built".
-# So this one was built here from the TensorFlow r2.17 tree with CMake and Ninja,
-# and the block below is upstream's own documented install step.
-install(
-  FILES "${CMAKE_CURRENT_SOURCE_DIR}/../blobs/libtensorflowlite_c-win.dll"
-  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/../blobs/"
-  COMPONENT Runtime)
-
 # The Visual C++ runtime, beside the executable.
 #
 # **Without this the bundle is not self-contained, and the way it fails is
 # quiet.** Every binary here imports `MSVCP140.dll` and `VCRUNTIME140.dll` --
-# the exe, the engine, all three plugins and the TensorFlow Lite blob -- and
+# the exe, the engine and all three plugins -- and
 # Windows does not ship them. It ships only the UCRT (`api-ms-win-crt-*`, part
 # of the OS since Windows 10), which is why the missing half went unnoticed:
 # any machine with Visual Studio, or with almost any other native application

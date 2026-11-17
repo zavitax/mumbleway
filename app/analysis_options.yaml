@@ -15,11 +15,6 @@ analyzer:
     # It is third-party tooling with its own pubspec, not part of this app.
     - rust_builder/**
     - lib/src/rust/**
-    # Upstream `tflite_flutter`, vendored so one line of it can be patched —
-    # see its bindings.dart. Everything else in there is somebody else's code
-    # at somebody else's lint settings, and restyling it would bury the one
-    # change that matters in a diff of hundreds that do not.
-    - third_party/**
 
 linter:
   # The lint rules applied to this project can be customized in the

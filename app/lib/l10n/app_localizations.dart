@@ -3328,7 +3328,7 @@ abstract class L {
   /// No description provided for @allowRemoteUnmuteBody.
   ///
   /// In en, this message translates to:
-  /// **'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. This lets them unmute it too, for when you muted yourself and forgot. Turn it off and only you can unmute.'**
+  /// **'Other riders using MumbleWay can mute your microphone when it is sending noise, and your own mute button turns it back on. Whoever muted you can also unmute you within ten minutes. This lets anyone using MumbleWay unmute you, for when you muted yourself and forgot. It is off by default, so that opening your microphone stays your decision.'**
   String get allowRemoteUnmuteBody;
 
   /// No description provided for @qualityUnmeasured.

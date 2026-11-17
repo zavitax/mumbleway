@@ -405,17 +405,20 @@ Disconnect to change it, and the control says so while it is locked.</p>
 
 ### Let MumbleWay users unmute me
 
-On by default. Another rider using MumbleWay can mute your microphone with
+Off by default. Another rider using MumbleWay can mute your microphone with
 **Mute on server (for everyone)** in the menu beside your name — for when
 noise cancellation is losing to the wind and the whole channel hears it — and
-can unmute it the same way, for when you muted yourself and forgot. The request
+whoever muted you can unmute you the same way within ten minutes. The request
 goes to your app directly, so it works on servers where they have no permission
 to mute anybody.
 
-Either way you hear a sound and see who did it. Turn this off and only you can
-unmute your microphone. Being muted cannot be turned off, but your own mute
-button always turns the microphone back on, and your app acts on at most one
-request from others every 30 seconds. If whoever muted you is also allowed to
+Turn this on and anyone using MumbleWay can also unmute you, for when you
+muted yourself and forgot. It is off by default, so that opening your
+microphone stays your decision.
+
+Either way you hear a sound and see who did it. Being muted cannot be turned
+off, but your own mute button always turns the microphone back on, and your app
+acts on at most one mute request from others every 30 seconds. If whoever muted you is also allowed to
 mute people on that server, you are muted on the server as well, and only
 somebody with that permission can lift it.
 

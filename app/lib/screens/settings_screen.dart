@@ -1138,6 +1138,8 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
     final l = L.of(context);
     final state = AppStateScope.of(context);
     final learning = state.buttons.isLearning;
+    final supportsGlobal = ButtonController.supportsGlobalHotkeys;
+    final scheme = Theme.of(context).colorScheme;
 
     return Column(
       children: [
@@ -1145,12 +1147,39 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
           ListTile(
             leading: const Icon(Icons.radio_button_checked),
             title: Text(b.displayName),
-            subtitle: Text(b.action.label(l)),
-            trailing: IconButton(
-              icon: const Icon(Icons.close),
-              tooltip: l.removeBinding,
-              onPressed: () => state.removeButtonBinding(b.keyId),
-            ),
+            subtitle:
+                supportsGlobal &&
+                    !ButtonController.isSyntheticMediaKey(b.keyId) &&
+                    !ButtonController.isSafeGlobalKey(
+                      keyId: b.keyId,
+                      modifiers: b.modifiers,
+                    )
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(b.action.label(l)),
+                      Text(
+                        l.globalHotkeyRequiresModifier,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  )
+                : Text(b.action.label(l)),
+            trailing:
+                supportsGlobal && !ButtonController.isSyntheticMediaKey(b.keyId)
+                ? _buildDesktopTrailing(context, l, state, b)
+                : IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: l.removeBinding,
+                    onPressed: () => state.removeButtonBinding(
+                      b.keyId,
+                      modifiers: b.modifiers,
+                    ),
+                  ),
           ),
         if (state.buttonBindings.isEmpty)
           Padding(
@@ -1214,6 +1243,73 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
               ],
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopTrailing(
+    BuildContext context,
+    L l,
+    AppState state,
+    ButtonBinding b,
+  ) {
+    final safeGlobal = ButtonController.isSafeGlobalKey(
+      keyId: b.keyId,
+      modifiers: b.modifiers,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: safeGlobal
+              ? l.globalHotkeyTooltip
+              : l.globalHotkeyRequiresModifier,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: safeGlobal
+                ? () => state.setButtonBindingGlobal(
+                    b.keyId,
+                    b.modifiers,
+                    !b.global,
+                  )
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Checkbox(
+                    value: safeGlobal && b.global,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: safeGlobal
+                        ? (v) => state.setButtonBindingGlobal(
+                            b.keyId,
+                            b.modifiers,
+                            v ?? false,
+                          )
+                        : null,
+                  ),
+                  Text(
+                    l.globalHotkey,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: safeGlobal
+                          ? null
+                          : Theme.of(context).disabledColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: l.removeBinding,
+          onPressed: () =>
+              state.removeButtonBinding(b.keyId, modifiers: b.modifiers),
+        ),
       ],
     );
   }

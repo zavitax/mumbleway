@@ -2388,4 +2388,14 @@ class LRu extends L {
   @override
   String get pocketBlockedByPushToTalk =>
       'Недоступно, пока режим микрофона — «По нажатию»: кнопка не может сработать сразу, если микрофон закрыт до постукивания. Выберите «По голосу» или «Открытый микрофон».';
+
+  @override
+  String get globalHotkey => 'Глобально';
+
+  @override
+  String get globalHotkeyTooltip => 'Работает, даже когда MumbleWay в фоне';
+
+  @override
+  String get globalHotkeyRequiresModifier =>
+      'Глобальная клавиша требует модификатор или F-клавишу';
 }

@@ -159,6 +159,18 @@ class DeviceIdentity {
         '-${_nouns[r.nextInt(_nouns.length)]}';
   }
 
+  /// Whether [name] is one [randomName] could have produced.
+  ///
+  /// The form uses this to say the name was made up, not read from the
+  /// device. Otherwise a rider whose login is something generic like "User"
+  /// joins as "marble-fern" and has no idea where that came from.
+  static bool isGenerated(String name) {
+    final parts = name.trim().split('-');
+    return parts.length == 2 &&
+        _adjectives.contains(parts[0]) &&
+        _nouns.contains(parts[1]);
+  }
+
   /// Colours, weather and temperament. Nothing about a person's body, and
   /// nothing that reads as an insult next to any noun below.
   static const List<String> _adjectives = [

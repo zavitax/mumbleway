@@ -328,6 +328,10 @@ class LEn extends L {
   String get passwordHelp => 'Only if the server requires one';
 
   @override
+  String get usernameGenerated =>
+      'Made-up name: this device did not offer a usable one. Change it to your own so others know who you are.';
+
+  @override
   String get addingServer => 'Adding…';
 
   @override

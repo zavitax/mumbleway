@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
+import '../services/device_identity.dart';
 import '../services/server_proxy.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -153,6 +154,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
   final _user = TextEditingController();
   final _password = TextEditingController();
   bool _saving = false;
+  bool _suggested = false;
 
   bool get _editing => widget.existing != null;
 
@@ -198,10 +200,6 @@ class _AddServerScreenState extends State<AddServerScreen> {
         port = defaultPort();
       } catch (_) {}
       _port.text = port.toString();
-      // A name to connect under, so the field is not simply blank and in the
-      // way. Derived from the device rather than shared or invented, and only
-      // a suggestion — it is an ordinary editable field.
-      unawaited(_suggestUsername());
       return;
     }
     _name.text = source.name;
@@ -211,6 +209,21 @@ class _AddServerScreenState extends State<AddServerScreen> {
     _password.text = source.password ?? '';
     _proxyMode = source.proxyMode;
     _proxy = source.proxy;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_suggested || widget.existing != null || widget.prefill != null) {
+      return;
+    }
+    _suggested = true;
+    // Not initState: reading an InheritedWidget is only legal once
+    // dependencies are established, and `_suggestUsername` reads AppStateScope.
+    // A name to connect under, so the field is not simply blank and in the
+    // way. Derived from the device rather than shared or invented, and only
+    // a suggestion — it is an ordinary editable field.
+    unawaited(_suggestUsername());
   }
 
   /// Fills the username field with the device's own suggestion.
@@ -225,7 +238,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
     // to fail to draw the form.
     final String name;
     try {
-      name = await AppStateScope.of(context).suggestedUsername();
+      name = await AppStateScope.read(context).suggestedUsername();
     } catch (_) {
       return;
     }
@@ -334,6 +347,27 @@ class _AddServerScreenState extends State<AddServerScreen> {
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? l.usernameMissing : null,
             ),
+            // Said under the field rather than in it: when adding a server and
+            // the device had no usable name (a Windows login of "User", an
+            // iPhone called "iPhone"), this one is made up and the rider should
+            // know to replace it. Not shown when editing a saved server, where
+            // whatever name is in the field was already saved.
+            if (!_editing)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _user,
+                builder: (context, value, _) =>
+                    DeviceIdentity.isGenerated(value.text)
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                        child: Text(
+                          l.usernameGenerated,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.tertiary,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _password,

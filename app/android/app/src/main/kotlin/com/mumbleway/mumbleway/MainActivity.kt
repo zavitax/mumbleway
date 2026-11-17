@@ -153,6 +153,10 @@ class MainActivity : FlutterActivity() {
                     mapOf(
                         "route" to route,
                         "headset" to audioRouting.headsetPresent(),
+                        // Set once, on the report that follows moving the call
+                        // back onto a returning headset: the engine has to
+                        // rebuild its streams to follow the microphone.
+                        "sessionRebuilt" to audioRouting.takeSessionRebuilt(),
                         // Android has never answered a channel count here — it
                         // reports -1, "not known", for the reason the iOS half
                         // documents — so it keeps saying so rather than
@@ -611,6 +615,9 @@ class MainActivity : FlutterActivity() {
             // say while the phone's own microphone is the live one. See
             // `AudioRouting.headsetPresent`.
             "headset" to audioRouting.headsetPresent(),
+            // Set once, if a reclaim or route switch happened before this
+            // reply was constructed.
+            "sessionRebuilt" to audioRouting.takeSessionRebuilt(),
             // Android does not offer a channel count before the device is open,
             // and the engine opens it itself. Negative means "not known", which
             // the Dart side distinguishes from zero — and zero, which means

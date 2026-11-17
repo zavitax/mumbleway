@@ -192,6 +192,7 @@ class AudioSessionBridge {
             sampleRate: (m['sampleRate'] as num?)?.toDouble() ?? 0,
             route: (m['route'] as num?)?.toInt() ?? 0,
             headset: m['headset'] == true,
+            sessionRebuilt: m['sessionRebuilt'] == true,
           ),
         );
       }

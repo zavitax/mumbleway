@@ -196,7 +196,9 @@ class AudioRouting(private val context: Context) {
                 AudioDeviceInfo.TYPE_USB_HEADSET,
                 AudioDeviceInfo.TYPE_USB_DEVICE,
                 -> true
-                else -> false
+                else ->
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
             }
         }
     }
@@ -260,7 +262,13 @@ class AudioRouting(private val context: Context) {
         watchForSilencing()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            done(chooseCommunicationDevice())
+            val ok = chooseCommunicationDevice()
+            // A headset whose hands-free profile is still coming up — it has
+            // just reconnected, or just come off its charger — is not in the
+            // list yet, and the speaker was taken instead. Keep asking for a
+            // few seconds rather than leaving the call there.
+            if (!usingHeadsetMic()) scheduleReclaim()
+            done(ok)
             return
         }
         routeCode = 0
@@ -290,6 +298,7 @@ class AudioRouting(private val context: Context) {
     fun stopCapture() {
         if (!capturing) return
         capturing = false
+        cancelReclaim()
         stopWatchingForSilencing()
         releaseCommunicationRoute()
         try {
@@ -329,6 +338,7 @@ class AudioRouting(private val context: Context) {
         if (!active) return
         active = false
         capturing = false
+        cancelReclaim()
         stopWatchingForSilencing()
         stopWatchingForRouteChanges()
         releaseCommunicationRoute()
@@ -395,7 +405,14 @@ class AudioRouting(private val context: Context) {
             AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 2
             AudioDeviceInfo.TYPE_USB_DEVICE,
             AudioDeviceInfo.TYPE_USB_HEADSET -> 4
-            else -> 5
+            else ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    type == AudioDeviceInfo.TYPE_BLE_HEADSET
+                ) {
+                    3
+                } else {
+                    5
+                }
         }
 
     /**
@@ -428,11 +445,11 @@ class AudioRouting(private val context: Context) {
      */
     private var headsetWas = false
 
-    private fun reportRouteIfChanged() {
+    private fun reportRouteIfChanged(force: Boolean = false) {
         if (!active) return
         val now = currentRouteCode()
         val headset = headsetPresent()
-        if (now == routeCode && headset == headsetWas) return
+        if (!force && now == routeCode && headset == headsetWas) return
         val line = "route changed: $routeCode -> $now, headset $headsetWas -> $headset"
         Log.i(TAG, line)
         onEvent?.invoke(line)
@@ -458,6 +475,9 @@ class AudioRouting(private val context: Context) {
             object : android.media.AudioDeviceCallback() {
                 override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
                     reportRouteIfChanged()
+                    // The headset is back. Reporting it is not enough: nothing
+                    // else puts the call on it again. See [tryReclaimHeadset].
+                    scheduleReclaim()
                 }
 
                 override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
@@ -485,8 +505,10 @@ class AudioRouting(private val context: Context) {
             AudioManager.OnCommunicationDeviceChangedListener { reportRouteIfChanged() }
         commDeviceListener = listener
         runCatching {
+            // Post onto mainHandler so listener callbacks cannot race main-thread
+            // routing state (such as sessionRebuiltPending) from a Binder thread.
             audio.addOnCommunicationDeviceChangedListener(
-                java.util.concurrent.Executor { it.run() },
+                java.util.concurrent.Executor { r -> mainHandler.post(r) },
                 listener,
             )
         }
@@ -511,13 +533,23 @@ class AudioRouting(private val context: Context) {
         commDeviceListener = null
     }
 
-    /** Whether a hands-free microphone is what the route currently uses. */
+    /** Whether a headset microphone (Bluetooth, wired, or USB) is what the route currently uses. */
     fun usingHeadsetMic(): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return audio.communicationDevice?.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            val type = audio.communicationDevice?.type ?: return false
+            return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                type == AudioDeviceInfo.TYPE_USB_HEADSET
         }
         @Suppress("DEPRECATION")
-        return audio.isBluetoothScoOn
+        if (audio.isBluetoothScoOn) return true
+        @Suppress("DEPRECATION")
+        if (audio.isSpeakerphoneOn) return false
+        return audio.getDevices(AudioManager.GET_DEVICES_INPUTS).any {
+            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+        }
     }
 
     /**
@@ -529,20 +561,22 @@ class AudioRouting(private val context: Context) {
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
     private fun chooseCommunicationDevice(): Boolean {
         val devices = audio.availableCommunicationDevices
-        val headset = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
         val target =
-            headset
-            // No headset: the speaker, not the earpiece. `MODE_IN_COMMUNICATION`
-            // alone routes to the earpiece, which is inaudible on a bike and
-            // sounds broken indoors — the same reason iOS asks for
-            // `.defaultToSpeaker`.
-            ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-            ?: run {
-                // Nothing to choose from. Left as whatever the platform picks,
-                // and recorded as not known rather than guessed at.
-                routeCode = 0
-                return true
-            }
+            devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET }
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_HEADSET }
+                // No headset: the speaker, not the earpiece. `MODE_IN_COMMUNICATION`
+                // alone routes to the earpiece, which is inaudible on a bike and
+                // sounds broken indoors — the same reason iOS asks for
+                // `.defaultToSpeaker`.
+                ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                ?: run {
+                    // Nothing to choose from. Left as whatever the platform picks,
+                    // and recorded as not known rather than guessed at.
+                    routeCode = 0
+                    return true
+                }
 
         return try {
             val ok = audio.setCommunicationDevice(target)
@@ -584,6 +618,10 @@ class AudioRouting(private val context: Context) {
                 settled = true
                 receiver?.let { runCatching { context.unregisterReceiver(it) } }
                 if (connected) {
+                    // Off, in case an earlier attempt that timed out put the
+                    // call on the speaker; on the pre-31 path that flag wins
+                    // over SCO.
+                    audio.isSpeakerphoneOn = false
                     audio.isBluetoothScoOn = true
                     // **This was missing.** The pre-31 path set `routeCode = 0`
                     // and never revised it, so every recording from an older
@@ -633,8 +671,183 @@ class AudioRouting(private val context: Context) {
         main.postDelayed({ finish(false) }, SCO_TIMEOUT_MS)
     }
 
+    /**
+     * Puts the call back on a Bluetooth headset that has come back.
+     *
+     * **The communication device is chosen once, in [startCapture], and
+     * nothing used to choose it again.** If the headset was not there at that
+     * moment, [chooseCommunicationDevice] put the call on the phone's speaker
+     * and it stayed there. Two ordinary events cause exactly that: a headset
+     * taken off its charger, which drops the route and comes back with the
+     * call left on the speaker, and a reconnect to the server while the
+     * headset's hands-free profile is still coming up — 1 to 3 seconds after a
+     * Bluetooth reconnect, during which A2DP is listed and SCO is not. Riders
+     * with helmet intercoms reported both as "MumbleWay switches to the phone
+     * speaker after a reconnect or a recharge".
+     *
+     * So when a device arrives, or capture starts somewhere other than the
+     * headset, this asks again — a few times, a second apart, because the
+     * hands-free profile is listed after the device-added callback has
+     * already fired. It only ever moves the call *onto* a Bluetooth headset,
+     * which is what [chooseCommunicationDevice] prefers anyway, so it cannot
+     * fight a choice anyone made.
+     *
+     * Moving the route moves the input device, and the engine's streams are
+     * bound to the device and rate they were built with, so the report that
+     * follows carries [takeSessionRebuilt] — the same command `startCapture`
+     * gives Dart when it moves the microphone.
+     */
+    private fun scheduleReclaim() {
+        if (!active || !capturing) return
+        reclaimAttempts = 0
+        mainHandler.removeCallbacks(reclaimTick)
+        mainHandler.post(reclaimTick)
+    }
+
+    private fun cancelReclaim() {
+        mainHandler.removeCallbacks(reclaimTick)
+        reclaimAttempts = 0
+        sessionRebuiltPending = false
+    }
+
+    private fun tryReclaimHeadset() {
+        if (!active || !capturing || reclaimInFlight) return
+        if (usingHeadsetMic()) return
+        if (!bluetoothHeadsetPresent()) {
+            sessionRebuiltPending = false
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!hfpListed()) {
+                retryReclaim()
+                return
+            }
+            val prevRoute = routeCode
+            val wasPending = sessionRebuiltPending
+            // Set before chooseCommunicationDevice so any listener callback
+            // triggered by the switch sees the rebuild flag.
+            sessionRebuiltPending = true
+            val ok = chooseCommunicationDevice()
+            if (ok && usingHeadsetMic()) {
+                onReclaimed()
+            } else {
+                if (!ok && routeCode == prevRoute) {
+                    sessionRebuiltPending = wasPending
+                }
+                retryReclaim()
+            }
+            return
+        }
+
+        if (!scoAvailableOffCall() || !bluetoothHeadsetPresent()) {
+            sessionRebuiltPending = false
+            return
+        }
+        reclaimInFlight = true
+        awaitSco {
+            reclaimInFlight = false
+            if (!active || !capturing) {
+                // Torn down while the link was negotiating; give it back.
+                sessionRebuiltPending = false
+                releaseCommunicationRoute()
+            } else if (usingHeadsetMic()) {
+                onReclaimed()
+            } else {
+                retryReclaim()
+            }
+        }
+    }
+
+    private fun retryReclaim() {
+        reclaimAttempts += 1
+        val maxAttempts =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) RECLAIM_ATTEMPTS
+            else RECLAIM_ATTEMPTS_PRE_S
+        if (reclaimAttempts < maxAttempts) {
+            mainHandler.postDelayed(reclaimTick, RECLAIM_INTERVAL_MS)
+        } else {
+            if (!usingHeadsetMic()) {
+                sessionRebuiltPending = false
+            }
+            onEvent?.invoke("headset present but its hands-free profile never came up")
+        }
+    }
+
+    private fun onReclaimed() {
+        reclaimAttempts = 0
+        val line = "headset back; moved the call onto it"
+        Log.i(TAG, line)
+        onEvent?.invoke(line)
+        sessionRebuiltPending = true
+        // Forced: [chooseCommunicationDevice] has already written the new code
+        // into `routeCode`, so an ordinary report would see no change and Dart
+        // would never hear about it.
+        reportRouteIfChanged(force = true)
+    }
+
+    /**
+     * Read-and-clear: whether the route was just moved under the engine.
+     *
+     * Read by the `routeChanged` report so the flag travels with the one
+     * report it belongs to and no other.
+     */
+    fun takeSessionRebuilt(): Boolean {
+        val v = sessionRebuiltPending
+        sessionRebuiltPending = false
+        return v
+    }
+
+    /**
+     * A Bluetooth headset on any profile — A2DP is listed first.
+     *
+     * Inspects outputs rather than inputs because headsets like the New Bee
+     * M54 connect A2DP 1–3 s before HFP/SCO appears; checking only `INPUTS`
+     * returns false during that window and prevents the reclaim retry loop
+     * from running. Output-only A2DP stereos stop after the bounded
+     * [RECLAIM_ATTEMPTS] / [RECLAIM_ATTEMPTS_PRE_S] retries anyway.
+     */
+    private fun bluetoothHeadsetPresent(): Boolean =
+        audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+        }
+
+    @Suppress("DEPRECATION")
+    private fun scoAvailableOffCall(): Boolean = audio.isBluetoothScoAvailableOffCall
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun hfpListed(): Boolean =
+        audio.availableCommunicationDevices.any {
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+        }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val reclaimTick = Runnable { tryReclaimHeadset() }
+    private var reclaimAttempts = 0
+    private var reclaimInFlight = false
+    private var sessionRebuiltPending = false
+
     private companion object {
         const val TAG = "MumbleWayAudio"
+
+        /**
+         * How long a returning headset gets to list its hands-free profile:
+         * attempts × interval. A Bluetooth reconnect takes 1–3 s to bring HFP
+         * up after A2DP, so this leaves room for a slow one.
+         */
+        const val RECLAIM_ATTEMPTS = 8
+
+        /**
+         * Pre-API 31 attempts: each `awaitSco` already waits up to
+         * [SCO_TIMEOUT_MS] internally, so 2 attempts + 1 s interval keeps total
+         * reclaim waiting at <= ~9 s instead of ~40 s.
+         */
+        const val RECLAIM_ATTEMPTS_PRE_S = 2
+        const val RECLAIM_INTERVAL_MS = 1_000L
 
         /**
          * How long to wait for the hands-free link.

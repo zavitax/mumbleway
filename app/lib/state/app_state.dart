@@ -1188,6 +1188,16 @@ class AppState extends ChangeNotifier {
         // microphone is the live one changes nothing about the route and
         // everything about whether pocket mode can work.
         _noteHeadset(session.headset);
+        // **Also ahead of it.** The platform moved the call back onto a
+        // returning headset, and the engine's streams are still bound to the
+        // device and rate they were built with — so the microphone would stay
+        // on the phone however the route reads. Commanded, like the same flag
+        // on `startCapture`'s reply.
+        if (session.sessionRebuilt && _audioActive) {
+          try {
+            audioSessionRebuilt();
+          } catch (_) {}
+        }
         if (_audioRoute == session.route) return;
         _audioRoute = session.route;
         try {

@@ -1,0 +1,18 @@
+# The Rust release CI builds with, and that `cargo` uses anywhere in this tree.
+#
+# **Pinned because `stable` floats.** 1.100.0 landed on 9 November 2026 with a
+# stricter `needless_range_loop`, and the Tests job went red over six loops
+# nobody had touched (b53a49a). Every other job is `needs: test`, so the whole
+# matrix reported *skipped* for days. A pinned release changes only when a
+# commit changes it, which is the only time a new lint should appear.
+#
+# Dependabot proposes the next release here (`package-ecosystem:
+# rust-toolchain`), so the bump arrives as a pull request with its own CI run
+# rather than as a red build on somebody else's commit. Workflows read this
+# file through `rustup toolchain install` and then make it the *default*,
+# because cargokit's iOS build runs from DerivedData, outside the repository,
+# where this file is never found.
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

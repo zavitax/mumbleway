@@ -1,9 +1,12 @@
 /// This is copied from Cargokit (which is the official way to use it currently)
 /// Details: https://fzyzcjy.github.io/flutter_rust_bridge/manual/integrate/builtin
 
+import 'dart:io';
+
 import 'package:collection/collection.dart';
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as path;
+import 'package:toml/toml.dart';
 
 import 'android_environment.dart';
 import 'cargo.dart';
@@ -14,6 +17,35 @@ import 'target.dart';
 import 'util.dart';
 
 final _log = Logger('builder');
+
+/// Walks upward from [startDir] looking for `rust-toolchain.toml` and returns
+/// its `[toolchain].channel` value if present.
+String? findRustToolchainChannel(String startDir) {
+  var dir = Directory(path.normalize(path.absolute(startDir)));
+  while (true) {
+    final toolchainFile = File(path.join(dir.path, 'rust-toolchain.toml'));
+    if (toolchainFile.existsSync()) {
+      try {
+        final toml = TomlDocument.parse(toolchainFile.readAsStringSync());
+        final toolchain = toml.toMap()['toolchain'];
+        if (toolchain is Map) {
+          final channel = toolchain['channel'];
+          if (channel is String && channel.trim().isNotEmpty) {
+            return channel.trim();
+          }
+        }
+      } catch (e) {
+        _log.warning('Failed to parse ${toolchainFile.path}: $e');
+      }
+      return null;
+    }
+    final parent = dir.parent;
+    if (parent.path == dir.path) {
+      return null;
+    }
+    dir = parent;
+  }
+}
 
 enum BuildConfiguration {
   debug,
@@ -139,12 +171,27 @@ class RustBuilder {
   CargoBuildOptions? get _buildOptions =>
       environment.crateOptions.cargo[environment.configuration];
 
-  String get _toolchain => _buildOptions?.toolchain.name ?? 'stable';
+  late final String _toolchain = _resolveToolchain();
+
+  /// Effective Rustup toolchain channel/version used for this build.
+  String get toolchain => _toolchain;
+
+  String _resolveToolchain() {
+    return _buildOptions?.toolchain?.name ??
+        findRustToolchainChannel(environment.manifestDir) ??
+        'stable';
+  }
 
   /// Returns the path of directory containing build artifacts.
   Future<String> build() async {
     final extraArgs = _buildOptions?.flags ?? [];
-    final manifestPath = path.join(environment.manifestDir, 'Cargo.toml');
+    final manifestDir = path.isAbsolute(environment.manifestDir)
+        ? environment.manifestDir
+        : path.absolute(environment.manifestDir);
+    final manifestPath = path.join(manifestDir, 'Cargo.toml');
+    final targetTempDir = path.isAbsolute(environment.targetTempDir)
+        ? environment.targetTempDir
+        : path.absolute(environment.targetTempDir);
     runCommand(
       'rustup',
       [
@@ -166,8 +213,9 @@ class RustBuilder {
                 ? '.${environment.glibcVersion!}'
                 : ""),
         '--target-dir',
-        environment.targetTempDir,
+        targetTempDir,
       ],
+      workingDirectory: environment.manifestDir,
       environment: await _buildEnvironment(),
     );
     return path.join(

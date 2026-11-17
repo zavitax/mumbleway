@@ -48,6 +48,11 @@ on:
         default: true
         type: boolean
 
+# Read-only unless a job asks for more. Without this the token's rights come
+# from a repository setting, which nothing here can see or check.
+permissions:
+  contents: read
+
 env:
   FLUTTER_VERSION: '3.44.8'
   CMAKE_POLICY_VERSION_MINIMUM: '3.5'
@@ -107,16 +112,16 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Rust toolchain from rust-toolchain.toml
+        shell: bash
+        run: rustup toolchain install && rustup default "$(rustup show active-toolchain | cut -d' ' -f1)"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             core -> target
             app/rust -> target
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install ALSA development headers
@@ -168,7 +173,7 @@ jobs:
       - name: FFI tests
         working-directory: app/rust
         run: cargo test
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -194,7 +199,7 @@ jobs:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
       PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check for signing material
         id: gate
@@ -206,18 +211,20 @@ jobs:
             echo "ready=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust toolchain from rust-toolchain.toml
         if: steps.gate.outputs.ready == 'true'
-      - uses: arduino/setup-protoc@v3
+        shell: bash
+        run: rustup toolchain install && rustup default "$(rustup show active-toolchain | cut -d' ' -f1)"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         if: steps.gate.outputs.ready == 'true'
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         if: steps.gate.outputs.ready == 'true'
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
         if: steps.gate.outputs.ready == 'true'
         with:
           # **Not the default `tools platform-tools`.** `tools` was removed from
@@ -231,7 +238,7 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         if: steps.gate.outputs.ready == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -309,7 +316,7 @@ jobs:
 
       - name: Upload to Play
         if: steps.gate.outputs.ready == 'true' && env.PLAY_SERVICE_ACCOUNT != ''
-        uses: r0adkll/upload-google-play@v1
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.mumbleway.mumbleway
@@ -349,7 +356,7 @@ jobs:
         if: always() && steps.gate.outputs.ready == 'true'
         run: rm -f app/android/upload-keystore.jks app/android/key.properties
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.gate.outputs.ready == 'true'
         with:
           name: mumbleway-play-bundle
@@ -369,7 +376,7 @@ jobs:
     env:
       APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check for signing material
         id: gate
@@ -381,9 +388,11 @@ jobs:
             echo "ready=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust toolchain from rust-toolchain.toml
         if: steps.gate.outputs.ready == 'true'
-      - uses: arduino/setup-protoc@v3
+        shell: bash
+        run: rustup toolchain install && rustup default "$(rustup show active-toolchain | cut -d' ' -f1)"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         if: steps.gate.outputs.ready == 'true'
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -392,19 +401,21 @@ jobs:
       # the certificate never persists anywhere.
       - name: Import signing certificate
         if: steps.gate.outputs.ready == 'true'
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@63fff01cd422d4b7b855d40ca1e9d34d2de9427d # v3.0.0
         with:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
       - name: Install provisioning profile
         if: steps.gate.outputs.ready == 'true'
+        env:
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.APPLE_PROVISIONING_PROFILE }}" | base64 -d \
+          echo "$APPLE_PROVISIONING_PROFILE" | base64 -d \
             > ~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.mobileprovision
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         if: steps.gate.outputs.ready == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -418,10 +429,12 @@ jobs:
       # "Signing for Runner requires a development team".
       - name: Point the release build at the distribution profile
         if: steps.gate.outputs.ready == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           /usr/libexec/PlistBuddy -c \
-            "Set :teamID ${{ secrets.APPLE_TEAM_ID }}" app/ios/ExportOptions.plist
+            "Set :teamID $APPLE_TEAM_ID" app/ios/ExportOptions.plist
 
           profile=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision | head -1)
           security cms -D -i "$profile" > /tmp/pp.plist
@@ -440,7 +453,7 @@ jobs:
           # ask Apple to create, which a runner cannot do and which is not what
           # a store build wants anyway.
           cat >> app/ios/Flutter/Release.xcconfig <<EOF
-          DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+          DEVELOPMENT_TEAM=$APPLE_TEAM_ID
           CODE_SIGN_STYLE=Manual
           PROVISIONING_PROFILE_SPECIFIER=$uuid
           EOF
@@ -488,7 +501,7 @@ jobs:
 
       - name: Upload to TestFlight
         if: steps.gate.outputs.ready == 'true'
-        uses: apple-actions/upload-testflight-build@v3
+        uses: apple-actions/upload-testflight-build@9fd28d4e690396e43caca69cef54cccccce77034 # v3.0.1
         with:
           app-path: app/build/ios/ipa/mumbleway.ipa
           issuer-id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -522,7 +535,7 @@ jobs:
       # Kept even when the upload fails: a build that archived and exported
       # correctly is worth having in hand, and losing it because App Store
       # Connect rejected the credentials wastes twenty minutes to learn nothing.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && steps.gate.outputs.ready == 'true'
         with:
           name: mumbleway-ios-ipa
@@ -570,15 +583,17 @@ jobs:
       # is public, so it comes from the same place the rest of them do.
       STORE_PRODUCT_ID: ${{ secrets.MSIX_STORE_PRODUCT_ID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: arduino/setup-protoc@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Rust toolchain from rust-toolchain.toml
+        shell: bash
+        run: rustup toolchain install && rustup default "$(rustup show active-toolchain | cut -d' ' -f1)"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Ninja
         run: choco install ninja -y --no-progress
-      - uses: ilammy/msvc-dev-cmd@v1
-      - uses: subosito/flutter-action@v2
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -715,7 +730,7 @@ jobs:
             $false)
           Write-Output "portable: $name.zip ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mumbleway-windows-portable
           path: app/build/windows/*.zip
@@ -742,7 +757,7 @@ jobs:
       - name: Build the MSI
         run: ./app/windows/installer/build.ps1 -Version "${{ env.MSI_VERSION }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mumbleway-windows-msi
           path: app/build/windows/installer/*.msi
@@ -764,13 +779,16 @@ jobs:
       - name: Package for the Store
         if: env.MSIX_PUBLISHER != ''
         working-directory: app
+        env:
+          MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}
         run: >
           dart run msix:create --build-windows false --store
           --version "${{ env.MSIX_VERSION }}"
           --output-name "mumbleway-store-${{ env.MSIX_VERSION }}"
-          --publisher "${{ secrets.MSIX_PUBLISHER }}"
-          --identity-name "${{ secrets.MSIX_IDENTITY_NAME }}"
-          --publisher-display-name "${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}"
+          --publisher "$env:MSIX_PUBLISHER"
+          --identity-name "$env:MSIX_IDENTITY_NAME"
+          --publisher-display-name "$env:MSIX_PUBLISHER_DISPLAY_NAME"
 
       - name: Package for sideloading
         if: env.MSIX_PUBLISHER == ''
@@ -813,7 +831,7 @@ jobs:
           }
           Write-Output "publisher/display name: set from secrets, not the defaults"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mumbleway-windows-msix
           path: app/build/windows/x64/runner/Release/*.msix
@@ -902,7 +920,7 @@ jobs:
         if: >-
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
           (github.event_name == 'push' || inputs.microsoft_store)
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        uses: microsoft/microsoft-store-apppublisher@15abd1c50fcc164b19cb240fb04ef3c49bf715a2 # v1.1
 
       # Pinned rather than taken from the image: `tool/push_ms_store_listing.py`
       # sets the listing text in the submit step below, and a runner image that
@@ -913,7 +931,7 @@ jobs:
         if: >-
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
           (github.event_name == 'push' || inputs.microsoft_store)
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
@@ -930,12 +948,17 @@ jobs:
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
           (github.event_name == 'push' || inputs.microsoft_store)
         shell: pwsh
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          MSIX_SELLER_ID: ${{ secrets.MSIX_SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
         run: |
           msstore reconfigure `
-            --tenantId "${{ secrets.AZURE_AD_TENANT_ID }}" `
-            --sellerId "${{ secrets.MSIX_SELLER_ID }}" `
-            --clientId "${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}" `
-            --clientSecret "${{ secrets.AZURE_AD_APPLICATION_SECRET }}"
+            --tenantId "$env:AZURE_AD_TENANT_ID" `
+            --sellerId "$env:MSIX_SELLER_ID" `
+            --clientId "$env:AZURE_AD_APPLICATION_CLIENT_ID" `
+            --clientSecret "$env:AZURE_AD_APPLICATION_SECRET"
 
       # Refuse to submit over a submission that is still being certified.
       #
@@ -1085,19 +1108,19 @@ jobs:
           # is how 1.1.148.0 reached the Store with the 1.0.1 description and the
           # 1.0.1 release notes, green all the way. `docs/RELEASING.md` 4e-bis
           # worked this route out, and this is it.
-          msstore publish $package -id "${{ env.STORE_PRODUCT_ID }}" --noCommit
+          msstore publish $package -id "$env:STORE_PRODUCT_ID" --noCommit
           if ($LASTEXITCODE -ne 0) {
-            Write-Output "::error::Staging the package failed, so nothing was submitted. Check Partner Center for a draft submission left open; 'msstore submission delete ${{ env.STORE_PRODUCT_ID }} --no-confirm' clears one the API created."
+            Write-Output "::error::Staging the package failed, so nothing was submitted. Check Partner Center for a draft submission left open; 'msstore submission delete $env:STORE_PRODUCT_ID --no-confirm' clears one the API created."
             exit 1
           }
 
           # The text this repository holds, into the draft just staged, and only
           # then commit. `--expect-version` refuses to commit a draft the
           # package did not attach to, which would spend the run on text alone.
-          python ../tool/push_ms_store_listing.py "${{ env.STORE_PRODUCT_ID }}" `
+          python ../tool/push_ms_store_listing.py "$env:STORE_PRODUCT_ID" `
             --push --submit --expect-version "${{ env.MSIX_VERSION }}"
           if ($LASTEXITCODE -ne 0) {
-            Write-Output "::error::The package is staged but the listing text or the commit failed, so this submission is sitting as an uncommitted draft. Finish it with 'python tool/push_ms_store_listing.py <productId> --push --submit', or discard it with 'msstore submission delete ${{ env.STORE_PRODUCT_ID }} --no-confirm'. The MSIX is attached to this run."
+            Write-Output "::error::The package is staged but the listing text or the commit failed, so this submission is sitting as an uncommitted draft. Finish it with 'python tool/push_ms_store_listing.py <productId> --push --submit', or discard it with 'msstore submission delete $env:STORE_PRODUCT_ID --no-confirm'. The MSIX is attached to this run."
             exit 1
           }
 
@@ -1143,17 +1166,19 @@ jobs:
     env:
       MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: arduino/setup-protoc@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Rust toolchain from rust-toolchain.toml
+        shell: bash
+        run: rustup toolchain install && rustup default "$(rustup show active-toolchain | cut -d' ' -f1)"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Ninja
         run: choco install ninja -y --no-progress
-      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         with:
           arch: arm64
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
@@ -1201,13 +1226,16 @@ jobs:
       - name: Package for the Store
         if: env.MSIX_PUBLISHER != ''
         working-directory: app
+        env:
+          MSIX_IDENTITY_NAME: ${{ secrets.MSIX_IDENTITY_NAME }}
+          MSIX_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}
         run: >
           dart run msix:create --build-windows false --store --architecture arm64
           --version "${{ env.MSIX_VERSION }}"
           --output-name "mumbleway-store-arm64-${{ env.MSIX_VERSION }}"
-          --publisher "${{ secrets.MSIX_PUBLISHER }}"
-          --identity-name "${{ secrets.MSIX_IDENTITY_NAME }}"
-          --publisher-display-name "${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}"
+          --publisher "$env:MSIX_PUBLISHER"
+          --identity-name "$env:MSIX_IDENTITY_NAME"
+          --publisher-display-name "$env:MSIX_PUBLISHER_DISPLAY_NAME"
 
       - name: Say what is in the package
         if: env.MSIX_PUBLISHER != ''
@@ -1235,7 +1263,7 @@ jobs:
             exit 1
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: env.MSIX_PUBLISHER != ''
         with:
           name: mumbleway-arm64-msix
@@ -1260,7 +1288,7 @@ jobs:
     env:
       MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Check for signing material
         id: gate
@@ -1272,9 +1300,11 @@ jobs:
             echo "ready=true" >> $GITHUB_OUTPUT
           fi
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust toolchain from rust-toolchain.toml
         if: steps.gate.outputs.ready == 'true'
-      - uses: arduino/setup-protoc@v3
+        shell: bash
+        run: rustup toolchain install && rustup default "$(rustup show active-toolchain | cut -d' ' -f1)"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b # v3.0.0
         if: steps.gate.outputs.ready == 'true'
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -1302,7 +1332,7 @@ jobs:
       # never leaves the runner.
       - name: Import the application certificate
         if: steps.gate.outputs.ready == 'true'
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@63fff01cd422d4b7b855d40ca1e9d34d2de9427d # v3.0.0
         with:
           p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -1311,7 +1341,7 @@ jobs:
 
       - name: Import the installer certificate
         if: steps.gate.outputs.ready == 'true'
-        uses: apple-actions/import-codesign-certs@v3
+        uses: apple-actions/import-codesign-certs@63fff01cd422d4b7b855d40ca1e9d34d2de9427d # v3.0.0
         with:
           p12-file-base64: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_P12 }}
           p12-password: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
@@ -1321,12 +1351,14 @@ jobs:
 
       - name: Install provisioning profile
         if: steps.gate.outputs.ready == 'true'
+        env:
+          MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
         run: |
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "${{ secrets.MACOS_PROVISIONING_PROFILE }}" | base64 -d \
+          echo "$MACOS_PROVISIONING_PROFILE" | base64 -d \
             > ~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.provisionprofile
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         if: steps.gate.outputs.ready == 'true'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -1335,6 +1367,8 @@ jobs:
 
       - name: Point the release build at the distribution profile
         if: steps.gate.outputs.ready == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           profile=~/Library/MobileDevice/Provisioning\ Profiles/mumbleway.provisionprofile
@@ -1362,7 +1396,7 @@ jobs:
           echo "INSTALLER_IDENTITY=$installer_id" >> $GITHUB_ENV
 
           cat >> app/macos/Flutter/Flutter-Release.xcconfig <<EOF
-          DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+          DEVELOPMENT_TEAM=$APPLE_TEAM_ID
           CODE_SIGN_STYLE=Manual
           PROVISIONING_PROFILE_SPECIFIER=$uuid
           CODE_SIGN_IDENTITY=$app_id
@@ -1446,7 +1480,7 @@ jobs:
 
       # Kept even when the upload fails, for the same reason as the iOS one: a
       # package that built and signed is worth having in hand.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && steps.gate.outputs.ready == 'true'
         with:
           name: mumbleway-macos-pkg
@@ -1476,11 +1510,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0        # the changelog needs the history
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
 
@@ -1541,7 +1575,7 @@ jobs:
           } > NOTES.md
           echo "Wrote $(wc -l < NOTES.md) lines"
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: release/*
           body_path: NOTES.md

@@ -75,6 +75,11 @@ on:
         default: ''
         type: string
 
+# Read-only unless a job asks for more. Without this the token's rights come
+# from a repository setting, which nothing here can see or check.
+permissions:
+  contents: read
+
 jobs:
   submission:
     name: Microsoft Store submission
@@ -82,7 +87,7 @@ jobs:
     env:
       STORE_PRODUCT_ID: ${{ secrets.MSIX_STORE_PRODUCT_ID }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # `publish.yml` skips its store jobs cleanly when their secrets are
       # absent, because it has four stores to get on with and a fork should be
@@ -95,7 +100,7 @@ jobs:
           echo "::error::MSIX_STORE_PRODUCT_ID is not set, so there is no submission to read or finish."
           exit 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
@@ -107,7 +112,7 @@ jobs:
         run: python tool/check_listing.py
 
       - name: Set up the Store CLI
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        uses: microsoft/microsoft-store-apppublisher@15abd1c50fcc164b19cb240fb04ef3c49bf715a2 # v1.1
 
       # `reconfigure` rather than `configure`: configure prompts when it finds
       # no existing credentials, and a prompt on a headless runner is a job
@@ -115,12 +120,17 @@ jobs:
       # that is the only interface the CLI offers, and none is ever echoed.
       - name: Sign in to Partner Center
         shell: pwsh
+        env:
+          AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+          MSIX_SELLER_ID: ${{ secrets.MSIX_SELLER_ID }}
+          AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+          AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
         run: |
           msstore reconfigure `
-            --tenantId "${{ secrets.AZURE_AD_TENANT_ID }}" `
-            --sellerId "${{ secrets.MSIX_SELLER_ID }}" `
-            --clientId "${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}" `
-            --clientSecret "${{ secrets.AZURE_AD_APPLICATION_SECRET }}"
+            --tenantId "$env:AZURE_AD_TENANT_ID" `
+            --sellerId "$env:MSIX_SELLER_ID" `
+            --clientId "$env:AZURE_AD_APPLICATION_CLIENT_ID" `
+            --clientSecret "$env:AZURE_AD_APPLICATION_SECRET"
 
       # The inputs arrive as environment variables rather than being
       # interpolated into the command. `${{ }}` substitution happens before the

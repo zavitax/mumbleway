@@ -333,6 +333,27 @@ default PATH:
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\src\flutter\bin;$env:PATH"
 ```
 
+### The Rust version is `rust-toolchain.toml`, and nothing else
+
+**`stable` floated, and that turned CI red on a tree nobody had touched** —
+1.100.0 arrived with a stricter `needless_range_loop` (b53a49a), while this
+machine sat on 1.97.1 and saw nothing. The release is now named in
+`rust-toolchain.toml`, so `cargo` inside the repository and every CI job run
+the same one, and a new release arrives only as a commit — usually a
+Dependabot pull request, with its own CI run to show what the new lints say.
+
+Workflows install it with `rustup toolchain install` and then make it the
+*default*, not just the directory override: cargokit's iOS build runs from
+DerivedData, outside the tree, where the file is never seen, and `rustup
+target add` has to land on the toolchain that build will use. The `Tests` job
+refuses an action referenced by tag rather than commit, and a floating
+toolchain, so neither comes back by accident.
+
+Dependabot (`.github/dependabot.yml`) is monthly, grouped and lock-file-only;
+the file says what it ignores and why. `cargo deny` checks licences and
+sources against `deny.toml` and fails on them; advisories it reports without
+failing, because they arrive on a date rather than with a commit.
+
 ### A failed Rust build does not fail `flutter build apk`
 
 cargokit logs the failure at `SEVERE:` and **gradle carries on**, packaging

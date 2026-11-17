@@ -70,19 +70,21 @@ class Rustup {
 
   static List<_Toolchain> _getInstalledToolchains() {
     String extractToolchainName(String line) {
-      // ignore (default) after toolchain name
-      final parts = line.split(' ');
+      // ignore (default) / (active) / (override) after toolchain name
+      final parts = line.trim().split(RegExp(r'\s+'));
       return parts[0];
     }
 
     final res = runCommand("rustup", ['toolchain', 'list']);
 
-    // To list all non-custom toolchains, we need to filter out lines that
-    // don't start with "stable", "beta", or "nightly".
-    Pattern nonCustom = RegExp(r"^(stable|beta|nightly)");
+    // Match standard channels (stable, beta, nightly) as well as versioned
+    // toolchains like 1.100.0-x86_64-unknown-linux-gnu.
+    Pattern nonCustom =
+        RegExp(r"^(stable|beta|nightly|\d+\.\d+(?:\.\d+)?)(?=-|\s|$)");
     final lines = res.stdout
         .toString()
         .split('\n')
+        .map((e) => e.trim())
         .where((e) => e.isNotEmpty && e.startsWith(nonCustom))
         .map(extractToolchainName)
         .toList(growable: true);
@@ -108,6 +110,7 @@ class Rustup {
     final lines = res.stdout
         .toString()
         .split('\n')
+        .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList(growable: true);
     return lines;

@@ -1,0 +1,112 @@
+# Dependabot version updates, tuned for a repository with one maintainer.
+#
+# The shape of it, and why:
+#
+# * **Monthly, grouped, one pull request per ecosystem.** Default Dependabot
+#   opens a pull request per dependency per week, which on a tree this size is
+#   dozens a month; that gets a bot switched off, not read.
+# * **Cargo and pub are `lockfile-only`.** Only versions the manifests already
+#   allow, so nothing here can move a requirement in Cargo.toml or
+#   pubspec.yaml. For Rust that matters more than it looks: a 0.x minor is a
+#   breaking change in Cargo, and Dependabot calls it "minor".
+# * **A cooldown before a release is considered.** A compromised crate or
+#   action is usually yanked within days of publication; seven days means this
+#   repository is rarely the one to find out. Security updates are not delayed
+#   by it -- GitHub applies cooldown to version updates only.
+# * **Things that move in lockstep with something outside the lock file are
+#   ignored**, each for a reason given beside it. Ignore rules also apply to
+#   security updates, so nothing is ignored here merely for being noisy.
+#
+# Not covered, deliberately:
+#
+# * Gradle. The Android Gradle Plugin and Kotlin versions in
+#   app/android/settings.gradle.kts move with the Flutter SDK, not on their
+#   own; a bump there that Flutter has not caught up with breaks the Android
+#   build in a way the rest of CI does not see.
+# * tools/*. Benchmark harnesses that ship in no build.
+# * The Flutter SDK (FLUTTER_VERSION in the workflows). Dependabot has no
+#   ecosystem for it.
+#
+# Security updates and alerts are separate switches in the repository's
+# settings (Settings -> Advanced Security), and only the owner can turn them on.
+
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directories:
+      - /core
+      - /app/rust
+    schedule:
+      interval: monthly
+    versioning-strategy: lockfile-only
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      cargo:
+        applies-to: version-updates
+        patterns: ["*"]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      # Patched copies live in third_party/ and are used through [patch] by
+      # path. A lock-file bump past the patched version would leave the patch
+      # unused -- with a warning nobody reads -- and silently drop the fix
+      # third_party/*/PATCH.md describes.
+      - dependency-name: cpal
+      - dependency-name: "tract-*"
+      # Pinned to a commit in core/Cargo.toml; moving it is a model change.
+      - dependency-name: deep_filter
+      # Must equal the pub package and the codegen that wrote
+      # app/lib/src/rust/**, or the app dies on its first frame with a content
+      # hash mismatch. Moves by hand, with `flutter_rust_bridge_codegen`.
+      - dependency-name: flutter_rust_bridge
+
+  - package-ecosystem: pub
+    directory: /app
+    schedule:
+      interval: monthly
+    versioning-strategy: lockfile-only
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      pub:
+        applies-to: version-updates
+        patterns: ["*"]
+      pub-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      # See the cargo entry: the Dart and Rust halves must be the same version.
+      - dependency-name: flutter_rust_bridge
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # A new major of an action can rename or drop inputs, and the steps that
+      # use it are in publish.yml, which no pull request exercises.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # rust-toolchain.toml. A new Rust release can bring new lints, which is the
+  # point: they arrive here, in a pull request with its own CI run, instead of
+  # as a red build on somebody's unrelated commit.
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7

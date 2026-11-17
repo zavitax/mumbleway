@@ -187,7 +187,13 @@ pub fn parse_url(input: &str, fallback_username: &str) -> Result<ServerProfile> 
 /// nobody chose, and refusing it leaves the server reachable directly, which is
 /// the safer of the two failures.
 fn parse_proxy(text: &str) -> Option<ProxySpec> {
-    let text = percent_decode(text);
+    let decoded;
+    let text = if text.contains("://") {
+        text
+    } else {
+        decoded = percent_decode(text);
+        decoded.as_str()
+    };
     let (scheme, rest) = text.split_once("://")?;
     let kind = match scheme.to_ascii_lowercase().as_str() {
         "http" | "https" => ProxyKind::HttpConnect,
@@ -1060,5 +1066,41 @@ mod tests {
         // "mumble://@host" and "mumble://host" should behave the same.
         let p = parse_url("mumble://@host.example/", "rider").unwrap();
         assert_eq!(p.username, "rider");
+    }
+
+    #[test]
+    fn proxy_credentials_with_delimiters_round_trip() {
+        let spec = ProxySpec {
+            kind: ProxyKind::Socks5,
+            host: "10.0.0.1".into(),
+            port: 1080,
+            username: Some("u:1?a@b".into()),
+            password: Some("p:2?c@d".into()),
+            tunnel_voice: true,
+        };
+
+        let text = build_proxy_text(&spec, true);
+        assert_eq!(parse_proxy_text(&text), Some(spec.clone()));
+
+        let mut profile = ServerProfile::new("Rig", "example.test", 64739, "rider");
+        profile.proxy_chain = vec![spec.clone()];
+
+        let link = build_url(&profile, None, true);
+        let from_link = parse_url(&link, "rider").unwrap();
+        assert_eq!(from_link.proxy_chain, vec![spec.clone()]);
+
+        let json = build_json(&profile, None, true).unwrap();
+        let from_json = parse_json(&json, "rider").unwrap();
+        assert_eq!(from_json[0].proxy_chain, vec![spec.clone()]);
+
+        let proxy_link = build_proxy_url(&spec, true);
+        assert_eq!(parse_proxy_url(&proxy_link), Some(spec.clone()));
+
+        let user_only = ProxySpec {
+            password: None,
+            ..spec
+        };
+        let user_only_text = build_proxy_text(&user_only, true);
+        assert_eq!(parse_proxy_text(&user_only_text), Some(user_only));
     }
 }

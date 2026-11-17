@@ -80,7 +80,7 @@ pub struct CryptState {
     decrypt_iv: Block,
     /// Maps `decrypt_iv[0]` to the `decrypt_iv[1]` last accepted for it, which is
     /// how upstream rejects replays inside the reorder window.
-    decrypt_history: [u8; 256],
+    decrypt_history: [Option<u8>; 256],
     stats: CryptStats,
 }
 
@@ -104,7 +104,7 @@ impl CryptState {
             raw_key,
             encrypt_iv: e,
             decrypt_iv: d,
-            decrypt_history: [0u8; 256],
+            decrypt_history: [None; 256],
             stats: CryptStats::default(),
         })
     }
@@ -131,6 +131,8 @@ impl CryptState {
             return Err(CoreError::Crypto("resync IV had wrong length"));
         }
         self.decrypt_iv.copy_from_slice(iv);
+        self.decrypt_history.fill(None);
+        self.decrypt_history[self.decrypt_iv[0] as usize] = Some(self.decrypt_iv[1]);
         self.stats.resync += 1;
         Ok(())
     }
@@ -177,7 +179,7 @@ impl CryptState {
     /// Decrypts a packet produced by [`CryptState::encrypt`], handling reordering,
     /// wraparound and replay rejection exactly as upstream does.
     pub fn decrypt(&mut self, source: &[u8]) -> Result<Vec<u8>> {
-        if source.len() < OVERHEAD {
+        if source.len() <= OVERHEAD {
             return Err(CoreError::Crypto("UDP packet too short to be encrypted"));
         }
         let plain_length = source.len() - OVERHEAD;
@@ -249,7 +251,7 @@ impl CryptState {
                 return Err(CoreError::Crypto("nonce outside the acceptable window"));
             }
 
-            if self.decrypt_history[self.decrypt_iv[0] as usize] == self.decrypt_iv[1] {
+            if self.decrypt_history[self.decrypt_iv[0] as usize] == Some(self.decrypt_iv[1]) {
                 self.decrypt_iv = saveiv;
                 return Err(CoreError::Crypto("replayed packet"));
             }
@@ -261,7 +263,7 @@ impl CryptState {
 
         match result {
             Ok(tag) if tag[..3] == source[1..4] => {
-                self.decrypt_history[self.decrypt_iv[0] as usize] = self.decrypt_iv[1];
+                self.decrypt_history[self.decrypt_iv[0] as usize] = Some(self.decrypt_iv[1]);
                 if restore {
                     self.decrypt_iv = saveiv;
                 }
@@ -598,5 +600,63 @@ mod tests {
         let good2 = a.encrypt(&[9u8; 24]).unwrap();
         // Packet index 2 was consumed by the corrupted frame, so 3 arrives as "lost 1".
         assert_eq!(b.decrypt(&good2).unwrap(), vec![9u8; 24]);
+    }
+
+    #[test]
+    fn accepts_packet_loss_when_second_iv_byte_is_zero() {
+        let key = [0x11u8; KEY_SIZE];
+        let mut civ = [0x22u8; BLOCK_SIZE];
+        civ[0] = 0;
+        civ[1] = 0;
+        let siv = [0x33u8; BLOCK_SIZE];
+        let mut a = CryptState::new(&key, &civ, &siv).unwrap();
+        let mut b = CryptState::new(&key, &siv, &civ).unwrap();
+
+        let p1 = a.encrypt(&[1u8; 24]).unwrap();
+        let p2 = a.encrypt(&[2u8; 24]).unwrap();
+        let p3 = a.encrypt(&[3u8; 24]).unwrap();
+
+        assert_eq!(b.decrypt(&p1).unwrap(), vec![1u8; 24]);
+        assert_eq!(b.decrypt(&p3).unwrap(), vec![3u8; 24]);
+        assert_eq!(b.decrypt(&p2).unwrap(), vec![2u8; 24]);
+        assert!(b.decrypt(&p2).is_err());
+    }
+
+    #[test]
+    fn set_decrypt_iv_clears_history_and_records_current_slot() {
+        let key = [0x11u8; KEY_SIZE];
+        let mut civ = [0x22u8; BLOCK_SIZE];
+        civ[0] = 10;
+        civ[1] = 0x55;
+        let siv = [0x33u8; BLOCK_SIZE];
+        let mut a = CryptState::new(&key, &civ, &siv).unwrap();
+        let mut b = CryptState::new(&key, &siv, &civ).unwrap();
+
+        for i in 0..4u8 {
+            let ct = a.encrypt(&[i; 16]).unwrap();
+            b.decrypt(&ct).unwrap();
+        }
+
+        let mut a = CryptState::new(&key, &civ, &siv).unwrap();
+        b.set_decrypt_iv(&civ).unwrap();
+
+        let _p11 = a.encrypt(&[11u8; 16]).unwrap();
+        let p12 = a.encrypt(&[12u8; 16]).unwrap();
+        assert_eq!(b.decrypt(&p12).unwrap(), vec![12u8; 16]);
+
+        let mut pre_civ = civ;
+        pre_civ[0] = 9;
+        let mut spoof = CryptState::new(&key, &pre_civ, &siv).unwrap();
+        let p10 = spoof.encrypt(&[10u8; 16]).unwrap();
+        assert!(b.decrypt(&p10).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_length_ciphertext() {
+        let (mut a, mut b) = pair();
+        let empty_ct = a.encrypt(&[]).unwrap();
+        assert_eq!(empty_ct.len(), OVERHEAD);
+        assert!(b.decrypt(&empty_ct).is_err());
+        assert!(b.decrypt(&[0u8; OVERHEAD]).is_err());
     }
 }

@@ -91,7 +91,27 @@ impl<'a> Reader<'a> {
     /// Reads the next varint.
     pub fn varint(&mut self) -> Result<u64> {
         let v = self.byte()?;
+        if v & 0xF0 == 0xF0 {
+            match v & 0xFC {
+                0xF8 => Ok(!self.positive_varint()?),
+                0xFC => Ok(!(v & 0x03)),
+                _ => self.decode_positive(v),
+            }
+        } else {
+            self.decode_positive(v)
+        }
+    }
 
+    /// Reads an unsigned varint, rejecting nested negative prefixes.
+    fn positive_varint(&mut self) -> Result<u64> {
+        let v = self.byte()?;
+        if v & 0xF0 == 0xF0 && matches!(v & 0xFC, 0xF8 | 0xFC) {
+            return Err(CoreError::Protocol("nested negative varint"));
+        }
+        self.decode_positive(v)
+    }
+
+    fn decode_positive(&mut self, v: u64) -> Result<u64> {
         // Order matters: the 0xF0 family must be tested before the shorter prefixes,
         // because 0xF_ also satisfies the 0xE0 and 0xC0 masks.
         if v & 0x80 == 0x00 {
@@ -114,11 +134,6 @@ impl<'a> Reader<'a> {
                     }
                     Ok(n)
                 }
-                0xF8 => {
-                    let inner = self.varint()?;
-                    Ok(!inner)
-                }
-                0xFC => Ok(!(v & 0x03)),
                 _ => Err(CoreError::Protocol("invalid varint prefix")),
             }
         } else if v & 0xF0 == 0xE0 {
@@ -245,5 +260,20 @@ mod tests {
         assert!(Reader::new(&[0x80]).varint().is_err());
         assert!(Reader::new(&[0xF0, 0x01]).varint().is_err());
         assert!(Reader::new(&[]).varint().is_err());
+    }
+
+    #[test]
+    fn rejects_nested_negative_varints_without_recursion() {
+        let nested = vec![0xF8u8; 10_000];
+        let err = Reader::new(&nested).varint().unwrap_err();
+        assert!(matches!(err, CoreError::Protocol("nested negative varint")));
+
+        for prefix in 0xF8..=0xFFu8 {
+            let err = Reader::new(&[0xF8, prefix, 0x01]).varint().unwrap_err();
+            assert!(
+                matches!(err, CoreError::Protocol("nested negative varint")),
+                "prefix {prefix:#x} should be rejected"
+            );
+        }
     }
 }

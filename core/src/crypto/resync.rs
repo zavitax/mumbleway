@@ -36,6 +36,8 @@ pub struct ResyncGuard {
     /// Last time a packet decrypted, or the socket opening — from which the
     /// first "it has been broken for five seconds" is measured.
     last_good: Instant,
+    /// First consecutive decryption failure since the last good packet.
+    failing_since: Option<Instant>,
     last_request: Option<Instant>,
 }
 
@@ -48,6 +50,7 @@ impl ResyncGuard {
     pub fn new(now: Instant) -> Self {
         Self {
             last_good: now,
+            failing_since: None,
             last_request: None,
         }
     }
@@ -55,11 +58,15 @@ impl ResyncGuard {
     /// Notes a packet that decrypted.
     pub fn note_good(&mut self, now: Instant) {
         self.last_good = now;
+        self.failing_since = None;
     }
 
     /// Whether this failure is worth a resync request, marking it sent if so.
     pub fn should_request(&mut self, now: Instant) -> bool {
-        if now.saturating_duration_since(self.last_good) < RESYNC_AFTER {
+        let failing_since = *self.failing_since.get_or_insert(now);
+        if now.saturating_duration_since(self.last_good) < RESYNC_AFTER
+            || now.saturating_duration_since(failing_since) < RESYNC_AFTER
+        {
             return false;
         }
         if self
@@ -93,6 +100,7 @@ mod tests {
     fn nothing_decrypting_for_five_seconds_is_asked_about() {
         let t0 = Instant::now();
         let mut g = ResyncGuard::new(t0);
+        assert!(!g.should_request(t0));
         assert!(g.should_request(t0 + RESYNC_AFTER));
     }
 
@@ -103,6 +111,7 @@ mod tests {
         // server's rate limit.
         let t0 = Instant::now();
         let mut g = ResyncGuard::new(t0);
+        assert!(!g.should_request(t0));
         assert!(g.should_request(t0 + RESYNC_AFTER));
 
         let mut asked = 0;
@@ -121,11 +130,13 @@ mod tests {
         // failure is a fresh fault and gets its own five seconds of patience.
         let t0 = Instant::now();
         let mut g = ResyncGuard::new(t0);
+        assert!(!g.should_request(t0));
         assert!(g.should_request(t0 + RESYNC_AFTER));
 
         g.note_good(t0 + Duration::from_secs(6));
         assert!(!g.should_request(t0 + Duration::from_secs(8)));
-        assert!(g.should_request(t0 + Duration::from_secs(11)));
+        assert!(!g.should_request(t0 + Duration::from_secs(11)));
+        assert!(g.should_request(t0 + Duration::from_secs(13)));
     }
 
     #[test]
@@ -136,5 +147,21 @@ mod tests {
         let mut g = ResyncGuard::new(t0);
         assert!(!g.should_request(t0));
         assert!(!g.should_request(t0 + Duration::from_secs(4)));
+    }
+
+    #[test]
+    fn single_failure_after_quiet_period_does_not_trigger_resync_immediately() {
+        let t0 = Instant::now();
+        let mut g = ResyncGuard::new(t0);
+        // Sixty seconds of silence, then one bad packet arrives.
+        assert!(!g.should_request(t0 + Duration::from_secs(60)));
+        assert!(!g.should_request(t0 + Duration::from_secs(64)));
+        // Five seconds of continuous failure from the first bad packet triggers resync.
+        assert!(g.should_request(t0 + Duration::from_secs(65)));
+
+        // A single good packet resets the failure window even after another quiet stretch.
+        g.note_good(t0 + Duration::from_secs(71));
+        assert!(!g.should_request(t0 + Duration::from_secs(101)));
+        assert!(g.should_request(t0 + Duration::from_secs(106)));
     }
 }

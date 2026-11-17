@@ -5,7 +5,7 @@
 //! it holds a small backlog so a late packet still arrives before its turn, and
 //! uses Opus FEC/PLC to fill genuine gaps rather than clicking.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use super::codec::{VoiceDecoder, FRAME_SAMPLES, SAMPLE_RATE};
 use super::dsp::LevelNormalizer;
@@ -134,8 +134,20 @@ pub struct SpeakerBuffer {
     concealed_run: u32,
     /// Frames played since the last loss, used to shrink it again.
     clean_run: u32,
-    /// True once the sender has signalled end of transmission.
+    /// True once the sender has signalled end of transmission for the current
+    /// burst, cleared once the burst drains or a newer utterance arrives.
     finished: bool,
+    /// Sequence number of the terminator packet for the current or last ended
+    /// burst.
+    terminator_seq: Option<u64>,
+    /// True once `pop` emptied `pending` after a terminator and before any new
+    /// utterance started.
+    drained_after_terminator: bool,
+    /// Terminator sequence of an already-drained burst, retained until the next
+    /// utterance starts playing so late stragglers cannot slip in while refilling.
+    ended_seq: Option<u64>,
+    /// Packets dropped because they arrived too late to play.
+    late_packets: u64,
     /// How far the sequence advances per packet, in 10 ms units.
     ///
     /// Sequence counts 10 ms units, so a sender using 20 ms frames steps by
@@ -202,6 +214,10 @@ pub struct SpeakerBuffer {
     compressor: TimeCompressor,
     /// The rate the backlog is currently being played off at, 1.0 upwards.
     speed: f32,
+    /// Decoded (and possibly time-compressed) PCM queued for fixed-size mixing.
+    pcm_out: VecDeque<f32>,
+    /// Reusable scratch buffer for [`Self::pop_samples`].
+    decode_scratch: Vec<f32>,
 }
 
 impl SpeakerBuffer {
@@ -216,6 +232,10 @@ impl SpeakerBuffer {
             concealed_run: 0,
             clean_run: 0,
             finished: false,
+            terminator_seq: None,
+            drained_after_terminator: false,
+            ended_seq: None,
+            late_packets: 0,
             stride: None,
             playing: false,
             normalizer: LevelNormalizer::new(NORMALISE_TARGET_DB),
@@ -228,6 +248,8 @@ impl SpeakerBuffer {
             played_slot: None,
             compressor: TimeCompressor::new(),
             speed: 1.0,
+            pcm_out: VecDeque::new(),
+            decode_scratch: Vec::with_capacity(FRAME_SAMPLES),
         })
     }
 
@@ -269,6 +291,11 @@ impl SpeakerBuffer {
         self.loss_events
     }
 
+    /// Packets dropped because they arrived too late to be played.
+    pub fn late_packets(&self) -> u64 {
+        self.late_packets
+    }
+
     /// Current loudness correction for this speaker, in dB.
     pub fn normalisation_gain_db(&self) -> f32 {
         self.normalizer.gain_db()
@@ -291,45 +318,88 @@ impl SpeakerBuffer {
     }
 
     pub fn is_finished(&self) -> bool {
-        self.finished && self.pending.is_empty()
+        (self.finished || self.drained_after_terminator)
+            && self.pending.is_empty()
+            && self.pcm_out.is_empty()
+    }
+
+    fn restart_utterance(&mut self, terminator: bool, sequence: u64) {
+        self.pending.clear();
+        self.next_seq = None;
+        self.finished = terminator;
+        self.terminator_seq = if terminator { Some(sequence) } else { None };
+        self.drained_after_terminator = false;
+        self.ended_seq = None;
+        self.playing = false;
+        self.recent_losses = 0;
+        self.concealed_run = 0;
+        self.clean_run = 0;
+        self.played_slot = None;
+        self.compressor.reset();
+        self.speed = 1.0;
+    }
+
+    fn mark_terminator(&mut self, sequence: u64) {
+        let newest = self.pending.keys().next_back().copied();
+        if newest.is_some_and(|last| last > sequence) {
+            return;
+        }
+        self.terminator_seq = Some(self.terminator_seq.map_or(sequence, |t| t.max(sequence)));
+        self.finished = true;
+        self.drained_after_terminator = false;
     }
 
     /// Accepts a packet. Packets older than the play head are discarded.
     pub fn push(&mut self, sequence: u64, opus: Vec<u8>, terminator: bool) {
-        // Read before this packet can change it: a packet arriving *after* a
-        // terminator belongs to the next transmission, whatever its number.
-        let ended = self.finished;
-        if terminator {
-            self.finished = true;
-        }
-
-        if let Some(next) = self.next_seq {
+        if self.terminator_seq.is_some_and(|t| sequence > t) {
+            // A new utterance with higher monotonic sequence numbers has begun
+            // before the buffer was reaped.
+            self.finished = terminator;
+            self.drained_after_terminator = false;
+            self.terminator_seq = if terminator { Some(sequence) } else { None };
+        } else if self.drained_after_terminator {
+            let restart = sequence == 0
+                || self
+                    .ended_seq
+                    .is_some_and(|e| e.saturating_sub(sequence) > RESTART_GAP_FRAMES);
+            if restart {
+                self.restart_utterance(terminator, sequence);
+            } else {
+                self.late_packets += 1;
+                return;
+            }
+        } else if self
+            .ended_seq
+            .is_some_and(|e| sequence <= e && e - sequence <= RESTART_GAP_FRAMES)
+        {
+            self.late_packets += 1;
+            return;
+        } else if let Some(next) = self.next_seq {
             if sequence < next {
                 // A sender that numbers each transmission from zero puts every
                 // burst after the first behind the play head, where it would
                 // be discarded in full as arriving too late.
                 //
-                // Three ways to recognise it: the end of the last transmission
-                // said so, or nothing is playing so there is nothing this could
-                // arrive too late for, or the distance is beyond any real
-                // lateness. The middle one matters because the terminator is a
-                // single packet and losing it must not cost a whole word.
-                if ended || !self.playing || next - sequence > RESTART_GAP_FRAMES {
-                    self.pending.clear();
-                    self.next_seq = None;
-                    self.finished = terminator;
-                    self.playing = false;
-                    self.recent_losses = 0;
-                    self.concealed_run = 0;
-                    self.clean_run = 0;
-                    self.played_slot = None;
-                    self.compressor.reset();
-                    self.speed = 1.0;
+                // Only restart when the gap exceeds any plausible network
+                // lateness, or when the previous burst drained without a
+                // terminator and nothing is buffered. A late packet from inside
+                // or before an active terminator is never a restart.
+                let restart = next - sequence > RESTART_GAP_FRAMES
+                    || (self.terminator_seq.is_none_or(|t| sequence > t)
+                        && !self.playing
+                        && self.pending.is_empty());
+                if restart {
+                    self.restart_utterance(terminator, sequence);
                 } else {
                     // Too late to be useful; its slot has already been played.
+                    self.late_packets += 1;
                     return;
                 }
+            } else if terminator {
+                self.mark_terminator(sequence);
             }
+        } else if terminator {
+            self.mark_terminator(sequence);
         }
         self.stalled_rounds = 0;
         self.pending.insert(sequence, opus);
@@ -452,13 +522,7 @@ impl SpeakerBuffer {
         self.playing
     }
 
-    /// True when there is something to play.
-    ///
-    /// The target backlog gates the *start* of a burst only. Once playing,
-    /// anything held is played: holding a frame back because the backlog is
-    /// thinner than we would like produces the silence it was meant to
-    /// prevent.
-    pub fn ready(&self) -> bool {
+    fn packet_ready(&self) -> bool {
         if self.pending.is_empty() {
             return false;
         }
@@ -466,6 +530,16 @@ impl SpeakerBuffer {
             || self.finished
             || self.pending.len() >= self.target
             || self.stalled_rounds >= STALL_ROUNDS_BEFORE_START
+    }
+
+    /// True when there is something to play.
+    ///
+    /// The target backlog gates the *start* of a burst only. Once playing,
+    /// anything held is played: holding a frame back because the backlog is
+    /// thinner than we would like produces the silence it was meant to
+    /// prevent.
+    pub fn ready(&self) -> bool {
+        !self.pcm_out.is_empty() || self.packet_ready()
     }
 
     /// Records a round in which this speaker held audio but was not played.
@@ -489,6 +563,27 @@ impl SpeakerBuffer {
         self.level_db = (self.level_db - LEVEL_DECAY_DB).max(SILENT_DB);
     }
 
+    fn note_empty_after_terminator(&mut self) {
+        self.playing = false;
+        if self.finished {
+            self.drained_after_terminator = true;
+            self.ended_seq = self.terminator_seq;
+            self.finished = false;
+            self.next_seq = None;
+        }
+    }
+
+    fn note_post_pop_state(&mut self, popped_seq: u64) {
+        if self.ended_seq.is_some_and(|e| popped_seq > e) {
+            self.ended_seq = None;
+        }
+        if self.pending.is_empty() {
+            self.note_empty_after_terminator();
+        } else {
+            self.playing = true;
+        }
+    }
+
     /// Produces the next frame of PCM, concealing genuine losses.
     ///
     /// Returns `None` only when nothing is held at all. `out` is resized to
@@ -508,7 +603,7 @@ impl SpeakerBuffer {
             None => {
                 // Genuinely run dry: refill to the target before starting
                 // again, rather than stuttering along one frame at a time.
-                self.playing = false;
+                self.note_empty_after_terminator();
                 self.relax_speed();
                 return None;
             }
@@ -599,7 +694,10 @@ impl SpeakerBuffer {
             .unwrap_or(FRAME_SAMPLES)
             .max(FRAME_SAMPLES);
         out.resize(needed, 0.0);
-        let n = self.decoder.decode(&packet, out).ok()?;
+        let Ok(n) = self.decoder.decode(&packet, out) else {
+            self.note_post_pop_state(available);
+            return None;
+        };
         // Normalise here rather than in the mixer so each speaker's gain tracks
         // that speaker, not whatever the mix happens to contain.
         if self.normalise {
@@ -622,14 +720,43 @@ impl SpeakerBuffer {
 
         // That was the last frame held: rebuild a cushion before starting again
         // rather than stuttering along one frame at a time.
-        self.playing = !self.pending.is_empty();
+        self.note_post_pop_state(available);
         Some(n)
+    }
+
+    /// Fills `out` with up to `out.len()` decoded PCM samples.
+    ///
+    /// Pulls packets through [`Self::pop`] until `out.len()` samples are queued
+    /// or no more packets are ready, so a speaker catching up at `speed > 1.0`
+    /// produces a full mixer frame instead of dropping out at 50 Hz.
+    pub fn pop_samples(&mut self, out: &mut [f32]) -> usize {
+        if out.is_empty() {
+            return 0;
+        }
+        let mut scratch = std::mem::take(&mut self.decode_scratch);
+        while self.pcm_out.len() < out.len() && self.packet_ready() {
+            let Some(n) = self.pop(&mut scratch) else {
+                break;
+            };
+            self.pcm_out.extend(&scratch[..n]);
+        }
+        self.decode_scratch = scratch;
+
+        let n = out.len().min(self.pcm_out.len());
+        for slot in &mut out[..n] {
+            *slot = self.pcm_out.pop_front().unwrap_or(0.0);
+        }
+        n
     }
 
     pub fn reset(&mut self) {
         self.pending.clear();
+        self.pcm_out.clear();
         self.next_seq = None;
         self.finished = false;
+        self.terminator_seq = None;
+        self.drained_after_terminator = false;
+        self.ended_seq = None;
         self.playing = false;
         self.recent_losses = 0;
         self.concealed_run = 0;
@@ -1371,5 +1498,179 @@ mod tests {
         assert!(!b.is_finished());
         let mut out = vec![0.0f32; FRAME_SAMPLES];
         assert_eq!(b.pop(&mut out), None);
+    }
+
+    #[test]
+    fn reordered_packet_after_terminator_does_not_wipe_or_false_start() {
+        let packets = frames(6);
+
+        // Late straggler arriving before the terminator packet itself drains
+        // must be dropped as late rather than wiping the held terminator.
+        let mut before_drain = SpeakerBuffer::new().unwrap();
+        before_drain.push(seq(0), packets[0].clone(), false);
+        before_drain.push(seq(1), packets[1].clone(), false);
+        before_drain.push(seq(3), packets[3].clone(), true);
+
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+        assert!(before_drain.pop(&mut out).is_some()); // seq(0)
+        assert!(before_drain.pop(&mut out).is_some()); // seq(1)
+        assert!(before_drain.pop(&mut out).is_some()); // seq(2) concealed
+        assert_eq!(before_drain.buffered(), 1);
+
+        before_drain.push(seq(2), packets[2].clone(), false);
+        assert_eq!(
+            before_drain.buffered(),
+            1,
+            "a late packet inside an active terminator wiped the queue"
+        );
+        assert_eq!(before_drain.late_packets(), 1);
+        assert!(before_drain.pop(&mut out).is_some()); // seq(3)
+        assert!(before_drain.is_finished());
+
+        // Late straggler arriving after the terminator drained must not
+        // re-enter `pending` and trigger a false start.
+        let mut after_drain = SpeakerBuffer::new().unwrap();
+        after_drain.push(seq(0), packets[0].clone(), false);
+        after_drain.push(seq(1), packets[1].clone(), false);
+        after_drain.push(seq(3), packets[3].clone(), true);
+        assert_eq!(drain(&mut after_drain, 6), 4);
+        assert!(after_drain.is_finished());
+
+        after_drain.push(seq(2), packets[2].clone(), false);
+        assert_eq!(after_drain.buffered(), 0);
+        assert!(!after_drain.ready());
+        assert!(after_drain.is_finished());
+        assert_eq!(after_drain.late_packets(), 1);
+    }
+
+    #[test]
+    fn back_to_back_monotonic_utterances_respect_target_and_tolerate_reordering() {
+        let total = DEFAULT_TARGET_FRAMES + 8;
+        let packets = frames(total);
+        let mut b = SpeakerBuffer::new().unwrap();
+
+        // First burst ends at seq(3), with seq(2) delayed.
+        b.push(seq(0), packets[0].clone(), false);
+        b.push(seq(1), packets[1].clone(), false);
+        b.push(seq(3), packets[3].clone(), true);
+        assert_eq!(drain(&mut b, 6), 4);
+        assert!(b.is_finished());
+
+        // Second burst starts with higher monotonic sequence numbers before
+        // reaping. It must wait for the target backlog, not inherit `finished`.
+        let start = 4usize;
+        b.push(seq(start), packets[start].clone(), false);
+        assert!(!b.is_finished());
+        assert!(
+            !b.ready(),
+            "stale finished state bypassed the target backlog on the next burst"
+        );
+
+        // A delayed packet from the first burst must not pollute the refill.
+        b.push(seq(2), packets[2].clone(), false);
+        assert_eq!(b.buffered(), 1);
+        assert_eq!(b.late_packets(), 1);
+
+        let rest = &packets[start + 1..start + DEFAULT_TARGET_FRAMES];
+        for (idx, pkt) in rest.iter().enumerate() {
+            b.push(seq(start + 1 + idx), pkt.clone(), false);
+        }
+        assert!(b.ready());
+
+        // Deliver two later packets while skipping one in the middle so the
+        // buffer conceals past it, then deliver the skipped packet late.
+        let skipped = start + DEFAULT_TARGET_FRAMES;
+        b.push(seq(skipped + 1), packets[skipped + 1].clone(), false);
+        b.push(seq(skipped + 2), packets[skipped + 2].clone(), false);
+
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+        for _ in 0..=DEFAULT_TARGET_FRAMES {
+            assert!(b.pop(&mut out).is_some());
+        }
+        assert_eq!(b.buffered(), 2);
+
+        b.push(seq(skipped), packets[skipped].clone(), false);
+        assert_eq!(
+            b.buffered(),
+            2,
+            "an out-of-order packet in the second burst wiped the buffer"
+        );
+        assert_eq!(b.late_packets(), 2);
+    }
+
+    #[test]
+    fn monotonic_utterance_overlapping_previous_terminator_clears_finished() {
+        let packets = frames(4);
+        let mut b = SpeakerBuffer::new().unwrap();
+        b.push(seq(0), packets[0].clone(), false);
+        b.push(seq(1), packets[1].clone(), true);
+        b.push(seq(2), packets[2].clone(), false);
+        assert!(!b.is_finished());
+
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+        assert!(b.pop(&mut out).is_some());
+        assert!(b.pop(&mut out).is_some());
+        assert_eq!(b.buffered(), 1);
+        assert!(!b.is_finished());
+    }
+
+    #[test]
+    fn pop_samples_fills_full_frame_while_catching_up() {
+        let packets = frames(200);
+        let mut b = SpeakerBuffer::new().unwrap();
+        b.set_normalisation(false);
+        for (i, p) in packets.iter().enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+        for round in 0..40 {
+            let n = b.pop_samples(&mut out);
+            assert_eq!(n, FRAME_SAMPLES, "round {round} returned a short frame");
+            if round >= 20 {
+                let tail_rms = crate::audio::dsp::rms(&out[FRAME_SAMPLES * 3 / 4..]);
+                assert!(
+                    tail_rms > 0.01,
+                    "round {round} left a silent tail (rms={tail_rms})"
+                );
+            }
+        }
+        assert!(b.playout_speed() > 1.3);
+        let consumed = 200 - b.buffered();
+        assert!(
+            consumed > 50,
+            "expected catch-up to consume >50 packets in 40 rounds, consumed {consumed}"
+        );
+    }
+
+    #[test]
+    fn pop_samples_drains_remaining_pcm_before_marking_finished() {
+        use opus::{Application, Channels, Encoder};
+
+        let mut enc = Encoder::new(SAMPLE_RATE, Channels::Mono, Application::Voip).unwrap();
+        let samples = 6 * 480;
+        let pcm: Vec<f32> = (0..samples)
+            .map(|i| {
+                let t = i as f32 / SAMPLE_RATE as f32;
+                (2.0 * std::f32::consts::PI * 180.0 * t).sin() * 0.3
+            })
+            .collect();
+        let packet = enc.encode_vec_float(&pcm, 4000).unwrap();
+
+        let mut b = SpeakerBuffer::new().unwrap();
+        b.push(0, packet, true);
+
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+        assert_eq!(b.pop_samples(&mut out), FRAME_SAMPLES);
+        assert!(b.ready());
+        assert!(!b.is_finished());
+
+        assert_eq!(b.pop_samples(&mut out), FRAME_SAMPLES);
+        assert!(b.ready());
+        assert!(!b.is_finished());
+
+        assert_eq!(b.pop_samples(&mut out), FRAME_SAMPLES);
+        assert!(!b.ready());
+        assert!(b.is_finished());
     }
 }

@@ -7,11 +7,25 @@ description: MumbleWay's own licence, and every third-party component it is buil
 
 ## MumbleWay
 
-**GNU General Public License, version 3.** The full text is
-[in the repository]({{ site.repo }}/blob/main/LICENSE).
+**GNU General Public License, version 3 (`GPL-3.0-or-later`).** The full text
+is [in the repository]({{ site.repo }}/blob/main/LICENSE).
 
-You may use, study, modify and redistribute it. If you distribute a modified
-version, it has to carry the same licence and its source has to be available.
+You may use, study, modify and redistribute MumbleWay under the GPLv3. Anyone
+distributing binaries — modified or unmodified — must carry the same licence
+and make the corresponding source code available (for official builds, in the
+[public repository]({{ site.repo }})).
+
+<div class="panel">
+<p><strong>App store distributions.</strong> Official builds on the Apple App
+Store, Mac App Store, Google Play and Microsoft Store are published by the
+MumbleWay copyright holder alongside the full source code in the repository
+above. All third-party components in the app use permissive, GPLv3-compatible
+licences (such as BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0 and ISC). Because
+Apple's App Store and Mac App Store terms apply DRM and restrict downstream
+redistribution of store-downloaded packages, third-party redistributors must
+distribute under the GPLv3 outside DRM-restricted store channels (for example,
+from source or GitHub Releases).</p>
+</div>
 
 <div class="panel">
 <p><strong>Not affiliated with the Mumble project.</strong> MumbleWay is an
@@ -42,6 +56,7 @@ The parts that do the actual work.
 | [`ndarray`](https://crates.io/crates/ndarray) | The array type the enhancer's own API takes and returns | MIT / Apache-2.0 |
 | [`cpal`](https://crates.io/crates/cpal) | Cross-platform audio device access. Vendored under `third_party` and patched in one hunk so an Android capture stream can ask for the telephony input preset, which cpal otherwise never requests — see `third_party/cpal/PATCH.md` | Apache-2.0 |
 | [`dasp_sample`](https://crates.io/crates/dasp_sample) | Sample format conversion | MIT / Apache-2.0 |
+| [`sonora`](https://github.com/dignifiedquire/sonora) | Pure-Rust port of WebRTC's AudioProcessing (M145), providing the AEC3 echo canceller in `core/src/audio/aec3.rs` | BSD 3-Clause (with WebRTC patent grant) |
 | [YAMNet](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet) | A sound classifier. **No longer used** — *Automatic* now picks its profile from the measured signal-to-noise ratio instead. Still shipped as `assets/models/yamnet.tflite` and so still listed here | Apache-2.0 |
 | [LiteRT / TensorFlow Lite](https://ai.google.dev/edge/litert) | Runs that model. From Google's own Maven and CocoaPods on Android and iOS; the universal `libtensorflowlite_c` inside `tflite_flutter` on macOS; on Windows built from the TensorFlow r2.17 source and vendored at `app/blobs/`, because upstream publishes no binary for it | Apache-2.0 |
 | [`tflite_flutter`](https://github.com/tensorflow/flutter-tflite) | The Dart binding, vendored under `app/third_party` and patched in one line so its macOS library loads from `Contents/Frameworks`, where Apple requires it | Apache-2.0 |
@@ -62,9 +77,10 @@ the package, and removing a row because the code stopped calling it would
 understate what you are being given.
 </div>
 
-Everything else in the capture chain — the echo canceller, gate, expander,
-spectral subtractor, limiter, AGC, feedback guard, pitch tracker and jitter
-buffer — is written for this project and covered by its own GPL v3.
+Everything else in the capture chain — the fallback time-domain echo
+canceller (`audio::aec`), gate, expander, spectral subtractor, limiter, AGC,
+feedback guard, pitch tracker and jitter buffer — is written for this project
+and covered by its own GPL v3.
 
 ## Rust
 
@@ -76,7 +92,7 @@ buffer — is written for this project and covered by its own GPL v3.
 | [`rustls`](https://github.com/rustls/rustls), `rustls-pemfile`, `webpki-roots` | TLS, without OpenSSL | Apache-2.0 / MIT / ISC |
 | [`rcgen`](https://crates.io/crates/rcgen) | Generates the client identity certificate | MIT / Apache-2.0 |
 | [`prost`](https://crates.io/crates/prost) | Protocol Buffers, for Mumble's control channel | Apache-2.0 |
-| [`aes`](https://crates.io/crates/aes), `aes-gcm`, `cipher` | OCB/AES for Mumble's UDP voice encryption | MIT / Apache-2.0 |
+| [`aes`](https://crates.io/crates/aes), [`cipher`](https://crates.io/crates/cipher) | AES-128 block primitives used by `core/src/crypto/ocb2.rs` for Mumble's OCB2 UDP voice encryption (ported from upstream Mumble's `CryptStateOCB2.cpp`, BSD 3-Clause) | MIT / Apache-2.0 (OCB2 reference: BSD 3-Clause) |
 | [`sha2`](https://crates.io/crates/sha2), `hex` | Certificate fingerprints | MIT / Apache-2.0 |
 | [`serde`](https://serde.rs/), `serde_json` | Settings and server list serialisation | MIT / Apache-2.0 |
 | [`tracing`](https://crates.io/crates/tracing) | Structured logging | MIT |

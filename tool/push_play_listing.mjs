@@ -146,15 +146,32 @@ await withEdit(key, PKG, async (edit) => {
   console.log(`${PKG} — this repository is at ${version}\n`);
 
   // What production actually offers, which decides whether this text is honest.
+  // Only `completed` and `inProgress` (active staged rollout) releases are live;
+  // `draft` and `halted` releases carry version codes too, and must not bypass
+  // the version guard while nobody (or no new user) can install them.
+  const LIVE_STATUSES = new Set(['completed', 'inProgress']);
   const tracks = await edit.get('/tracks');
   const production = (tracks.tracks ?? []).find((t) => t.track === 'production');
-  const liveNames = (production?.releases ?? [])
-    .flatMap((r) => r.versionCodes?.length ? [r.name ?? '(unnamed)'] : [])
+  const releases = production?.releases ?? [];
+  const liveNames = releases
+    .flatMap((r) =>
+      LIVE_STATUSES.has(r.status) && r.versionCodes?.length ? [r.name ?? '(unnamed)'] : []
+    )
     .filter(Boolean);
-  const live = liveNames[0] ?? null;
-  console.log(`production track: ${live ?? 'nothing released'}`);
+  const live = liveNames.find((n) => n.startsWith(version)) ?? liveNames[0] ?? null;
+  const nonLive = releases
+    .flatMap((r) =>
+      !LIVE_STATUSES.has(r.status) && r.versionCodes?.length
+        ? [`${r.name ?? '(unnamed)'} [${r.status ?? 'unknown'}]`]
+        : []
+    )
+    .filter(Boolean);
+  console.log(
+    `production track: ${liveNames.length ? liveNames.join(', ') : 'nothing released'}` +
+      (nonLive.length ? ` (non-live: ${nonLive.join(', ')})` : '')
+  );
 
-  const behind = live ? !live.startsWith(version) : true;
+  const behind = !liveNames.some((n) => n.startsWith(version));
   if (behind) {
     console.log(`  ** production does not have ${version} yet **`);
     console.log('  A Play listing is not versioned: committing publishes this text to');

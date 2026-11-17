@@ -1,7 +1,10 @@
 //! Opus encode/decode.
 //!
-//! Configured for lossy mobile links: VOIP mode, in-band FEC so a lost packet can
-//! be partly reconstructed from the next one, and DTX so silence costs nothing.
+//! Configured for lossy mobile links: VOIP mode with in-band FEC enabled
+//! (pinned by [`super::engine`] at 100% expected packet-loss protection,
+//! `MIN_PROTECTION_PCT = MAX_PROTECTION_PCT = 100`). Opus DTX is not
+//! enabled; in Voice-activated mode silence ceases sending once the
+//! 1000 ms VAD hangover closes.
 
 use opus::{Application, Channels, Decoder, Encoder};
 
@@ -61,8 +64,8 @@ impl VoiceEncoder {
         // packet, which matters far more than raw quality on a moving vehicle.
         enc.set_inband_fec(true)
             .map_err(|e| CoreError::Codec(format!("enabling FEC: {e}")))?;
-        // Tell the encoder to expect roughly 10% loss so it actually spends bits
-        // on that FEC data.
+        // Initial expectation before `engine::run_worker` applies the pinned
+        // 100% protection (`MIN_PROTECTION_PCT = MAX_PROTECTION_PCT = 100`).
         enc.set_packet_loss_perc(10)
             .map_err(|e| CoreError::Codec(format!("setting loss percentage: {e}")))?;
 
@@ -88,8 +91,6 @@ impl VoiceEncoder {
             .map_err(|e| CoreError::Codec(format!("setting bitrate: {e}")))
     }
 
-    /// Tells the encoder how much loss to protect against, 0..=100.
-    ///
     /// How hard the encoder is allowed to work, 0 to 10.
     ///
     /// Exposed so it can be measured; `tests/encode_cost.rs` reports what each
@@ -100,12 +101,12 @@ impl VoiceEncoder {
             .map_err(|e| CoreError::Codec(format!("setting Opus complexity: {e}")))
     }
 
-    /// It is a real trade and not a free dial. The FEC copy is carved out of
-    /// the same bitrate as the audio, so protecting against 30% loss on a link
-    /// that is losing nothing makes every packet worse for a benefit nobody
-    /// collects. Leaving it at a fixed 10 makes the opposite mistake in the
-    /// place it hurts most: under a bridge, where 10% of protection is spent
-    /// against 40% of loss and the words are gone anyway.
+    /// Tells the encoder how much loss to protect against, 0..=100.
+    ///
+    /// `engine::run_worker` pins this at 100% (`MIN_PROTECTION_PCT =
+    /// MAX_PROTECTION_PCT = 100`) rather than adapting dynamically to loss:
+    /// `tests/fec_cost.rs` showed no measurable bitrate savings at lower
+    /// percentages on noisy helmet audio.
     pub fn set_packet_loss_perc(&mut self, percent: u8) -> Result<()> {
         self.enc
             .set_packet_loss_perc(percent.min(100) as i32)
@@ -247,7 +248,9 @@ mod tests {
 
     #[test]
     fn silence_encodes_to_very_little() {
-        // DTX/VOIP mode should make silence nearly free on the wire.
+        // VOIP mode compresses silence into small frames; Opus DTX is not
+        // enabled (in Voice-activated mode the worker stops sending once the
+        // 1000 ms VAD hangover closes).
         let mut enc = VoiceEncoder::new(Quality::Balanced).unwrap();
         let mut smallest = usize::MAX;
         for _ in 0..20 {

@@ -27,7 +27,7 @@ helmet, at speed, with wind and an engine underneath.
 | | | |
 |---|---|---|
 | **Range** | Anywhere | Mobile data, not a radio link between helmets. |
-| **Codec** | Opus | 48 kHz, with forward error correction that rises as the link degrades. |
+| **Codec** | Opus | 48 kHz VOIP mode; in-band FEC is enabled and pinned at 100% expected packet-loss protection (`MIN_PROTECTION_PCT = MAX_PROTECTION_PCT = 100`), with no Opus DTX (silence ceases sending once the 1000 ms VAD hangover closes in Voice-activated mode). |
 | **Servers** | Yours | Any Mumble server. No account, no directory, no company in the middle. |
 
 It is a client, not a service, and that cuts both ways: there is nobody in the
@@ -212,8 +212,10 @@ the audio is delayed and the decision is not, and a word starting on "s", "f"
 or "sh" keeps its first consonant instead of arriving as "ixty". The phrase
 opens **240 ms** ahead, and the debt is then repaid at 1.1× — pitch periods
 removed whole, so duration changes and pitch does not — until the delay settles
-at **60 ms**. The channel holds for a full second after you stop, fading over
-the last 30 ms, which is what stops a sentence arriving as four fragments.
+at **200 ms**. In Voice-activated mode the channel holds for a 1000 ms VAD
+hangover after you stop, fading over the last 30 ms — which is what stops a
+sentence arriving as four fragments — and silence ceases sending once that
+hangover closes (Opus DTX is not enabled).
 
 ### When a phone cannot keep up
 

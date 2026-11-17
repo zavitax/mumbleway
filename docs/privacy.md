@@ -72,11 +72,14 @@ stops further syncing.
 | The Mumble server you chose | While connected | Your voice, your username, your IP address, whether your microphone is muted, and the app's name and version, your operating system and its processor type |
 | A proxy, if you set one for servers | While connected to a server that goes through it | Your IP address, which server you are reaching and when, and how much data passes. **Not** what is said: that stays inside the encrypted connection to the server |
 | `publist.mumble.info` | Only when you open the public server directory | Your IP address, as any website would |
+| The host of a profile URL you enter | Only when you paste a URL on the *Import servers* screen and tap *Download and add* | Your IP address and standard HTTP request headers, as when fetching any file over HTTP/HTTPS |
 | `zavitax.github.io` | Only when an invitation link is *followed* in a browser | Your IP address. **Not** the server, channel or password in the invitation |
 | Your local network | Only if you connect to a server on it | — |
 
 The public directory is run by the Mumble project, not by MumbleWay. If you
-never open it, the app never contacts it.
+never open it, the app never contacts it. Likewise, a server profile URL is
+fetched only when you enter it and tap *Download and add* (using your system or
+manual HTTP proxy if enabled in Settings).
 
 **A proxy is never chosen for you.** The setting starts at Direct and stays
 there until you change it, even on a machine where the system already has a

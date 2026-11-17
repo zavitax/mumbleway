@@ -189,6 +189,8 @@ jobs:
   google-play:
     name: Google Play
     needs: [version, test]
+    outputs:
+      submitted: ${{ steps.upload.outcome == 'success' }}
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -308,6 +310,7 @@ jobs:
           fi
 
       - name: Upload to Play
+        id: upload
         if: steps.gate.outputs.ready == 'true' && env.PLAY_SERVICE_ACCOUNT != ''
         uses: r0adkll/upload-google-play@v1
         with:
@@ -349,11 +352,14 @@ jobs:
         if: always() && steps.gate.outputs.ready == 'true'
         run: rm -f app/android/upload-keystore.jks app/android/key.properties
 
+      # Kept even when the upload fails so a built, signed bundle stays
+      # available on the workflow run for inspection or manual upload.
       - uses: actions/upload-artifact@v4
-        if: steps.gate.outputs.ready == 'true'
+        if: always() && steps.gate.outputs.ready == 'true'
         with:
           name: mumbleway-play-bundle
           path: app/build/app/outputs/bundle/release/*.aab
+          if-no-files-found: warn
 
   # ---------------------------------------------------------------------------
   # App Store Connect — signed build to TestFlight
@@ -365,6 +371,8 @@ jobs:
     # tagged build would upload under whatever pubspec says — which looks like
     # a working release right up until the version is read.
     needs: [version, test]
+    outputs:
+      submitted: ${{ steps.upload.outcome == 'success' }}
     runs-on: macos-latest
     env:
       APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -487,6 +495,7 @@ jobs:
             --export-options-plist=ios/ExportOptions.plist
 
       - name: Upload to TestFlight
+        id: upload
         if: steps.gate.outputs.ready == 'true'
         uses: apple-actions/upload-testflight-build@v3
         with:
@@ -540,6 +549,8 @@ jobs:
   msix:
     name: Windows MSIX
     needs: [version, test]
+    outputs:
+      submitted: ${{ steps.submit.outcome == 'success' }}
     runs-on: windows-latest
     # **Pinned, because the runner's default changed underneath this workflow.**
     #
@@ -1062,6 +1073,7 @@ jobs:
       # Partner Center's answer to that is a PublisherDisplayName mismatch that
       # reads like a broken workflow. `docs/RELEASING.md` has the full story.
       - name: Submit to the Microsoft Store
+        id: submit
         if: >-
           steps.settled.outputs.ready == 'true' &&
           env.MSIX_PUBLISHER != '' && env.STORE_PRODUCT_ID != '' &&
@@ -1253,6 +1265,8 @@ jobs:
   mac-app-store:
     name: Mac App Store
     needs: [version, test]
+    outputs:
+      submitted: ${{ steps.upload.outcome == 'success' }}
     # Skippable only on a dispatch that says so. A tag claims every store got
     # the same build, so it must not be able to leave one out quietly.
     if: github.event_name != 'workflow_dispatch' || inputs.mac_app_store
@@ -1431,6 +1445,7 @@ jobs:
       # argument is visible in the process list, and $GITHUB_ENV would put a
       # copy of a private key somewhere GitHub's secret masking cannot see it.
       - name: Upload to App Store Connect
+        id: upload
         if: steps.gate.outputs.ready == 'true'
         working-directory: app
         env:
@@ -1439,10 +1454,20 @@ jobs:
           API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.appstoreconnect/private_keys
-          printf '%s' "$API_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          (
+            umask 077
+            mkdir -p ~/.appstoreconnect/private_keys
+            rm -f ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+            printf '%s' "$API_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          )
           xcrun altool --upload-app -f build/macos/mumbleway.pkg -t macos \
             --apiKey "$KEY_ID" --apiIssuer "$ISSUER_ID"
+
+      - name: Remove App Store Connect API key
+        if: always()
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: rm -f ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8 ~/.appstoreconnect/private_keys/AuthKey_*.p8
 
       # Kept even when the upload fails, for the same reason as the iOS one: a
       # package that built and signed is worth having in hand.
@@ -1462,15 +1487,18 @@ jobs:
   # somebody who downloads from the releases page gets what the store shipped
   # rather than a lookalike built from the same commit.
   #
-  # `if: always()` with a per-job success check rather than a plain `needs`.
+  # `if: always()` gated on `test == 'success'` and per-job submission checks.
   # A publish can legitimately go half red — Apple's six-uploads-an-hour limit
   # fails TestFlight and the Mac App Store while Play and Windows carry on — and
-  # a release of the three packages that did build is more use than no release
-  # at all. What did not build is simply absent, and the notes say so.
+  # a draft release holding the packages that did succeed is more use than no
+  # release at all, while never claiming to be a full latest release. Unsubmitted
+  # or failed store packages are excluded from the release (their workflow run
+  # artifacts remain attached to the run), zero release files fail the job,
+  # and `NOTES.md` records each store's actual status.
   # ---------------------------------------------------------------------------
   release:
     name: GitHub release
-    if: always() && startsWith(github.ref, 'refs/tags/v')
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.test.result == 'success'
     needs: [version, test, google-play, testflight, msix, mac-app-store]
     runs-on: ubuntu-latest
     permissions:
@@ -1486,48 +1514,182 @@ jobs:
 
       - name: Collect what actually built
         id: collect
+        env:
+          VERSION_FULL: ${{ needs.version.outputs.full }}
+          PLAY_RESULT: ${{ needs.google-play.result }}
+          PLAY_SUBMITTED: ${{ needs.google-play.outputs.submitted }}
+          IOS_RESULT: ${{ needs.testflight.result }}
+          IOS_SUBMITTED: ${{ needs.testflight.outputs.submitted }}
+          MSIX_RESULT: ${{ needs.msix.result }}
+          MSIX_SUBMITTED: ${{ needs.msix.outputs.submitted }}
+          MAC_RESULT: ${{ needs.mac-app-store.result }}
+          MAC_SUBMITTED: ${{ needs.mac-app-store.outputs.submitted }}
         run: |
           set -euo pipefail
-          mkdir -p release
-          # The `.zip` and the `.msi` are the two Windows assets a reader can
-          # actually use: the zip runs in place, the installer installs. Both
-          # belong on the release page rather than only in a workflow run's
-          # artifacts, which expire. The `.msix` is here for completeness and
-          # cannot be installed by hand -- Partner Center re-signs it.
-          #
-          # `*.msi` does not also match `*.msix`; they are separate patterns on
-          # purpose, and dropping either one silently ships one fewer asset.
-          find artifacts -type f \
-            \( -name '*.aab' -o -name '*.ipa' -o -name '*.msi' -o -name '*.msix' \
-               -o -name '*.pkg' -o -name '*.zip' \) \
-            -exec cp {} release/ \;
+          mkdir -p artifacts release
+
+          succeeded_stores=0
+          submitted_stores=0
+          store_artifacts=0
+
+          if [ "$PLAY_RESULT" = "success" ]; then
+            succeeded_stores=$((succeeded_stores + 1))
+            if [ "$PLAY_SUBMITTED" = "true" ] && [ -d artifacts/mumbleway-play-bundle ]; then
+              copied=0
+              while IFS= read -r -d '' f; do
+                cp "$f" release/
+                copied=$((copied + 1))
+                store_artifacts=$((store_artifacts + 1))
+              done < <(find artifacts/mumbleway-play-bundle -type f -name '*.aab' -print0)
+              if [ "$copied" -gt 0 ]; then
+                submitted_stores=$((submitted_stores + 1))
+              fi
+            fi
+          fi
+
+          if [ "$IOS_RESULT" = "success" ]; then
+            succeeded_stores=$((succeeded_stores + 1))
+            if [ "$IOS_SUBMITTED" = "true" ] && [ -d artifacts/mumbleway-ios-ipa ]; then
+              copied=0
+              while IFS= read -r -d '' f; do
+                cp "$f" release/
+                copied=$((copied + 1))
+                store_artifacts=$((store_artifacts + 1))
+              done < <(find artifacts/mumbleway-ios-ipa -type f -name '*.ipa' -print0)
+              if [ "$copied" -gt 0 ]; then
+                submitted_stores=$((submitted_stores + 1))
+              fi
+            fi
+          fi
+
+          if [ "$MSIX_RESULT" = "success" ]; then
+            succeeded_stores=$((succeeded_stores + 1))
+            # The `.zip` and the `.msi` are direct-download Windows assets
+            # when the Windows job succeeds. The `.msix` is attached only when
+            # Microsoft Store submission actually succeeded.
+            if [ -d artifacts/mumbleway-windows-portable ]; then
+              find artifacts/mumbleway-windows-portable -type f -name '*.zip' -exec cp {} release/ \;
+            fi
+            if [ -d artifacts/mumbleway-windows-msi ]; then
+              find artifacts/mumbleway-windows-msi -type f -name '*.msi' -exec cp {} release/ \;
+            fi
+            if [ "$MSIX_SUBMITTED" = "true" ] && [ -d artifacts/mumbleway-windows-msix ]; then
+              copied=0
+              while IFS= read -r -d '' f; do
+                cp "$f" release/
+                copied=$((copied + 1))
+                store_artifacts=$((store_artifacts + 1))
+              done < <(find artifacts/mumbleway-windows-msix -type f -name '*.msix' -print0)
+              if [ "$copied" -gt 0 ]; then
+                submitted_stores=$((submitted_stores + 1))
+              fi
+            fi
+          fi
+
+          if [ "$MAC_RESULT" = "success" ]; then
+            succeeded_stores=$((succeeded_stores + 1))
+            if [ "$MAC_SUBMITTED" = "true" ] && [ -d artifacts/mumbleway-macos-pkg ]; then
+              copied=0
+              while IFS= read -r -d '' f; do
+                cp "$f" release/
+                copied=$((copied + 1))
+                store_artifacts=$((store_artifacts + 1))
+              done < <(find artifacts/mumbleway-macos-pkg -type f -name '*.pkg' -print0)
+              if [ "$copied" -gt 0 ]; then
+                submitted_stores=$((submitted_stores + 1))
+              fi
+            fi
+          fi
+
           # Named for the version, so a downloaded file still says what it is
           # once it is out of the browser and in a downloads folder.
           for f in release/*; do
             [ -e "$f" ] || continue
             base=$(basename "$f")
-            mv "$f" "release/mumbleway-${{ needs.version.outputs.full }}-${base}"
+            mv "$f" "release/mumbleway-${VERSION_FULL}-${base}"
           done
           ls -lh release || true
+
           count=$(find release -type f | wc -l)
           echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "succeeded_stores=$succeeded_stores" >> "$GITHUB_OUTPUT"
+          echo "submitted_stores=$submitted_stores" >> "$GITHUB_OUTPUT"
+          echo "store_artifacts=$store_artifacts" >> "$GITHUB_OUTPUT"
+
           if [ "$count" -eq 0 ]; then
-            echo "::error::No packages built; refusing to publish an empty release."
+            echo "::error::No packages built or submitted (succeeded_stores=$succeeded_stores, submitted_stores=$submitted_stores, store_artifacts=$store_artifacts); refusing to create an empty release."
             exit 1
+          fi
+
+          if [ "$submitted_stores" -eq 4 ]; then
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Only $submitted_stores of 4 store submissions succeeded (succeeded_stores=$succeeded_stores, store_artifacts=$store_artifacts); staging GitHub release as a draft."
           fi
 
       - name: Write the changelog
         id: notes
+        env:
+          VERSION_FULL: ${{ needs.version.outputs.full }}
+          PLAY_RESULT: ${{ needs.google-play.result }}
+          PLAY_SUBMITTED: ${{ needs.google-play.outputs.submitted }}
+          IOS_RESULT: ${{ needs.testflight.result }}
+          IOS_SUBMITTED: ${{ needs.testflight.outputs.submitted }}
+          MSIX_RESULT: ${{ needs.msix.result }}
+          MSIX_SUBMITTED: ${{ needs.msix.outputs.submitted }}
+          MAC_RESULT: ${{ needs.mac-app-store.result }}
+          MAC_SUBMITTED: ${{ needs.mac-app-store.outputs.submitted }}
+          SUBMITTED_STORES: ${{ steps.collect.outputs.submitted_stores }}
         run: |
           set -euo pipefail
+          describe_store() {
+            local result="$1"
+            local submitted="$2"
+            if [ "$result" = "success" ] && [ "$submitted" = "true" ]; then
+              echo "Submitted"
+            elif [ "$result" = "success" ]; then
+              echo "Not submitted (skipped)"
+            else
+              echo "Not submitted"
+            fi
+          }
+
           previous=$(git describe --tags --abbrev=0 --match 'v*' \
                        "${GITHUB_REF_NAME}^" 2>/dev/null || true)
           {
-            echo "**Version ${{ needs.version.outputs.full }}** — build ${{ github.run_number }}."
+            echo "**Version ${VERSION_FULL}** — build ${{ github.run_number }}."
             echo
-            echo "The packages below are the ones submitted to the stores by this"
-            echo "run, signed identically. The iOS build is distributed through"
-            echo "TestFlight and the App Store; the \`.ipa\` here is for reference."
+            if [ "$SUBMITTED_STORES" -eq 4 ]; then
+              printf '%s\n' \
+                'All four store submissions succeeded for this build. The store' \
+                'packages attached below match those submissions, alongside' \
+                'direct-download Windows builds; the iOS `.ipa` is included for' \
+                'reference alongside TestFlight / App Store distribution.'
+            else
+              printf '%s\n' \
+                "Partial store release (draft, ${SUBMITTED_STORES}/4 stores submitted): only" \
+                'packages from succeeded store submissions (and direct-download' \
+                'Windows builds if the Windows job succeeded) are attached below.' \
+                'Unsubmitted store packages are excluded from this release; any' \
+                'built packages whose upload failed remain in the workflow run' \
+                'artifacts.'
+            fi
+            echo
+            echo "## Store submission status"
+            echo
+            echo '| Store | Job | Result | Submission |'
+            echo '|---|---|---|---|'
+            printf '| Google Play | `google-play` | `%s` | %s |\n' \
+              "$PLAY_RESULT" "$(describe_store "$PLAY_RESULT" "$PLAY_SUBMITTED")"
+            printf '| TestFlight / App Store | `testflight` | `%s` | %s |\n' \
+              "$IOS_RESULT" "$(describe_store "$IOS_RESULT" "$IOS_SUBMITTED")"
+            printf '| Microsoft Store | `msix` | `%s` | %s |\n' \
+              "$MSIX_RESULT" "$(describe_store "$MSIX_RESULT" "$MSIX_SUBMITTED")"
+            printf '| Mac App Store | `mac-app-store` | `%s` | %s |\n' \
+              "$MAC_RESULT" "$(describe_store "$MAC_RESULT" "$MAC_SUBMITTED")"
             echo
             if [ -n "$previous" ]; then
               echo "## Changes since $previous"
@@ -1545,11 +1707,11 @@ jobs:
         with:
           files: release/*
           body_path: NOTES.md
-          # A full release: not a draft, not a pre-release, and the one the
-          # repository points at.
-          draft: false
+          # A full release when all four stores submitted; otherwise kept as a
+          # draft so an incomplete store rollout is never published as latest.
+          draft: ${{ steps.collect.outputs.draft == 'true' }}
           prerelease: false
-          make_latest: true
+          make_latest: ${{ steps.collect.outputs.make_latest }}
           # **Mutable on purpose.** Assets have to be replaceable — a package
           # can fail certification after the release exists, and the fix is to
           # attach the corrected one rather than to cut a version nobody asked

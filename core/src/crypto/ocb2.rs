@@ -73,6 +73,7 @@ pub struct CryptStats {
 }
 
 /// Mumble's OCB2 cipher state, including replay/reorder tracking.
+#[derive(Clone)]
 pub struct CryptState {
     cipher: Aes128,
     raw_key: [u8; KEY_SIZE],

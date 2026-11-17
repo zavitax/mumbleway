@@ -1155,9 +1155,16 @@ class AppState extends ChangeNotifier {
         return;
       }
       // A call or a Siri request takes the session away and does not give it
-      // back. The platform side reactivates it; the meters need to know the
-      // levels they are showing went stale in the meantime.
-      AudioSessionBridge.instance.onResumed = () {
+      // back. The platform side reactivates it; the engine reopens streams
+      // stopped during the interruption when the session was rebuilt, and the
+      // meters need to know the levels they are showing went stale in the
+      // meantime.
+      AudioSessionBridge.instance.onResumed = (sessionRebuilt) {
+        if (sessionRebuilt) {
+          try {
+            audioSessionRebuilt();
+          } catch (_) {}
+        }
         for (final rt in runtimes.values) {
           rt.speakerLevels.clear();
         }

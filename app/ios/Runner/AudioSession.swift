@@ -836,8 +836,23 @@ final class AudioSession {
       // Whichever configuration was in force, not always the capturing one: a
       // phone call arriving while the rider was only listening must not hand
       // the headset back on the hands-free profile.
-      try? (capturing ? activateCapturing() : activateListening())
-      channel.invokeMethod("resumed", arguments: nil)
+      //
+      // Dispatch onto the main thread for the Flutter method channel and mark
+      // `sessionRebuilt` so the engine reopens `cpal` streams stopped during
+      // the interruption.
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.wantedActive else { return }
+        var sessionRebuilt = false
+        do {
+          try (self.capturing ? self.activateCapturing() : self.activateListening())
+          sessionRebuilt = true
+        } catch {
+          NSLog("MumbleWay: could not reactivate after interruption: \(error)")
+        }
+        self.channel.invokeMethod(
+          "resumed",
+          arguments: ["sessionRebuilt": sessionRebuilt])
+      }
     @unknown default:
       break
     }

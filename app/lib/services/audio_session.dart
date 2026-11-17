@@ -111,9 +111,9 @@ class AudioSessionBridge {
   static const _channel = MethodChannel('mumbleway/audioSession');
 
   /// Called when a phone call or a Siri request ended and the session came
-  /// back. The engine may need restarting; the platform side has already put
-  /// the session itself back.
-  VoidCallback? onResumed;
+  /// back. `sessionRebuilt` is true when the platform reactivated its audio
+  /// session so the engine knows to reopen its streams.
+  void Function(bool sessionRebuilt)? onResumed;
 
   bool _handlerInstalled = false;
 
@@ -172,7 +172,11 @@ class AudioSessionBridge {
     if (_handlerInstalled) return;
     _handlerInstalled = true;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'resumed') onResumed?.call();
+      if (call.method == 'resumed') {
+        final args = call.arguments;
+        final sessionRebuilt = args is Map && args['sessionRebuilt'] == true;
+        onResumed?.call(sessionRebuilt);
+      }
       if (call.method == 'micSilenced') {
         onMicSilenced?.call(call.arguments == true);
       }

@@ -26,6 +26,17 @@ function(apply_cargokit target manifest_dir lib_name any_symbol_name)
         set(OUTPUT_LIB "${CMAKE_CURRENT_BINARY_DIR}/${CARGOKIT_LIB_FULL_NAME}")
     endif()
     set(CARGOKIT_TEMP_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargokit_build")
+    if (WIN32 AND DEFINED ENV{LOCALAPPDATA} AND NOT "$ENV{LOCALAPPDATA}" STREQUAL "")
+        # MumbleWay: keep the cargo target dir on a short path. Under the
+        # Flutter build tree it is ~70 characters deep before cargo adds its
+        # own layers, and audiopus_sys's nested CMake compiler probe then
+        # exceeds MAX_PATH. cl.exe ignores LongPathsEnabled and fails with
+        # C1083 "Cannot open compiler generated file: ''". The hash keeps
+        # separate checkouts from sharing one target dir.
+        string(MD5 _cargokit_hash "${CMAKE_CURRENT_BINARY_DIR}")
+        string(SUBSTRING "${_cargokit_hash}" 0 8 _cargokit_hash)
+        file(TO_CMAKE_PATH "$ENV{LOCALAPPDATA}/cargokit/${_cargokit_hash}" CARGOKIT_TEMP_DIR)
+    endif()
 
     if (FLUTTER_TARGET_PLATFORM)
         set(CARGOKIT_TARGET_PLATFORM "${FLUTTER_TARGET_PLATFORM}")
@@ -33,6 +44,11 @@ function(apply_cargokit target manifest_dir lib_name any_symbol_name)
         set(CARGOKIT_TARGET_PLATFORM "windows-x64")
     endif()
 
+    # MumbleWay: libopus (vendored by audiopus_sys) declares
+    # cmake_minimum_required below 3.5, which CMake 4+ rejects.
+    # `.cargo/config.toml` sets this too (and builder.dart sets CWD to
+    # manifestDir so Cargo finds it); passing it in CARGOKIT_ENV provides
+    # belt-and-suspenders protection for CMake 4+ builds.
     set(CARGOKIT_ENV
         "CARGOKIT_CMAKE=${CMAKE_COMMAND}"
         "CARGOKIT_CONFIGURATION=$<CONFIG>"
@@ -42,6 +58,7 @@ function(apply_cargokit target manifest_dir lib_name any_symbol_name)
         "CARGOKIT_TARGET_PLATFORM=${CARGOKIT_TARGET_PLATFORM}"
         "CARGOKIT_TOOL_TEMP_DIR=${CARGOKIT_TEMP_DIR}/tool"
         "CARGOKIT_ROOT_PROJECT_DIR=${CMAKE_SOURCE_DIR}"
+        "CMAKE_POLICY_VERSION_MINIMUM=3.5"
     )
 
     if (WIN32)

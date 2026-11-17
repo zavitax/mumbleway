@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../src/rust/api/mumbleway.dart';
 import 'proxy.dart';
+import 'secret_store.dart';
 
 /// What a saved server says about reaching it.
 ///
@@ -63,6 +64,7 @@ class ServerProxies {
   static const _prefsDefault = 'mumbleway.proxyServerDefault';
   static const _prefsChain = 'mumbleway.proxyServerChain';
   static const _prefsCredentials = 'mumbleway.proxyAuth';
+  static const _secretPrefix = 'proxy:';
 
   DefaultProxyMode _mode = DefaultProxyMode.direct;
   ServerProxy? _custom;
@@ -87,7 +89,41 @@ class ServerProxies {
     };
     _custom = decodeProxy(prefs.getString(_prefsDefault));
     _chainServerProxies = prefs.getBool(_prefsChain) ?? false;
-    _credentials = _decodeCredentials(prefs.getString(_prefsCredentials));
+
+    final secrets = await SecretStore.instance.readAll();
+    final legacy = _decodeCredentials(prefs.getString(_prefsCredentials));
+    if (!SecretStore.instance.isAvailable ||
+        SecretStore.instance.lastReadFailed) {
+      _credentials = legacy;
+      return;
+    }
+
+    final fromSecrets = <String, ({String? user, String? password})>{};
+    for (final e in secrets.entries) {
+      if (!e.key.startsWith(_secretPrefix)) continue;
+      final cred = _decodeSingleCredential(e.value);
+      if (cred != null) {
+        fromSecrets[e.key.substring(_secretPrefix.length)] = cred;
+      }
+    }
+
+    // Transparently migrate any legacy plaintext proxy credentials out of
+    // SharedPreferences into the native secret store.
+    final toMigrate = <String, String>{};
+    for (final e in legacy.entries) {
+      if (fromSecrets.containsKey(e.key)) continue;
+      fromSecrets[e.key] = e.value;
+      toMigrate['$_secretPrefix${e.key}'] = _encodeSingleCredential(e.value);
+    }
+    _credentials = fromSecrets;
+
+    var migratedOk = true;
+    if (toMigrate.isNotEmpty) {
+      migratedOk = await SecretStore.instance.writeAll(toMigrate);
+    }
+    if (migratedOk && prefs.containsKey(_prefsCredentials)) {
+      await prefs.remove(_prefsCredentials);
+    }
   }
 
   Future<void> setDefault({
@@ -114,12 +150,31 @@ class ServerProxies {
   /// Keeps a proxy's username and password on this device, under its address.
   Future<void> rememberCredentials(ServerProxy proxy) async {
     final key = keyFor(proxy);
-    if ((proxy.username ?? '').isEmpty && (proxy.password ?? '').isEmpty) {
+    final empty =
+        (proxy.username ?? '').isEmpty && (proxy.password ?? '').isEmpty;
+    if (empty) {
       _credentials.remove(key);
     } else {
       _credentials[key] = (user: proxy.username, password: proxy.password);
     }
+
     final prefs = await SharedPreferences.getInstance();
+    final secretKey = '$_secretPrefix$key';
+    var secretOk = false;
+    if (!SecretStore.instance.lastReadFailed) {
+      secretOk = empty
+          ? await SecretStore.instance.deleteKeys([secretKey])
+          : await SecretStore.instance.writeAll({
+              secretKey: _encodeSingleCredential(_credentials[key]!),
+            });
+    }
+    if (secretOk && !SecretStore.instance.lastReadFailed) {
+      if (prefs.containsKey(_prefsCredentials)) {
+        await prefs.remove(_prefsCredentials);
+      }
+      return;
+    }
+
     await prefs.setString(
       _prefsCredentials,
       jsonEncode({
@@ -190,6 +245,28 @@ class ServerProxies {
   /// The key a credential is filed under: the address and nothing else.
   static String keyFor(ServerProxy proxy) =>
       '${proxy.scheme.name}://${proxy.host.toLowerCase()}:${proxy.port}';
+
+  static String _encodeSingleCredential(
+    ({String? user, String? password}) c,
+  ) => jsonEncode({'u': c.user, 'p': c.password});
+
+  static ({String? user, String? password})? _decodeSingleCredential(
+    String raw,
+  ) {
+    if (raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return (
+          user: decoded['u'] as String?,
+          password: decoded['p'] as String?,
+        );
+      }
+    } catch (_) {
+      return (user: null, password: raw);
+    }
+    return null;
+  }
 
   Map<String, ({String? user, String? password})> _decodeCredentials(String? raw) {
     if (raw == null || raw.isEmpty) return {};

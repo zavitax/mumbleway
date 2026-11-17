@@ -4,9 +4,18 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONObject
+import java.io.File
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Hosts the Flutter engine and bridges the floating overlay.
@@ -20,6 +29,8 @@ class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var buttonChannel: MethodChannel? = null
     private var logChannel: MethodChannel? = null
+    private var secretsChannel: MethodChannel? = null
+    private val secretsLock = Any()
 
     /// Puts the phone into a call and points it at the headset's microphone.
     ///
@@ -242,6 +253,91 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        // Device-local secret store backed by AndroidKeyStore AES-GCM and stored
+        // in noBackupFilesDir so credentials never land in plaintext prefs or
+        // cloud backups.
+        secretsChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "mumbleway/secrets",
+        ).also { secrets ->
+            secrets.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "readAll" -> {
+                        try {
+                            result.success(readSecretsMap())
+                        } catch (e: SecretsUnreadableException) {
+                            result.error(
+                                "keystore-unreadable",
+                                e.message ?: "Secret store could not be decrypted.",
+                                null,
+                            )
+                        } catch (e: Exception) {
+                            result.error(
+                                "keystore-unreadable",
+                                e.message ?: "Failed to read secret store.",
+                                null,
+                            )
+                        }
+                    }
+
+                    "writeAll" -> {
+                        val raw = call.arguments as? Map<*, *>
+                        if (raw == null) {
+                            result.error("args", "writeAll expects a map.", null)
+                        } else {
+                            val updates = mutableMapOf<String, String>()
+                            for ((k, v) in raw) {
+                                if (k is String && v is String) updates[k] = v
+                            }
+                            try {
+                                writeSecretsUpdates(updates)
+                                result.success(null)
+                            } catch (e: SecretsUnreadableException) {
+                                result.error(
+                                    "keystore-unreadable",
+                                    e.message ?: "Secret store could not be decrypted.",
+                                    null,
+                                )
+                            } catch (e: Exception) {
+                                result.error(
+                                    "keystore",
+                                    e.message ?: "Failed to store secrets.",
+                                    null,
+                                )
+                            }
+                        }
+                    }
+
+                    "deleteKeys" -> {
+                        val raw = call.arguments as? List<*>
+                        if (raw == null) {
+                            result.error("args", "deleteKeys expects a list of keys.", null)
+                        } else {
+                            val keys = raw.filterIsInstance<String>()
+                            try {
+                                deleteSecretKeys(keys)
+                                result.success(null)
+                            } catch (e: SecretsUnreadableException) {
+                                result.error(
+                                    "keystore-unreadable",
+                                    e.message ?: "Secret store could not be decrypted.",
+                                    null,
+                                )
+                            } catch (e: Exception) {
+                                result.error(
+                                    "keystore",
+                                    e.message ?: "Failed to update secrets.",
+                                    null,
+                                )
+                            }
+                        }
+                    }
+
+                    else -> result.notImplemented()
+                }
             }
         }
 
@@ -483,6 +579,7 @@ class MainActivity : FlutterActivity() {
         channel?.setMethodCallHandler(null)
         buttonChannel?.setMethodCallHandler(null)
         logChannel?.setMethodCallHandler(null)
+        secretsChannel?.setMethodCallHandler(null)
         super.onDestroy()
         if (isFinishing) {
             // The same ending as the recents swipe, and for the same reasons —
@@ -749,11 +846,139 @@ class MainActivity : FlutterActivity() {
         if (overlayWanted) showOverlayWindow()
     }
 
+    private fun getOrCreateSecretKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        val existing = keyStore.getKey(SECRETS_KEY_ALIAS, null) as? SecretKey
+        if (existing != null) return existing
+
+        val generator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            ANDROID_KEYSTORE,
+        )
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                SECRETS_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build(),
+        )
+        return generator.generateKey()
+    }
+
+    private class SecretsUnreadableException(
+        message: String,
+        cause: Throwable? = null,
+    ) : Exception(message, cause)
+
+    private fun readSecretsMap(): MutableMap<String, String> {
+        synchronized(secretsLock) {
+            val file = File(noBackupFilesDir, SECRETS_FILE)
+            if (!file.exists()) return mutableMapOf()
+            return try {
+                val bytes = file.readBytes()
+                if (bytes.size <= GCM_IV_BYTES) {
+                    throw SecretsUnreadableException(
+                        "Encrypted secret store is empty or truncated.",
+                    )
+                }
+
+                val iv = bytes.copyOfRange(0, GCM_IV_BYTES)
+                val ciphertext = bytes.copyOfRange(GCM_IV_BYTES, bytes.size)
+                val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+                val key = keyStore.getKey(SECRETS_KEY_ALIAS, null) as? SecretKey
+                    ?: throw SecretsUnreadableException(
+                        "AndroidKeyStore key is missing for existing secret store.",
+                    )
+
+                val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+                cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+                val plain = cipher.doFinal(ciphertext)
+                val json = JSONObject(String(plain, Charsets.UTF_8))
+                val out = mutableMapOf<String, String>()
+                for (k in json.keys()) {
+                    val v = json.opt(k)
+                    if (v is String) out[k] = v
+                }
+                out
+            } catch (e: SecretsUnreadableException) {
+                throw e
+            } catch (e: Exception) {
+                throw SecretsUnreadableException(
+                    e.message ?: "Failed to decrypt secret store.",
+                    e,
+                )
+            }
+        }
+    }
+
+    private fun writeSecretsUpdates(updates: Map<String, String>) {
+        synchronized(secretsLock) {
+            val current = readSecretsMap()
+            if (updates.isEmpty()) return
+            current.putAll(updates)
+            writeSecretsFile(current)
+        }
+    }
+
+    private fun deleteSecretKeys(keys: List<String>) {
+        synchronized(secretsLock) {
+            val current = readSecretsMap()
+            if (keys.isEmpty()) return
+            var changed = false
+            for (k in keys) {
+                if (current.remove(k) != null) changed = true
+            }
+            if (!changed) return
+            if (current.isEmpty()) {
+                File(noBackupFilesDir, SECRETS_FILE).delete()
+                return
+            }
+            writeSecretsFile(current)
+        }
+    }
+
+    private fun writeSecretsFile(map: Map<String, String>) {
+        val obj = JSONObject()
+        for ((k, v) in map) {
+            obj.put(k, v)
+        }
+        val plain = obj.toString().toByteArray(Charsets.UTF_8)
+        val cipher = Cipher.getInstance(AES_GCM_TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
+        val iv = cipher.iv
+        if (iv.size != GCM_IV_BYTES) {
+            throw IllegalStateException("Unexpected GCM IV length: ${iv.size}")
+        }
+        val ciphertext = cipher.doFinal(plain)
+        val payload = ByteArray(iv.size + ciphertext.size)
+        System.arraycopy(iv, 0, payload, 0, iv.size)
+        System.arraycopy(ciphertext, 0, payload, iv.size, ciphertext.size)
+
+        val dir = noBackupFilesDir
+        if (!dir.exists()) dir.mkdirs()
+        val target = File(dir, SECRETS_FILE)
+        val tmp = File(dir, "$SECRETS_FILE.tmp")
+        tmp.writeBytes(payload)
+        if (!tmp.renameTo(target)) {
+            target.writeBytes(payload)
+            tmp.delete()
+        }
+    }
+
     private companion object {
         /// Short, because logcat truncates a tag past 23 characters on older
         /// releases and a truncated tag cannot be filtered on.
         const val LOG_TAG = "MumbleWay"
         const val MIC_REQUEST = 4712
+        const val SECRETS_KEY_ALIAS = "mumbleway_secrets_v1"
+        const val SECRETS_FILE = "secrets.enc"
+        const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val AES_GCM_TRANSFORMATION = "AES/GCM/NoPadding"
+        const val GCM_IV_BYTES = 12
+        const val GCM_TAG_BITS = 128
 
         /// Host and path of an https invitation. **Must agree with the
         /// `autoVerify` intent-filter in AndroidManifest.xml and with

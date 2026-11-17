@@ -44,16 +44,23 @@ final class CloudStore {
   private static let maxPayloadBytes = 900_000
 
   private let channel: FlutterMethodChannel
+  private let secretsChannel: FlutterMethodChannel
   private let store = NSUbiquitousKeyValueStore.default
   private let service: String
+  private let localSecretsService: String
 
   init(messenger: FlutterBinaryMessenger) {
     channel = FlutterMethodChannel(name: "mumbleway/cloud", binaryMessenger: messenger)
+    secretsChannel = FlutterMethodChannel(name: "mumbleway/secrets", binaryMessenger: messenger)
     let bundle = Bundle.main.bundleIdentifier ?? "com.mumbleway.mumbleway"
     service = "\(bundle).servers"
+    localSecretsService = "\(bundle).local_secrets"
 
     channel.setMethodCallHandler { [weak self] call, result in
       self?.handle(call, result) ?? result(nil)
+    }
+    secretsChannel.setMethodCallHandler { [weak self] call, result in
+      self?.handleSecrets(call, result) ?? result(nil)
     }
 
     NotificationCenter.default.addObserver(
@@ -242,5 +249,173 @@ final class CloudStore {
       else { continue }
       SecItemDelete(baseQuery(account: account) as CFDictionary)
     }
+  }
+
+  // MARK: - Device-local secrets
+
+  private enum LocalSecretsError: Error {
+    case readFailed(OSStatus)
+    case unexpectedPayload
+  }
+
+  private func handleSecrets(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+    switch call.method {
+    case "readAll":
+      do {
+        result(try readLocalSecrets())
+      } catch LocalSecretsError.readFailed(let status) {
+        result(
+          FlutterError(
+            code: "keychain-unreadable",
+            message: "Keychain read failed (\(status)).",
+            details: nil))
+      } catch {
+        result(
+          FlutterError(
+            code: "keychain-unreadable",
+            message: "Keychain returned an unexpected payload.",
+            details: nil))
+      }
+
+    case "writeAll":
+      guard let entries = call.arguments as? [String: String] else {
+        result(
+          FlutterError(
+            code: "bad-args", message: "writeAll expects a string map.", details: nil))
+        return
+      }
+      for (key, value) in entries {
+        let status = saveLocalSecret(value, for: key)
+        if status != errSecSuccess {
+          result(
+            FlutterError(
+              code: "keychain",
+              message: "Keychain write failed (\(status)).",
+              details: nil))
+          return
+        }
+      }
+      result(nil)
+
+    case "deleteKeys":
+      guard let keys = call.arguments as? [String] else {
+        result(
+          FlutterError(
+            code: "bad-args", message: "deleteKeys expects a key list.", details: nil))
+        return
+      }
+      for key in keys {
+        let status = deleteLocalSecret(for: key)
+        if status != errSecSuccess && status != errSecItemNotFound {
+          result(
+            FlutterError(
+              code: "keychain",
+              message: "Keychain delete failed (\(status)).",
+              details: nil))
+          return
+        }
+      }
+      result(nil)
+
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func localBaseQuery(account: String? = nil, useDataProtection: Bool = true) -> [String: Any] {
+    var q: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: localSecretsService,
+    ]
+    if let account {
+      q[kSecAttrAccount as String] = account
+    }
+    #if os(macOS)
+      if useDataProtection {
+        q[kSecAttrSynchronizable as String] = kCFBooleanFalse!
+        q[kSecUseDataProtectionKeychain as String] = true
+      }
+    #else
+      q[kSecAttrSynchronizable as String] = kCFBooleanFalse!
+    #endif
+    return q
+  }
+
+  private func readLocalSecrets() throws -> [String: String] {
+    var query = localBaseQuery()
+    query[kSecMatchLimit as String] = kSecMatchLimitAll
+    query[kSecReturnAttributes as String] = true
+    query[kSecReturnData as String] = true
+
+    var out: CFTypeRef?
+    var status = SecItemCopyMatching(query as CFDictionary, &out)
+    #if os(macOS)
+      if status == errSecMissingEntitlement {
+        var legacy = localBaseQuery(useDataProtection: false)
+        legacy[kSecMatchLimit as String] = kSecMatchLimitAll
+        legacy[kSecReturnAttributes as String] = true
+        legacy[kSecReturnData as String] = true
+        out = nil
+        status = SecItemCopyMatching(legacy as CFDictionary, &out)
+      }
+    #endif
+    if status == errSecItemNotFound {
+      return [:]
+    }
+    guard status == errSecSuccess else {
+      throw LocalSecretsError.readFailed(status)
+    }
+    guard let items = out as? [[String: Any]] else {
+      throw LocalSecretsError.unexpectedPayload
+    }
+
+    var secrets: [String: String] = [:]
+    for item in items {
+      guard let account = item[kSecAttrAccount as String] as? String,
+        let data = item[kSecValueData as String] as? Data,
+        let value = String(data: data, encoding: .utf8)
+      else { continue }
+      secrets[account] = value
+    }
+    return secrets
+  }
+
+  private func saveLocalSecret(_ value: String, for account: String) -> OSStatus {
+    let data = Data(value.utf8)
+    let status = saveLocalSecret(data, for: account, useDataProtection: true)
+    #if os(macOS)
+      if status == errSecMissingEntitlement {
+        return saveLocalSecret(data, for: account, useDataProtection: false)
+      }
+    #endif
+    return status
+  }
+
+  private func saveLocalSecret(
+    _ data: Data,
+    for account: String,
+    useDataProtection: Bool
+  ) -> OSStatus {
+    let query = localBaseQuery(account: account, useDataProtection: useDataProtection)
+    let updated = SecItemUpdate(
+      query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+    if updated != errSecItemNotFound { return updated }
+
+    var insert = query
+    insert[kSecValueData as String] = data
+    if useDataProtection {
+      insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    }
+    return SecItemAdd(insert as CFDictionary, nil)
+  }
+
+  private func deleteLocalSecret(for account: String) -> OSStatus {
+    let status = SecItemDelete(localBaseQuery(account: account) as CFDictionary)
+    #if os(macOS)
+      if status == errSecMissingEntitlement {
+        return SecItemDelete(localBaseQuery(account: account, useDataProtection: false) as CFDictionary)
+      }
+    #endif
+    return status
   }
 }

@@ -305,6 +305,16 @@ class MainActivity : FlutterActivity() {
             "mumbleway/buttons",
         )
         buttonChannel = buttons
+        buttons.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "captureMediaButtons" -> {
+                    val want = call.arguments as? Boolean ?: false
+                    OverlayService.setMediaListening(want)
+                    result.success(if (want) "listening" else "idle")
+                }
+                else -> result.notImplemented()
+            }
+        }
         OverlayService.onMediaButton = { keyCode, pressed ->
             runOnUiThread {
                 buttons.invokeMethod(

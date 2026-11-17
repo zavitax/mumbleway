@@ -194,13 +194,27 @@ impl Paydown {
     /// current block through instead would defeat the delay on exactly the
     /// first word after the mode was chosen, which is the one a rider notices.
     pub fn shift(&mut self, block: &mut [f32]) -> bool {
+        self.shift_with_speech(block, true)
+    }
+
+    /// Replaces `block` with older audio, repaying debt only while `speaking`.
+    ///
+    /// During silence (`!speaking`), compression stops and the ring holds
+    /// samples back until it refills to `fill_target()` so the next utterance
+    /// starts with the full look-ahead cushion.
+    pub fn shift_with_speech(&mut self, block: &mut [f32], speaking: bool) -> bool {
         self.ring.extend(block.iter().copied());
 
         if !self.primed {
             if self.ring.len() < self.fill_target() + block.len() {
+                self.comp.reset();
                 return false;
             }
             self.primed = true;
+        }
+        if !speaking && self.ring.len() < self.fill_target() + block.len() {
+            self.comp.reset();
+            return false;
         }
         if self.ring.len() < block.len() {
             return false;
@@ -208,7 +222,7 @@ impl Paydown {
 
         // Repay, on the oldest audio in the ring — which is the audio about to
         // be emitted, and the only audio it would be correct to shorten.
-        if self.enabled && self.ring.len() > FLOOR_SAMPLES + block.len() {
+        if speaking && self.enabled && self.ring.len() > FLOOR_SAMPLES + block.len() {
             let n = block.len();
             self.scratch.clear();
             for _ in 0..n {
@@ -364,6 +378,107 @@ mod tests {
         assert!(
             !p.shift(&mut b),
             "it emitted before re-filling after a clear"
+        );
+    }
+
+    #[test]
+    fn startup_silence_holds_full_lookahead_without_draining() {
+        let mut p = Paydown::new();
+        let prime_blocks = LOOKAHEAD_SAMPLES / BLOCK;
+        for i in 0..100 {
+            let mut b = vec![0.0f32; BLOCK];
+            let ready = p.shift_with_speech(&mut b, false);
+            assert_eq!(ready, i >= prime_blocks, "block {i} readiness mismatch");
+        }
+        assert_eq!(
+            p.held_samples(),
+            LOOKAHEAD_SAMPLES,
+            "startup silence should hold the full {LOOKAHEAD_MS} ms look-ahead"
+        );
+    }
+
+    #[test]
+    fn silence_between_utterances_refills_lookahead_and_next_speech_repays() {
+        let mut p = Paydown::new();
+        let mut at = 0;
+
+        // Prime with initial silence; delay holds at 240 ms.
+        for _ in 0..(LOOKAHEAD_SAMPLES / BLOCK + 4) {
+            let mut b = vec![0.0f32; BLOCK];
+            p.shift_with_speech(&mut b, false);
+        }
+        assert_eq!(p.held_samples(), LOOKAHEAD_SAMPLES);
+
+        // First utterance compresses down to the floor.
+        for _ in 0..300 {
+            let mut b = voiced(at);
+            at += BLOCK;
+            assert!(p.shift_with_speech(&mut b, true));
+        }
+        let after_first = p.held_ms();
+        assert!(
+            after_first <= FLOOR_MS as u32 + 20 && after_first + 20 >= FLOOR_MS as u32,
+            "first utterance should repay to ~{FLOOR_MS} ms, got {after_first} ms"
+        );
+
+        // Silence between utterances refills back up to >= 240 ms.
+        let mut held_during_refill = false;
+        let mut resumed_after_refill = false;
+        for _ in 0..20 {
+            let mut b = vec![0.0f32; BLOCK];
+            if p.shift_with_speech(&mut b, false) {
+                resumed_after_refill = true;
+            } else {
+                held_during_refill = true;
+            }
+        }
+        assert!(held_during_refill, "ring never held blocks to refill");
+        assert!(resumed_after_refill, "ring never resumed after refilling");
+        assert!(
+            p.held_samples() >= LOOKAHEAD_SAMPLES,
+            "silence did not refill to {LOOKAHEAD_MS} ms: held {} samples",
+            p.held_samples()
+        );
+
+        // Second utterance starts with the full 240 ms cushion and repays again.
+        let mut first_block = voiced(at);
+        at += BLOCK;
+        assert!(p.shift_with_speech(&mut first_block, true));
+        for _ in 1..300 {
+            let mut b = voiced(at);
+            at += BLOCK;
+            assert!(p.shift_with_speech(&mut b, true));
+        }
+        let after_second = p.held_ms();
+        assert!(
+            after_second <= FLOOR_MS as u32 + 20 && after_second + 20 >= FLOOR_MS as u32,
+            "second utterance should repay to ~{FLOOR_MS} ms, got {after_second} ms"
+        );
+    }
+
+    #[test]
+    fn speech_mid_refill_resumes_immediately_without_stalling() {
+        let mut p = Paydown::new();
+        let mut at = 0;
+
+        for _ in 0..300 {
+            let mut b = voiced(at);
+            at += BLOCK;
+            p.shift_with_speech(&mut b, true);
+        }
+        assert!(p.held_samples() < LOOKAHEAD_SAMPLES);
+
+        // Two silent blocks begin refilling (40 ms is needed; 20 ms is partial).
+        let mut b1 = vec![0.0f32; BLOCK];
+        let mut b2 = vec![0.0f32; BLOCK];
+        assert!(!p.shift_with_speech(&mut b1, false));
+        assert!(!p.shift_with_speech(&mut b2, false));
+
+        // Speech resuming mid-refill must emit immediately with what is buffered.
+        let mut next = voiced(at);
+        assert!(
+            p.shift_with_speech(&mut next, true),
+            "speech resuming mid-refill stalled instead of emitting"
         );
     }
 }

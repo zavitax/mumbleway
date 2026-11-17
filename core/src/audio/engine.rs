@@ -4241,11 +4241,26 @@ where
             // Only in voice-activated mode. The other two modes have no
             // threshold to be late for, and delaying them would buy nothing
             // and cost 80 ms of every conversation.
+            let muted = shared.is_muted();
+            if muted {
+                // Mute is immediate and absolute. Fading out of it would send
+                // the tail of whatever the rider muted themselves to stop
+                // sending, which is the one thing mute must never do.
+                hold_left = 0;
+                fade_left = 0;
+            }
             let mut priming = false;
             if mode == TransmitMode::VoiceActivity {
-                priming = !onset_delay.shift(&mut block);
-            } else if !onset_delay.is_empty() {
-                onset_delay.clear();
+                // Keep advancing while speech or its hangover/fade is active so
+                // the tail plays out untouched; refill toward 240 ms once shut.
+                let gate_active = !muted && (open || hold_left > 0 || fade_left > 0);
+                priming = !onset_delay.shift_with_speech(&mut block, gate_active);
+            } else {
+                hold_left = 0;
+                fade_left = 0;
+                if !onset_delay.is_empty() {
+                    onset_delay.clear();
+                }
             }
             // What the delay line is actually holding right now, which is no
             // longer a constant — the pay-down drains it from 240 ms towards
@@ -4254,13 +4269,9 @@ where
             let held_samples = onset_delay.held_samples();
 
             let allowed = if priming {
+                block.fill(0.0);
                 false
-            } else if shared.is_muted() {
-                // Mute is immediate and absolute. Fading out of it would send
-                // the tail of whatever the rider muted themselves to stop
-                // sending, which is the one thing mute must never do.
-                hold_left = 0;
-                fade_left = 0;
+            } else if muted {
                 false
             } else if mode == TransmitMode::VoiceActivity {
                 // Voice activation cuts on a threshold, and a threshold lands

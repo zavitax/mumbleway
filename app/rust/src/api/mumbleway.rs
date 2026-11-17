@@ -18,7 +18,7 @@ use mumbleway_core::audio::engine::{
     AudioConfig, AudioCue, AudioEngine, AudioShared, TransmitMode,
 };
 use mumbleway_core::audio::feedback::FeedbackMode;
-use mumbleway_core::audio::{NoiseProfile, Quality};
+use mumbleway_core::audio::{BitrateMode, MultiLinkTracker, NoiseProfile, Quality};
 use mumbleway_core::diag::{self, LogEntry, LogLevel};
 use mumbleway_core::net::tls::Identity;
 use mumbleway_core::session::manager::{SessionManager, TaggedEvent};
@@ -975,6 +975,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         },
     )?;
     let shared = audio.shared();
+    shared.set_bitrate_mode(BitrateMode::Auto);
 
     // Aggregate every session's events onto the Dart stream.
     let (ev_tx, mut ev_rx) = mpsc::channel::<TaggedEvent>(512);
@@ -1009,6 +1010,12 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     // `audio::bandwidth::tightest`.
     let bandwidth_caps: Mutex<HashMap<String, u32>> = Mutex::new(HashMap::new());
     let bandwidth_shared = shared.clone();
+    // Which session is ours on each server, and what each server's figures say
+    // about our own outgoing link. "Auto" bitrate takes evidence from all of
+    // them, so the worst link decides, for the same reason the cap is the
+    // tightest — see `audio::adaptive`.
+    let mut own_sessions: HashMap<String, u32> = HashMap::new();
+    let mut own_links = MultiLinkTracker::default();
 
     rt.spawn(async move {
         // Owned by this task, which is the only place either kind of mute cue
@@ -1040,6 +1047,8 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                             )
                         };
                         bandwidth_shared.set_bandwidth_cap(tightest.unwrap_or(0));
+                        own_sessions.remove(&server_id);
+                        own_links.remove(&server_id);
                     }
 
                     let previous = status_tracker.lock().insert(server_id, u.status);
@@ -1049,42 +1058,65 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
 
                     emit(AppEvent::Status(u));
                 }
-                SessionEvent::Users(users) => emit(AppEvent::Users {
-                    server_id,
-                    users: users
-                        .into_iter()
-                        .map(|u| {
-                            // Derive the label before moving any fields out.
-                            let status = u.status_label().to_string();
-                            UiUser {
-                                session: u.session,
-                                name: u.name,
-                                channel_id: u.channel_id,
-                                talking: u.talking,
-                                muted: u.mute,
-                                deafened: u.deaf,
-                                self_muted: u.self_mute,
-                                self_deafened: u.self_deaf,
-                                local_mute: u.local_mute,
-                                user_id: u.user_id,
-                                muted_you: u.muted_you,
-                                status,
-                                mumbleway_version: u.mumbleway,
-                                priority_speaker: u.priority_speaker,
-                                suppressed: u.suppress,
-                                comment: u.comment,
-                                quality: u.quality.map(|q| UiQuality {
-                                    ping_ms: q.ping_ms,
-                                    udp: q.udp,
-                                    loss_up: q.loss_up,
-                                    loss_down: q.loss_down,
-                                    window_secs: q.window_secs,
-                                    idle_secs: q.idle_secs,
-                                }),
-                            }
-                        })
-                        .collect(),
-                }),
+                SessionEvent::Users(users) => {
+                    // The server counts our own packets like everybody else's;
+                    // that is the one figure about our *outgoing* voice. The
+                    // tracker turns the counts since connecting into the loss
+                    // of the last few seconds — the rolling ratio on the row is
+                    // five minutes long and would hold "Auto" down for all of it.
+                    let own = own_sessions.get(&server_id).copied();
+                    if let Some(q) = users
+                        .iter()
+                        .find(|u| Some(u.session) == own)
+                        .and_then(|u| u.quality)
+                    {
+                        let t = q.up_total;
+                        if let Some(report) = own_links.on_totals(
+                            &server_id,
+                            now(),
+                            t.good.saturating_add(t.late),
+                            t.lost,
+                        ) {
+                            bandwidth_shared.report_link(report);
+                        }
+                    }
+                    emit(AppEvent::Users {
+                        server_id,
+                        users: users
+                            .into_iter()
+                            .map(|u| {
+                                // Derive the label before moving any fields out.
+                                let status = u.status_label().to_string();
+                                UiUser {
+                                    session: u.session,
+                                    name: u.name,
+                                    channel_id: u.channel_id,
+                                    talking: u.talking,
+                                    muted: u.mute,
+                                    deafened: u.deaf,
+                                    self_muted: u.self_mute,
+                                    self_deafened: u.self_deaf,
+                                    local_mute: u.local_mute,
+                                    user_id: u.user_id,
+                                    muted_you: u.muted_you,
+                                    status,
+                                    mumbleway_version: u.mumbleway,
+                                    priority_speaker: u.priority_speaker,
+                                    suppressed: u.suppress,
+                                    comment: u.comment,
+                                    quality: u.quality.map(|q| UiQuality {
+                                        ping_ms: q.ping_ms,
+                                        udp: q.udp,
+                                        loss_up: q.loss_up,
+                                        loss_down: q.loss_down,
+                                        window_secs: q.window_secs,
+                                        idle_secs: q.idle_secs,
+                                    }),
+                                }
+                            })
+                            .collect(),
+                    });
+                }
                 SessionEvent::Channels(chans) => emit(AppEvent::Channels {
                     server_id,
                     channels: chans
@@ -1109,15 +1141,30 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                     reason,
                     kind,
                 }),
-                SessionEvent::Stats(s) => emit(AppEvent::Stats(UiStats {
-                    server_id,
-                    tcp_ping_ms: s.tcp_ping_ms,
-                    udp_ping_ms: s.udp_ping_ms,
-                    transport: match s.transport {
-                        Some(TransportStat::Udp) => "udp".to_string(),
-                        _ => "tcp".to_string(),
-                    },
-                })),
+                SessionEvent::Stats(s) => {
+                    // Our latest round trip, for "Auto"'s queueing delay. Not
+                    // the ping on our own roster row: that is the mean over the
+                    // whole session, and barely moves for a bad minute.
+                    let tunnelled = matches!(s.transport, Some(TransportStat::TcpTunnel));
+                    if let Some(report) = own_links.on_stats(
+                        &server_id,
+                        now(),
+                        s.udp_ping_ms,
+                        s.udp_pings,
+                        tunnelled,
+                    ) {
+                        bandwidth_shared.report_link(report);
+                    }
+                    emit(AppEvent::Stats(UiStats {
+                        server_id,
+                        tcp_ping_ms: s.tcp_ping_ms,
+                        udp_ping_ms: s.udp_ping_ms,
+                        transport: match s.transport {
+                            Some(TransportStat::Udp) => "udp".to_string(),
+                            _ => "tcp".to_string(),
+                        },
+                    }));
+                }
                 SessionEvent::TransportChanged(t) => emit(AppEvent::Stats(UiStats {
                     server_id,
                     tcp_ping_ms: 0.0,
@@ -1137,6 +1184,8 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 }),
                 SessionEvent::Welcome(text) => emit(AppEvent::Welcome { server_id, text }),
                 SessionEvent::SelfSession(session) => {
+                    own_sessions.insert(server_id.clone(), session);
+                    own_links.remove(&server_id);
                     emit(AppEvent::SelfSession { server_id, session })
                 }
                 SessionEvent::SelfSuppressed(suppressed) => {
@@ -3403,6 +3452,43 @@ pub fn jitter_buffer_bounds_ms() -> (u32, u32, u32) {
         (mumbleway_core::audio::MAX_TARGET_FRAMES * 20) as u32,
         20,
     )
+}
+
+/// Sets the voice bitrate: `0` for "Auto", which follows our own link as the
+/// server measures it, or a fixed number of bits per second, snapped to the
+/// range [`voice_bitrate_bounds_bps`] reports. A server's bandwidth allowance
+/// still applies on top of either.
+#[frb(sync)]
+pub fn set_voice_bitrate(bps: u32) -> anyhow::Result<()> {
+    let mode = if bps == 0 {
+        BitrateMode::Auto
+    } else {
+        BitrateMode::fixed(bps)
+    };
+    app()?.shared.set_bitrate_mode(mode);
+    Ok(())
+}
+
+/// The voice bitrate setting: `0` for "Auto", otherwise the fixed rate.
+#[frb(sync)]
+pub fn voice_bitrate_setting() -> anyhow::Result<u32> {
+    Ok(match app()?.shared.bitrate_mode() {
+        BitrateMode::Auto => 0,
+        BitrateMode::Fixed(bps) => bps,
+    })
+}
+
+/// What the encoder is sending right now, after "Auto" and any server cap.
+#[frb(sync)]
+pub fn voice_bitrate_now_bps() -> anyhow::Result<u32> {
+    Ok(app()?.shared.encoder_bitrate_bps())
+}
+
+/// The range a fixed bitrate may take, as `(minimum, maximum, step)` in bit/s.
+#[frb(sync)]
+pub fn voice_bitrate_bounds_bps() -> (u32, u32, u32) {
+    use mumbleway_core::audio::adaptive::{FIXED_MAX_BPS, FIXED_MIN_BPS, FIXED_STEP_BPS};
+    (FIXED_MIN_BPS, FIXED_MAX_BPS, FIXED_STEP_BPS)
 }
 
 /// Acoustic echo cancellation, applied to the microphone before anything else.

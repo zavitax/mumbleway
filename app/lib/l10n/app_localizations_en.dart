@@ -929,6 +929,21 @@ class LEn extends L {
       'How much of what others say is held back before it is played. More buffer rides out a patchy signal without gaps; less means you hear them sooner. MumbleWay adds to it by itself when a link starts losing packets, and comes back down to this. Raise it if the playback gaps counter in Diagnostics keeps climbing.';
 
   @override
+  String get voiceBitrate => 'Voice bitrate';
+
+  @override
+  String get voiceBitrateAuto => 'Choose automatically';
+
+  @override
+  String voiceBitrateAutoNow(int kbps) {
+    return 'Auto, now $kbps kbit/s';
+  }
+
+  @override
+  String get voiceBitrateBody =>
+      'How many bits a second your voice is sent with. Automatic starts at 32 kbit/s, climbs to 48 on a clean link and steps down when the server reports your packets going missing, the round trip growing, or voice falling back to TCP. A higher bitrate is a clearer voice and more mobile data: about 17 MB per hour of talking at 24 kbit/s, 27 MB at 48. The server\'s own limit always applies on top.';
+
+  @override
   String milliseconds(int ms) {
     return '$ms ms';
   }

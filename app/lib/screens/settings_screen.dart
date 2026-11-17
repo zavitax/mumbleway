@@ -406,6 +406,7 @@ class _DeviceSection extends StatelessWidget {
         const _SimpleModelTile(),
         const _NormaliseTile(),
         const _JitterBufferTile(),
+        const _VoiceBitrateTile(),
         const _ReverbTile(),
         const _TestOutputTile(),
       ],
@@ -811,6 +812,118 @@ class _NormaliseTile extends StatelessWidget {
         isThreeLine: true,
         value: state.normaliseLevels,
         onChanged: (v) => state.setNormaliseLevels(value: v),
+      );
+    });
+  }
+}
+
+/// The voice bitrate: "Auto", or a fixed rate on a slider.
+///
+/// "Auto" shows the rate in force right now, polled from the engine, because a
+/// setting that moves by itself and does not say where it went is one a rider
+/// cannot judge. The server's own allowance applies on top of either, which the
+/// diagnostics panel already reports when it bites.
+class _VoiceBitrateTile extends StatefulWidget {
+  const _VoiceBitrateTile();
+
+  @override
+  State<_VoiceBitrateTile> createState() => _VoiceBitrateTileState();
+}
+
+class _VoiceBitrateTileState extends State<_VoiceBitrateTile> {
+  Timer? _poll;
+  int? _nowBps;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+    _poll = Timer.periodic(const Duration(seconds: 2), (_) => _read());
+  }
+
+  void _read() {
+    int? bps;
+    try {
+      bps = voiceBitrateNowBps();
+    } catch (_) {
+      // No engine, as in a widget test: say nothing rather than a guess.
+    }
+    if (bps != _nowBps && mounted) setState(() => _nowBps = bps);
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Watch<int>((state) => state.voiceBitrateBps, (context, state) {
+      final l = L.of(context);
+      final (lo, hi, step) = AppState.bitrateBounds;
+      final auto = state.voiceBitrateBps == 0;
+      final fixed =
+          (auto ? AppState.defaultFixedBitrateBps : state.voiceBitrateBps)
+              .clamp(lo, hi)
+              .toDouble();
+      final now = _nowBps;
+      final label = auto
+          ? (now != null && now > 0
+                ? l.voiceBitrateAutoNow((now / 1000).round())
+                : l.voiceBitrateAuto)
+          : l.diagKbps((fixed / 1000).round());
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.graphic_eq, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    l.voiceBitrate,
+                    style: const TextStyle(fontSize: 15),
+                  ),
+                ),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(l.voiceBitrateAuto),
+              value: auto,
+              onChanged: (on) => state.setVoiceBitrateSetting(
+                bps: on ? 0 : AppState.defaultFixedBitrateBps,
+              ),
+            ),
+            if (!auto)
+              Slider(
+                value: fixed,
+                min: lo.toDouble(),
+                max: hi.toDouble(),
+                divisions: (hi - lo) ~/ step,
+                onChanged: (v) => state.setVoiceBitrateSetting(bps: v.round()),
+              ),
+            Text(
+              l.voiceBitrateBody,
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+        ),
       );
     });
   }

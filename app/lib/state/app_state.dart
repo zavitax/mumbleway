@@ -615,6 +615,7 @@ class AppState extends ChangeNotifier {
   static const _prefsEchoCancellation = 'mumbleway.echoCancellation';
   static const _prefsNormaliseLevels = 'mumbleway.normaliseLevels';
   static const _prefsJitterBuffer = 'mumbleway.jitterBufferMs';
+  static const _prefsVoiceBitrate = 'mumbleway.voiceBitrateBps';
   static const _prefsNamesRepaired = 'mumbleway.namesRepaired';
   static const _prefsReverb = 'mumbleway.reverb';
   static const _prefsVoiceCommunication = 'mumbleway.voiceCommunication';
@@ -1337,6 +1338,9 @@ class AppState extends ChangeNotifier {
     if (prefs.getInt(_prefsJitterBuffer) case final v?) {
       jitterBufferMs = _clampJitter(v);
     }
+    if (prefs.getInt(_prefsVoiceBitrate) case final v?) {
+      voiceBitrateBps = _clampBitrate(v);
+    }
     reverb = prefs.getBool(_prefsReverb) ?? true;
     // On by default; see the field. A rider who has already chosen keeps
     // their choice — this only decides what a fresh install starts with.
@@ -1400,6 +1404,7 @@ class AppState extends ChangeNotifier {
     setEchoCancellation(on_: echoCancellation);
     setLevelNormalisation(on_: normaliseLevels);
     setJitterBufferMs(ms: jitterBufferMs);
+    setVoiceBitrate(bps: voiceBitrateBps);
     setReverb(on_: reverb);
     setFeedbackGuard(mode: feedbackGuard);
     setDehiss(mode: dehiss);
@@ -1899,6 +1904,7 @@ class AppState extends ChangeNotifier {
     'echoCancellation': echoCancellation,
     'normaliseLevels': normaliseLevels,
     'jitterBufferMs': jitterBufferMs,
+    'voiceBitrateBps': voiceBitrateBps,
     'reverb': reverb,
     'feedbackGuard': feedbackGuard.index,
     'dehiss': dehiss.index,
@@ -1997,6 +2003,12 @@ class AppState extends ChangeNotifier {
         when _clampJitter(v) != jitterBufferMs) {
       jitterBufferMs = _clampJitter(v);
       await prefs.setInt(_prefsJitterBuffer, jitterBufferMs);
+      audioChanged = true;
+    }
+    if (read<int>('voiceBitrateBps') case final v?
+        when _clampBitrate(v) != voiceBitrateBps) {
+      voiceBitrateBps = _clampBitrate(v);
+      await prefs.setInt(_prefsVoiceBitrate, voiceBitrateBps);
       audioChanged = true;
     }
     if (read<bool>('reverb') case final v? when v != reverb) {
@@ -4359,6 +4371,46 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefsJitterBuffer, value);
+  }
+
+  /// The range a fixed voice bitrate may take, in bit/s, as
+  /// `(minimum, maximum, step)`. Asked of the engine, with the same constants
+  /// as a fallback for widget tests that never start it — see [jitterBounds].
+  static final (int, int, int) bitrateBounds = () {
+    try {
+      return voiceBitrateBoundsBps();
+    } catch (_) {
+      return (8000, 128000, 4000);
+    }
+  }();
+
+  /// The voice bitrate setting: `0` for "Auto", which follows how the server
+  /// measures our own link, otherwise a fixed rate in bit/s. The server's
+  /// bandwidth allowance applies on top of either.
+  int voiceBitrateBps = 0;
+
+  /// What a fixed setting starts from when a rider leaves "Auto".
+  static const int defaultFixedBitrateBps = 32000;
+
+  static int _clampBitrate(int bps) {
+    if (bps <= 0) return 0;
+    final (lo, hi, step) = bitrateBounds;
+    final clamped = bps.clamp(lo, hi);
+    return lo + ((clamped - lo + step ~/ 2) ~/ step) * step;
+  }
+
+  Future<void> setVoiceBitrateSetting({required int bps}) async {
+    final value = _clampBitrate(bps);
+    if (value == voiceBitrateBps) return;
+    voiceBitrateBps = value;
+    try {
+      setVoiceBitrate(bps: value);
+    } catch (_) {
+      // No engine yet: the value is saved and _applyAudioSettings sends it.
+    }
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_prefsVoiceBitrate, value);
   }
 
   Future<void> setEchoCancellationEnabled({required bool value}) async {

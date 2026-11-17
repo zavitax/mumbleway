@@ -30,9 +30,9 @@ the copy is inert until something asks.
 
 ## What it costs, and why it is behind a feature
 
-`AAudioStreamBuilder_setInputPreset` arrived in **API 28** and `ndk` gates it
-behind `api-level-28`, where cpal asks for `api-level-26`. Checked against the
-NDK's own stubs rather than assumed:
+`AAudioStreamBuilder_setInputPreset` and `AAudioStream_getInputPreset` arrived in
+**API 28** and `ndk` gates both behind `api-level-28`, where cpal asks for
+`api-level-26`. Checked against the NDK's own stubs rather than assumed:
 
 | stub | `AAudioStreamBuilder_setInputPreset` |
 |---|---|
@@ -41,13 +41,17 @@ NDK's own stubs rather than assumed:
 | API 28 | present |
 
 So a build at a lower `minSdk` fails to link, and one that links against 28
-produces a library Android 8 refuses to load. `dlsym`-ing around it is not
-available either: `ndk::audio::AudioStreamBuilder::as_ptr` is private, so there
-is no way to reach the raw builder from outside the crate.
+produces a library Android 8 (API 26–27) refuses to load (`UnsatisfiedLinkError`).
+`dlsym`-ing around it is not available either: in `ndk` 0.9, both
+`ndk::audio::AudioStreamBuilder` and `ndk::audio::AudioStream` keep their raw
+pointers private (neither exposes a public `as_ptr()`), so there is no way to
+reach the underlying AAudio pointers from outside the `ndk` crate without
+vendoring `ndk` or replacing `ndk::audio` with raw `ndk-sys`.
 
-**`android-input-preset` is therefore off by default**, and turning it on is a
-statement that the app requires API 28. MumbleWay's `minSdk` is 26, so it is
-currently off and this copy changes nothing.
+**`android-input-preset` is therefore off by default in `cpal`**, and turning it
+on is a statement that the app requires API 28. MumbleWay's `core/Cargo.toml`
+enables `android-input-preset`, and `app/android/app/build.gradle.kts` raises
+`minSdk` to 28 (`maxOf(flutter.minSdkVersion, 28)`) to match.
 
 ## This is already proposed upstream
 

@@ -152,6 +152,9 @@ pub struct SpectralSubtractor {
     /// The previous frame's second half, awaiting its overlapping partner.
     tail: Vec<f32>,
     window: Vec<f32>,
+    /// Reusable FFT scratch buffers, sized once so hops do not allocate.
+    re: Vec<f32>,
+    im: Vec<f32>,
     filled: usize,
     ready_pos: usize,
     /// How much of the estimate to remove. Above 1 removes more than was
@@ -186,6 +189,8 @@ impl SpectralSubtractor {
             ready: vec![0.0; size / 2],
             tail: vec![0.0; size / 2],
             window,
+            re: vec![0.0; size],
+            im: vec![0.0; size],
             // Half a frame of zeros ahead of the first real sample, which is
             // the latency overlap-add costs: one hop, about 5 ms here.
             filled: size / 2,
@@ -201,6 +206,8 @@ impl SpectralSubtractor {
         self.input.iter_mut().for_each(|s| *s = 0.0);
         self.ready.iter_mut().for_each(|s| *s = 0.0);
         self.tail.iter_mut().for_each(|s| *s = 0.0);
+        self.re.iter_mut().for_each(|s| *s = 0.0);
+        self.im.iter_mut().for_each(|s| *s = 0.0);
         self.filled = self.size / 2;
         self.ready_pos = 0;
         self.learned = false;
@@ -235,13 +242,16 @@ impl SpectralSubtractor {
 
     fn transform(&mut self, speaking: bool) {
         let size = self.size;
-        let mut re: Vec<f32> = (0..size).map(|i| self.input[i] * self.window[i]).collect();
-        let mut im = vec![0.0f32; size];
-        fft(&mut re, &mut im, false);
+        let re = &mut self.re;
+        for (dst, (&src, &win)) in re.iter_mut().zip(self.input.iter().zip(&self.window)) {
+            *dst = src * win;
+        }
+        self.im.fill(0.0);
+        fft(&mut self.re, &mut self.im, false);
 
         let bins = size / 2 + 1;
         for k in 0..bins {
-            let mag = (re[k] * re[k] + im[k] * im[k]).sqrt();
+            let mag = (self.re[k] * self.re[k] + self.im[k] * self.im[k]).sqrt();
             if !speaking {
                 let a = if self.learned { Self::ADAPT } else { 1.0 };
                 self.noise[k] += (mag - self.noise[k]) * a;
@@ -254,25 +264,25 @@ impl SpectralSubtractor {
             // "clean" phase is where this family of algorithms goes wrong.
             let wanted = (mag - self.over * self.noise[k]).max(self.floor * mag);
             let gain = if mag > 1e-9 { wanted / mag } else { 1.0 };
-            re[k] *= gain;
-            im[k] *= gain;
+            self.re[k] *= gain;
+            self.im[k] *= gain;
             if k > 0 && k < size - k {
-                re[size - k] = re[k];
-                im[size - k] = -im[k];
+                self.re[size - k] = self.re[k];
+                self.im[size - k] = -self.im[k];
             }
         }
         if !self.learned && !speaking {
             self.learned = true;
         }
 
-        fft(&mut re, &mut im, true);
+        fft(&mut self.re, &mut self.im, true);
 
         // Overlap-add: the tail of the previous frame plus the head of this one
         // is finished and can go out; this frame's tail waits for the next.
         let hop = size / 2;
         for i in 0..hop {
-            self.ready[i] = self.tail[i] + re[i] * self.window[i];
-            self.tail[i] = re[hop + i] * self.window[hop + i];
+            self.ready[i] = self.tail[i] + self.re[i] * self.window[i];
+            self.tail[i] = self.re[hop + i] * self.window[hop + i];
         }
     }
 }

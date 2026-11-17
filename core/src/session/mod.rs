@@ -15,7 +15,7 @@ pub mod types;
 pub use reconnect::{BackoffPolicy, ReconnectState};
 pub use types::*;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -41,6 +41,9 @@ const SERVER_SILENCE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Cap on how long the Version/Authenticate/ServerSync exchange may take.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Clear a user's talking indicator if no voice packet arrives for this long.
+const TALKING_TIMEOUT: Duration = Duration::from_millis(600);
 
 /// Channels connecting a session to the audio engine.
 pub struct AudioBridge {
@@ -127,6 +130,8 @@ struct LiveState {
     /// same reason and in the same message.
     udp_packets: u32,
     tcp_packets: u32,
+    /// Last time a non-terminator voice packet arrived from each session.
+    last_voice_at: HashMap<u32, Instant>,
     /// The last suppression state reported upward, so the announcement is
     /// made on a change rather than on every roster update.
     suppress_announced: Option<bool>,
@@ -195,6 +200,7 @@ impl LiveState {
             udp_ping: pings::PingStats::default(),
             udp_packets: 0,
             tcp_packets: 0,
+            last_voice_at: HashMap::new(),
             recording_allowed: None,
             reread_acl: None,
             reread_bans: false,
@@ -320,17 +326,55 @@ impl LiveState {
         v.sort_by_key(|u| u.name.to_lowercase());
         v
     }
+
+    /// Clears `talking` on any user whose last voice packet arrived at least
+    /// [`TALKING_TIMEOUT`] ago, returning `true` if any user changed.
+    fn expire_stale_talkers(&mut self, now: Instant) -> bool {
+        let mut changed = false;
+        for u in self.users.values_mut() {
+            if u.talking
+                && self
+                    .last_voice_at
+                    .get(&u.session)
+                    .is_none_or(|t| now.saturating_duration_since(*t) >= TALKING_TIMEOUT)
+            {
+                u.talking = false;
+                self.last_voice_at.remove(&u.session);
+                changed = true;
+            }
+        }
+        changed
+    }
 }
 
-/// Drives one server connection, reconnecting as needed, until told to shut down.
-pub struct Session {
+struct ConnectedAttempt {
+    reader: ControlReader,
+    writer: ControlWriter,
+    udp: Option<VoiceSocket>,
+    state: LiveState,
+}
+
+enum AttemptOutcome {
+    Ended(DisconnectReason),
+    Connected(Box<ConnectedAttempt>),
+}
+
+/// Session state that runs independently of the command receiver so
+/// `Session::run` can race connection attempts against `Disconnect`/`Shutdown`.
+struct SessionInner {
     config: SessionConfig,
     events: mpsc::Sender<SessionEvent>,
-    commands: mpsc::Receiver<SessionCommand>,
     audio: AudioBridge,
     reconnect: ReconnectState,
     /// Set when the user accepts a changed certificate.
     accept_cert_once: bool,
+}
+
+/// Drives one server connection, reconnecting as needed, until told to shut down.
+pub struct Session {
+    inner: SessionInner,
+    commands: mpsc::Receiver<SessionCommand>,
+    pending_commands: VecDeque<SessionCommand>,
 }
 
 impl Session {
@@ -342,15 +386,183 @@ impl Session {
     ) -> Self {
         let backoff = config.backoff.clone();
         Self {
-            config,
-            events,
+            inner: SessionInner {
+                config,
+                events,
+                audio,
+                reconnect: ReconnectState::new(backoff),
+                accept_cert_once: false,
+            },
             commands,
-            audio,
-            reconnect: ReconnectState::new(backoff),
-            accept_cert_once: false,
+            pending_commands: VecDeque::new(),
         }
     }
 
+    /// Main loop: connect, run, decide whether to retry, repeat.
+    pub async fn run(mut self) {
+        // A session starts idle and only connects once asked.
+        self.inner.reconnect.stop();
+
+        loop {
+            if self.inner.reconnect.stopped_by_user() {
+                match self.wait_for_connect_command().await {
+                    Some(true) => self.inner.reconnect.arm(),
+                    Some(false) => continue,
+                    None => return, // shutdown
+                }
+            }
+
+            self.inner.set_state(ConnectionState::Connecting).await;
+            // The whole connection story passes through this loop, so logging
+            // it here covers every attempt and every outcome without scattering
+            // lines through the transport. Never the password: this log is
+            // shown in the app and meant to be quoted back to us.
+            tracing::info!(
+                "connecting to {}:{}",
+                self.inner.config.profile.host,
+                self.inner.config.profile.port
+            );
+
+            let outcome = match self.connect_or_abort().await {
+                Some(Ok(AttemptOutcome::Connected(conn))) => {
+                    self.inner
+                        .run_connected(*conn, &mut self.commands, &mut self.pending_commands)
+                        .await
+                }
+                Some(Ok(AttemptOutcome::Ended(reason))) => {
+                    self.pending_commands.clear();
+                    Ok(reason)
+                }
+                Some(Err(e)) => {
+                    self.pending_commands.clear();
+                    Err(e)
+                }
+                None => return, // shutdown
+            };
+
+            let reason = match outcome {
+                Ok(r) => r,
+                Err(e) => SessionInner::classify(e),
+            };
+
+            match self.inner.reconnect.on_disconnect(&reason) {
+                None => {
+                    if matches!(reason, DisconnectReason::UserRequested) {
+                        tracing::info!("disconnected by request");
+                    } else {
+                        tracing::error!("giving up: {reason}");
+                    }
+                    if matches!(reason, DisconnectReason::UserRequested) {
+                        self.inner
+                            .set_state(ConnectionState::Disconnected {
+                                reason: reason.to_string(),
+                            })
+                            .await;
+                    } else {
+                        self.inner
+                            .set_state(ConnectionState::Failed {
+                                reason: reason.to_string(),
+                            })
+                            .await;
+                    }
+                }
+                Some(delay) => {
+                    tracing::warn!(
+                        "lost connection: {reason} — retry {} in {} ms",
+                        self.inner.reconnect.attempt(),
+                        delay.as_millis()
+                    );
+                    self.inner
+                        .set_state(ConnectionState::Reconnecting {
+                            attempt: self.inner.reconnect.attempt(),
+                            retry_in_ms: delay.as_millis() as u64,
+                            reason: reason.to_string(),
+                        })
+                        .await;
+
+                    // Sleep, but stay responsive to Disconnect/Shutdown.
+                    if !self.sleep_interruptibly(delay).await {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Runs `connect_and_handshake` while remaining responsive to `Disconnect`
+    /// and `Shutdown`. Non-disconnect commands are buffered so nothing is dropped.
+    async fn connect_or_abort(&mut self) -> Option<Result<AttemptOutcome>> {
+        let user_disconnect = {
+            let attempt = self.inner.connect_and_handshake();
+            tokio::pin!(attempt);
+            loop {
+                tokio::select! {
+                    biased;
+                    cmd = self.commands.recv() => match cmd {
+                        Some(SessionCommand::Disconnect) => break true,
+                        Some(SessionCommand::Shutdown) | None => break false,
+                        Some(other) => {
+                            self.pending_commands.push_back(other);
+                        }
+                    },
+                    res = &mut attempt => return Some(res),
+                }
+            }
+        };
+        // `attempt` is dropped at the end of the block, releasing `&mut self.inner`.
+        self.inner.reconnect.stop();
+        self.pending_commands.clear();
+        if user_disconnect {
+            Some(Ok(AttemptOutcome::Ended(DisconnectReason::UserRequested)))
+        } else {
+            None
+        }
+    }
+
+    /// Waits for a command while disconnected.
+    /// `Some(true)` -> connect, `Some(false)` -> keep waiting, `None` -> shut down.
+    async fn wait_for_connect_command(&mut self) -> Option<bool> {
+        match self.commands.recv().await {
+            Some(SessionCommand::Connect) => Some(true),
+            Some(SessionCommand::AcceptCertificate) => {
+                self.inner.accept_cert_once = true;
+                Some(true)
+            }
+            Some(SessionCommand::Shutdown) | None => None,
+            Some(_) => Some(false),
+        }
+    }
+
+    /// Sleeps, returning false if we should shut down entirely.
+    async fn sleep_interruptibly(&mut self, delay: Duration) -> bool {
+        let deadline = tokio::time::sleep(delay);
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                _ = &mut deadline => return true,
+                cmd = self.commands.recv() => match cmd {
+                    Some(SessionCommand::Disconnect) => {
+                        self.inner.reconnect.stop();
+                        self.inner
+                            .set_state(ConnectionState::Disconnected {
+                                reason: "disconnected by user".into(),
+                            })
+                            .await;
+                        return true;
+                    }
+                    Some(SessionCommand::AcceptCertificate) => {
+                        self.inner.accept_cert_once = true;
+                        return true; // retry immediately with the new trust decision
+                    }
+                    Some(SessionCommand::Shutdown) | None => return false,
+                    Some(_) => continue,
+                }
+            }
+        }
+    }
+}
+
+impl SessionInner {
     async fn emit(&self, e: SessionEvent) {
         // A full or closed event channel must never stall the network loop.
         let _ = self.events.try_send(e);
@@ -413,78 +625,6 @@ impl Session {
         self.emit(SessionEvent::State(s)).await;
     }
 
-    /// Main loop: connect, run, decide whether to retry, repeat.
-    pub async fn run(mut self) {
-        // A session starts idle and only connects once asked.
-        self.reconnect.stop();
-
-        loop {
-            if self.reconnect.stopped_by_user() {
-                match self.wait_for_connect_command().await {
-                    Some(true) => self.reconnect.arm(),
-                    Some(false) => continue,
-                    None => return, // shutdown
-                }
-            }
-
-            self.set_state(ConnectionState::Connecting).await;
-            // The whole connection story passes through this loop, so logging
-            // it here covers every attempt and every outcome without scattering
-            // lines through the transport. Never the password: this log is
-            // shown in the app and meant to be quoted back to us.
-            tracing::info!(
-                "connecting to {}:{}",
-                self.config.profile.host,
-                self.config.profile.port
-            );
-
-            let outcome = self.connect_and_run().await;
-            let reason = match outcome {
-                Ok(r) => r,
-                Err(e) => Self::classify(e),
-            };
-
-            match self.reconnect.on_disconnect(&reason) {
-                None => {
-                    if matches!(reason, DisconnectReason::UserRequested) {
-                        tracing::info!("disconnected by request");
-                    } else {
-                        tracing::error!("giving up: {reason}");
-                    }
-                    if matches!(reason, DisconnectReason::UserRequested) {
-                        self.set_state(ConnectionState::Disconnected {
-                            reason: reason.to_string(),
-                        })
-                        .await;
-                    } else {
-                        self.set_state(ConnectionState::Failed {
-                            reason: reason.to_string(),
-                        })
-                        .await;
-                    }
-                }
-                Some(delay) => {
-                    tracing::warn!(
-                        "lost connection: {reason} — retry {} in {} ms",
-                        self.reconnect.attempt(),
-                        delay.as_millis()
-                    );
-                    self.set_state(ConnectionState::Reconnecting {
-                        attempt: self.reconnect.attempt(),
-                        retry_in_ms: delay.as_millis() as u64,
-                        reason: reason.to_string(),
-                    })
-                    .await;
-
-                    // Sleep, but stay responsive to Disconnect/Shutdown.
-                    if !self.sleep_interruptibly(delay).await {
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
     /// Maps a transport error onto a disconnect reason.
     fn classify(e: CoreError) -> DisconnectReason {
         match e {
@@ -513,48 +653,8 @@ impl Session {
         }
     }
 
-    /// Waits for a command while disconnected.
-    /// `Some(true)` -> connect, `Some(false)` -> keep waiting, `None` -> shut down.
-    async fn wait_for_connect_command(&mut self) -> Option<bool> {
-        match self.commands.recv().await {
-            Some(SessionCommand::Connect) => Some(true),
-            Some(SessionCommand::AcceptCertificate) => {
-                self.accept_cert_once = true;
-                Some(true)
-            }
-            Some(SessionCommand::Shutdown) | None => None,
-            Some(_) => Some(false),
-        }
-    }
-
-    /// Sleeps, returning false if we should shut down entirely.
-    async fn sleep_interruptibly(&mut self, delay: Duration) -> bool {
-        let deadline = tokio::time::sleep(delay);
-        tokio::pin!(deadline);
-        loop {
-            tokio::select! {
-                _ = &mut deadline => return true,
-                cmd = self.commands.recv() => match cmd {
-                    Some(SessionCommand::Disconnect) => {
-                        self.reconnect.stop();
-                        self.set_state(ConnectionState::Disconnected {
-                            reason: "disconnected by user".into(),
-                        }).await;
-                        return true;
-                    }
-                    Some(SessionCommand::AcceptCertificate) => {
-                        self.accept_cert_once = true;
-                        return true; // retry immediately with the new trust decision
-                    }
-                    Some(SessionCommand::Shutdown) | None => return false,
-                    Some(_) => continue,
-                }
-            }
-        }
-    }
-
-    /// One full connection attempt. Returns why it ended.
-    async fn connect_and_run(&mut self) -> Result<DisconnectReason> {
+    /// Connects and completes the handshake up to `Connected`.
+    async fn connect_and_handshake(&mut self) -> Result<AttemptOutcome> {
         let policy = if self.accept_cert_once {
             TrustPolicy::AcceptAny
         } else {
@@ -645,7 +745,7 @@ impl Session {
                 .handle_control(msg_type, &payload, &mut state, &mut writer)
                 .await?
             {
-                return Ok(reason);
+                return Ok(AttemptOutcome::Ended(reason));
             }
             if state.self_session.is_some() {
                 break;
@@ -686,7 +786,7 @@ impl Session {
         // No address means voice goes through the tunnel: either the rider
         // asked for that, or the server's own address could not be resolved —
         // and the cipher is kept either way, because the tunnel needs it too.
-        let mut udp = match (voice_peer, state.crypt.take()) {
+        let udp = match (voice_peer, state.crypt.take()) {
             (Some(peer), Some(crypt)) => match VoiceSocket::bind(peer, crypt).await {
                 Ok(mut s) => {
                     let _ = s.send_ping(now_millis()).await;
@@ -719,20 +819,44 @@ impl Session {
         // action to be discovered by refusal.
         ask_rights_for(&mut writer, state.self_channel(state.self_session)).await?;
 
-        // From here the reader lives in its own task; see [`spawn_reader`].
-        let mut messages = spawn_reader(reader);
-        self.run_connected(&mut messages, &mut writer, &mut udp, &mut state)
-            .await
+        Ok(AttemptOutcome::Connected(Box::new(ConnectedAttempt {
+            reader,
+            writer,
+            udp,
+            state,
+        })))
     }
 
     /// The steady-state loop once connected.
     async fn run_connected(
         &mut self,
-        messages: &mut mpsc::Receiver<Result<(u16, Vec<u8>)>>,
-        writer: &mut ControlWriter,
-        udp: &mut Option<VoiceSocket>,
-        state: &mut LiveState,
+        conn: ConnectedAttempt,
+        commands: &mut mpsc::Receiver<SessionCommand>,
+        pending_commands: &mut VecDeque<SessionCommand>,
     ) -> Result<DisconnectReason> {
+        let ConnectedAttempt {
+            reader,
+            mut writer,
+            mut udp,
+            mut state,
+        } = conn;
+        // From here the reader lives in its own task; see [`spawn_reader`].
+        let mut messages = spawn_reader(reader);
+        let writer = &mut writer;
+        let udp = &mut udp;
+        let state = &mut state;
+
+        while let Some(cmd) = pending_commands.pop_front() {
+            match cmd {
+                SessionCommand::Disconnect | SessionCommand::Shutdown => {
+                    self.reconnect.stop();
+                    writer.shutdown().await;
+                    return Ok(DisconnectReason::UserRequested);
+                }
+                c => self.handle_command(c, state, writer).await?,
+            }
+        }
+
         let mut ping_timer = tokio::time::interval(PING_INTERVAL);
         ping_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut health_timer = tokio::time::interval(Duration::from_secs(1));
@@ -857,7 +981,7 @@ impl Session {
                 }
 
                 // --- commands ----------------------------------------------
-                cmd = self.commands.recv() => {
+                cmd = commands.recv() => {
                     match cmd {
                         Some(SessionCommand::Disconnect) => {
                             self.reconnect.stop();
@@ -959,8 +1083,8 @@ impl Session {
                             writer.send(MessageType::UserStats, &m).await?;
                         }
                     }
-                    if state.quality_fresh {
-                        state.quality_fresh = false;
+                    let stale_cleared = state.expire_stale_talkers(now);
+                    if std::mem::take(&mut state.quality_fresh) || stale_cleared {
                         self.emit(SessionEvent::Users(state.user_list())).await;
                     }
 
@@ -1066,17 +1190,8 @@ impl Session {
             }
         }
         if let Some(session) = packet.session {
-            if let Some(u) = state.users.get_mut(&session) {
-                if !u.talking {
-                    u.talking = true;
-                    self.emit(SessionEvent::Talking {
-                        session,
-                        talking: true,
-                    })
-                    .await;
-                }
-            }
             if packet.terminator {
+                state.last_voice_at.remove(&session);
                 if let Some(u) = state.users.get_mut(&session) {
                     u.talking = false;
                 }
@@ -1085,6 +1200,18 @@ impl Session {
                     talking: false,
                 })
                 .await;
+            } else {
+                state.last_voice_at.insert(session, Instant::now());
+                if let Some(u) = state.users.get_mut(&session) {
+                    if !u.talking {
+                        u.talking = true;
+                        self.emit(SessionEvent::Talking {
+                            session,
+                            talking: true,
+                        })
+                        .await;
+                    }
+                }
             }
         }
         crate::net::stats::note_voice_in();
@@ -1271,8 +1398,10 @@ impl Session {
                     if let Some(mu) = m.max_users {
                         e.max_users = mu;
                     }
-                    self.emit(SessionEvent::Channels(state.channel_list()))
-                        .await;
+                    if state.self_session.is_some() {
+                        self.emit(SessionEvent::Channels(state.channel_list()))
+                            .await;
+                    }
                 }
             }
             MessageType::ChannelRemove => {
@@ -1284,8 +1413,10 @@ impl Session {
                     self.emit(SessionEvent::Listening(state.listening.clone()))
                         .await;
                 }
-                self.emit(SessionEvent::Channels(state.channel_list()))
-                    .await;
+                if state.self_session.is_some() {
+                    self.emit(SessionEvent::Channels(state.channel_list()))
+                        .await;
+                }
             }
             MessageType::UserState => {
                 let m = mumble::UserState::decode(payload)?;
@@ -1434,10 +1565,12 @@ impl Session {
                         }
                         state.blobs.note_texture_hash(s, h);
                     }
-                    self.emit(SessionEvent::Users(state.user_list())).await;
-                    if occupancy_changed {
-                        self.emit(SessionEvent::Channels(state.channel_list()))
-                            .await;
+                    if state.self_session.is_some() {
+                        self.emit(SessionEvent::Users(state.user_list())).await;
+                        if occupancy_changed {
+                            self.emit(SessionEvent::Channels(state.channel_list()))
+                                .await;
+                        }
                     }
                     // After the roster, so a change to our own entry — moving
                     // into a channel we may not speak in, or out of one — is
@@ -1666,16 +1799,19 @@ impl Session {
             MessageType::UserRemove => {
                 let m = mumble::UserRemove::decode(payload)?;
                 state.users.remove(&m.session);
+                state.last_voice_at.remove(&m.session);
                 state.quality.remove(&m.session);
                 state.blobs.forget(m.session);
                 // The number goes back to the server and may be handed to
                 // somebody who runs something else entirely.
                 state.peers.forget(m.session);
-                self.emit(SessionEvent::Users(state.user_list())).await;
-                // They were standing in a channel, and the count beside it is
-                // ours to keep true.
-                self.emit(SessionEvent::Channels(state.channel_list()))
-                    .await;
+                if state.self_session.is_some() {
+                    self.emit(SessionEvent::Users(state.user_list())).await;
+                    // They were standing in a channel, and the count beside it is
+                    // ours to keep true.
+                    self.emit(SessionEvent::Channels(state.channel_list()))
+                        .await;
+                }
             }
             MessageType::TextMessage => {
                 let m = mumble::TextMessage::decode(payload)?;
@@ -1764,7 +1900,9 @@ impl Session {
                 if id == peers::DATA_ID_HELLO {
                     if let Some(hello) = m.data.as_deref().and_then(peers::decode_hello) {
                         state.peers.on_hello(sender, hello);
-                        self.emit(SessionEvent::Users(state.user_list())).await;
+                        if state.self_session.is_some() {
+                            self.emit(SessionEvent::Users(state.user_list())).await;
+                        }
                     }
                 } else if id == peers::DATA_ID_MUTE {
                     // Only from somebody who has said they run MumbleWay, so
@@ -1794,7 +1932,9 @@ impl Session {
                     }
                     if let Some(muted) = m.data.as_deref().and_then(peers::decode_muted_you) {
                         state.peers.note_muted_us(sender, muted);
-                        self.emit(SessionEvent::Users(state.user_list())).await;
+                        if state.self_session.is_some() {
+                            self.emit(SessionEvent::Users(state.user_list())).await;
+                        }
                     }
                 }
                 // Other `mumbleway/` IDs are reserved for the exchanges this
@@ -2353,3 +2493,492 @@ fn now_millis() -> u64 {
 pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::net::frame;
+    use prost::Message;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::sync::oneshot;
+
+    struct BridgeHandles {
+        _out_tx: mpsc::Sender<(u64, Vec<u8>, bool)>,
+        _in_rx: mpsc::Receiver<VoicePacket>,
+    }
+
+    fn test_bridge() -> (AudioBridge, BridgeHandles) {
+        let (out_tx, out_rx) = mpsc::channel(8);
+        let (in_tx, in_rx) = mpsc::channel(8);
+        (
+            AudioBridge {
+                outgoing: out_rx,
+                incoming: in_tx,
+            },
+            BridgeHandles {
+                _out_tx: out_tx,
+                _in_rx: in_rx,
+            },
+        )
+    }
+
+    fn test_session(
+        port: u16,
+    ) -> (
+        Session,
+        mpsc::Receiver<SessionEvent>,
+        mpsc::Sender<SessionCommand>,
+        BridgeHandles,
+    ) {
+        let profile = ServerProfile::new("Test", "127.0.0.1", port, "rider");
+        let identity = Identity::generate("rider").unwrap();
+        let config = SessionConfig {
+            profile,
+            identity,
+            client_name: "MumbleWay Test".into(),
+            app_version: "0.0-test".into(),
+            mic_mode_hint: String::new(),
+            backoff: BackoffPolicy::default(),
+        };
+        let (ev_tx, ev_rx) = mpsc::channel(128);
+        let (cmd_tx, cmd_rx) = mpsc::channel(32);
+        let (audio, handles) = test_bridge();
+        (
+            Session::new(config, ev_tx, cmd_rx, audio),
+            ev_rx,
+            cmd_tx,
+            handles,
+        )
+    }
+
+    fn test_tls_acceptor() -> tokio_rustls::TlsAcceptor {
+        let id = Identity::generate("127.0.0.1").unwrap();
+        let certs: Vec<_> = rustls_pemfile::certs(&mut id.cert_pem.as_bytes())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        let key = rustls_pemfile::private_key(&mut id.key_pem.as_bytes())
+            .unwrap()
+            .unwrap();
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let cfg = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .unwrap();
+        tokio_rustls::TlsAcceptor::from(Arc::new(cfg))
+    }
+
+    async fn read_ctrl<S: AsyncReadExt + Unpin>(stream: &mut S) -> Option<(u16, Vec<u8>)> {
+        let mut hdr = [0u8; frame::HEADER_LEN];
+        stream.read_exact(&mut hdr).await.ok()?;
+        let parsed = frame::Header::parse(&hdr).ok()?;
+        let mut body = vec![0u8; parsed.length];
+        if parsed.length > 0 {
+            stream.read_exact(&mut body).await.ok()?;
+        }
+        Some((parsed.msg_type, body))
+    }
+
+    fn make_user(session: u32, name: &str) -> UserInfo {
+        UserInfo {
+            session,
+            name: name.into(),
+            channel_id: 0,
+            mute: false,
+            deaf: false,
+            self_mute: false,
+            self_deaf: false,
+            talking: false,
+            local_mute: false,
+            suppress: false,
+            mumbleway: None,
+            user_id: None,
+            quality: None,
+            muted_you: false,
+            comment: String::new(),
+            priority_speaker: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn disconnect_aborts_connecting_immediately_without_reconnecting() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let _server = tokio::spawn(async move {
+            if let Ok((_sock, _)) = listener.accept().await {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+
+        let (session, mut ev_rx, cmd_tx, _bridge) = test_session(port);
+        let handle = tokio::spawn(session.run());
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+
+        loop {
+            let ev = tokio::time::timeout(Duration::from_secs(2), ev_rx.recv())
+                .await
+                .expect("expected Connecting state")
+                .unwrap();
+            if matches!(ev, SessionEvent::State(ConnectionState::Connecting)) {
+                break;
+            }
+        }
+
+        cmd_tx.send(SessionCommand::Disconnect).await.unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let ev = tokio::time::timeout(left, ev_rx.recv())
+                .await
+                .expect("Disconnect must abort Connecting promptly")
+                .unwrap();
+            match ev {
+                SessionEvent::State(ConnectionState::Reconnecting { .. }) => {
+                    panic!("spurious Reconnecting emitted on user Disconnect");
+                }
+                SessionEvent::State(ConnectionState::Disconnected { .. }) => break,
+                _ => {}
+            }
+        }
+
+        drop(cmd_tx);
+        let res = tokio::time::timeout(Duration::from_secs(2), handle).await;
+        assert!(res.is_ok(), "session must exit once command sender drops");
+        res.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_connecting_immediately() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            if let Ok((_sock, _)) = listener.accept().await {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+
+        let (session, mut ev_rx, cmd_tx, _bridge) = test_session(port);
+        let handle = tokio::spawn(session.run());
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+
+        loop {
+            let ev = tokio::time::timeout(Duration::from_secs(2), ev_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            if matches!(ev, SessionEvent::State(ConnectionState::Connecting)) {
+                break;
+            }
+        }
+
+        cmd_tx.send(SessionCommand::Shutdown).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), handle)
+            .await
+            .expect("Shutdown must abort Connecting promptly")
+            .unwrap();
+        while let Ok(ev) = ev_rx.try_recv() {
+            assert!(!matches!(
+                ev,
+                SessionEvent::State(ConnectionState::Reconnecting { .. })
+            ));
+        }
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn disconnect_aborts_handshaking_immediately_without_reconnecting() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let acceptor = test_tls_acceptor();
+        let server = tokio::spawn(async move {
+            if let Ok((tcp, _)) = listener.accept().await {
+                if let Ok(mut tls) = acceptor.accept(tcp).await {
+                    let _ = read_ctrl(&mut tls).await;
+                    let _ = read_ctrl(&mut tls).await;
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+                }
+            }
+        });
+
+        let (session, mut ev_rx, cmd_tx, _bridge) = test_session(port);
+        let handle = tokio::spawn(session.run());
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+
+        loop {
+            let ev = tokio::time::timeout(Duration::from_secs(2), ev_rx.recv())
+                .await
+                .expect("expected Handshaking state")
+                .unwrap();
+            if matches!(ev, SessionEvent::State(ConnectionState::Handshaking)) {
+                break;
+            }
+        }
+
+        cmd_tx.send(SessionCommand::Disconnect).await.unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let ev = tokio::time::timeout(left, ev_rx.recv())
+                .await
+                .expect("Disconnect must abort Handshaking promptly")
+                .unwrap();
+            match ev {
+                SessionEvent::State(ConnectionState::Reconnecting { .. }) => {
+                    panic!("spurious Reconnecting emitted on user Disconnect");
+                }
+                SessionEvent::State(ConnectionState::Disconnected { .. }) => break,
+                _ => {}
+            }
+        }
+
+        drop(cmd_tx);
+        let res = tokio::time::timeout(Duration::from_secs(2), handle).await;
+        assert!(res.is_ok(), "session must exit");
+        res.unwrap().unwrap();
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn non_disconnect_commands_during_connect_are_buffered_and_executed() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let acceptor = test_tls_acceptor();
+        let (accepted_tx, accepted_rx) = oneshot::channel();
+        let (proceed_tx, proceed_rx) = oneshot::channel();
+        let (muted_tx, muted_rx) = oneshot::channel();
+
+        let _server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let _ = accepted_tx.send(());
+            let _ = proceed_rx.await;
+            let mut tls = acceptor.accept(tcp).await.unwrap();
+            let _ = read_ctrl(&mut tls).await;
+            let _ = read_ctrl(&mut tls).await;
+
+            let self_user = mumble::UserState {
+                session: Some(2),
+                name: Some("rider".into()),
+                channel_id: Some(0),
+                ..Default::default()
+            };
+            let user_pkt = frame::encode_proto(MessageType::UserState, &self_user);
+            tls.write_all(&user_pkt).await.unwrap();
+            let sync = mumble::ServerSync {
+                session: Some(2),
+                permissions: Some(0),
+                ..Default::default()
+            };
+            let sync_pkt = frame::encode_proto(MessageType::ServerSync, &sync);
+            tls.write_all(&sync_pkt).await.unwrap();
+            tls.flush().await.unwrap();
+
+            while let Some((msg_type, body)) = read_ctrl(&mut tls).await {
+                if MessageType::from_u16(msg_type) == Some(MessageType::UserState) {
+                    let msg = mumble::UserState::decode(&body[..]).unwrap();
+                    if msg.self_mute == Some(true) {
+                        let _ = muted_tx.send(true);
+                        break;
+                    }
+                }
+            }
+        });
+
+        let (session, mut ev_rx, cmd_tx, _bridge) = test_session(port);
+        let handle = tokio::spawn(session.run());
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+
+        loop {
+            let ev = tokio::time::timeout(Duration::from_secs(2), ev_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            if matches!(ev, SessionEvent::State(ConnectionState::Connecting)) {
+                break;
+            }
+        }
+        accepted_rx.await.unwrap();
+
+        // Buffer a non-disconnect command while connect_and_handshake is stalled.
+        cmd_tx
+            .send(SessionCommand::SetSelfMute(true))
+            .await
+            .unwrap();
+        let _ = proceed_tx.send(());
+
+        let saw_mute = tokio::time::timeout(Duration::from_secs(3), muted_rx)
+            .await
+            .expect("buffered SetSelfMute must reach server once connected")
+            .unwrap();
+        assert!(saw_mute);
+
+        drop(cmd_tx);
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    }
+
+    #[tokio::test]
+    async fn handshake_defers_channel_and_user_emits_until_server_sync() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let acceptor = test_tls_acceptor();
+
+        let _server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut tls = acceptor.accept(tcp).await.unwrap();
+            let _ = read_ctrl(&mut tls).await;
+            let _ = read_ctrl(&mut tls).await;
+
+            for (id, parent, name) in [(0, None, "Root"), (1, Some(0), "Lobby")] {
+                let ch = mumble::ChannelState {
+                    channel_id: Some(id),
+                    parent,
+                    name: Some(name.into()),
+                    ..Default::default()
+                };
+                let pkt = frame::encode_proto(MessageType::ChannelState, &ch);
+                tls.write_all(&pkt).await.unwrap();
+            }
+            for (sess, name) in [(1, "alice"), (2, "rider")] {
+                let u = mumble::UserState {
+                    session: Some(sess),
+                    name: Some(name.into()),
+                    channel_id: Some(0),
+                    ..Default::default()
+                };
+                let pkt = frame::encode_proto(MessageType::UserState, &u);
+                tls.write_all(&pkt).await.unwrap();
+            }
+            let sync = mumble::ServerSync {
+                session: Some(2),
+                permissions: Some(0),
+                ..Default::default()
+            };
+            let sync_pkt = frame::encode_proto(MessageType::ServerSync, &sync);
+            tls.write_all(&sync_pkt).await.unwrap();
+            tls.flush().await.unwrap();
+
+            while let Some((msg_type, _)) = read_ctrl(&mut tls).await {
+                if MessageType::from_u16(msg_type) == Some(MessageType::PermissionQuery) {
+                    let bob = mumble::UserState {
+                        session: Some(3),
+                        name: Some("bob".into()),
+                        channel_id: Some(1),
+                        ..Default::default()
+                    };
+                    let pkt = frame::encode_proto(MessageType::UserState, &bob);
+                    tls.write_all(&pkt).await.unwrap();
+                    tls.flush().await.unwrap();
+                    break;
+                }
+            }
+            while read_ctrl(&mut tls).await.is_some() {}
+        });
+
+        let (session, mut ev_rx, cmd_tx, _bridge) = test_session(port);
+        let handle = tokio::spawn(session.run());
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+
+        let mut events = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            let ev = tokio::time::timeout(left, ev_rx.recv())
+                .await
+                .expect("expected post-sync Users event with bob")
+                .unwrap();
+            let done = matches!(&ev, SessionEvent::Users(u) if u.len() == 3);
+            events.push(ev);
+            if done {
+                break;
+            }
+        }
+
+        let connected_idx = events
+            .iter()
+            .position(|e| matches!(e, SessionEvent::State(ConnectionState::Connected)))
+            .expect("Connected event must be emitted");
+
+        assert!(
+            !events[..connected_idx]
+                .iter()
+                .any(|e| matches!(e, SessionEvent::Channels(_) | SessionEvent::Users(_))),
+            "incremental Channels/Users must not be emitted before ServerSync"
+        );
+
+        let first_ch = events[connected_idx..]
+            .iter()
+            .find_map(|e| match e {
+                SessionEvent::Channels(c) => Some(c),
+                _ => None,
+            })
+            .expect("snapshot Channels emitted after Connected");
+        assert_eq!(first_ch.len(), 2);
+
+        let first_users = events[connected_idx..]
+            .iter()
+            .find_map(|e| match e {
+                SessionEvent::Users(u) => Some(u),
+                _ => None,
+            })
+            .expect("snapshot Users emitted after Connected");
+        assert_eq!(first_users.len(), 2);
+
+        drop(cmd_tx);
+        let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
+    }
+
+    #[tokio::test]
+    async fn stale_talking_users_expire_and_terminator_clears_last_voice_at() {
+        let (audio, _bridge) = test_bridge();
+        let (ev_tx, _ev_rx) = mpsc::channel(16);
+        let inner = SessionInner {
+            config: SessionConfig {
+                profile: ServerProfile::new("Test", "127.0.0.1", 64738, "rider"),
+                identity: Identity::generate("rider").unwrap(),
+                client_name: "Test".into(),
+                app_version: "0.0".into(),
+                mic_mode_hint: String::new(),
+                backoff: BackoffPolicy::default(),
+            },
+            events: ev_tx,
+            audio,
+            reconnect: ReconnectState::new(BackoffPolicy::default()),
+            accept_cert_once: false,
+        };
+        let mut state = LiveState::new();
+        state.self_session = Some(99);
+        state.users.insert(1, make_user(1, "alice"));
+        state.users.insert(2, make_user(2, "bob"));
+
+        let pkt = |session, terminator| VoicePacket {
+            session: Some(session),
+            target: 0,
+            sequence: 1,
+            opus: vec![1],
+            terminator,
+            position: None,
+        };
+        inner.on_voice(pkt(1, false), &mut state).await;
+        inner.on_voice(pkt(2, false), &mut state).await;
+        assert!(state.users[&1].talking);
+        assert!(state.users[&2].talking);
+        assert!(state.last_voice_at.contains_key(&1));
+        assert!(state.last_voice_at.contains_key(&2));
+
+        // Terminator clears talking and last_voice_at immediately.
+        inner.on_voice(pkt(2, true), &mut state).await;
+        assert!(!state.users[&2].talking);
+        assert!(!state.last_voice_at.contains_key(&2));
+
+        // Before 600 ms, session 1 remains talking.
+        let t_voice1 = state.last_voice_at[&1];
+        assert!(!state.expire_stale_talkers(t_voice1 + Duration::from_millis(599)));
+        assert!(state.users[&1].talking);
+
+        // At >= 600 ms without another voice packet, session 1 stops talking.
+        assert!(state.expire_stale_talkers(t_voice1 + TALKING_TIMEOUT));
+        assert!(!state.users[&1].talking);
+        assert!(!state.last_voice_at.contains_key(&1));
+        assert!(!state.expire_stale_talkers(t_voice1 + Duration::from_millis(800)));
+    }
+}

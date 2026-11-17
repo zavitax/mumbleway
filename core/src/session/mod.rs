@@ -15,7 +15,7 @@ pub mod types;
 pub use reconnect::{BackoffPolicy, ReconnectState};
 pub use types::*;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -327,6 +327,7 @@ pub struct Session {
     config: SessionConfig,
     events: mpsc::Sender<SessionEvent>,
     commands: mpsc::Receiver<SessionCommand>,
+    pending_commands: VecDeque<SessionCommand>,
     audio: AudioBridge,
     reconnect: ReconnectState,
     /// Set when the user accepts a changed certificate.
@@ -345,6 +346,7 @@ impl Session {
             config,
             events,
             commands,
+            pending_commands: VecDeque::new(),
             audio,
             reconnect: ReconnectState::new(backoff),
             accept_cert_once: false,
@@ -443,6 +445,7 @@ impl Session {
                 Ok(r) => r,
                 Err(e) => Self::classify(e),
             };
+            self.drain_stale_network_available();
 
             match self.reconnect.on_disconnect(&reason) {
                 None => {
@@ -513,10 +516,23 @@ impl Session {
         }
     }
 
+    /// Drops stale `NetworkAvailable` commands queued while `connect_and_run`
+    /// was running so they cannot wake the upcoming backoff sleep in 0 ms,
+    /// while preserving all other commands in arrival order.
+    fn drain_stale_network_available(&mut self) {
+        self.pending_commands
+            .retain(|cmd| !matches!(cmd, SessionCommand::NetworkAvailable));
+        while let Ok(cmd) = self.commands.try_recv() {
+            if !matches!(cmd, SessionCommand::NetworkAvailable) {
+                self.pending_commands.push_back(cmd);
+            }
+        }
+    }
+
     /// Waits for a command while disconnected.
     /// `Some(true)` -> connect, `Some(false)` -> keep waiting, `None` -> shut down.
     async fn wait_for_connect_command(&mut self) -> Option<bool> {
-        match self.commands.recv().await {
+        match recv_command(&mut self.commands, &mut self.pending_commands).await {
             Some(SessionCommand::Connect) => Some(true),
             Some(SessionCommand::AcceptCertificate) => {
                 self.accept_cert_once = true;
@@ -534,7 +550,7 @@ impl Session {
         loop {
             tokio::select! {
                 _ = &mut deadline => return true,
-                cmd = self.commands.recv() => match cmd {
+                cmd = recv_command(&mut self.commands, &mut self.pending_commands) => match cmd {
                     Some(SessionCommand::Disconnect) => {
                         self.reconnect.stop();
                         self.set_state(ConnectionState::Disconnected {
@@ -544,7 +560,17 @@ impl Session {
                     }
                     Some(SessionCommand::AcceptCertificate) => {
                         self.accept_cert_once = true;
-                        return true; // retry immediately with the new trust decision
+                        // Retry immediately with the new trust decision.
+                        return true;
+                    }
+                    // The network came back: whatever was failing a moment ago
+                    // may well work now, and a rider who has just ridden out of
+                    // a tunnel should not sit through the rest of a backoff
+                    // that was sized for a dead link.
+                    Some(SessionCommand::NetworkAvailable) => {
+                        if self.reconnect.on_network_available() {
+                            return true;
+                        }
                     }
                     Some(SessionCommand::Shutdown) | None => return false,
                     Some(_) => continue,
@@ -857,7 +883,7 @@ impl Session {
                 }
 
                 // --- commands ----------------------------------------------
-                cmd = self.commands.recv() => {
+                cmd = recv_command(&mut self.commands, &mut self.pending_commands) => {
                     match cmd {
                         Some(SessionCommand::Disconnect) => {
                             self.reconnect.stop();
@@ -869,36 +895,19 @@ impl Session {
                             writer.shutdown().await;
                             return Ok(DisconnectReason::UserRequested);
                         }
+                        Some(SessionCommand::NetworkAvailable) => {
+                            // Probe both transports right away so a dead link
+                            // is noticed promptly rather than waiting for the
+                            // next 5 s keepalive tick.
+                            send_ping(writer, udp, state).await?;
+                        }
                         Some(c) => self.handle_command(c, state, writer).await?,
                     }
                 }
 
                 // --- keepalive ---------------------------------------------
                 _ = ping_timer.tick() => {
-                    let stats = udp.as_ref().map(|s| s.crypt_stats()).unwrap_or_default();
-                    // Everything the protocol asks for, not only the crypt
-                    // counters. **The server does not measure a client's ping;
-                    // it copies these fields** and hands them to whoever asks
-                    // about this rider, so leaving them out made every
-                    // MumbleWay rider read as 0 ms to everybody — in this
-                    // app's own roster and in the official client alike.
-                    let ping = mumble::Ping {
-                        timestamp: Some(now_millis()),
-                        good: Some(stats.good),
-                        late: Some(stats.late),
-                        lost: Some(stats.lost),
-                        resync: Some(stats.resync),
-                        udp_packets: Some(state.udp_packets),
-                        tcp_packets: Some(state.tcp_packets),
-                        udp_ping_avg: Some(state.udp_ping.mean()),
-                        udp_ping_var: Some(state.udp_ping.variance()),
-                        tcp_ping_avg: Some(state.tcp_ping.mean()),
-                        tcp_ping_var: Some(state.tcp_ping.variance()),
-                    };
-                    writer.send(MessageType::Ping, &ping).await?;
-                    if let Some(s) = udp.as_mut() {
-                        let _ = s.send_ping(now_millis()).await;
-                    }
+                    send_ping(writer, udp, state).await?;
                 }
 
                 // --- liveness ----------------------------------------------
@@ -2271,6 +2280,7 @@ impl Session {
             // Transmission gating happens in the audio engine, not here.
             SessionCommand::SetTransmitting(_)
             | SessionCommand::Connect
+            | SessionCommand::NetworkAvailable
             | SessionCommand::AcceptCertificate
             | SessionCommand::Disconnect
             | SessionCommand::Shutdown => {}
@@ -2341,6 +2351,50 @@ fn spawn_reader(mut reader: ControlReader) -> mpsc::Receiver<Result<(u16, Vec<u8
     rx
 }
 
+/// Receives the next session command, preferring buffered commands preserved
+/// across a drain before awaiting the channel.
+async fn recv_command(
+    commands: &mut mpsc::Receiver<SessionCommand>,
+    pending: &mut VecDeque<SessionCommand>,
+) -> Option<SessionCommand> {
+    if let Some(cmd) = pending.pop_front() {
+        return Some(cmd);
+    }
+    commands.recv().await
+}
+
+/// Sends a control-channel `Ping` and, when a voice socket exists, a UDP `Ping`.
+async fn send_ping(
+    writer: &mut ControlWriter,
+    udp: &mut Option<VoiceSocket>,
+    state: &LiveState,
+) -> Result<()> {
+    let stats = udp.as_ref().map(|s| s.crypt_stats()).unwrap_or_default();
+    // Everything the protocol asks for, not only the crypt counters. **The
+    // server does not measure a client's ping; it copies these fields** and
+    // hands them to whoever asks about this rider, so leaving them out made
+    // every MumbleWay rider read as 0 ms to everybody — in this app's own
+    // roster and in the official client alike.
+    let ping = mumble::Ping {
+        timestamp: Some(now_millis()),
+        good: Some(stats.good),
+        late: Some(stats.late),
+        lost: Some(stats.lost),
+        resync: Some(stats.resync),
+        udp_packets: Some(state.udp_packets),
+        tcp_packets: Some(state.tcp_packets),
+        udp_ping_avg: Some(state.udp_ping.mean()),
+        udp_ping_var: Some(state.udp_ping.variance()),
+        tcp_ping_avg: Some(state.tcp_ping.mean()),
+        tcp_ping_var: Some(state.tcp_ping.variance()),
+    };
+    writer.send(MessageType::Ping, &ping).await?;
+    if let Some(s) = udp.as_mut() {
+        let _ = s.send_ping(now_millis()).await;
+    }
+    Ok(())
+}
+
 /// Milliseconds since the Unix epoch, used for ping timestamps.
 fn now_millis() -> u64 {
     SystemTime::now()
@@ -2353,3 +2407,295 @@ fn now_millis() -> u64 {
 pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::net::frame;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    struct AudioKeepAlive {
+        _out_tx: mpsc::Sender<(u64, Vec<u8>, bool)>,
+        _in_rx: mpsc::Receiver<VoicePacket>,
+    }
+
+    fn test_audio() -> (AudioKeepAlive, AudioBridge) {
+        let (out_tx, out_rx) = mpsc::channel(8);
+        let (in_tx, in_rx) = mpsc::channel(8);
+        (
+            AudioKeepAlive {
+                _out_tx: out_tx,
+                _in_rx: in_rx,
+            },
+            AudioBridge {
+                outgoing: out_rx,
+                incoming: in_tx,
+            },
+        )
+    }
+
+    fn test_config(port: u16) -> SessionConfig {
+        SessionConfig {
+            profile: ServerProfile::new("test", "127.0.0.1", port, "rider"),
+            identity: Identity::generate("test").unwrap(),
+            client_name: "MumbleWay Test".into(),
+            app_version: "0.0.0-test".into(),
+            mic_mode_hint: String::new(),
+            backoff: BackoffPolicy {
+                initial: Duration::from_secs(10),
+                later: Duration::from_secs(15),
+                quick_attempts: 5,
+                jitter: Duration::ZERO,
+            },
+        }
+    }
+
+    async fn next_state(
+        rx: &mut mpsc::Receiver<SessionEvent>,
+        within: Duration,
+    ) -> std::result::Result<Option<ConnectionState>, tokio::time::error::Elapsed> {
+        tokio::time::timeout(within, async {
+            loop {
+                match rx.recv().await {
+                    Some(SessionEvent::State(s)) => return Some(s),
+                    Some(_) => continue,
+                    None => return None,
+                }
+            }
+        })
+        .await
+    }
+
+    async fn read_frame<R: tokio::io::AsyncRead + Unpin>(
+        reader: &mut R,
+    ) -> std::io::Result<(u16, Vec<u8>)> {
+        let mut hdr = [0u8; frame::HEADER_LEN];
+        reader.read_exact(&mut hdr).await?;
+        let parsed = frame::Header::parse(&hdr).map_err(std::io::Error::other)?;
+        let mut body = vec![0u8; parsed.length];
+        if parsed.length > 0 {
+            reader.read_exact(&mut body).await?;
+        }
+        Ok((parsed.msg_type, body))
+    }
+
+    #[tokio::test]
+    async fn stale_network_available_is_drained_while_other_commands_survive() {
+        let (ev_tx, _ev_rx) = mpsc::channel(16);
+        let (cmd_tx, cmd_rx) = mpsc::channel(16);
+        let (_keep, audio) = test_audio();
+        let mut session = Session::new(test_config(1), ev_tx, cmd_rx, audio);
+
+        cmd_tx.send(SessionCommand::NetworkAvailable).await.unwrap();
+        cmd_tx
+            .send(SessionCommand::SetSelfMute(true))
+            .await
+            .unwrap();
+        cmd_tx.send(SessionCommand::NetworkAvailable).await.unwrap();
+        cmd_tx.send(SessionCommand::Disconnect).await.unwrap();
+
+        session.drain_stale_network_available();
+
+        let first = recv_command(&mut session.commands, &mut session.pending_commands).await;
+        assert!(matches!(first, Some(SessionCommand::SetSelfMute(true))));
+        let second = recv_command(&mut session.commands, &mut session.pending_commands).await;
+        assert!(matches!(second, Some(SessionCommand::Disconnect)));
+        assert!(session.pending_commands.is_empty());
+        assert!(session.commands.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn stale_network_available_before_disconnect_does_not_wake_sleep() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+        let (drop_tx, drop_rx) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            if let Ok((sock, _)) = listener.accept().await {
+                let _ = accepted_tx.send(());
+                let _ = drop_rx.await;
+                drop(sock);
+            }
+        });
+
+        let (ev_tx, mut ev_rx) = mpsc::channel(64);
+        let (cmd_tx, cmd_rx) = mpsc::channel(32);
+        let (_keep, audio) = test_audio();
+        let session = Session::new(test_config(addr.port()), ev_tx, cmd_rx, audio);
+        let task = tokio::spawn(session.run());
+
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+        assert!(matches!(
+            next_state(&mut ev_rx, Duration::from_secs(2)).await,
+            Ok(Some(ConnectionState::Connecting))
+        ));
+
+        // Wait until `connect_and_run` has dialed and is blocked on TLS, then
+        // queue a `NetworkAvailable` before dropping the socket.
+        accepted_rx.await.unwrap();
+        cmd_tx.send(SessionCommand::NetworkAvailable).await.unwrap();
+        let _ = drop_tx.send(());
+
+        assert!(matches!(
+            next_state(&mut ev_rx, Duration::from_secs(2)).await,
+            Ok(Some(ConnectionState::Reconnecting { .. }))
+        ));
+
+        // The stale signal must have been drained rather than waking at 0 ms.
+        assert!(
+            next_state(&mut ev_rx, Duration::from_millis(200))
+                .await
+                .is_err(),
+            "stale NetworkAvailable must not wake backoff sleep"
+        );
+
+        // A fresh signal while sleeping wakes the first retry immediately.
+        cmd_tx.send(SessionCommand::NetworkAvailable).await.unwrap();
+        assert!(matches!(
+            next_state(&mut ev_rx, Duration::from_secs(1)).await,
+            Ok(Some(ConnectionState::Connecting))
+        ));
+        assert!(matches!(
+            next_state(&mut ev_rx, Duration::from_secs(2)).await,
+            Ok(Some(ConnectionState::Reconnecting { .. }))
+        ));
+
+        // A second signal within the 15 s cooldown must not wake sleep again.
+        cmd_tx.send(SessionCommand::NetworkAvailable).await.unwrap();
+        assert!(
+            next_state(&mut ev_rx, Duration::from_millis(200))
+                .await
+                .is_err(),
+            "cooldown must prevent repeated immediate wakeups"
+        );
+
+        cmd_tx.send(SessionCommand::Shutdown).await.unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+    }
+
+    #[tokio::test]
+    async fn network_available_while_connected_sends_tcp_and_udp_pings() {
+        let mut bound = None;
+        for _ in 0..10 {
+            let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = tcp.local_addr().unwrap();
+            if let Ok(udp) = tokio::net::UdpSocket::bind(addr).await {
+                bound = Some((tcp, udp, addr));
+                break;
+            }
+        }
+        let (listener, server_udp, addr) = bound.expect("bind matching TCP and UDP port");
+
+        let server_id = Identity::generate("127.0.0.1").unwrap();
+        let certs: Vec<_> = rustls_pemfile::certs(&mut server_id.cert_pem.as_bytes())
+            .map(|r| r.unwrap())
+            .collect();
+        let key = rustls_pemfile::private_key(&mut server_id.key_pem.as_bytes())
+            .unwrap()
+            .unwrap();
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let server_cfg = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_cfg));
+
+        let (tcp_ping_tx, mut tcp_ping_rx) = mpsc::channel(16);
+        let (udp_ping_tx, mut udp_ping_rx) = mpsc::channel(16);
+
+        tokio::spawn(async move {
+            let mut buf = [0u8; 2048];
+            while let Ok((n, _)) = server_udp.recv_from(&mut buf).await {
+                if n > 0 && udp_ping_tx.send(()).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            let Ok((tcp, _)) = listener.accept().await else {
+                return;
+            };
+            let Ok(mut tls) = acceptor.accept(tcp).await else {
+                return;
+            };
+
+            let crypt = mumble::CryptSetup {
+                key: Some(prost::bytes::Bytes::from(vec![1u8; 16])),
+                client_nonce: Some(prost::bytes::Bytes::from(vec![2u8; 16])),
+                server_nonce: Some(prost::bytes::Bytes::from(vec![3u8; 16])),
+            };
+            let sync = mumble::ServerSync {
+                session: Some(1),
+                ..Default::default()
+            };
+            let crypt_bytes = frame::encode_proto(MessageType::CryptSetup, &crypt);
+            let sync_bytes = frame::encode_proto(MessageType::ServerSync, &sync);
+            if tls.write_all(&crypt_bytes).await.is_err()
+                || tls.write_all(&sync_bytes).await.is_err()
+                || tls.flush().await.is_err()
+            {
+                return;
+            }
+
+            while let Ok((msg_type, _)) = read_frame(&mut tls).await {
+                if MessageType::from_u16(msg_type) == Some(MessageType::Ping)
+                    && tcp_ping_tx.send(()).await.is_err()
+                {
+                    break;
+                }
+            }
+        });
+
+        let (ev_tx, mut ev_rx) = mpsc::channel(64);
+        let (cmd_tx, cmd_rx) = mpsc::channel(32);
+        let (_keep, audio) = test_audio();
+        let session = Session::new(test_config(addr.port()), ev_tx, cmd_rx, audio);
+        let task = tokio::spawn(session.run());
+
+        cmd_tx.send(SessionCommand::Connect).await.unwrap();
+        loop {
+            match next_state(&mut ev_rx, Duration::from_secs(3)).await {
+                Ok(Some(ConnectionState::Connected)) => break,
+                Ok(Some(_)) => continue,
+                other => panic!("did not reach Connected state: {other:?}"),
+            }
+        }
+
+        // Wait for the initial bind UDP ping and tick-0 TCP+UDP pings before
+        // sending `NetworkAvailable`, so the probe below cannot be confused
+        // with startup traffic and fires well ahead of the 5 s ping interval.
+        let wait = Duration::from_secs(2);
+        let init_tcp = tokio::time::timeout(wait, tcp_ping_rx.recv()).await;
+        assert!(
+            matches!(init_tcp, Ok(Some(()))),
+            "expected initial tick-0 TCP ping"
+        );
+        for _ in 0..2 {
+            let init_udp = tokio::time::timeout(wait, udp_ping_rx.recv()).await;
+            assert!(
+                matches!(init_udp, Ok(Some(()))),
+                "expected initial UDP pings"
+            );
+        }
+
+        cmd_tx.send(SessionCommand::NetworkAvailable).await.unwrap();
+
+        let tcp_ping = tokio::time::timeout(Duration::from_secs(1), tcp_ping_rx.recv()).await;
+        assert!(
+            matches!(tcp_ping, Ok(Some(()))),
+            "NetworkAvailable while connected must trigger immediate TCP ping"
+        );
+        let udp_ping = tokio::time::timeout(Duration::from_secs(1), udp_ping_rx.recv()).await;
+        assert!(
+            matches!(udp_ping, Ok(Some(()))),
+            "NetworkAvailable while connected must trigger immediate UDP ping"
+        );
+
+        cmd_tx.send(SessionCommand::Shutdown).await.unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+    }
+}

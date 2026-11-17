@@ -51,7 +51,7 @@
 //! dropped together — which is what happens when a server restarts — spread
 //! their return over a two-second window instead of arriving in lockstep.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::error::DisconnectReason;
 
@@ -80,6 +80,10 @@ pub const SERVER_AUTOBAN_WINDOW: Duration = Duration::from_secs(120);
 
 /// How far either side of the interval an attempt may land.
 pub const RETRY_JITTER: Duration = Duration::from_secs(1);
+
+/// Minimum interval between network-triggered backoff resets, so a flapping
+/// interface cannot collapse the backoff into a ban-inducing retry loop.
+const NETWORK_RESET_COOLDOWN: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone)]
 pub struct BackoffPolicy {
@@ -170,6 +174,7 @@ pub struct ReconnectState {
     attempt: u32,
     /// Set when the user explicitly disconnected; blocks all automatic retries.
     stopped_by_user: bool,
+    last_network_reset: Option<Instant>,
 }
 
 impl ReconnectState {
@@ -178,6 +183,7 @@ impl ReconnectState {
             policy,
             attempt: 0,
             stopped_by_user: false,
+            last_network_reset: None,
         }
     }
 
@@ -203,6 +209,7 @@ impl ReconnectState {
     pub fn arm(&mut self) {
         self.stopped_by_user = false;
         self.attempt = 0;
+        self.last_network_reset = None;
     }
 
     /// Called when a connection is up again.
@@ -229,11 +236,28 @@ impl ReconnectState {
     }
 
     /// Called when the OS reports connectivity returned; collapses the backoff so
-    /// the next attempt happens almost immediately.
-    pub fn on_network_available(&mut self) {
-        if !self.stopped_by_user {
-            self.attempt = 0;
+    /// the next attempt happens almost immediately, subject to a cooldown so a
+    /// flapping interface cannot cause a 0 ms retry loop.
+    ///
+    /// Returns `true` when the backoff was reset.
+    pub fn on_network_available(&mut self) -> bool {
+        self.on_network_available_at(Instant::now())
+    }
+
+    /// Deterministic variant of [`Self::on_network_available`] taking `now`.
+    pub fn on_network_available_at(&mut self, now: Instant) -> bool {
+        if self.stopped_by_user {
+            return false;
         }
+        if let Some(prev) = self.last_network_reset {
+            let elapsed = now.saturating_duration_since(prev);
+            if elapsed < NETWORK_RESET_COOLDOWN {
+                return false;
+            }
+        }
+        self.attempt = 0;
+        self.last_network_reset = Some(now);
+        true
     }
 }
 
@@ -426,7 +450,7 @@ mod tests {
             "a user disconnect must latch"
         );
         // ...nor should a network-available signal.
-        s.on_network_available();
+        assert!(!s.on_network_available());
         assert_eq!(
             s.on_disconnect(&DisconnectReason::PingTimeout {
                 voice_still_arriving: false,
@@ -530,12 +554,74 @@ mod tests {
         }
         assert!(s.attempt() >= 6);
 
-        s.on_network_available();
+        assert!(s.on_network_available());
         assert_eq!(
             s.attempt(),
             0,
             "should retry immediately when signal returns"
         );
+    }
+
+    #[test]
+    fn network_reset_respects_cooldown() {
+        let mut s = ReconnectState::new(BackoffPolicy::default());
+        let drop = DisconnectReason::TransportLost("down".into());
+        for _ in 0..6 {
+            s.on_disconnect(&drop);
+        }
+        assert!(s.attempt() >= 6);
+
+        let t0 = Instant::now();
+        assert!(s.on_network_available_at(t0));
+        assert_eq!(s.attempt(), 0);
+
+        s.on_disconnect(&drop);
+        assert_eq!(s.attempt(), 1);
+
+        // Inside the cooldown window: attempt stays at 1, does not reset.
+        assert!(!s.on_network_available_at(t0 + Duration::from_secs(5)));
+        assert_eq!(s.attempt(), 1);
+        let just_before = t0 + NETWORK_RESET_COOLDOWN - Duration::from_millis(1);
+        assert!(!s.on_network_available_at(just_before));
+        assert_eq!(s.attempt(), 1);
+
+        // Once the full cooldown elapses, the next signal resets again.
+        assert!(s.on_network_available_at(t0 + NETWORK_RESET_COOLDOWN));
+        assert_eq!(s.attempt(), 0);
+    }
+
+    #[test]
+    fn note_healthy_does_not_bypass_network_reset_cooldown() {
+        let mut s = ReconnectState::new(BackoffPolicy::default());
+        let drop = DisconnectReason::TransportLost("flap".into());
+        let t0 = Instant::now();
+
+        s.on_disconnect(&drop);
+        assert!(s.on_network_available_at(t0));
+
+        // Even if the next connection momentarily completes handshake and
+        // immediately drops again, the reset cooldown still protects against
+        // hammering the server.
+        s.note_healthy();
+        s.on_disconnect(&drop);
+        assert_eq!(s.attempt(), 1);
+        assert!(!s.on_network_available_at(t0 + Duration::from_secs(3)));
+        assert_eq!(s.attempt(), 1);
+    }
+
+    #[test]
+    fn arm_clears_network_reset_cooldown() {
+        let mut s = ReconnectState::new(BackoffPolicy::default());
+        let drop = DisconnectReason::TransportLost("down".into());
+        let t0 = Instant::now();
+
+        assert!(s.on_network_available_at(t0));
+        s.stop();
+        s.arm();
+        s.on_disconnect(&drop);
+        assert_eq!(s.attempt(), 1);
+        assert!(s.on_network_available_at(t0 + Duration::from_secs(1)));
+        assert_eq!(s.attempt(), 0);
     }
 
     #[test]

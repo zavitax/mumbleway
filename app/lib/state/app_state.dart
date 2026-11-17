@@ -23,6 +23,7 @@ import '../services/device_identity.dart';
 import '../services/engine_log.dart';
 import '../services/overlay.dart';
 import '../services/power.dart';
+import '../services/network_watch.dart';
 import '../services/proxy.dart';
 import '../services/server_proxy.dart';
 import '../services/store_links.dart';
@@ -659,6 +660,7 @@ class AppState extends ChangeNotifier {
 
   StreamSubscription<AppEvent>? _events;
   Timer? _pingTimer;
+  NetworkWatch? _network;
 
   bool _ready = false;
   String? _startupError;
@@ -1233,6 +1235,19 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
+
+      // A network coming back cuts every reconnect backoff short, so a rider
+      // leaving a tunnel is back on the channel as soon as there is a link
+      // rather than when the backoff happens to expire.
+      _network = NetworkWatch(
+        onAvailable: () {
+          try {
+            networkAvailable();
+          } catch (_) {
+            // No engine: nothing is waiting to reconnect either.
+          }
+        },
+      )..start();
 
       // Resolve the proxy once at startup; createClient() uses the cached
       // result, so no request pays for a subprocess.
@@ -5677,6 +5692,7 @@ class AppState extends ChangeNotifier {
     _audioRelease?.cancel();
     _lifecycle?.dispose();
     _events?.cancel();
+    _network?.dispose();
     _meters.dispose();
     _remoteMutes.close();
     _suggestions.close();

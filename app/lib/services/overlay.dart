@@ -49,6 +49,10 @@ class OverlayBridge {
 
   bool get isShowing => _showing;
 
+  /// Overrides the detected floating-window kind, for tests.
+  @visibleForTesting
+  static FloatingKind? kindOverride;
+
   /// Offered only where the app is genuinely hidden behind something else.
   ///
   /// Not on macOS or Windows: there the app is a window among windows, already
@@ -57,6 +61,8 @@ class OverlayBridge {
   /// The case for one is a phone, where leaving the app means the app is gone
   /// and the rider cannot go looking for it at 100 km/h.
   FloatingKind get kind {
+    final override = kindOverride;
+    if (override != null) return override;
     if (kIsWeb) return FloatingKind.none;
     try {
       if (Platform.isAndroid) return FloatingKind.androidOverlay;

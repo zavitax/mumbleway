@@ -898,6 +898,24 @@ class LRu extends L {
   String get qrCouldNotRender => 'Не удалось построить код.';
 
   @override
+  String get saveQrImage => 'Сохранить как…';
+
+  @override
+  String get copyInviteLink => 'Скопировать ссылку-приглашение';
+
+  @override
+  String get inviteLinkCopied =>
+      'Ссылка-приглашение скопирована в буфер обмена.';
+
+  @override
+  String qrSavedTo(String path) {
+    return 'Код сохранён: $path';
+  }
+
+  @override
+  String get showInFolder => 'Показать';
+
+  @override
   String joinMeOn(String name) {
     return 'Подключайтесь: $name';
   }

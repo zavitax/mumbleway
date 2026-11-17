@@ -1705,6 +1705,36 @@ abstract class L {
   /// **'The code could not be drawn.'**
   String get qrCouldNotRender;
 
+  /// No description provided for @saveQrImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Save as…'**
+  String get saveQrImage;
+
+  /// No description provided for @copyInviteLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy invite link'**
+  String get copyInviteLink;
+
+  /// No description provided for @inviteLinkCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite link copied to the clipboard.'**
+  String get inviteLinkCopied;
+
+  /// No description provided for @qrSavedTo.
+  ///
+  /// In en, this message translates to:
+  /// **'Code saved: {path}'**
+  String qrSavedTo(String path);
+
+  /// No description provided for @showInFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Show'**
+  String get showInFolder;
+
   /// Subject line when sharing an invite.
   ///
   /// In en, this message translates to:

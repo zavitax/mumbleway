@@ -379,6 +379,11 @@
   "qrCarriesPassword": "В коде содержится пароль. Любой, кто его увидит — через плечо или на фотографии, — сможет подключиться от вашего имени.",
   "shareQrImage": "Отправить код",
   "qrCouldNotRender": "Не удалось построить код.",
+  "saveQrImage": "Сохранить как…",
+  "copyInviteLink": "Скопировать ссылку-приглашение",
+  "inviteLinkCopied": "Ссылка-приглашение скопирована в буфер обмена.",
+  "qrSavedTo": "Код сохранён: {path}",
+  "showInFolder": "Показать",
   "joinMeOn": "Подключайтесь: {name}",
   "@joinMeOn": {
     "description": "Subject line when sharing an invite.",

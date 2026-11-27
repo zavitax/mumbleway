@@ -713,6 +713,7 @@ impl Session {
             (Some(peer), Some(crypt)) => match VoiceSocket::try_bind(peer, crypt).await {
                 Ok(mut s) => {
                     let _ = s.send_ping(now_millis()).await;
+                    state.udp_retry.reopened();
                     Some(s)
                 }
                 // UDP unavailable for now; the tunnel still works, and the
@@ -2432,12 +2433,7 @@ async fn flush_pending_crypt(
     udp: &mut Option<VoiceSocket>,
     writer: &mut ControlWriter,
 ) -> Result<()> {
-    if let Some(crypt) = state.pending_crypt.take() {
-        if let Some(s) = udp.as_mut() {
-            s.set_crypt(crypt);
-            state.crypt = None;
-        }
-    }
+    apply_pending_cipher(state, udp, Instant::now());
     if let Some(iv) = state.pending_decrypt_iv.take() {
         let applied = match udp.as_mut() {
             Some(s) => s.set_decrypt_iv(&iv),
@@ -2464,6 +2460,22 @@ async fn flush_pending_crypt(
         }
     }
     Ok(())
+}
+
+/// Hands a queued full rekey to the open UDP socket. With no socket open the
+/// cipher stays in `state.crypt` for the next bind, and a bind is scheduled:
+/// a `CryptSetup` that arrives after `ServerSync` found no cipher at the
+/// initial bind, and nothing else would ever try UDP for this session.
+fn apply_pending_cipher(state: &mut LiveState, udp: &mut Option<VoiceSocket>, now: Instant) {
+    if let Some(crypt) = state.pending_crypt.take() {
+        match udp.as_mut() {
+            Some(s) => {
+                s.set_crypt(crypt);
+                state.crypt = None;
+            }
+            None => state.udp_retry.arm(now),
+        }
+    }
 }
 
 /// Our answer to a server's empty `CryptSetup`: our encrypt nonce, which is
@@ -2557,6 +2569,28 @@ mod tests {
         let after_cooldown = t0 + NONCE_REPLY_COOLDOWN;
         apply_crypt_setup(&mut state, mumble::CryptSetup::default(), after_cooldown).unwrap();
         assert!(state.nonce_requested);
+    }
+
+    #[test]
+    fn a_crypt_setup_after_server_sync_schedules_a_udp_bind() {
+        // ServerSync came first: the initial bind had no cipher and left UDP
+        // off with no retry scheduled.
+        let mut state = LiveState::new();
+        let t0 = Instant::now();
+        assert!(!state.udp_retry.is_due(t0));
+
+        let msg = mumble::CryptSetup {
+            key: Some(vec![0x11u8; 16].into()),
+            client_nonce: Some(vec![0x22u8; 16].into()),
+            server_nonce: Some(vec![0x33u8; 16].into()),
+        };
+        apply_crypt_setup(&mut state, msg, t0).unwrap();
+        let mut udp: Option<VoiceSocket> = None;
+        apply_pending_cipher(&mut state, &mut udp, t0);
+
+        assert!(state.pending_crypt.is_none());
+        assert!(state.crypt.is_some(), "the cipher waits for the bind");
+        assert!(state.udp_retry.is_due(t0), "the next health tick must open the voice socket");
     }
 
     #[test]

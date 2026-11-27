@@ -94,6 +94,16 @@ impl UdpRetry {
         self.delay = UDP_RETRY_FIRST;
     }
 
+    /// A usable cipher has arrived while no socket is open: make sure an
+    /// attempt is scheduled. A retry already waiting out its backoff keeps it;
+    /// with nothing scheduled — a `CryptSetup` that came after `ServerSync`, so
+    /// the initial bind had no cipher — the next health tick tries at once.
+    pub fn arm(&mut self, now: Instant) {
+        if self.next.is_none() {
+            self.next = Some(now);
+        }
+    }
+
     /// Try at once if a retry is pending — the network has just come back.
     pub fn hurry(&mut self, now: Instant) {
         if self.next.is_some() {
@@ -321,6 +331,20 @@ mod tests {
         r.failed(t0);
         r.hurry(t0);
         assert!(r.is_due(t0));
+    }
+
+    #[test]
+    fn arming_schedules_a_first_attempt_but_keeps_a_running_backoff() {
+        let t0 = Instant::now();
+        let mut r = UdpRetry::default();
+        r.arm(t0);
+        assert!(r.is_due(t0), "nothing was scheduled, so arm tries at once");
+
+        let mut r = UdpRetry::default();
+        r.failed(t0);
+        r.arm(t0);
+        assert!(!r.is_due(t0), "an existing backoff is not cut short");
+        assert!(r.is_due(t0 + UDP_RETRY_FIRST));
     }
 
     #[tokio::test]

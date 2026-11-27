@@ -44,6 +44,9 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Clear a user's talking indicator if no voice packet arrives for this long.
 const TALKING_TIMEOUT: Duration = Duration::from_millis(600);
+/// Most commands held while a handshake is in flight. State setters are
+/// coalesced, so this only bounds one-off actions such as text messages.
+const MAX_PENDING_COMMANDS: usize = 64;
 
 /// Channels connecting a session to the audio engine.
 pub struct AudioBridge {
@@ -496,16 +499,17 @@ impl Session {
             let attempt = self.inner.connect_and_handshake();
             tokio::pin!(attempt);
             loop {
+                // The attempt is polled first so a busy command channel cannot
+                // starve the handshake; Disconnect and Shutdown still end it
+                // on the next poll.
                 tokio::select! {
                     biased;
+                    res = &mut attempt => return Some(res),
                     cmd = self.commands.recv() => match cmd {
                         Some(SessionCommand::Disconnect) => break true,
                         Some(SessionCommand::Shutdown) | None => break false,
-                        Some(other) => {
-                            self.pending_commands.push_back(other);
-                        }
+                        Some(other) => queue_pending_command(&mut self.pending_commands, other),
                     },
-                    res = &mut attempt => return Some(res),
                 }
             }
         };
@@ -2494,6 +2498,29 @@ pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
 
+/// Holds a command that arrived during a handshake, to run once connected.
+///
+/// Commands that only set state keep their latest value, so a rider dragging
+/// a control during a stalled connect costs one entry, not hundreds. Anything
+/// else is kept in order up to [`MAX_PENDING_COMMANDS`]; past that it is
+/// dropped with a warning rather than buffered without limit.
+fn queue_pending_command(pending: &mut VecDeque<SessionCommand>, cmd: SessionCommand) {
+    if matches!(
+        cmd,
+        SessionCommand::SetSelfMute(_)
+            | SessionCommand::SetSelfDeaf(_)
+            | SessionCommand::JoinChannel(_)
+    ) {
+        let kind = std::mem::discriminant(&cmd);
+        pending.retain(|c| std::mem::discriminant(c) != kind);
+    }
+    if pending.len() >= MAX_PENDING_COMMANDS {
+        tracing::warn!("dropping a command queued during the handshake: {cmd:?}");
+        return;
+    }
+    pending.push_back(cmd);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2980,5 +3007,37 @@ mod tests {
         assert!(!state.users[&1].talking);
         assert!(!state.last_voice_at.contains_key(&1));
         assert!(!state.expire_stale_talkers(t_voice1 + Duration::from_millis(800)));
+    }
+
+    #[test]
+    fn commands_queued_during_a_handshake_are_coalesced_and_bounded() {
+        let mut pending = VecDeque::new();
+        for i in 0..1000 {
+            queue_pending_command(&mut pending, SessionCommand::SetSelfMute(i % 2 == 0));
+            queue_pending_command(&mut pending, SessionCommand::JoinChannel(i));
+        }
+        assert_eq!(pending.len(), 2, "state setters keep only their latest value");
+        assert!(pending.iter().any(|c| matches!(c, SessionCommand::SetSelfMute(false))));
+        assert!(pending.iter().any(|c| matches!(c, SessionCommand::JoinChannel(999))));
+
+        for i in 0..500 {
+            queue_pending_command(
+                &mut pending,
+                SessionCommand::SendText {
+                    channel_id: None,
+                    message: format!("m{i}"),
+                },
+            );
+        }
+        assert_eq!(pending.len(), MAX_PENDING_COMMANDS);
+        // Order is kept for what was accepted.
+        let first_text = pending
+            .iter()
+            .find_map(|c| match c {
+                SessionCommand::SendText { message, .. } => Some(message.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(first_text, "m0");
     }
 }

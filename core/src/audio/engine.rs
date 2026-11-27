@@ -573,6 +573,29 @@ impl OnsetDelay {
     }
 }
 
+/// Runs one block through the voice-activation look-ahead and reports whether
+/// it is still priming, in which case nothing may be sent.
+///
+/// **Nothing captured under mute enters the line.** The look-ahead holds up to
+/// 240 ms; anything pushed into it while muted would be what the open gate
+/// emits first after unmute — speech the rider muted to keep private. So mute
+/// drops whatever the line held and feeds it nothing, and after unmute it
+/// re-primes from fresh audio: the first words are delayed, never replaced.
+fn delay_for_transmit(
+    delay: &mut Paydown,
+    block: &mut [f32],
+    muted: bool,
+    gate_active: bool,
+) -> bool {
+    if muted {
+        if !delay.is_empty() {
+            delay.clear();
+        }
+        return false;
+    }
+    !delay.shift_with_speech(block, gate_active)
+}
+
 /// Shared state between the callbacks, the worker and the API layer.
 pub struct AudioShared {
     /// Raw mono 48 kHz samples captured from the microphone.
@@ -4253,8 +4276,8 @@ where
             if mode == TransmitMode::VoiceActivity {
                 // Keep advancing while speech or its hangover/fade is active so
                 // the tail plays out untouched; refill toward 240 ms once shut.
-                let gate_active = !muted && (open || hold_left > 0 || fade_left > 0);
-                priming = !onset_delay.shift_with_speech(&mut block, gate_active);
+                let gate_active = open || hold_left > 0 || fade_left > 0;
+                priming = delay_for_transmit(&mut onset_delay, &mut block, muted, gate_active);
             } else {
                 hold_left = 0;
                 fade_left = 0;
@@ -4634,6 +4657,43 @@ where
 mod tests {
     use super::*;
     use crate::audio::codec::{Quality, VoiceEncoder};
+
+    #[test]
+    fn audio_captured_under_mute_never_reaches_the_output() {
+        const BLOCK: usize = 480;
+        const BEFORE: f32 = 0.1;
+        const DURING: f32 = 0.2;
+        const AFTER: f32 = 0.3;
+        let mut delay = Paydown::new();
+        let mut sent_before = false;
+        // Talk long enough to prime the line and send.
+        for _ in 0..60 {
+            let mut b = vec![BEFORE; BLOCK];
+            if !delay_for_transmit(&mut delay, &mut b, false, true) {
+                sent_before = true;
+            }
+        }
+        assert!(sent_before, "the line never primed");
+        // Muted: whatever comes out is not sent, and nothing goes in.
+        for _ in 0..30 {
+            let mut b = vec![DURING; BLOCK];
+            assert!(!delay_for_transmit(&mut delay, &mut b, true, true));
+        }
+        assert!(delay.is_empty(), "muted audio was kept in the look-ahead");
+        // Unmuted and talking: only post-unmute audio may come out.
+        let mut emitted = 0usize;
+        for _ in 0..60 {
+            let mut b = vec![AFTER; BLOCK];
+            if !delay_for_transmit(&mut delay, &mut b, false, true) {
+                assert!(
+                    b.iter().all(|s| (*s - AFTER).abs() < 1e-6),
+                    "audio from before unmute was emitted after it"
+                );
+                emitted += 1;
+            }
+        }
+        assert!(emitted > 0, "nothing was sent after unmute");
+    }
 
     fn encoded_frames(n: usize) -> Vec<Vec<u8>> {
         let mut enc = VoiceEncoder::new(Quality::Balanced).unwrap();

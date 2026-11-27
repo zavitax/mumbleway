@@ -4387,7 +4387,13 @@ class AppState extends ChangeNotifier {
   /// The voice bitrate setting: `0` for "Auto", which follows how the server
   /// measures our own link, otherwise a fixed rate in bit/s. The server's
   /// bandwidth allowance applies on top of either.
-  int voiceBitrateBps = 0;
+  ///
+  /// A fresh install keeps the Balanced rate the app always sent. "Auto" is
+  /// opt-in until it has been measured on real rides.
+  int voiceBitrateBps = defaultVoiceBitrateBps;
+
+  /// Balanced quality's rate (`Quality::Balanced` in the core).
+  static const int defaultVoiceBitrateBps = 24000;
 
   /// What a fixed setting starts from when a rider leaves "Auto".
   static const int defaultFixedBitrateBps = 32000;

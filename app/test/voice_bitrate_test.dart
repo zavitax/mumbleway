@@ -12,10 +12,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('a fresh install follows the link', () {
+  test('a fresh install keeps the Balanced rate, not Auto', () {
     final state = AppState();
     addTearDown(state.dispose);
-    expect(state.voiceBitrateBps, 0);
+    expect(state.voiceBitrateBps, AppState.defaultVoiceBitrateBps);
+    expect(state.voiceBitrateBps, 24000);
+    final (lo, hi, step) = AppState.bitrateBounds;
+    expect(state.voiceBitrateBps, inInclusiveRange(lo, hi));
+    expect((state.voiceBitrateBps - lo) % step, 0);
   });
 
   test('a fixed rate is snapped to the slider and remembered', () async {

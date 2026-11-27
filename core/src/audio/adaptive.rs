@@ -166,14 +166,30 @@ pub struct LinkReport {
 
 impl LinkReport {
     /// Combines two reports by taking the worse of each signal.
+    ///
+    /// Loss is classified per link before combining: congestion-range loss
+    /// (above [`LOSS_STEP_DOWN`], below [`LOSS_OUTAGE`]) is the actionable one,
+    /// so an outage on one server must not hide another that should step
+    /// down. Otherwise the larger figure wins, which still keeps a link from
+    /// climbing while any server reports an outage.
     pub fn worst(self, other: Self) -> Self {
         let max_opt = |a: Option<f32>, b: Option<f32>| match (a, b) {
             (Some(x), Some(y)) => Some(x.max(y)),
             (Some(x), None) | (None, Some(x)) => Some(x),
             (None, None) => None,
         };
+        let congested = |l: f32| l > LOSS_STEP_DOWN && l < LOSS_OUTAGE;
+        let worse_loss = |a: Option<f32>, b: Option<f32>| match (a, b) {
+            (Some(x), Some(y)) => Some(match (congested(x), congested(y)) {
+                (true, false) => x,
+                (false, true) => y,
+                _ => x.max(y),
+            }),
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            (None, None) => None,
+        };
         Self {
-            loss_up: max_opt(self.loss_up, other.loss_up),
+            loss_up: worse_loss(self.loss_up, other.loss_up),
             queue_ms: max_opt(self.queue_ms, other.queue_ms),
             tunnelled: self.tunnelled || other.tunnelled,
         }
@@ -354,6 +370,9 @@ impl MultiLinkTracker {
 pub struct AutoBitrate {
     rung: usize,
     clean_since: Option<Instant>,
+    /// When the last clean loss figure arrived. A clean run only counts while
+    /// figures keep coming: a gap longer than [`LINK_FRESH`] starts it again.
+    last_clean: Option<Instant>,
     last_down: Option<Instant>,
 }
 
@@ -362,6 +381,7 @@ impl Default for AutoBitrate {
         Self {
             rung: rung_of(AUTO_START_BPS),
             clean_since: None,
+            last_clean: None,
             last_down: None,
         }
     }
@@ -426,6 +446,15 @@ impl AutoBitrate {
             return self.bps();
         }
 
+        // Silence or missing telemetry is not evidence: after a long gap the
+        // run starts again from this sample instead of counting the pause.
+        if self
+            .last_clean
+            .is_some_and(|t| now.saturating_duration_since(t) > LINK_FRESH)
+        {
+            self.clean_since = None;
+        }
+        self.last_clean = Some(now);
         let since = *self.clean_since.get_or_insert(now);
         if now.saturating_duration_since(since) >= CLEAN_BEFORE_UP
             && self.rung + 1 < AUTO_RUNGS.len()
@@ -802,6 +831,44 @@ mod tests {
         assert_eq!(w.loss_up, Some(0.08));
         assert_eq!(w.queue_ms, Some(80.0));
         assert!(w.tunnelled);
+    }
+
+    #[test]
+    fn an_outage_on_one_server_does_not_hide_congestion_on_another() {
+        let outage = LinkReport {
+            loss_up: Some(0.6),
+            ..Default::default()
+        };
+        let congested = LinkReport {
+            loss_up: Some(0.15),
+            ..Default::default()
+        };
+        assert_eq!(outage.worst(congested).loss_up, Some(0.15));
+        assert_eq!(congested.worst(outage).loss_up, Some(0.15));
+        // Without a congested link the outage still wins and blocks climbing.
+        assert_eq!(outage.worst(CLEAN).loss_up, Some(0.6));
+
+        let t0 = Instant::now();
+        let mut a = AutoBitrate::default();
+        let start = a.bps();
+        assert!(a.update(t0, outage.worst(congested)) < start, "must step down");
+    }
+
+    #[test]
+    fn a_long_pause_restarts_the_clean_run() {
+        let t0 = Instant::now();
+        let mut a = AutoBitrate::default();
+        let start = a.bps();
+        a.update(t0, CLEAN);
+        // Nothing for well over the freshness window, then one clean figure:
+        // that is not 30 s of clean observations.
+        a.update(at(t0, 120), CLEAN);
+        assert_eq!(a.bps(), start, "climbed on a single sample after a pause");
+        // Fresh figures for the full run do earn the rung.
+        for s in (125..=150).step_by(5) {
+            a.update(at(t0, s), CLEAN);
+        }
+        assert!(a.bps() > start);
     }
 
     #[test]

@@ -975,7 +975,9 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         },
     )?;
     let shared = audio.shared();
-    shared.set_bitrate_mode(BitrateMode::Auto);
+    // Balanced until the app sends the rider's setting; "Auto" is opt-in.
+    let balanced = mumbleway_core::audio::bandwidth::preferred_bps();
+    shared.set_bitrate_mode(BitrateMode::fixed(balanced));
 
     // Aggregate every session's events onto the Dart stream.
     let (ev_tx, mut ev_rx) = mpsc::channel::<TaggedEvent>(512);

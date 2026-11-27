@@ -218,6 +218,10 @@ pub struct SpeakerBuffer {
     pcm_out: VecDeque<f32>,
     /// Reusable scratch buffer for [`Self::pop_samples`].
     decode_scratch: Vec<f32>,
+    /// The opening of a sender's next burst, numbered from zero again, that
+    /// arrived while the previous burst's terminated tail was still queued.
+    /// Held apart so neither is lost, and started once that tail drains.
+    next_burst: Vec<(u64, Vec<u8>, bool)>,
 }
 
 impl SpeakerBuffer {
@@ -250,6 +254,7 @@ impl SpeakerBuffer {
             speed: 1.0,
             pcm_out: VecDeque::new(),
             decode_scratch: Vec::with_capacity(FRAME_SAMPLES),
+            next_burst: Vec::new(),
         })
     }
 
@@ -321,6 +326,7 @@ impl SpeakerBuffer {
         (self.finished || self.drained_after_terminator)
             && self.pending.is_empty()
             && self.pcm_out.is_empty()
+            && self.next_burst.is_empty()
     }
 
     fn restart_utterance(&mut self, terminator: bool, sequence: u64) {
@@ -351,6 +357,19 @@ impl SpeakerBuffer {
 
     /// Accepts a packet. Packets older than the play head are discarded.
     pub fn push(&mut self, sequence: u64, opus: Vec<u8>, terminator: bool) {
+        // A sender that numbers each burst from zero can re-key while the
+        // previous burst's terminated tail is still queued. Its sequence 0 is
+        // then behind the play head, but it is a new burst, not a late packet:
+        // hold it, and what follows it, until the tail has played out.
+        if self.terminator_seq.is_some() && !self.drained_after_terminator {
+            let behind = self.next_seq.is_some_and(|n| sequence < n);
+            if !self.next_burst.is_empty() || (behind && sequence == 0) {
+                if self.next_burst.len() < self.max_buffered_frames() {
+                    self.next_burst.push((sequence, opus, terminator));
+                }
+                return;
+            }
+        }
         if self.terminator_seq.is_some_and(|t| sequence > t) {
             // A new utterance with higher monotonic sequence numbers has begun
             // before the buffer was reaped.
@@ -570,6 +589,23 @@ impl SpeakerBuffer {
             self.ended_seq = self.terminator_seq;
             self.finished = false;
             self.next_seq = None;
+            self.start_next_burst();
+        }
+    }
+
+    /// Starts the burst held in [`Self::next_burst`], now that the previous
+    /// one has played out in full.
+    fn start_next_burst(&mut self) {
+        let held = std::mem::take(&mut self.next_burst);
+        let Some(&(first, _, _)) = held.first() else {
+            return;
+        };
+        self.restart_utterance(false, first);
+        for (sequence, opus, terminator) in held {
+            self.pending.insert(sequence, opus);
+            if terminator {
+                self.mark_terminator(sequence);
+            }
         }
     }
 
@@ -751,6 +787,7 @@ impl SpeakerBuffer {
 
     pub fn reset(&mut self) {
         self.pending.clear();
+        self.next_burst.clear();
         self.pcm_out.clear();
         self.next_seq = None;
         self.finished = false;
@@ -817,6 +854,38 @@ mod tests {
             drain(&mut b, 6) > 0,
             "the second burst was discarded as arriving too late"
         );
+    }
+
+    #[test]
+    fn a_re_key_from_zero_while_the_last_tail_is_queued_keeps_both() {
+        // A quick push-to-talk re-key from a sender that numbers every burst
+        // from zero: the new burst opens while the previous terminator is still
+        // waiting to be played.
+        let packets = frames(12);
+        let mut b = SpeakerBuffer::new().unwrap();
+        for (i, p) in packets.iter().take(5).enumerate() {
+            b.push(seq(i), p.clone(), false);
+        }
+        b.push(seq(5), packets[5].clone(), true);
+        let mut out = vec![0.0f32; FRAME_SAMPLES];
+        let mut rounds = 0;
+        while b.play_slot().is_none() && rounds < 20 {
+            b.pop(&mut out);
+            rounds += 1;
+        }
+        assert!(b.play_slot().is_some(), "the first burst never started");
+        assert!(b.buffered() > 0, "the tail drained before the re-key");
+
+        for (i, p) in packets.iter().skip(6).enumerate() {
+            b.push(seq(i), p.clone(), i == 5);
+        }
+        assert_eq!(b.late_packets, 0, "the new burst was dropped as late");
+
+        for _ in 0..40 {
+            b.pop(&mut out);
+        }
+        assert_eq!(b.decoded_total, 12, "a frame of either burst was lost");
+        assert!(b.is_finished());
     }
 
     #[test]

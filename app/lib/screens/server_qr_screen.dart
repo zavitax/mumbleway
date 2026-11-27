@@ -125,23 +125,34 @@ Future<Uint8List?> renderQrPng(String link) async {
   return data?.buffer.asUint8List();
 }
 
-/// Writes [bytes] to `${dir.path}/$fileName`, invokes [share] (defaulting to
-/// `SharePlus.instance.share`), and deletes the temp file unless the platform
-/// returns [ShareResultStatus.unavailable].
+/// Prefix of the per-share directories [shareQrImageFile] creates in `dir`.
+const qrShareDirPrefix = 'mumbleway-qr-share-';
+
+/// How long a share directory kept for a delayed share target survives.
+const qrShareDirMaxAge = Duration(hours: 1);
+
+/// Writes [bytes] to a fresh directory inside [dir] as [fileName], invokes
+/// [share] (defaulting to `SharePlus.instance.share`), and deletes that
+/// directory unless the platform returns [ShareResultStatus.unavailable].
 ///
 /// On Windows, `SharePlus.instance.share` hands the path to the OS Share Sheet
 /// and returns immediately with `unavailable` before the target app reads it,
-/// so deleting the file synchronously in `finally` races the target. Keeping
-/// the deterministic temp file in that case lets the OS share target read it,
-/// and subsequent shares of the same server overwrite it cleanly.
+/// so deleting the file synchronously in `finally` races the target. The file
+/// is kept in that case, and because every share gets its own directory a
+/// later share — of another channel on the same server, say — can neither
+/// overwrite nor delete a file an earlier target is still reading. Directories
+/// kept this way are aged out by later shares after [qrShareDirMaxAge].
 Future<void> shareQrImageFile({
   required Directory dir,
   required String fileName,
   required Uint8List bytes,
   required String subject,
   Future<ShareResultStatus> Function(ShareParams params)? share,
+  DateTime Function()? now,
 }) async {
-  final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+  await _ageOutQrShareDirs(dir, (now ?? DateTime.now)());
+  final shareDir = await dir.createTemp(qrShareDirPrefix);
+  final file = File('${shareDir.path}${Platform.pathSeparator}$fileName');
   var deleteTemp = false;
   try {
     await file.writeAsBytes(bytes, flush: true);
@@ -163,10 +174,29 @@ Future<void> shareQrImageFile({
   } finally {
     if (deleteTemp) {
       try {
-        await file.delete();
+        await shareDir.delete(recursive: true);
       } catch (_) {}
     }
   }
+}
+
+/// Removes share directories left for delayed share targets once they are
+/// older than [qrShareDirMaxAge]. Best effort: a directory still in use or
+/// already gone is skipped.
+Future<void> _ageOutQrShareDirs(Directory dir, DateTime now) async {
+  try {
+    await for (final entry in dir.list(followLinks: false)) {
+      if (entry is! Directory) continue;
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (!name.startsWith(qrShareDirPrefix)) continue;
+      try {
+        final modified = (await entry.stat()).modified;
+        if (now.difference(modified) > qrShareDirMaxAge) {
+          await entry.delete(recursive: true);
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
 }
 
 class ServerQrScreen extends StatefulWidget {

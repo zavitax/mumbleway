@@ -98,30 +98,70 @@ void main() {
       }
     });
 
-    test('keeps the deterministic temp file on unavailable status', () async {
-      late String sharedPath;
+    test('keeps the temp file on unavailable status, one per share', () async {
+      late String firstPath;
       await shareQrImageFile(
         dir: tempDir,
         fileName: 'Srv-qr.png',
         bytes: Uint8List.fromList([1, 2, 3]),
         subject: 'Join me on Srv',
         share: (params) async {
-          sharedPath = params.files!.single.path;
+          firstPath = params.files!.single.path;
           return ShareResultStatus.unavailable;
         },
       );
-      expect(File(sharedPath).existsSync(), isTrue);
-      expect(File(sharedPath).readAsBytesSync(), [1, 2, 3]);
+      expect(File(firstPath).existsSync(), isTrue);
+      expect(File(firstPath).readAsBytesSync(), [1, 2, 3]);
+      expect(firstPath, endsWith('Srv-qr.png'));
 
-      // Subsequent shares of the same server overwrite the kept file cleanly.
+      // A second share with the same friendly name — another channel on the
+      // same server — must not touch the file the first target may still be
+      // reading.
+      late String secondPath;
       await shareQrImageFile(
         dir: tempDir,
         fileName: 'Srv-qr.png',
         bytes: Uint8List.fromList([4, 5, 6]),
         subject: 'Join me on Srv',
-        share: (_) async => ShareResultStatus.unavailable,
+        share: (params) async {
+          secondPath = params.files!.single.path;
+          return ShareResultStatus.success;
+        },
       );
-      expect(File(sharedPath).readAsBytesSync(), [4, 5, 6]);
+      expect(secondPath, isNot(firstPath));
+      expect(secondPath, endsWith('Srv-qr.png'));
+      expect(File(firstPath).readAsBytesSync(), [1, 2, 3]);
+      expect(File(secondPath).existsSync(), isFalse);
+    });
+
+    test('ages out share directories kept for a delayed target', () async {
+      late String keptPath;
+      await shareQrImageFile(
+        dir: tempDir,
+        fileName: 'Srv-qr.png',
+        bytes: Uint8List.fromList([1, 2, 3]),
+        subject: 'Join me on Srv',
+        share: (params) async {
+          keptPath = params.files!.single.path;
+          return ShareResultStatus.unavailable;
+        },
+      );
+      expect(File(keptPath).existsSync(), isTrue);
+
+      final later = DateTime.now().add(qrShareDirMaxAge * 2);
+      await shareQrImageFile(
+        dir: tempDir,
+        fileName: 'Other-qr.png',
+        bytes: Uint8List.fromList([4, 5, 6]),
+        subject: 'Join me on Other',
+        share: (_) async => ShareResultStatus.success,
+        now: () => later,
+      );
+      expect(File(keptPath).existsSync(), isFalse);
+      expect(
+        tempDir.listSync().where((e) => e.path.contains(qrShareDirPrefix)),
+        isEmpty,
+      );
     });
 
     test('deletes the temp file and rethrows when share throws', () async {

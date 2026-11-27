@@ -1562,17 +1562,25 @@ jobs:
             fi
           fi
 
+          # The `.zip` and the `.msi` are direct downloads, independent of the
+          # Microsoft Store: the Windows job uploads them before the Partner
+          # Center submission, so a late submission failure must not discard
+          # them. Collected whenever the artifacts exist; only the `.msix`
+          # depends on the submission.
+          direct_artifacts=0
+          while IFS= read -r -d '' f; do
+            cp "$f" release/
+            direct_artifacts=$((direct_artifacts + 1))
+          done < <(
+            for d in artifacts/mumbleway-windows-portable artifacts/mumbleway-windows-msi; do
+              [ -d "$d" ] && find "$d" -type f \( -name '*.zip' -o -name '*.msi' \) -print0
+            done
+          )
+
           if [ "$MSIX_RESULT" = "success" ]; then
             succeeded_stores=$((succeeded_stores + 1))
-            # The `.zip` and the `.msi` are direct-download Windows assets
-            # when the Windows job succeeds. The `.msix` is attached only when
-            # Microsoft Store submission actually succeeded.
-            if [ -d artifacts/mumbleway-windows-portable ]; then
-              find artifacts/mumbleway-windows-portable -type f -name '*.zip' -exec cp {} release/ \;
-            fi
-            if [ -d artifacts/mumbleway-windows-msi ]; then
-              find artifacts/mumbleway-windows-msi -type f -name '*.msi' -exec cp {} release/ \;
-            fi
+            # The `.msix` is attached only when Microsoft Store submission
+            # actually succeeded.
             if [ "$MSIX_SUBMITTED" = "true" ] && [ -d artifacts/mumbleway-windows-msix ]; then
               copied=0
               while IFS= read -r -d '' f; do
@@ -1615,9 +1623,10 @@ jobs:
           echo "succeeded_stores=$succeeded_stores" >> "$GITHUB_OUTPUT"
           echo "submitted_stores=$submitted_stores" >> "$GITHUB_OUTPUT"
           echo "store_artifacts=$store_artifacts" >> "$GITHUB_OUTPUT"
+          echo "direct_artifacts=$direct_artifacts" >> "$GITHUB_OUTPUT"
 
           if [ "$count" -eq 0 ]; then
-            echo "::error::No packages built or submitted (succeeded_stores=$succeeded_stores, submitted_stores=$submitted_stores, store_artifacts=$store_artifacts); refusing to create an empty release."
+            echo "::error::No packages built or submitted (succeeded_stores=$succeeded_stores, submitted_stores=$submitted_stores, store_artifacts=$store_artifacts, direct_artifacts=$direct_artifacts); refusing to create an empty release."
             exit 1
           fi
 

@@ -890,6 +890,38 @@ fn revoke_remote_mute_for_status(
     }
 }
 
+/// Decides a peer's mute request and, if it is acted on, changes the
+/// microphone — both under the guard's lock.
+///
+/// The local path takes the same lock (see [`apply_local_mute`]), so a remote
+/// undo that was already authorised cannot be applied after the rider's own
+/// mute: whichever comes second sees the other's result. Local intent made
+/// after a remote change therefore always wins.
+fn decide_remote_mute(
+    guard: &Mutex<RemoteMuteGuard>,
+    is_muted: impl Fn() -> bool,
+    set_muted: impl FnOnce(bool),
+    mute: bool,
+    allow_unmute: bool,
+    from: &str,
+    now: std::time::Instant,
+) -> RemoteMuteDecision {
+    let mut guard = guard.lock();
+    let decision = guard.decide(mute, is_muted(), allow_unmute, from, now);
+    if decision == RemoteMuteDecision::Apply {
+        set_muted(mute);
+    }
+    decision
+}
+
+/// The rider's own mute: the microphone and the guard change together, under
+/// the lock [`decide_remote_mute`] holds.
+fn apply_local_mute(guard: &Mutex<RemoteMuteGuard>, set_muted: impl FnOnce(bool), muted: bool) {
+    let mut guard = guard.lock();
+    set_muted(muted);
+    guard.note_local(muted);
+}
+
 static APP: OnceLock<App> = OnceLock::new();
 static EVENT_SINK: OnceLock<Mutex<Option<StreamSink<AppEvent>>>> = OnceLock::new();
 
@@ -1362,21 +1394,22 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                     // `session:{id}`) scoped to its server, never by display
                     // name — a rider copying a name cannot steal an undo grant.
                     let from = remote_mute_sender_key(&server_id, &peer_key);
-                    let decision = remote_mute_guard.lock().decide(
+                    // The change is made here, under the guard, rather than
+                    // left to Dart: the cue says the microphone moved, and it
+                    // must not be able to play for a change that a busy UI
+                    // thread then never makes — nor land after a mute the
+                    // rider made in between.
+                    let decision = decide_remote_mute(
+                        &remote_mute_guard,
+                        || cue_shared.is_muted(),
+                        |m| cue_shared.set_muted(m),
                         mute,
-                        cue_shared.is_muted(),
                         allow_unmute_task.load(Ordering::Relaxed),
                         &from,
                         now(),
                     );
                     match decision {
                         RemoteMuteDecision::Apply => {
-                            // The change and the cue together, here, rather
-                            // than leaving the change to Dart: the cue says the
-                            // microphone moved, and it must not be able to play
-                            // for a change that a busy UI thread then never
-                            // makes.
-                            cue_shared.set_muted(mute);
                             if mute_cue_echo.should_play(mute, now()) {
                                 cue_shared.play_cue(if mute {
                                     AudioCue::MutedByOther
@@ -2008,8 +2041,7 @@ pub fn remove_server(server_id: String) -> anyhow::Result<()> {
 #[frb(sync)]
 pub fn set_microphone_muted(muted: bool) -> anyhow::Result<()> {
     let app = app()?;
-    app.shared.set_muted(muted);
-    app.remote_mute_guard.lock().note_local(muted);
+    apply_local_mute(&app.remote_mute_guard, |m| app.shared.set_muted(m), muted);
     Ok(())
 }
 
@@ -3949,6 +3981,58 @@ pub fn import_servers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_local_mute_during_a_remote_undo_always_wins() {
+        use std::sync::mpsc as std_mpsc;
+        use std::time::{Duration, Instant};
+
+        let guard = Arc::new(Mutex::new(RemoteMuteGuard::default()));
+        let mic = Arc::new(AtomicBool::new(false));
+        let alice = remote_mute_sender_key("srv", "cert:aaa");
+        let t0 = Instant::now();
+
+        // Alice mutes the rider, then sends the undo she is allowed.
+        let applied = decide_remote_mute(
+            &guard,
+            || mic.load(Ordering::SeqCst),
+            |m| mic.store(m, Ordering::SeqCst),
+            true,
+            false,
+            &alice,
+            t0,
+        );
+        assert_eq!(applied, RemoteMuteDecision::Apply);
+
+        // While the undo is being decided, the rider mutes by hand.
+        let (tx, rx) = std_mpsc::channel::<()>();
+        let local = {
+            let guard = guard.clone();
+            let mic = mic.clone();
+            std::thread::spawn(move || {
+                rx.recv().unwrap();
+                apply_local_mute(&guard, |m| mic.store(m, Ordering::SeqCst), true);
+            })
+        };
+        let undo = decide_remote_mute(
+            &guard,
+            || {
+                let muted = mic.load(Ordering::SeqCst);
+                tx.send(()).unwrap();
+                std::thread::sleep(Duration::from_millis(50));
+                muted
+            },
+            |m| mic.store(m, Ordering::SeqCst),
+            false,
+            false,
+            &alice,
+            t0 + Duration::from_secs(5),
+        );
+        local.join().unwrap();
+
+        assert_eq!(undo, RemoteMuteDecision::Apply);
+        assert!(mic.load(Ordering::SeqCst), "the remote undo landed after the rider's own mute");
+    }
 
     fn slot_map() -> Arc<Mutex<HashMap<String, u16>>> {
         Arc::new(Mutex::new(HashMap::new()))

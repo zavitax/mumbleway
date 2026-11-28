@@ -47,6 +47,9 @@ class FlutterWindow : public Win32Window {
 
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       power_channel_;
+
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      secrets_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

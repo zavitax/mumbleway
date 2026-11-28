@@ -41,8 +41,8 @@ for the fraction of a second it takes to process and send.
 
 - **Your server list** — names, addresses, ports and usernames you entered.
 - **Server passwords**, if you saved any. These are kept in the platform's own
-  protected storage (Keychain on Apple devices, the Android Keystore), separate
-  from the rest of the list.
+  protected storage (Keychain on Apple devices, the Android Keystore, and
+  Windows DPAPI), separate from the rest of the list.
 - **A client certificate**, generated on your device the first time the app
   runs. Mumble servers use it to recognise you as the same person returning. It
   never leaves the device except as part of connecting to a server.

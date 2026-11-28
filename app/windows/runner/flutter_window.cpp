@@ -1,11 +1,336 @@
 #include "flutter_window.h"
 
+#include <flutter/standard_message_codec.h>
 #include <flutter/standard_method_codec.h>
 #include <windows.h>
+#include <shlobj.h>
+#include <wincrypt.h>
 
+#include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <optional>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+
+constexpr size_t kMaxSecretsFileBytes = 16 * 1024 * 1024;
+
+std::wstring SecretsFilePath(std::wstring* out_dir) {
+  std::wstring base;
+  PWSTR raw_path = nullptr;
+  if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr,
+                                     &raw_path)) &&
+      raw_path != nullptr) {
+    base = raw_path;
+    CoTaskMemFree(raw_path);
+  } else {
+    if (raw_path != nullptr) {
+      CoTaskMemFree(raw_path);
+    }
+    const DWORD needed = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
+    if (needed > 1) {
+      std::wstring buf(needed, L'\0');
+      const DWORD len =
+          GetEnvironmentVariableW(L"LOCALAPPDATA", buf.data(), needed);
+      if (len > 0 && len < needed) {
+        buf.resize(len);
+        base = std::move(buf);
+      }
+    }
+  }
+  if (base.empty()) {
+    return std::wstring();
+  }
+  std::wstring dir = base + L"\\MumbleWay";
+  if (out_dir != nullptr) {
+    *out_dir = dir;
+  }
+  return dir + L"\\secrets.bin";
+}
+
+struct LocalSecretsReadResult {
+  bool ok = false;
+  bool unreadable = false;
+  flutter::EncodableMap map;
+  std::string error;
+};
+
+LocalSecretsReadResult UnreadableSecrets(std::string error) {
+  LocalSecretsReadResult res;
+  res.ok = false;
+  res.unreadable = true;
+  res.error = std::move(error);
+  return res;
+}
+
+LocalSecretsReadResult ReadLocalSecrets() {
+  const std::wstring path = SecretsFilePath(nullptr);
+  if (path.empty()) {
+    return UnreadableSecrets("Could not resolve local secrets path.");
+  }
+
+  HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+                            nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    const DWORD err = GetLastError();
+    if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+      LocalSecretsReadResult res;
+      res.ok = true;
+      res.unreadable = false;
+      return res;
+    }
+    return UnreadableSecrets("Failed to open local secrets file (error " +
+                             std::to_string(err) + ").");
+  }
+
+  LARGE_INTEGER file_size{};
+  if (!GetFileSizeEx(file, &file_size)) {
+    const DWORD err = GetLastError();
+    CloseHandle(file);
+    return UnreadableSecrets(
+        "Failed to query local secrets file size (error " +
+        std::to_string(err) + ").");
+  }
+  if (file_size.QuadPart <= 0 ||
+      static_cast<uint64_t>(file_size.QuadPart) > kMaxSecretsFileBytes) {
+    CloseHandle(file);
+    return UnreadableSecrets(
+        "Local secrets file is empty or exceeds maximum size.");
+  }
+
+  std::vector<uint8_t> ciphertext(static_cast<size_t>(file_size.QuadPart));
+  size_t offset = 0;
+  while (offset < ciphertext.size()) {
+    const DWORD chunk = static_cast<DWORD>(
+        (std::min)(ciphertext.size() - offset,
+                   static_cast<size_t>((std::numeric_limits<DWORD>::max)())));
+    DWORD read = 0;
+    if (!ReadFile(file, ciphertext.data() + offset, chunk, &read, nullptr)) {
+      const DWORD err = GetLastError();
+      CloseHandle(file);
+      return UnreadableSecrets("Failed to read local secrets file (error " +
+                               std::to_string(err) + ").");
+    }
+    if (read == 0) {
+      break;
+    }
+    offset += read;
+  }
+  CloseHandle(file);
+  if (offset != ciphertext.size()) {
+    return UnreadableSecrets("Unexpected EOF while reading local secrets.");
+  }
+
+  DATA_BLOB encrypted{};
+  encrypted.pbData = ciphertext.data();
+  encrypted.cbData = static_cast<DWORD>(ciphertext.size());
+  DATA_BLOB plaintext{};
+  if (!CryptUnprotectData(&encrypted, nullptr, nullptr, nullptr, nullptr,
+                          CRYPTPROTECT_UI_FORBIDDEN, &plaintext)) {
+    const DWORD err = GetLastError();
+    return UnreadableSecrets(
+        "Failed to decrypt local secrets with DPAPI (error " +
+        std::to_string(err) + ").");
+  }
+
+  if (plaintext.pbData == nullptr || plaintext.cbData == 0) {
+    if (plaintext.pbData != nullptr) {
+      LocalFree(plaintext.pbData);
+    }
+    return UnreadableSecrets("Decrypted local secrets payload is empty.");
+  }
+
+  std::vector<uint8_t> plain_bytes(plaintext.pbData,
+                                   plaintext.pbData + plaintext.cbData);
+  SecureZeroMemory(plaintext.pbData, plaintext.cbData);
+  LocalFree(plaintext.pbData);
+
+  std::unique_ptr<flutter::EncodableValue> decoded =
+      flutter::StandardMessageCodec::GetInstance().DecodeMessage(
+          plain_bytes.data(), plain_bytes.size());
+  SecureZeroMemory(plain_bytes.data(), plain_bytes.size());
+  if (decoded == nullptr) {
+    return UnreadableSecrets("Failed to decode local secrets payload.");
+  }
+
+  const auto* raw_map = std::get_if<flutter::EncodableMap>(decoded.get());
+  if (raw_map == nullptr) {
+    return UnreadableSecrets("Local secrets payload is not a map.");
+  }
+
+  flutter::EncodableMap out;
+  for (const auto& entry : *raw_map) {
+    const auto* k = std::get_if<std::string>(&entry.first);
+    const auto* v = std::get_if<std::string>(&entry.second);
+    if (k != nullptr && v != nullptr) {
+      out.emplace(flutter::EncodableValue(*k), flutter::EncodableValue(*v));
+    }
+  }
+  LocalSecretsReadResult res;
+  res.ok = true;
+  res.unreadable = false;
+  res.map = std::move(out);
+  return res;
+}
+
+bool WriteLocalSecrets(const flutter::EncodableMap& secrets) {
+  std::wstring dir;
+  const std::wstring path = SecretsFilePath(&dir);
+  if (path.empty() || dir.empty()) {
+    return false;
+  }
+
+  if (secrets.empty()) {
+    if (!DeleteFileW(path.c_str())) {
+      const DWORD err = GetLastError();
+      return err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND;
+    }
+    return true;
+  }
+
+  std::unique_ptr<std::vector<uint8_t>> encoded =
+      flutter::StandardMessageCodec::GetInstance().EncodeMessage(
+          flutter::EncodableValue(secrets));
+  if (encoded == nullptr || encoded->empty() ||
+      encoded->size() > (std::numeric_limits<DWORD>::max)()) {
+    return false;
+  }
+
+  DATA_BLOB input{};
+  input.pbData = encoded->data();
+  input.cbData = static_cast<DWORD>(encoded->size());
+  DATA_BLOB protected_blob{};
+  const BOOL ok = CryptProtectData(&input, nullptr, nullptr, nullptr, nullptr,
+                                   CRYPTPROTECT_UI_FORBIDDEN, &protected_blob);
+  SecureZeroMemory(encoded->data(), encoded->size());
+  if (!ok) {
+    return false;
+  }
+
+  const int dir_status = SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
+  if (dir_status != ERROR_SUCCESS && dir_status != ERROR_ALREADY_EXISTS &&
+      dir_status != ERROR_FILE_EXISTS) {
+    if (protected_blob.pbData != nullptr) {
+      LocalFree(protected_blob.pbData);
+    }
+    return false;
+  }
+
+  const std::wstring tmp_path = path + L".tmp";
+  HANDLE file = CreateFileW(tmp_path.c_str(), GENERIC_WRITE, 0, nullptr,
+                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    if (protected_blob.pbData != nullptr) {
+      LocalFree(protected_blob.pbData);
+    }
+    return false;
+  }
+
+  size_t offset = 0;
+  while (offset < protected_blob.cbData) {
+    const DWORD chunk = static_cast<DWORD>(
+        static_cast<size_t>(protected_blob.cbData) - offset);
+    DWORD written = 0;
+    if (!WriteFile(file, protected_blob.pbData + offset, chunk, &written,
+                   nullptr) ||
+        written == 0) {
+      CloseHandle(file);
+      DeleteFileW(tmp_path.c_str());
+      LocalFree(protected_blob.pbData);
+      return false;
+    }
+    offset += written;
+  }
+  FlushFileBuffers(file);
+  CloseHandle(file);
+  LocalFree(protected_blob.pbData);
+
+  if (!MoveFileExW(tmp_path.c_str(), path.c_str(),
+                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    DeleteFileW(tmp_path.c_str());
+    return false;
+  }
+  return true;
+}
+
+void HandleSecretsMethodCall(
+    const flutter::MethodCall<flutter::EncodableValue>& call,
+    std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+  if (call.method_name() == "readAll") {
+    LocalSecretsReadResult read_res = ReadLocalSecrets();
+    if (!read_res.ok) {
+      result->Error("dpapi-unreadable", read_res.error);
+      return;
+    }
+    result->Success(flutter::EncodableValue(read_res.map));
+    return;
+  }
+  if (call.method_name() == "writeAll") {
+    const auto* incoming =
+        std::get_if<flutter::EncodableMap>(call.arguments());
+    if (incoming == nullptr) {
+      result->Error("bad-args", "writeAll expects a string map.");
+      return;
+    }
+    LocalSecretsReadResult read_res = ReadLocalSecrets();
+    if (!read_res.ok) {
+      result->Error("dpapi-unreadable", read_res.error);
+      return;
+    }
+    flutter::EncodableMap merged = std::move(read_res.map);
+    bool updated = false;
+    for (const auto& entry : *incoming) {
+      const auto* k = std::get_if<std::string>(&entry.first);
+      const auto* v = std::get_if<std::string>(&entry.second);
+      if (k != nullptr && v != nullptr) {
+        merged[flutter::EncodableValue(*k)] = flutter::EncodableValue(*v);
+        updated = true;
+      }
+    }
+    if (updated && !WriteLocalSecrets(merged)) {
+      result->Error("dpapi", "Failed to store encrypted secrets.");
+      return;
+    }
+    result->Success();
+    return;
+  }
+  if (call.method_name() == "deleteKeys") {
+    const auto* keys = std::get_if<flutter::EncodableList>(call.arguments());
+    if (keys == nullptr) {
+      result->Error("bad-args", "deleteKeys expects a key list.");
+      return;
+    }
+    LocalSecretsReadResult read_res = ReadLocalSecrets();
+    if (!read_res.ok) {
+      result->Error("dpapi-unreadable", read_res.error);
+      return;
+    }
+    flutter::EncodableMap merged = std::move(read_res.map);
+    bool changed = false;
+    for (const auto& item : *keys) {
+      const auto* k = std::get_if<std::string>(&item);
+      if (k != nullptr && merged.erase(flutter::EncodableValue(*k)) > 0) {
+        changed = true;
+      }
+    }
+    if (changed && !WriteLocalSecrets(merged)) {
+      result->Error("dpapi", "Failed to update encrypted secrets.");
+      return;
+    }
+    result->Success();
+    return;
+  }
+  result->NotImplemented();
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -54,6 +379,18 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  // Device-local DPAPI-encrypted secret storage under %LOCALAPPDATA%\MumbleWay.
+  secrets_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "mumbleway/secrets",
+          &flutter::StandardMethodCodec::GetInstance());
+  secrets_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        HandleSecretsMethodCall(call, std::move(result));
+      });
+
   // Establishes the idle state rather than waiting for the first call to end.
   // The app starts with nothing connected, which is exactly the state that
   // should cost nothing.
@@ -78,6 +415,9 @@ void FlutterWindow::OnDestroy() {
   // — leaves a machine that will not sleep and nothing on screen to explain
   // why.
   SetCallActive(false);
+
+  power_channel_.reset();
+  secrets_channel_.reset();
 
   if (flutter_controller_) {
     flutter_controller_ = nullptr;

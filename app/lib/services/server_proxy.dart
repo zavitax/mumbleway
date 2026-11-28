@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../src/rust/api/mumbleway.dart';
 import 'proxy.dart';
+import 'secret_store.dart';
 
 /// What a saved server says about reaching it.
 ///
@@ -63,6 +64,7 @@ class ServerProxies {
   static const _prefsDefault = 'mumbleway.proxyServerDefault';
   static const _prefsChain = 'mumbleway.proxyServerChain';
   static const _prefsCredentials = 'mumbleway.proxyAuth';
+  static const _secretPrefix = 'proxy:';
 
   DefaultProxyMode _mode = DefaultProxyMode.direct;
   ServerProxy? _custom;
@@ -87,7 +89,53 @@ class ServerProxies {
     };
     _custom = decodeProxy(prefs.getString(_prefsDefault));
     _chainServerProxies = prefs.getBool(_prefsChain) ?? false;
-    _credentials = _decodeCredentials(prefs.getString(_prefsCredentials));
+
+    final secrets = await SecretStore.instance.readAll();
+    final legacy = _decodeCredentials(prefs.getString(_prefsCredentials));
+    if (!SecretStore.instance.isAvailable ||
+        SecretStore.instance.lastReadFailed) {
+      _credentials = legacy;
+      return;
+    }
+
+    final fromSecrets = <String, ({String? user, String? password})>{};
+    for (final e in secrets.entries) {
+      if (!e.key.startsWith(_secretPrefix)) continue;
+      final cred = _decodeSingleCredential(e.value);
+      if (cred != null) {
+        fromSecrets[e.key.substring(_secretPrefix.length)] = cred;
+      }
+    }
+
+    // Transparently migrate any legacy plaintext proxy credentials out of
+    // SharedPreferences into the native secret store. An entry still in
+    // preferences is the newest one for its proxy — a successful write to the
+    // store removes it — so it wins over the store's copy.
+    final toMigrate = <String, String>{};
+    final toDelete = <String>[];
+    for (final e in legacy.entries) {
+      if (fromSecrets[e.key] == e.value) continue;
+      if (e.value.user == null && e.value.password == null) {
+        // A clear whose delete did not reach the store: finish it.
+        fromSecrets.remove(e.key);
+        toDelete.add('$_secretPrefix${e.key}');
+        continue;
+      }
+      fromSecrets[e.key] = e.value;
+      toMigrate['$_secretPrefix${e.key}'] = _encodeSingleCredential(e.value);
+    }
+    _credentials = fromSecrets;
+
+    var migratedOk = true;
+    if (toMigrate.isNotEmpty) {
+      migratedOk = await SecretStore.instance.writeAll(toMigrate);
+    }
+    if (toDelete.isNotEmpty) {
+      migratedOk = await SecretStore.instance.deleteKeys(toDelete) && migratedOk;
+    }
+    if (migratedOk && prefs.containsKey(_prefsCredentials)) {
+      await prefs.remove(_prefsCredentials);
+    }
   }
 
   Future<void> setDefault({
@@ -114,16 +162,48 @@ class ServerProxies {
   /// Keeps a proxy's username and password on this device, under its address.
   Future<void> rememberCredentials(ServerProxy proxy) async {
     final key = keyFor(proxy);
-    if ((proxy.username ?? '').isEmpty && (proxy.password ?? '').isEmpty) {
+    final empty =
+        (proxy.username ?? '').isEmpty && (proxy.password ?? '').isEmpty;
+    if (empty) {
       _credentials.remove(key);
     } else {
       _credentials[key] = (user: proxy.username, password: proxy.password);
     }
+
     final prefs = await SharedPreferences.getInstance();
+    final secretKey = '$_secretPrefix$key';
+    var secretOk = false;
+    if (!SecretStore.instance.lastReadFailed) {
+      secretOk = empty
+          ? await SecretStore.instance.deleteKeys([secretKey])
+          : await SecretStore.instance.writeAll({
+              secretKey: _encodeSingleCredential(_credentials[key]!),
+            });
+    }
+    // Reconciled by key: the fallback in preferences holds only the proxies
+    // whose last change did not reach the store. This one leaves it when its
+    // write succeeds and joins it when it fails; every other entry — another
+    // proxy whose write failed earlier — is kept as it is.
+    final fallback = _decodeCredentials(prefs.getString(_prefsCredentials));
+    if (secretOk && !SecretStore.instance.lastReadFailed) {
+      fallback.remove(key);
+    } else {
+      // A failed clear is kept as an explicit empty entry, so the store's
+      // older copy cannot come back on restart; `load` finishes the delete.
+      fallback[key] = empty
+          ? (user: null, password: null)
+          : _credentials[key]!;
+    }
+    if (fallback.isEmpty) {
+      if (prefs.containsKey(_prefsCredentials)) {
+        await prefs.remove(_prefsCredentials);
+      }
+      return;
+    }
     await prefs.setString(
       _prefsCredentials,
       jsonEncode({
-        for (final e in _credentials.entries)
+        for (final e in fallback.entries)
           e.key: {'u': e.value.user, 'p': e.value.password},
       }),
     );
@@ -190,6 +270,28 @@ class ServerProxies {
   /// The key a credential is filed under: the address and nothing else.
   static String keyFor(ServerProxy proxy) =>
       '${proxy.scheme.name}://${proxy.host.toLowerCase()}:${proxy.port}';
+
+  static String _encodeSingleCredential(
+    ({String? user, String? password}) c,
+  ) => jsonEncode({'u': c.user, 'p': c.password});
+
+  static ({String? user, String? password})? _decodeSingleCredential(
+    String raw,
+  ) {
+    if (raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return (
+          user: decoded['u'] as String?,
+          password: decoded['p'] as String?,
+        );
+      }
+    } catch (_) {
+      return (user: null, password: raw);
+    }
+    return null;
+  }
 
   Map<String, ({String? user, String? password})> _decodeCredentials(String? raw) {
     if (raw == null || raw.isEmpty) return {};

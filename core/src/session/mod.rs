@@ -2590,7 +2590,10 @@ mod tests {
 
         assert!(state.pending_crypt.is_none());
         assert!(state.crypt.is_some(), "the cipher waits for the bind");
-        assert!(state.udp_retry.is_due(t0), "the next health tick must open the voice socket");
+        assert!(
+            state.udp_retry.is_due(t0),
+            "the next health tick must open the voice socket"
+        );
     }
 
     #[test]

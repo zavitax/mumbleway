@@ -392,6 +392,9 @@ impl UserInfo {
 pub struct NetworkStats {
     pub tcp_ping_ms: f32,
     pub udp_ping_ms: f32,
+    /// Number of UDP pong replies received on this session.
+    #[serde(default)]
+    pub udp_pings: u32,
     pub packets_lost: u32,
     pub packets_late: u32,
     pub transport: Option<TransportStat>,

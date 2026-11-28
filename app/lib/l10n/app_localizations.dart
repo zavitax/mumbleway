@@ -1765,6 +1765,30 @@ abstract class L {
   /// **'How much of what others say is held back before it is played. More buffer rides out a patchy signal without gaps; less means you hear them sooner. MumbleWay adds to it by itself when a link starts losing packets, and comes back down to this. Raise it if the playback gaps counter in Diagnostics keeps climbing.'**
   String get jitterBufferBody;
 
+  /// No description provided for @voiceBitrate.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice bitrate'**
+  String get voiceBitrate;
+
+  /// No description provided for @voiceBitrateAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose automatically'**
+  String get voiceBitrateAuto;
+
+  /// No description provided for @voiceBitrateAutoNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto, now {kbps} kbit/s'**
+  String voiceBitrateAutoNow(int kbps);
+
+  /// No description provided for @voiceBitrateBody.
+  ///
+  /// In en, this message translates to:
+  /// **'How many bits a second your voice is sent with. Automatic starts at 32 kbit/s, climbs to 48 on a clean link and steps down when the server reports your packets going missing, the round trip growing, or voice falling back to TCP. A higher bitrate is a clearer voice and more mobile data: about 17 MB per hour of talking at 24 kbit/s, 27 MB at 48. The server\'s own limit always applies on top.'**
+  String get voiceBitrateBody;
+
   /// A duration in milliseconds, shown beside a slider.
   ///
   /// In en, this message translates to:

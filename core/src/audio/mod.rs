@@ -1,5 +1,6 @@
 //! Audio capture, processing, coding and playback.
 
+pub mod adaptive;
 pub mod aec;
 pub mod aec3;
 pub mod bandwidth;
@@ -31,6 +32,7 @@ pub mod testsig;
 pub mod timing;
 pub mod waveform;
 
+pub use adaptive::{BitrateMode, LinkReport, LinkTracker, MultiLinkTracker};
 pub use codec::{Quality, VoiceDecoder, VoiceEncoder};
 pub use deepfilter::Enhancer;
 pub use denoise::{CaptureProcessor, NoiseProfile};

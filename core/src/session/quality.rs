@@ -28,8 +28,12 @@
 //! # Rolling versus cumulative
 //!
 //! The server keeps both a count since the connection began and a rolling window
-//! (a minute or so). **The rolling one is what a rider means by "how is it
-//! now".** A connection that lost heavily for a minute under a bridge and has
+//! — its length is the server's (`time_window`), and 300 s on every server seen
+//! so far, not the minute or so this note used to say. **The rolling one is
+//! what a rider means by "how is it now"** on a roster row. It is still five
+//! minutes long, which is too slow for anything that has to react: the voice
+//! bitrate's "Auto" takes the difference of the cumulative counts between two
+//! polls instead ([`Quality::up_total`]). A connection that lost heavily for a minute under a bridge and has
 //! been clean for an hour is fine now, and its cumulative figure says otherwise
 //! for the rest of the ride. Until the connection is older than the window the
 //! server fills the rolling stats with the cumulative ones, which is exactly
@@ -76,10 +80,17 @@ pub struct Quality {
     pub window_secs: u32,
     /// Seconds since this rider last did anything.
     pub idle_secs: u32,
+    /// This rider's packets as the server has counted them since they
+    /// connected — the raw figures behind [`Quality::loss_up`], not the rolling
+    /// ratio. Two polls apart, their difference is the last few seconds, which
+    /// is what the voice bitrate's "Auto" needs: the rolling window is 300 s on
+    /// the servers seen so far, and reports a tunnel for five minutes after it.
+    #[serde(default)]
+    pub up_total: Counts,
 }
 
 /// Counts as the server reports them, for one direction.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Counts {
     pub good: u32,
     pub late: u32,
@@ -129,6 +140,7 @@ impl Quality {
             loss_down: down.unwrap_or_default().loss(),
             window_secs,
             idle_secs,
+            up_total: Counts::default(),
         }
     }
 }

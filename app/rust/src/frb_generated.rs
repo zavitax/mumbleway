@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1614036658;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -262343386;
 
 // Section: executor
 
@@ -3758,6 +3758,38 @@ fn wire__crate__api__mumbleway__set_user_server_mute_impl(
         },
     )
 }
+fn wire__crate__api__mumbleway__set_voice_bitrate_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "set_voice_bitrate",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_bps = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::mumbleway::set_voice_bitrate(api_bps)?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
 fn wire__crate__api__mumbleway__set_voice_communication_impl(
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -4068,6 +4100,98 @@ fn wire__crate__api__mumbleway__unregister_users_impl(
                     })(),
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__mumbleway__voice_bitrate_bounds_bps_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "voice_bitrate_bounds_bps",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok =
+                    Result::<_, ()>::Ok(crate::api::mumbleway::voice_bitrate_bounds_bps())?;
+                Ok(output_ok)
+            })())
+        },
+    )
+}
+fn wire__crate__api__mumbleway__voice_bitrate_now_bps_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "voice_bitrate_now_bps",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::mumbleway::voice_bitrate_now_bps()?;
+                    Ok(output_ok)
+                })(),
+            )
+        },
+    )
+}
+fn wire__crate__api__mumbleway__voice_bitrate_setting_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "voice_bitrate_setting",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                (move || {
+                    let output_ok = crate::api::mumbleway::voice_bitrate_setting()?;
+                    Ok(output_ok)
+                })(),
+            )
         },
     )
 }
@@ -5760,16 +5884,16 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        110 => wire__crate__api__mumbleway__start_audio_impl(port, ptr, rust_vec_len, data_len),
-        112 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
-        113 => wire__crate__api__mumbleway__stop_audio_impl(port, ptr, rust_vec_len, data_len),
-        116 => wire__crate__api__mumbleway__trigger_context_action_impl(
+        111 => wire__crate__api__mumbleway__start_audio_impl(port, ptr, rust_vec_len, data_len),
+        113 => wire__crate__api__mumbleway__start_engine_impl(port, ptr, rust_vec_len, data_len),
+        114 => wire__crate__api__mumbleway__stop_audio_impl(port, ptr, rust_vec_len, data_len),
+        117 => wire__crate__api__mumbleway__trigger_context_action_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        117 => {
+        118 => {
             wire__crate__api__mumbleway__unregister_users_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -5860,18 +5984,24 @@ fn pde_ffi_dispatcher_sync_impl(
         103 => wire__crate__api__mumbleway__set_simple_model_impl(ptr, rust_vec_len, data_len),
         104 => wire__crate__api__mumbleway__set_tap_detection_impl(ptr, rust_vec_len, data_len),
         105 => wire__crate__api__mumbleway__set_transmitting_impl(ptr, rust_vec_len, data_len),
-        109 => {
+        109 => wire__crate__api__mumbleway__set_voice_bitrate_impl(ptr, rust_vec_len, data_len),
+        110 => {
             wire__crate__api__mumbleway__set_voice_communication_impl(ptr, rust_vec_len, data_len)
         }
-        111 => wire__crate__api__mumbleway__start_diagnostic_recording_impl(
+        112 => wire__crate__api__mumbleway__start_diagnostic_recording_impl(
             ptr,
             rust_vec_len,
             data_len,
         ),
-        114 => {
+        115 => {
             wire__crate__api__mumbleway__stop_diagnostic_recording_impl(ptr, rust_vec_len, data_len)
         }
-        115 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        116 => wire__crate__api__mumbleway__stop_test_tone_impl(ptr, rust_vec_len, data_len),
+        119 => {
+            wire__crate__api__mumbleway__voice_bitrate_bounds_bps_impl(ptr, rust_vec_len, data_len)
+        }
+        120 => wire__crate__api__mumbleway__voice_bitrate_now_bps_impl(ptr, rust_vec_len, data_len),
+        121 => wire__crate__api__mumbleway__voice_bitrate_setting_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

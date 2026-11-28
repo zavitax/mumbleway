@@ -622,6 +622,25 @@ int jitterBufferMs() => RustLib.instance.api.crateApiMumblewayJitterBufferMs();
 (int, int, int) jitterBufferBoundsMs() =>
     RustLib.instance.api.crateApiMumblewayJitterBufferBoundsMs();
 
+/// Sets the voice bitrate: `0` for "Auto", which follows our own link as the
+/// server measures it, or a fixed number of bits per second, snapped to the
+/// range [`voice_bitrate_bounds_bps`] reports. A server's bandwidth allowance
+/// still applies on top of either.
+void setVoiceBitrate({required int bps}) =>
+    RustLib.instance.api.crateApiMumblewaySetVoiceBitrate(bps: bps);
+
+/// The voice bitrate setting: `0` for "Auto", otherwise the fixed rate.
+int voiceBitrateSetting() =>
+    RustLib.instance.api.crateApiMumblewayVoiceBitrateSetting();
+
+/// What the encoder is sending right now, after "Auto" and any server cap.
+int voiceBitrateNowBps() =>
+    RustLib.instance.api.crateApiMumblewayVoiceBitrateNowBps();
+
+/// The range a fixed bitrate may take, as `(minimum, maximum, step)` in bit/s.
+(int, int, int) voiceBitrateBoundsBps() =>
+    RustLib.instance.api.crateApiMumblewayVoiceBitrateBoundsBps();
+
 /// Acoustic echo cancellation, applied to the microphone before anything else.
 void setEchoCancellation({required bool on_}) =>
     RustLib.instance.api.crateApiMumblewaySetEchoCancellation(on_: on_);

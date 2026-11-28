@@ -34,6 +34,10 @@ exclude:
   - ENHANCER_GPU.md
   - ONSET_LATENCY.md
   - SESSION_2026-08-10.md
+  - CAPTURE_ON_DEMAND.md
+  - RELEASE_NOTES.md
+  - WEBSITE_HANDOVER.md
+  - WINDOWS_CLASSIFIER_HANDOVER.md
 
 # Navigation moved to `_data/strings.yml`, where it is keyed by language along
 # with the rest of the chrome — the labels and the URLs both change with the

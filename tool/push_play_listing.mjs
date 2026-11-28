@@ -26,9 +26,11 @@
  * the **internal** track only, while `docs/STORE_DESCRIPTION.md` had described
  * the proxy and the administration features since 6 October.
  *
- * So `--commit` refuses while the production track is behind the version in
- * `app/pubspec.yaml`, and `--anyway` overrides it for the case where that is
- * genuinely wanted. Release notes are not affected and need nothing from this
+ * So `--commit` refuses unless a *completed* production release carries the
+ * version in `app/pubspec.yaml`, and `--anyway` overrides it for the case where
+ * that is genuinely wanted. A staged rollout is reported but does not count:
+ * listing copy goes live for everyone, while most users can still only install
+ * the previous version. Release notes are not affected and need nothing from this
  * script: `publish.yml` uploads `distribution/whatsnew/` with the bundle, per
  * track, which is why Play was the one store whose notes never drifted.
  *
@@ -47,6 +49,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { withEdit } from './play.mjs';
+import { productionStatus } from './play_release_version.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -146,17 +149,25 @@ await withEdit(key, PKG, async (edit) => {
   console.log(`${PKG} — this repository is at ${version}\n`);
 
   // What production actually offers, which decides whether this text is honest.
+  // Only a `completed` release is installable by everyone, which is who sees a
+  // listing. An `inProgress` staged rollout is shown but does not pass the
+  // guard; `draft` and `halted` releases install for nobody.
   const tracks = await edit.get('/tracks');
   const production = (tracks.tracks ?? []).find((t) => t.track === 'production');
-  const liveNames = (production?.releases ?? [])
-    .flatMap((r) => r.versionCodes?.length ? [r.name ?? '(unnamed)'] : [])
-    .filter(Boolean);
-  const live = liveNames[0] ?? null;
-  console.log(`production track: ${live ?? 'nothing released'}`);
+  const status = productionStatus(production?.releases, version);
+  const live = status.completed[0] ?? null;
+  console.log(
+    `production track: ${status.completed.length ? status.completed.join(', ') : 'nothing released'}` +
+      (status.staged.length ? ` (staged rollout: ${status.staged.join(', ')})` : '') +
+      (status.other.length ? ` (non-live: ${status.other.join(', ')})` : '')
+  );
 
-  const behind = live ? !live.startsWith(version) : true;
+  const behind = !status.released;
   if (behind) {
-    console.log(`  ** production does not have ${version} yet **`);
+    if (status.staging) {
+      console.log(`  ** ${version} is only in a staged rollout, not completed **`);
+    }
+    console.log(`  ** production does not have ${version} for everyone yet **`);
     console.log('  A Play listing is not versioned: committing publishes this text to');
     console.log('  everyone at once, including visitors who can only install what is');
     console.log('  on production. See the note at the top of this file.');

@@ -29,7 +29,7 @@ mouth, inside a helmet, at speed, with wind and an engine underneath.
   <div class="panel spec">
     <span class="k">Codec</span>
     <span class="v">Opus</span>
-    <p class="muted">48 kHz, with forward error correction that rises as the link degrades.</p>
+    <p class="muted">48 kHz, with in-band forward error correction always enabled at 100% expected-loss protection.</p>
   </div>
   <div class="panel spec">
     <span class="k">Servers</span>
@@ -73,10 +73,11 @@ it, and every stage is visible while it runs.
   periods removed whole, so duration changes and pitch does not — until the
   delay settles at **200 ms**. Not zero: a little slack absorbs a late block
   instead of turning it into a dropout.
-- **The channel then holds for a full second** after you stop, fading over the
-  last 30 ms so a trailing "t" or "s" survives and the cut is not a click. A
-  second bridges the gaps *inside* a sentence, which is what stops a phrase
-  arriving as four fragments.
+- **The channel then holds for a 1000 ms VAD hangover** after you stop, fading
+  over the last 30 ms so a trailing "t" or "s" survives and the cut is not a
+  click. A full second bridges the gaps *inside* a sentence, which is what stops
+  a phrase arriving as four fragments; once it closes in Voice-activated mode,
+  silence ceases sending (Opus DTX is not enabled).
 - **Feedback suppression**, a de-hisser, automatic levelling and a limiter.
 - **An elastic jitter buffer** that plays a backlog off at up to double speed by
   removing pitch periods, rather than letting a tunnel put everybody a second
@@ -287,9 +288,12 @@ to be fixed by a setting.
   </div>
   <div class="panel warn">
     <h3>It costs mobile data and battery</h3>
-    <p>Roughly 3–6 MB per hour of talking on the wire, more with error
-    correction on a poor link. A phone doing continuous voice over mobile data
-    with the screen off still gets noticeably warmer than one that is not.</p>
+    <p>Roughly 3–6 MB per hour of talking on the wire; in-band forward error
+    correction is always enabled at 100% expected-loss protection inside the
+    target bitrate rather than rising on a poor link, and in Voice-activated
+    mode silence ceases sending once the 1000 ms VAD hangover closes. A phone
+    doing continuous voice over mobile data with the screen off still gets
+    noticeably warmer than one that is not.</p>
   </div>
   <div class="panel warn">
     <h3>Latency is a network's, not a radio's</h3>

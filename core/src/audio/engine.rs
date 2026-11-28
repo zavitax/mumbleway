@@ -1624,9 +1624,9 @@ impl AudioShared {
 
         let observed = dropped as f32 / total as f32 * 100.0;
         let previous = self.inbound_loss_pct.load(Ordering::Relaxed) as f32;
-        // Rises quickly and falls slowly. Under-protecting the moment a link
-        // goes bad costs words; over-protecting for a few seconds after it
-        // recovers costs a little quality nobody notices.
+        // Rises quickly and falls slowly. Kept as a smoothed loss estimate for
+        // diagnostics and any future ceiling; FEC protection itself is pinned
+        // at 100% (`MIN_PROTECTION_PCT = MAX_PROTECTION_PCT = 100`).
         let glide = if observed > previous { 0.5 } else { 0.15 };
         let next = previous + (observed - previous) * glide;
         self.inbound_loss_pct
@@ -1669,13 +1669,11 @@ impl AudioShared {
         self.encoder_bitrate_bps.store(bps, Ordering::Relaxed);
     }
 
-    /// How much loss the encoder should be spending bits to protect against.
+    /// Expected packet-loss protection the encoder should use, in percent.
     ///
-    /// Quantised, and with a floor. Quantised because a wobbling estimate
-    /// would otherwise reconfigure the encoder every block for a difference of
-    /// one percent. Floored because a mobile link that is losing nothing this
-    /// second is not a link that will keep losing nothing, and the cheapest
-    /// moment to have bought protection is before it was needed.
+    /// Pinned at 100% (`MIN_PROTECTION_PCT = MAX_PROTECTION_PCT = 100`) rather
+    /// than adapting dynamically to [`Self::inbound_loss_percent`]; see
+    /// [`MIN_PROTECTION_PCT`] for the measurements behind this.
     pub fn protection_percent(&self) -> u8 {
         let loss = self.inbound_loss_percent();
         let stepped = (loss.saturating_add(PROTECTION_STEP / 2) / PROTECTION_STEP)
@@ -4455,16 +4453,10 @@ where
 
             frame.extend_from_slice(&block);
             if frame.len() >= FRAME_SAMPLES {
-                // Match the encoder's protection to what the link is doing.
-                //
-                // It was set to 10% once, at construction, and never touched
-                // again — which is the wrong number twice over. On a clean
-                // link it spends bits on a recovery nobody collects, making
-                // every packet slightly worse for nothing; under a bridge it
-                // spends 10% of protection against 40% of loss, which is not
-                // enough to matter. See `protection_percent` for what the
-                // number means and `inbound_loss_pct` for the substitution it
-                // rests on.
+                // Apply `shared.protection_percent()`, which is pinned at 100%
+                // expected packet-loss protection (`MIN_PROTECTION_PCT =
+                // MAX_PROTECTION_PCT = 100`) rather than adapting dynamically
+                // to link loss; see `MIN_PROTECTION_PCT` for why.
                 let want = shared.protection_percent();
                 if want != protection && encoder.set_packet_loss_perc(want).is_ok() {
                     protection = want;
@@ -4489,7 +4481,9 @@ where
                 } else if was_transmitting {
                     // Send one terminator so the far end closes the stream
                     // immediately instead of waiting for its jitter buffer to
-                    // time out.
+                    // time out. Then silence ceases sending until the gate
+                    // reopens (Opus DTX is not enabled; in Voice-activated
+                    // mode this occurs once the 1000 ms VAD hangover closes).
                     // A const, not an allocation. This runs at the end of
                     // every phrase — dozens of times a minute on voice
                     // activation — and it was allocating a frame of silence

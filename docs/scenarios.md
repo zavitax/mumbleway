@@ -112,9 +112,11 @@ Two practical consequences:
 
 ## Data and battery
 
-Roughly **3–6 MB per hour of actual talking**, more when the link is poor and
-error correction rises. Silence costs almost nothing — voice activation means
-nothing is sent between sentences.
+Roughly **3–6 MB per hour of actual talking**. In-band forward error correction
+is always enabled inside the target bitrate (pinned at 100% expected-loss
+protection) rather than rising on a poor link. Opus DTX is not enabled; in
+Voice activated mode, silence ceases sending once the 1000 ms VAD hangover
+closes after you stop talking.
 
 Battery is the more noticeable cost. A phone holding a Bluetooth call and a
 mobile data connection for several hours will want charging. A hardwired mount

@@ -177,9 +177,13 @@ class ButtonController {
   /// to push-to-talk and plain rude otherwise, so it is asked for only while a
   /// media binding exists or one is being learned.
   ///
-  /// Android reports the same buttons through its media session without any of
-  /// this, and has no handler for the call.
+  /// Android reports the same buttons through its media session, which it
+  /// holds during a call. Outside one it needs to know only whether a button
+  /// is being learned — not whether one is bound — so a saved binding never
+  /// keeps an idle app ahead of the rider's music player; see
+  /// [_syncAndroidLearning].
   void _syncCapture() {
+    _syncAndroidLearning();
     final want =
         _learner != null || _bindings.any((b) => b.keyId >= _mediaKeyBase);
     _channel
@@ -196,6 +200,31 @@ class ButtonController {
           return null;
         });
   }
+
+  /// The last learning state sent to Android, so a binding change that leaves
+  /// it as it was sends nothing.
+  bool? _androidLearningSent;
+
+  /// Tells Android whether a button is being learned: the only reason, outside
+  /// a call, for it to hold an active media session.
+  void _syncAndroidLearning() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    final learning = _learner != null;
+    if (learning == _androidLearningSent) return;
+    _androidLearningSent = learning;
+    onAndroidLearningForTest?.call(learning);
+    _channel.invokeMethod<void>('learnMediaButtons', learning).catchError((
+      Object _,
+    ) {
+      // An engine without the handler (a test, an older host) simply keeps
+      // whatever the call itself decides.
+      return null;
+    });
+  }
+
+  /// Observes what [_syncAndroidLearning] sends, for tests.
+  @visibleForTesting
+  void Function(bool learning)? onAndroidLearningForTest;
 
   /// What the platform said when last asked to listen for remote buttons.
   ///

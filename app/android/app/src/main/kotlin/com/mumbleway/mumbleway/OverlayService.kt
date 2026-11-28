@@ -109,7 +109,9 @@ class OverlayService : Service() {
     private var deafenButton: TextView? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
     private val pulseHandler = Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var pulsing = false
+    private var callActive = false
     private lateinit var layoutParams: WindowManager.LayoutParams
 
     companion object {
@@ -216,6 +218,24 @@ class OverlayService : Service() {
 
         val isRunning: Boolean get() = instance != null
 
+        @Volatile
+        private var mediaListening = false
+
+        /**
+         * Updates whether a media button is being learned, the only reason to
+         * hold the media session outside a call. A saved binding alone does
+         * not count: it is used during calls, which hold the session anyway.
+         */
+        fun setMediaListening(listening: Boolean) {
+            mediaListening = listening
+            val service = instance ?: return
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                service.syncMediaSession()
+            } else {
+                service.mainHandler.post { service.syncMediaSession() }
+            }
+        }
+
         /**
          * The window's wording, in the app's language.
          *
@@ -286,7 +306,7 @@ class OverlayService : Service() {
         super.onCreate()
         instance = this
         startAsForeground()
-        setUpMediaSession()
+        syncMediaSession()
         // Deliberately no window yet, and deliberately no wake lock yet. The
         // service and the window are separate things: the service is what keeps
         // this process — and with it the audio engine and every connection —
@@ -309,7 +329,9 @@ class OverlayService : Service() {
      * the failure being a conversation that dies when the screen goes off.
      */
     private fun setCallActive(active: Boolean) {
+        callActive = active
         if (active) acquireWakeLock() else releaseWakeLock()
+        syncMediaSession()
     }
 
     /**
@@ -348,7 +370,24 @@ class OverlayService : Service() {
     }
 
     /**
-     * Registers a media session so Bluetooth remotes reach us in the background.
+     * Activates or releases the media session according to whether a call is
+     * active or a remote button is being learned.
+     *
+     * Holding an active `STATE_PLAYING` session while idle with nothing bound
+     * puts MumbleWay ahead of music apps in the media-button queue and steals
+     * headphone play/pause presses.
+     */
+    private fun syncMediaSession() {
+        if (instance !== this) return
+        if (mediaListening || callActive) {
+            activateMediaSession()
+        } else {
+            deactivateMediaSession()
+        }
+    }
+
+    /**
+     * Registers and activates a media session so Bluetooth remotes reach us.
      *
      * A handlebar remote is the practical way to key a microphone with gloves
      * on, and most present as a Bluetooth HID device sending media keys. Those
@@ -356,7 +395,7 @@ class OverlayService : Service() {
      * state — a session that reports "stopped" is skipped in favour of whatever
      * music app is actually playing.
      */
-    private fun setUpMediaSession() {
+    private fun activateMediaSession() {
         if (mediaSession != null) return
         val session = MediaSession(this, "MumbleWay")
 
@@ -399,6 +438,20 @@ class OverlayService : Service() {
         )
         session.isActive = true
         mediaSession = session
+    }
+
+    private fun deactivateMediaSession() {
+        mediaSession?.apply {
+            setPlaybackState(
+                PlaybackState.Builder()
+                    .setActions(0L)
+                    .setState(PlaybackState.STATE_STOPPED, 0L, 0f)
+                    .build(),
+            )
+            isActive = false
+            release()
+        }
+        mediaSession = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -478,14 +531,12 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
-        removeOverlay()
-        mediaSession?.apply {
-            isActive = false
-            release()
-        }
-        mediaSession = null
-        releaseWakeLock()
         instance = null
+        mainHandler.removeCallbacksAndMessages(null)
+        removeOverlay()
+        callActive = false
+        deactivateMediaSession()
+        releaseWakeLock()
         super.onDestroy()
     }
 

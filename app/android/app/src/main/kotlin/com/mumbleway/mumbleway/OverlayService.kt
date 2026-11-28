@@ -222,8 +222,9 @@ class OverlayService : Service() {
         private var mediaListening = false
 
         /**
-         * Updates whether the app is actively listening for Bluetooth media
-         * buttons (a media binding is configured or one is being learned).
+         * Updates whether a media button is being learned, the only reason to
+         * hold the media session outside a call. A saved binding alone does
+         * not count: it is used during calls, which hold the session anyway.
          */
         fun setMediaListening(listening: Boolean) {
             mediaListening = listening
@@ -370,7 +371,7 @@ class OverlayService : Service() {
 
     /**
      * Activates or releases the media session according to whether a call is
-     * active or a remote button is bound/being learned.
+     * active or a remote button is being learned.
      *
      * Holding an active `STATE_PLAYING` session while idle with nothing bound
      * puts MumbleWay ahead of music apps in the media-button queue and steals

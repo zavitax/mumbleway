@@ -114,4 +114,28 @@ void main() {
       expect(transmits, 1);
     });
   });
+
+  group('Android media session outside a call', () {
+    tearDown(() => buttons.onAndroidLearningForTest = null);
+
+    test('a saved media binding alone does not ask for it, learning does', () {
+      final sent = <bool>[];
+      buttons.onAndroidLearningForTest = sent.add;
+
+      buttons.setBindings([
+        ButtonBinding(
+          keyId: ButtonController.mediaKeyId(playPause),
+          action: ButtonAction.pushToTalk,
+        ),
+      ]);
+      expect(sent, isNot(contains(true)), reason: 'binding kept it active');
+
+      buttons.learnNext((_, _) {});
+      expect(sent.last, isTrue);
+
+      buttons.cancelLearning();
+      expect(sent.last, isFalse);
+      expect(sent.where((s) => s), hasLength(1));
+    });
+  });
 }

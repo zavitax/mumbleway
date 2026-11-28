@@ -307,10 +307,21 @@ class MainActivity : FlutterActivity() {
         buttonChannel = buttons
         buttons.setMethodCallHandler { call, result ->
             when (call.method) {
+                // "A media button is bound or being learned". Answered for the
+                // settings screen, but it does not move the media session:
+                // a saved binding is only used during a call, which holds the
+                // session itself, and holding it while idle would put us
+                // ahead of the rider's music player.
                 "captureMediaButtons" -> {
                     val want = call.arguments as? Boolean ?: false
-                    OverlayService.setMediaListening(want)
                     result.success(if (want) "listening" else "idle")
+                }
+                // Learning a button is the one reason to hold the session
+                // outside a call: the press has to reach us to be learned.
+                "learnMediaButtons" -> {
+                    val learning = call.arguments as? Boolean ?: false
+                    OverlayService.setMediaListening(learning)
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }

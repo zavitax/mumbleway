@@ -264,6 +264,8 @@
   "buttonActionToggleMute": "Toggle mute",
   "buttonActionToggleDeafen": "Toggle deafen",
   "floatingWindow": "Show floating call window",
+  "floatingPermissionMissing": "Display over other apps is not allowed, so the window cannot appear.",
+  "floatingPermissionGrant": "Allow",
   "identityFingerprint": "Your certificate fingerprint",
   "voiceCommunication": "Claim the microphone",
   "voiceCommunicationBody": "Hands the microphone to the phone's own call processing. On Android this also stops other apps recording at the same time — a navigation app listening for voice commands can otherwise leave you inaudible. On both, the phone may then apply its own echo cancelling, noise suppression and volume levelling, which MumbleWay already does itself. Try it and listen: on one iPhone it made speech loud and harsh.",

@@ -581,6 +581,13 @@ class LRu extends L {
   String get floatingWindow => 'Показывать плавающее окно вызова';
 
   @override
+  String get floatingPermissionMissing =>
+      'Нет разрешения «Поверх других приложений», окно не появится.';
+
+  @override
+  String get floatingPermissionGrant => 'Разрешить';
+
+  @override
   String get identityFingerprint => 'Отпечаток вашего сертификата';
 
   @override

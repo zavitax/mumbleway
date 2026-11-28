@@ -405,5 +405,59 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'with the preference on and the permission refused, Settings offers '
+      'the grant without turning the feature off',
+      (t) async {
+        OverlayBridge.kindOverride = FloatingKind.androidOverlay;
+        var perm = false;
+        final calls = installOverlayChannel(
+          hasPermission: () => perm,
+          // The rider grants it in Android's settings.
+          requestPermission: () => perm = true,
+        );
+        final state = AppState();
+        addTearDown(state.dispose);
+
+        t.view.physicalSize = const Size(430, 2400);
+        t.view.devicePixelRatio = 1.0;
+        addTearDown(t.view.resetPhysicalSize);
+        addTearDown(t.view.resetDevicePixelRatio);
+
+        await t.pumpWidget(hostSettings(state));
+        for (var i = 0; i < 5; i++) {
+          await t.pump(const Duration(milliseconds: 16));
+        }
+
+        final l = await L.delegate.load(const Locale('en'));
+        await t.scrollUntilVisible(find.text(l.floatingWindow), 300);
+        final tileFinder = find.ancestor(
+          of: find.text(l.floatingWindow),
+          matching: find.byType(SwitchListTile),
+        );
+        await t.ensureVisible(tileFinder);
+        await t.pump(const Duration(milliseconds: 50));
+
+        expect(state.wantOverlay, isTrue);
+        expect(t.widget<SwitchListTile>(tileFinder).value, isTrue);
+        final missing = find.byKey(const ValueKey('overlay-permission-missing'));
+        expect(missing, findsOneWidget);
+        expect(find.text(l.floatingPermissionMissing), findsOneWidget);
+
+        await t.tap(find.text(l.floatingPermissionGrant));
+        for (var i = 0; i < 5; i++) {
+          await t.pump(const Duration(milliseconds: 50));
+        }
+
+        expect(
+          calls.where((c) => c.method == 'requestPermission'),
+          hasLength(1),
+        );
+        expect(state.wantOverlay, isTrue, reason: 'granting must not disable');
+        expect(t.widget<SwitchListTile>(tileFinder).value, isTrue);
+        expect(missing, findsNothing);
+      },
+    );
   });
 }

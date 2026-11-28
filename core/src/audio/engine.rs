@@ -2805,6 +2805,9 @@ pub fn stream_key(slot: u16, session: u32) -> u64 {
 /// Split out so it can be tested without any audio hardware.
 pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Vec<f32>) {
     mixed.clear();
+    if scratch.len() != FRAME_SAMPLES {
+        scratch.resize(FRAME_SAMPLES, 0.0);
+    }
 
     let mut speakers = shared.speakers.lock();
     let mut active = 0usize;
@@ -2823,11 +2826,11 @@ pub fn mix_speakers(shared: &AudioShared, scratch: &mut Vec<f32>, mixed: &mut Ve
             buf.note_waiting();
             return true;
         }
-        // Mix exactly what was decoded. Mixing the whole scratch buffer
-        // regardless would append whatever the previous frame left in its tail
-        // whenever a packet is shorter than the buffer, which is heard as a
-        // hiss riding under everything.
-        if let Some(n) = buf.pop(scratch) {
+        // Mix only what `pop_samples` returned. Mixing the whole scratch slice
+        // regardless would append whatever the previous speaker left in its
+        // tail whenever a stream ends mid-frame, heard as a hiss underneath.
+        let n = buf.pop_samples(scratch);
+        if n > 0 {
             if mixed.len() < n {
                 mixed.resize(n, 0.0);
             }
@@ -6650,5 +6653,107 @@ mod tests {
             !shared.capture_wanted(),
             "the open must see the intent that was declared before it"
         );
+    }
+
+    #[test]
+    fn overlapping_catchup_speaker_has_no_fifty_hz_dropouts() {
+        let shared = AudioShared::new();
+        shared.set_normalise_levels(false);
+
+        let mut enc = VoiceEncoder::new(Quality::Balanced).unwrap();
+        let silence_pkt = enc.encode(&[0.0f32; FRAME_SAMPLES]).unwrap();
+        for i in 0..DEFAULT_TARGET_FRAMES {
+            let seq = i as u64 * SEQ_UNITS_PER_FRAME;
+            shared.push_incoming(0, &packet(1, seq, silence_pkt.clone(), false));
+        }
+
+        // Speaker 2 arrives with a 3-second backlog while speaker 1 paces at 1.0x.
+        let tone_frames = encoded_frames(150);
+        for (i, f) in tone_frames.into_iter().enumerate() {
+            let seq = i as u64 * SEQ_UNITS_PER_FRAME;
+            shared.push_incoming(0, &packet(2, seq, f, false));
+        }
+
+        let (mut scratch, mut mixed) = (Vec::new(), Vec::new());
+        let rounds = 60usize;
+        for r in 0..rounds {
+            let seq = (DEFAULT_TARGET_FRAMES + r) as u64 * SEQ_UNITS_PER_FRAME;
+            shared.push_incoming(0, &packet(1, seq, silence_pkt.clone(), false));
+            mix_speakers(&shared, &mut scratch, &mut mixed);
+            assert_eq!(mixed.len(), FRAME_SAMPLES, "round {r} returned short mix");
+            if r >= 15 {
+                let tail_rms = crate::audio::dsp::rms(&mixed[FRAME_SAMPLES * 3 / 4..]);
+                assert!(
+                    tail_rms > 0.05,
+                    "round {r} had a 50 Hz tail dropout (rms={tail_rms})"
+                );
+            }
+        }
+
+        let speakers = shared.speakers.lock();
+        let (_, decoded) = speakers[&stream_key(0, 2)].frame_counts();
+        assert!(
+            decoded > 75,
+            "overlapping catch-up speaker only decoded {decoded} frames in {rounds} rounds"
+        );
+    }
+
+    #[test]
+    fn back_to_back_utterances_and_late_packet_across_mix_speakers() {
+        let shared = AudioShared::new();
+        let frames = encoded_frames(DEFAULT_TARGET_FRAMES + 4);
+
+        // Utterance 1 ends at seq 8, with seq 6 delayed.
+        shared.push_incoming(0, &packet(1, 0, frames[0].clone(), false));
+        shared.push_incoming(0, &packet(1, 2, frames[1].clone(), false));
+        shared.push_incoming(0, &packet(1, 4, frames[2].clone(), false));
+        shared.push_incoming(0, &packet(1, 8, frames[3].clone(), true));
+
+        let (mut scratch, mut mixed) = (Vec::new(), Vec::new());
+        // Plays 0, 2, 4, and conceals 6; seq 8 (terminator) remains queued.
+        for _ in 0..4 {
+            mix_speakers(&shared, &mut scratch, &mut mixed);
+            assert_eq!(mixed.len(), FRAME_SAMPLES);
+        }
+
+        // Late packet 6 before seq 8 drains must not wipe seq 8.
+        shared.push_incoming(0, &packet(1, 6, frames[2].clone(), false));
+        {
+            let speakers = shared.speakers.lock();
+            let buf = &speakers[&stream_key(0, 1)];
+            assert_eq!(buf.buffered(), 1);
+            assert_eq!(buf.late_packets(), 1);
+        }
+
+        // Drain seq 8.
+        mix_speakers(&shared, &mut scratch, &mut mixed);
+        assert_eq!(mixed.len(), FRAME_SAMPLES);
+
+        // Before reaping: another late packet 6 and the first frame of a
+        // monotonic second utterance arrive.
+        shared.push_incoming(0, &packet(1, 6, frames[2].clone(), false));
+        shared.push_incoming(0, &packet(1, 10, frames[4].clone(), false));
+
+        mix_speakers(&shared, &mut scratch, &mut mixed);
+        assert!(
+            mixed.is_empty(),
+            "second utterance bypassed target backlog via stale finished flag"
+        );
+        {
+            let speakers = shared.speakers.lock();
+            let buf = speakers
+                .get(&stream_key(0, 1))
+                .expect("speaker should not be reaped once utterance 2 started");
+            assert_eq!(buf.buffered(), 1);
+            assert_eq!(buf.late_packets(), 2);
+        }
+
+        let rest = &frames[5..4 + DEFAULT_TARGET_FRAMES];
+        for (idx, f) in rest.iter().enumerate() {
+            let seq = 12 + idx as u64 * SEQ_UNITS_PER_FRAME;
+            shared.push_incoming(0, &packet(1, seq, f.clone(), false));
+        }
+        mix_speakers(&shared, &mut scratch, &mut mixed);
+        assert_eq!(mixed.len(), FRAME_SAMPLES);
     }
 }

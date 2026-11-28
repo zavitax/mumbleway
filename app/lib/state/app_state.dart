@@ -647,6 +647,7 @@ class AppState extends ChangeNotifier {
   static const _prefsFloatingWindow = 'mumbleway.floatingWindow';
   static const _prefsDeleted = 'mumbleway.deletedServers';
   static const _prefsSuggestedName = 'mumbleway.suggestedName';
+  static const _prefsSuggestedNameGenerated = 'mumbleway.suggestedNameGenerated';
 
   /// Languages the interface is available in.
   static const supportedLocales = [Locale('en'), Locale('ru')];
@@ -1692,9 +1693,26 @@ class AppState extends ChangeNotifier {
     final kept = prefs.getString(_prefsSuggestedName);
     if (kept != null && kept.isNotEmpty) return kept;
 
-    final suggestion = await DeviceIdentity.instance.suggest();
-    await prefs.setString(_prefsSuggestedName, suggestion);
-    return suggestion;
+    final suggestion = await DeviceIdentity.instance.suggestWithSource();
+    await prefs.setString(_prefsSuggestedName, suggestion.name);
+    await prefs.setBool(_prefsSuggestedNameGenerated, suggestion.generated);
+    return suggestion.name;
+  }
+
+  /// The username this app made up for the rider, or null if it never had to.
+  ///
+  /// Read from where the suggestion came from, not from what it looks like:
+  /// a real login or a typed name can be a dictionary pair too, and must not
+  /// be described as invented. A suggestion kept by an older version, which
+  /// did not record its source, falls back to the shape test.
+  Future<String?> madeUpUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    final kept = prefs.getString(_prefsSuggestedName);
+    if (kept == null || kept.isEmpty) return null;
+    final generated =
+        prefs.getBool(_prefsSuggestedNameGenerated) ??
+        DeviceIdentity.isGenerated(kept);
+    return generated ? kept : null;
   }
 
   /// Picks an unused local id for a new entry.

@@ -98,9 +98,13 @@ void main() {
     expect(find.text(l.usernameGenerated), findsNothing);
   });
 
-  testWidgets('shows hint for generated prefill when adding, hides when edited', (
-    t,
-  ) async {
+  testWidgets('shows hint for a prefill holding our made-up name', (t) async {
+    // The invitation carried no name, so it was filled with the one this
+    // device made up earlier.
+    SharedPreferences.setMockInitialValues({
+      'mumbleway.suggestedName': 'amber-otter',
+      'mumbleway.suggestedNameGenerated': true,
+    });
     final state = AppState();
     addTearDown(state.dispose);
 
@@ -115,6 +119,47 @@ void main() {
     final usernameField = find.byType(TextFormField).at(3);
     await t.ensureVisible(usernameField);
     await t.enterText(usernameField, 'Alice');
+    await t.pump();
+    expect(find.text(l.usernameGenerated), findsNothing);
+  });
+
+  testWidgets('no hint for a dictionary-pair prefill we did not make up', (
+    t,
+  ) async {
+    final state = AppState();
+    addTearDown(state.dispose);
+
+    await t.pumpWidget(
+      host(state, AddServerScreen(prefill: serverWithUsername('amber-otter'))),
+    );
+    await t.pumpAndSettle();
+
+    final l = L.of(t.element(find.byType(AddServerScreen)));
+    expect(DeviceIdentity.isGenerated('amber-otter'), isTrue);
+    expect(find.text(l.usernameGenerated), findsNothing);
+  });
+
+  testWidgets('no hint for a typed dictionary pair or a real name like one', (
+    t,
+  ) async {
+    // The device's real name happens to be a word pair from the list.
+    DeviceIdentity.platformOverride = () async => 'marble-fern';
+    addTearDown(() => DeviceIdentity.platformOverride = null);
+
+    final state = AppState();
+    addTearDown(state.dispose);
+
+    await t.pumpWidget(host(state, const AddServerScreen()));
+    await t.pumpAndSettle();
+
+    final l = L.of(t.element(find.byType(AddServerScreen)));
+    final usernameField = find.byType(TextFormField).at(3);
+    final controller = t.widget<TextFormField>(usernameField).controller!;
+    expect(controller.text, 'marble-fern');
+    expect(find.text(l.usernameGenerated), findsNothing);
+
+    await t.ensureVisible(usernameField);
+    await t.enterText(usernameField, 'amber-otter');
     await t.pump();
     expect(find.text(l.usernameGenerated), findsNothing);
   });

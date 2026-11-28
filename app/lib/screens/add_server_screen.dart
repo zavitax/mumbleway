@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../l10n/app_localizations.dart';
-import '../services/device_identity.dart';
 import '../services/server_proxy.dart';
 import '../src/rust/api/mumbleway.dart';
 import '../state/app_state.dart';
@@ -156,6 +155,10 @@ class _AddServerScreenState extends State<AddServerScreen> {
   bool _saving = false;
   bool _suggested = false;
 
+  /// The name this app made up when the device gave none, if it did. The
+  /// hint shows only while the field still holds exactly that.
+  String? _madeUpName;
+
   bool get _editing => widget.existing != null;
 
   /// How this server is reached, which is not a text field and so is held
@@ -214,10 +217,14 @@ class _AddServerScreenState extends State<AddServerScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_suggested || widget.existing != null || widget.prefill != null) {
+    if (_suggested || widget.existing != null) return;
+    _suggested = true;
+    if (widget.prefill != null) {
+      // An invitation without a name is filled with our own suggestion,
+      // which may be one we made up.
+      unawaited(_loadMadeUpName());
       return;
     }
-    _suggested = true;
     // Not initState: reading an InheritedWidget is only legal once
     // dependencies are established, and `_suggestUsername` reads AppStateScope.
     // A name to connect under, so the field is not simply blank and in the
@@ -244,6 +251,19 @@ class _AddServerScreenState extends State<AddServerScreen> {
     }
     if (!mounted || _user.text.isNotEmpty) return;
     _user.text = name;
+    // The suggestion may have just been made up; learn that from its source.
+    await _loadMadeUpName();
+  }
+
+  Future<void> _loadMadeUpName() async {
+    String? made;
+    try {
+      made = await AppStateScope.read(context).madeUpUsername();
+    } catch (_) {
+      return;
+    }
+    if (!mounted || made == _madeUpName) return;
+    setState(() => _madeUpName = made);
   }
 
   /// Refills the form from a scanned invitation.
@@ -350,13 +370,15 @@ class _AddServerScreenState extends State<AddServerScreen> {
             // Said under the field rather than in it: when adding a server and
             // the device had no usable name (a Windows login of "User", an
             // iPhone called "iPhone"), this one is made up and the rider should
-            // know to replace it. Not shown when editing a saved server, where
-            // whatever name is in the field was already saved.
+            // know to replace it. Decided by where the name came from, not by
+            // its shape: a typed or real name can be a word pair too. Not shown
+            // when editing a saved server, where whatever name is in the field
+            // was already saved.
             if (!_editing)
               ValueListenableBuilder<TextEditingValue>(
                 valueListenable: _user,
                 builder: (context, value, _) =>
-                    DeviceIdentity.isGenerated(value.text)
+                    _madeUpName != null && value.text.trim() == _madeUpName
                     ? Padding(
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
                         child: Text(

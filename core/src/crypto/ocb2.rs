@@ -636,11 +636,20 @@ mod tests {
         b.set_decrypt_iv(a.encrypt_iv()).unwrap();
 
         // Packets accepted before the resync are still replays after it.
-        assert!(b.decrypt(&p1).is_err(), "replay of p1 accepted after resync");
-        assert!(b.decrypt(&p3).is_err(), "replay of p3 accepted after resync");
+        assert!(
+            b.decrypt(&p1).is_err(),
+            "replay of p1 accepted after resync"
+        );
+        assert!(
+            b.decrypt(&p3).is_err(),
+            "replay of p3 accepted after resync"
+        );
         // A late packet never seen before is still accepted, once.
         assert_eq!(b.decrypt(&p2).unwrap(), vec![2u8; 16]);
-        assert!(b.decrypt(&p2).is_err(), "replay of p2 accepted after resync");
+        assert!(
+            b.decrypt(&p2).is_err(),
+            "replay of p2 accepted after resync"
+        );
         // And the stream carries on.
         let p4 = a.encrypt(&[4u8; 16]).unwrap();
         assert_eq!(b.decrypt(&p4).unwrap(), vec![4u8; 16]);

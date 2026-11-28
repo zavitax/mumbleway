@@ -752,6 +752,24 @@ pub struct StartupOptions {
 /// unreadable spelled out.
 type OutgoingFanout = Arc<Mutex<Vec<mpsc::Sender<(u64, Vec<u8>, bool)>>>>;
 
+/// Drops closed session senders so removed or terminated sessions do not
+/// accumulate in the fan-out list.
+fn prune_outgoing(fanout: &OutgoingFanout) {
+    let mut senders = fanout.lock();
+    senders.retain(|s| !s.is_closed());
+}
+
+/// Delivers one encoded frame to every open session sender, pruning closed
+/// ones first so dead sessions do not keep cloning packets.
+fn fanout_outgoing(fanout: &OutgoingFanout, seq: u64, packet: &[u8], terminator: bool) {
+    let mut senders = fanout.lock();
+    senders.retain(|s| !s.is_closed());
+    for s in senders.iter() {
+        // Never block the DSP thread on a slow session.
+        let _ = s.try_send((seq, packet.to_vec(), terminator));
+    }
+}
+
 struct App {
     rt: tokio::runtime::Runtime,
     manager: tokio::sync::Mutex<SessionManager>,
@@ -967,11 +985,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
             output_device: None,
         },
         move |seq, packet, terminator| {
-            let senders = fanout.lock();
-            for s in senders.iter() {
-                // Never block the DSP thread on a slow session.
-                let _ = s.try_send((seq, packet.clone(), terminator));
-            }
+            fanout_outgoing(&fanout, seq, &packet, terminator);
         },
     )?;
     let shared = audio.shared();
@@ -1952,6 +1966,7 @@ pub fn remove_server(server_id: String) -> anyhow::Result<()> {
     // leaves one that nothing will ever move on — so the cue would carry on
     // every few seconds with nothing connected and no way to stop it.
     app.last_status.lock().remove(&server_id);
+    prune_outgoing(&app.outgoing);
     Ok(())
 }
 
@@ -4155,6 +4170,46 @@ mod tests {
         assert_eq!(
             cue_for_transition(Some(ConnStatus::Connected), ConnStatus::Disconnected),
             None
+        );
+    }
+
+    #[test]
+    fn closed_outgoing_senders_are_pruned() {
+        let fanout: OutgoingFanout = Arc::new(Mutex::new(Vec::new()));
+        let (live_tx, mut live_rx) = mpsc::channel(4);
+        let (dead_tx, dead_rx) = mpsc::channel(4);
+        fanout.lock().push(live_tx);
+        fanout.lock().push(dead_tx);
+
+        drop(dead_rx);
+        assert_eq!(fanout.lock().len(), 2);
+
+        fanout_outgoing(&fanout, 1, b"opus-frame", false);
+        assert_eq!(
+            fanout.lock().len(),
+            1,
+            "closed sender must be pruned instead of kept for future frames"
+        );
+        assert_eq!(
+            live_rx.try_recv().unwrap(),
+            (1, b"opus-frame".to_vec(), false)
+        );
+
+        let (dead_tx2, dead_rx2) = mpsc::channel(4);
+        fanout.lock().push(dead_tx2);
+        drop(dead_rx2);
+        prune_outgoing(&fanout);
+        assert_eq!(
+            fanout.lock().len(),
+            1,
+            "remove_server pruning must drop closed senders too"
+        );
+
+        drop(live_rx);
+        fanout_outgoing(&fanout, 2, b"tail", true);
+        assert!(
+            fanout.lock().is_empty(),
+            "once all receivers close, no sender remains to clone packets for"
         );
     }
 }

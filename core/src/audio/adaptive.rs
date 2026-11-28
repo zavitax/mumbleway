@@ -851,7 +851,10 @@ mod tests {
         let t0 = Instant::now();
         let mut a = AutoBitrate::default();
         let start = a.bps();
-        assert!(a.update(t0, outage.worst(congested)) < start, "must step down");
+        assert!(
+            a.update(t0, outage.worst(congested)) < start,
+            "must step down"
+        );
     }
 
     #[test]

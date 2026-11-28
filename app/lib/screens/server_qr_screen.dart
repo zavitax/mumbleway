@@ -1,6 +1,8 @@
-import 'dart:io' show File;
+import 'dart:io' show Directory, File, Platform;
+import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -8,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../l10n/app_localizations.dart';
 import '../src/rust/api/mumbleway.dart';
+import '../services/file_reveal.dart';
 import '../state/app_state.dart';
 import '../widgets/app_bar_title.dart';
 import '../widgets/error_snack.dart';
@@ -22,6 +25,180 @@ import '../widgets/error_snack.dart';
 ///
 /// Available on every platform. Making one needs no camera, and the machine
 /// with the server details on it is as often a laptop as a phone.
+/// Whether the screen offers to save the code to a file and copy the link.
+///
+/// On a desktop, as well as the share sheet rather than instead of it. The
+/// Windows sheet lists only the apps registered as share targets — a messenger
+/// or two, mail, nearby sharing — with no way to put the picture in a folder,
+/// and it sometimes fails to open at all with *"Couldn't show all the ways to
+/// share"*; `share_plus` reports neither, so the app cannot tell the rider the
+/// share went nowhere. Linux has no sheet for files at all. A save dialog and
+/// the clipboard are what a keyboard and a file manager expect, and they work.
+///
+/// Not on a phone: there the sheet *is* the way to a folder ("Save image",
+/// "Save to Files"), and a second button would only repeat it.
+bool qrOffersSaveAs([String? os]) => const {
+  'windows',
+  'linux',
+  'macos',
+}.contains(os ?? Platform.operatingSystem);
+
+final _qrUnsafeChars = RegExp(r'[^\p{L}\p{N}_-]+', unicode: true);
+final _qrEdgePunctuation = RegExp(r'^[_-]+|[_-]+$');
+
+/// File name offered for the saved or shared picture of [serverName]'s code.
+///
+/// Reduced to characters every file system accepts, because the name is the
+/// rider's own and Windows refuses half of what people type into one.
+String qrFileName(String serverName) {
+  final stem = serverName
+      .replaceAll(_qrUnsafeChars, '_')
+      .replaceAll(_qrEdgePunctuation, '');
+  return '${stem.isEmpty ? 'mumbleway' : stem}-qr.png';
+}
+
+/// Side of the code as rendered for sharing or saving, in pixels.
+///
+/// Generous on purpose: the picture is going to be scanned off whatever screen
+/// it lands on, and a code that has been through a messaging app's
+/// recompression needs the modules to survive it.
+const double qrImagePixels = 1024;
+
+/// Clear margin left around the code in the picture.
+///
+/// The specification asks for four modules' worth. At this size that is
+/// roughly sixty pixels for a code of the density an invite link produces,
+/// and erring wide costs nothing.
+const double _quietZone = 64;
+
+/// Paints the code for [link] as a PNG, black on opaque white.
+///
+/// Painted straight to pixels rather than captured off the screen: a screenshot
+/// of the widget would carry the device's scale factor and whatever is behind
+/// it, and on a desktop the whole thing may be smaller than the code deserves
+/// to be shared at.
+///
+/// Composited by hand rather than through the painter's own image helper, for
+/// two things that helper does not do. The background is filled opaque white —
+/// a PNG left transparent is black-on-black the moment it lands in a
+/// dark-themed messaging app, which is the one place this picture is going. And
+/// the code is inset to leave a quiet zone, the clear margin scanners use to
+/// find the code's edges; without it a reader has to guess where the code stops
+/// and the message bubble starts, which many will not do.
+///
+/// Returns null if the engine could not encode the picture.
+Future<Uint8List?> renderQrPng(String link) async {
+  final painter = QrPainter(
+    data: link,
+    version: QrVersions.auto,
+    gapless: true,
+    eyeStyle: const QrEyeStyle(
+      eyeShape: QrEyeShape.square,
+      color: Colors.black,
+    ),
+    dataModuleStyle: const QrDataModuleStyle(
+      dataModuleShape: QrDataModuleShape.square,
+      color: Colors.black,
+    ),
+  );
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawRect(
+    const Rect.fromLTWH(0, 0, qrImagePixels, qrImagePixels),
+    Paint()..color = Colors.white,
+  );
+  canvas.save();
+  canvas.translate(_quietZone, _quietZone);
+  painter.paint(
+    canvas,
+    const Size(qrImagePixels - _quietZone * 2, qrImagePixels - _quietZone * 2),
+  );
+  canvas.restore();
+
+  final image = await recorder.endRecording().toImage(
+    qrImagePixels.toInt(),
+    qrImagePixels.toInt(),
+  );
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  return data?.buffer.asUint8List();
+}
+
+/// Prefix of the per-share directories [shareQrImageFile] creates in `dir`.
+const qrShareDirPrefix = 'mumbleway-qr-share-';
+
+/// How long a share directory kept for a delayed share target survives.
+const qrShareDirMaxAge = Duration(hours: 1);
+
+/// Writes [bytes] to a fresh directory inside [dir] as [fileName], invokes
+/// [share] (defaulting to `SharePlus.instance.share`), and deletes that
+/// directory unless the platform returns [ShareResultStatus.unavailable].
+///
+/// On Windows, `SharePlus.instance.share` hands the path to the OS Share Sheet
+/// and returns immediately with `unavailable` before the target app reads it,
+/// so deleting the file synchronously in `finally` races the target. The file
+/// is kept in that case, and because every share gets its own directory a
+/// later share — of another channel on the same server, say — can neither
+/// overwrite nor delete a file an earlier target is still reading. Directories
+/// kept this way are aged out by later shares after [qrShareDirMaxAge].
+Future<void> shareQrImageFile({
+  required Directory dir,
+  required String fileName,
+  required Uint8List bytes,
+  required String subject,
+  Future<ShareResultStatus> Function(ShareParams params)? share,
+  DateTime Function()? now,
+}) async {
+  await _ageOutQrShareDirs(dir, (now ?? DateTime.now)());
+  final shareDir = await dir.createTemp(qrShareDirPrefix);
+  final file = File('${shareDir.path}${Platform.pathSeparator}$fileName');
+  var deleteTemp = false;
+  try {
+    await file.writeAsBytes(bytes, flush: true);
+    final params = ShareParams(
+      files: [XFile(file.path, mimeType: 'image/png')],
+      subject: subject,
+    );
+    final ShareResultStatus status;
+    if (share != null) {
+      status = await share(params);
+    } else {
+      final result = await SharePlus.instance.share(params);
+      status = result.status;
+    }
+    deleteTemp = status != ShareResultStatus.unavailable;
+  } catch (_) {
+    deleteTemp = true;
+    rethrow;
+  } finally {
+    if (deleteTemp) {
+      try {
+        await shareDir.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+}
+
+/// Removes share directories left for delayed share targets once they are
+/// older than [qrShareDirMaxAge]. Best effort: a directory still in use or
+/// already gone is skipped.
+Future<void> _ageOutQrShareDirs(Directory dir, DateTime now) async {
+  try {
+    await for (final entry in dir.list(followLinks: false)) {
+      if (entry is! Directory) continue;
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (!name.startsWith(qrShareDirPrefix)) continue;
+      try {
+        final modified = (await entry.stat()).modified;
+        if (now.difference(modified) > qrShareDirMaxAge) {
+          await entry.delete(recursive: true);
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 class ServerQrScreen extends StatefulWidget {
   const ServerQrScreen({super.key, required this.server, this.channel});
 
@@ -99,24 +276,11 @@ class _Body extends StatelessWidget {
 
   final String link;
 
-  /// Side of the code as rendered for sharing, in pixels.
-  ///
-  /// Generous on purpose: the picture is going to be scanned off whatever
-  /// screen it lands on, and a code that has been through a messaging app's
-  /// recompression needs the modules to survive it.
-  static const double _sharePixels = 1024;
-
-  /// Clear margin left around the code in the shared picture.
-  ///
-  /// The specification asks for four modules' worth. At this size that is
-  /// roughly sixty pixels for a code of the density an invite link produces,
-  /// and erring wide costs nothing.
-  static const double _quietZone = 64;
-
   @override
   Widget build(BuildContext context) {
     final l = L.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final desktop = qrOffersSaveAs();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -188,6 +352,14 @@ class _Body extends StatelessWidget {
           icon: const Icon(Icons.ios_share),
           label: Text(l.shareQrImage),
         ),
+        if (desktop) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _saveImage(context),
+            icon: const Icon(Icons.save_alt),
+            label: Text(l.saveQrImage),
+          ),
+        ],
         const SizedBox(height: 8),
         // The same share sheet the server card offers, and deliberately the
         // same *link*: the https invitation, not the `mumble://` one in the
@@ -201,6 +373,12 @@ class _Body extends StatelessWidget {
           icon: const Icon(Icons.link, size: 18),
           label: Text(l.shareInviteLink),
         ),
+        if (desktop)
+          TextButton.icon(
+            onPressed: () => _copy(context),
+            icon: const Icon(Icons.copy, size: 18),
+            label: Text(l.copyInviteLink),
+          ),
         const SizedBox(height: 12),
         // The link itself, selectable. Somebody on a desktop without a phone to
         // hand can read it off, and it is the only way to see what is actually
@@ -234,72 +412,83 @@ class _Body extends StatelessWidget {
     if (error != null) showError(messenger, error);
   }
 
+  /// Puts the same https invitation on the clipboard, with the password —
+  /// for the reason [_share] gives.
+  Future<void> _copy(BuildContext context) async {
+    final l = L.of(context);
+    final state = AppStateScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await state.copyInviteLink(
+      server,
+      channel: channel,
+      includePassword: true,
+    );
+    if (error != null) {
+      showError(messenger, error);
+    } else {
+      showNotice(messenger, l.inviteLinkCopied);
+    }
+  }
+
   Future<void> _shareImage(BuildContext context) async {
     final l = L.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    Uint8List? bytes;
     try {
-      // Painted straight to pixels rather than captured off the screen: a
-      // screenshot of the widget would carry the device's scale factor and
-      // whatever is behind it, and on a desktop the whole thing may be smaller
-      // than the code deserves to be shared at.
-      final painter = QrPainter(
-        data: link,
-        version: QrVersions.auto,
-        gapless: true,
-        eyeStyle: const QrEyeStyle(
-          eyeShape: QrEyeShape.square,
-          color: Colors.black,
-        ),
-        dataModuleStyle: const QrDataModuleStyle(
-          dataModuleShape: QrDataModuleShape.square,
-          color: Colors.black,
-        ),
-      );
-
-      // Composited by hand rather than through the painter's own image helper,
-      // for two things that helper does not do. The background is filled
-      // opaque white — a PNG left transparent is black-on-black the moment it
-      // lands in a dark-themed messaging app, which is the one place this
-      // picture is going. And the code is inset to leave a quiet zone, the
-      // clear margin scanners use to find the code's edges; without it a
-      // reader has to guess where the code stops and the message bubble
-      // starts, which many will not do.
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder);
-      canvas.drawRect(
-        const Rect.fromLTWH(0, 0, _sharePixels, _sharePixels),
-        Paint()..color = Colors.white,
-      );
-      canvas.save();
-      canvas.translate(_quietZone, _quietZone);
-      painter.paint(
-        canvas,
-        const Size(
-          _sharePixels - _quietZone * 2,
-          _sharePixels - _quietZone * 2,
-        ),
-      );
-      canvas.restore();
-
-      final image = await recorder.endRecording().toImage(
-        _sharePixels.toInt(),
-        _sharePixels.toInt(),
-      );
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      image.dispose();
-      if (data == null) throw Exception(l.qrCouldNotRender);
+      bytes = await renderQrPng(link);
+      if (bytes == null) throw Exception(l.qrCouldNotRender);
 
       final dir = await getTemporaryDirectory();
-      final safe = server.name.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
-      final file = File('${dir.path}/$safe-qr.png');
-      await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'image/png')],
-          subject: l.joinMeOn(server.name),
-        ),
+      await shareQrImageFile(
+        dir: dir,
+        fileName: qrFileName(server.name),
+        bytes: bytes,
+        subject: l.joinMeOn(server.name),
       );
+    } on UnimplementedError {
+      // A desktop with no share sheet for files — Linux, or a Windows older
+      // than the one that brought the system share UI. Saving is the next best
+      // thing, and is offered beside this button there anyway.
+      if (context.mounted) await _saveImage(context, bytes: bytes);
+    } catch (e) {
+      showError(messenger, '$e');
+    }
+  }
+
+  /// Writes the picture wherever the rider chooses, through the system's own
+  /// save dialog.
+  Future<void> _saveImage(BuildContext context, {Uint8List? bytes}) async {
+    final l = L.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final location = await getSaveLocation(
+        suggestedName: qrFileName(server.name),
+        acceptedTypeGroups: const [
+          XTypeGroup(label: 'PNG', extensions: ['png']),
+        ],
+      );
+      if (location == null) return; // cancelled
+
+      // The dialog hands back what was typed, and a name typed without its
+      // extension would otherwise be a file nothing offers to open.
+      var path = location.path;
+      if (!path.toLowerCase().endsWith('.png')) path = '$path.png';
+
+      final png = bytes ?? await renderQrPng(link);
+      if (png == null) throw Exception(l.qrCouldNotRender);
+      await File(path).writeAsBytes(png, flush: true);
+
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(l.qrSavedTo(path)),
+            action: SnackBarAction(
+              label: l.showInFolder,
+              onPressed: () => revealFile(path),
+            ),
+          ),
+        );
     } catch (e) {
       showError(messenger, '$e');
     }

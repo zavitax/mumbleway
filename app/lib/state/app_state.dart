@@ -6,6 +6,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, listEquals, visibleForTesting;
 import 'dart:typed_data' show Uint8List, Uint32List;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -2234,8 +2235,8 @@ class AppState extends ChangeNotifier {
       // never sends to a server, so sharing this does not put the invitation
       // in anybody's access log. `buildInviteLink` is still there for the QR
       // code and for anything expecting what the official client registers.
-      final link = await buildInviteWebLink(
-        config: s.toConfig(proxyChain: sharedProxy(s)),
+      final link = await _inviteWebLink(
+        s,
         channel: channel,
         includePassword: includePassword,
       );
@@ -2247,6 +2248,42 @@ class AppState extends ChangeNotifier {
       return 'Could not share: $e';
     }
   }
+
+  /// Puts the same invitation [shareInviteLink] would send on the clipboard.
+  ///
+  /// For a desktop, where the system share sheet is the least reliable way to
+  /// get text into another window: on Windows it lists only the apps that have
+  /// registered as share targets, has no "copy" of its own, and can fail to
+  /// open at all — and it reports nothing back, so the app cannot tell that it
+  /// did. Pasting is what somebody at a keyboard was going to do anyway.
+  Future<String?> copyInviteLink(
+    SavedServer s, {
+    String? channel,
+    bool includePassword = false,
+  }) async {
+    try {
+      final link = await _inviteWebLink(
+        s,
+        channel: channel,
+        includePassword: includePassword,
+      );
+      await Clipboard.setData(ClipboardData(text: link));
+      return null;
+    } catch (e) {
+      return 'Could not copy: $e';
+    }
+  }
+
+  /// The https invitation both of the above hand out.
+  Future<String> _inviteWebLink(
+    SavedServer s, {
+    String? channel,
+    required bool includePassword,
+  }) => buildInviteWebLink(
+    config: s.toConfig(proxyChain: sharedProxy(s)),
+    channel: channel,
+    includePassword: includePassword,
+  );
 
   /// Shares an invite for [s] as a profile file.
   Future<String?> shareInviteFile(

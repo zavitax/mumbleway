@@ -416,6 +416,18 @@
   "qrCarriesPassword": "This code contains the password. Anyone who can see it — including over your shoulder, or in a photograph — can connect as you.",
   "shareQrImage": "Share the code",
   "qrCouldNotRender": "The code could not be drawn.",
+  "saveQrImage": "Save as…",
+  "copyInviteLink": "Copy invite link",
+  "inviteLinkCopied": "Invite link copied to the clipboard.",
+  "qrSavedTo": "Code saved: {path}",
+  "@qrSavedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "showInFolder": "Show",
   "joinMeOn": "Join me on {name}",
   "@joinMeOn": {
     "description": "Subject line when sharing an invite.",

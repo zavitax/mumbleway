@@ -894,6 +894,23 @@ class LEn extends L {
   String get qrCouldNotRender => 'The code could not be drawn.';
 
   @override
+  String get saveQrImage => 'Save as…';
+
+  @override
+  String get copyInviteLink => 'Copy invite link';
+
+  @override
+  String get inviteLinkCopied => 'Invite link copied to the clipboard.';
+
+  @override
+  String qrSavedTo(String path) {
+    return 'Code saved: $path';
+  }
+
+  @override
+  String get showInFolder => 'Show';
+
+  @override
   String joinMeOn(String name) {
     return 'Join me on $name';
   }

@@ -3016,9 +3016,17 @@ mod tests {
             queue_pending_command(&mut pending, SessionCommand::SetSelfMute(i % 2 == 0));
             queue_pending_command(&mut pending, SessionCommand::JoinChannel(i));
         }
-        assert_eq!(pending.len(), 2, "state setters keep only their latest value");
-        assert!(pending.iter().any(|c| matches!(c, SessionCommand::SetSelfMute(false))));
-        assert!(pending.iter().any(|c| matches!(c, SessionCommand::JoinChannel(999))));
+        assert_eq!(
+            pending.len(),
+            2,
+            "state setters keep only their latest value"
+        );
+        assert!(pending
+            .iter()
+            .any(|c| matches!(c, SessionCommand::SetSelfMute(false))));
+        assert!(pending
+            .iter()
+            .any(|c| matches!(c, SessionCommand::JoinChannel(999))));
 
         for i in 0..500 {
             queue_pending_command(

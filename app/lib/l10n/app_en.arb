@@ -167,6 +167,7 @@
   "usernameMissing": "Enter a username",
   "passwordOptional": "Password (optional)",
   "passwordHelp": "Only if the server requires one",
+  "usernameGenerated": "Made-up name: this device did not offer a usable one. Change it to your own so others know who you are.",
   "addingServer": "Adding…",
   "quickerWays": "Quicker ways to add a server",
   "browsePublic": "Browse public",

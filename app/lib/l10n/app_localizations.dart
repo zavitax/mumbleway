@@ -679,6 +679,12 @@ abstract class L {
   /// **'Only if the server requires one'**
   String get passwordHelp;
 
+  /// No description provided for @usernameGenerated.
+  ///
+  /// In en, this message translates to:
+  /// **'Made-up name: this device did not offer a usable one. Change it to your own so others know who you are.'**
+  String get usernameGenerated;
+
   /// No description provided for @addingServer.
   ///
   /// In en, this message translates to:

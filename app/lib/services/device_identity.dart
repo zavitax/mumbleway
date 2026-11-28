@@ -49,7 +49,12 @@ class DeviceIdentity {
   /// A name for this device's rider.
   ///
   /// Never empty, and never throws: every failure ends at the word pair.
-  Future<String> suggest() async {
+  Future<String> suggest() async => (await suggestWithSource()).name;
+
+  /// The same, with whether the name was made up ([randomName]) rather than
+  /// read from the device. Only the source can say that: a real login or a
+  /// typed name may happen to be a dictionary pair too.
+  Future<({String name, bool generated})> suggestWithSource() async {
     String? raw;
     try {
       raw = await _fromPlatform();
@@ -61,7 +66,9 @@ class DeviceIdentity {
       // always a name to give them.
       raw = null;
     }
-    return sanitize(raw) ?? randomName();
+    final real = sanitize(raw);
+    if (real != null) return (name: real, generated: false);
+    return (name: randomName(), generated: true);
   }
 
   Future<String?> _fromPlatform() async {
@@ -157,6 +164,18 @@ class DeviceIdentity {
     final r = randomOverride ?? Random.secure();
     return '${_adjectives[r.nextInt(_adjectives.length)]}'
         '-${_nouns[r.nextInt(_nouns.length)]}';
+  }
+
+  /// Whether [name] is one [randomName] could have produced.
+  ///
+  /// The form uses this to say the name was made up, not read from the
+  /// device. Otherwise a rider whose login is something generic like "User"
+  /// joins as "marble-fern" and has no idea where that came from.
+  static bool isGenerated(String name) {
+    final parts = name.trim().split('-');
+    return parts.length == 2 &&
+        _adjectives.contains(parts[0]) &&
+        _nouns.contains(parts[1]);
   }
 
   /// Colours, weather and temperament. Nothing about a person's body, and

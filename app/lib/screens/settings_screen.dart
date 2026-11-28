@@ -1633,7 +1633,10 @@ class _FingerprintTileState extends State<_FingerprintTile> {
   @override
   void initState() {
     super.initState();
-    clientCertificateFingerprint()
+    // `Future.sync` so a bridge that is not initialised (a widget test, or a
+    // failed engine load) lands in `catchError` instead of throwing out of
+    // initState.
+    Future.sync(clientCertificateFingerprint)
         .then((v) {
           if (mounted) setState(() => _fp = v);
         })

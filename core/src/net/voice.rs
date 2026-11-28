@@ -5,6 +5,7 @@
 //! and corporate networks block or aggressively NAT UDP though, so we probe with
 //! pings and fall back to tunnelling through TLS when the probe fails.
 
+use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
@@ -23,6 +24,9 @@ pub const UDP_STALE_AFTER: Duration = Duration::from_secs(12);
 
 /// Largest datagram we will accept; Mumble audio is far smaller.
 const MAX_DATAGRAM: usize = 2048;
+
+/// Number of recent UDP ping timestamps kept for exact RTT matching.
+const MAX_PENDING_PINGS: usize = 8;
 
 /// Something that arrived on the UDP socket.
 #[derive(Debug)]
@@ -45,6 +49,7 @@ pub struct VoiceSocket {
     crypt: CryptState,
     last_pong: Option<Instant>,
     last_ping_sent: Option<Instant>,
+    pending_pings: VecDeque<(u64, Instant)>,
     established: bool,
     /// When decryption last worked, and when a resync was last asked for.
     resync: crate::crypto::ResyncGuard,
@@ -67,6 +72,7 @@ impl VoiceSocket {
             crypt,
             last_pong: None,
             last_ping_sent: None,
+            pending_pings: VecDeque::with_capacity(MAX_PENDING_PINGS),
             established: false,
             resync: crate::crypto::ResyncGuard::new(Instant::now()),
         })
@@ -80,7 +86,7 @@ impl VoiceSocket {
     /// Whether UDP looks usable right now.
     pub fn is_healthy(&self, now: Instant) -> bool {
         match self.last_pong {
-            Some(t) => now.duration_since(t) < UDP_STALE_AFTER,
+            Some(t) => now.saturating_duration_since(t) < UDP_STALE_AFTER,
             None => false,
         }
     }
@@ -115,7 +121,12 @@ impl VoiceSocket {
         let sealed = self.crypt.encrypt(&plain)?;
         super::stats::note_bytes_out(sealed.len());
         self.socket.send(&sealed).await?;
-        self.last_ping_sent = Some(Instant::now());
+        let now = Instant::now();
+        self.last_ping_sent = Some(now);
+        if self.pending_pings.len() >= MAX_PENDING_PINGS {
+            self.pending_pings.pop_front();
+        }
+        self.pending_pings.push_back((timestamp, now));
         Ok(())
     }
 
@@ -147,17 +158,22 @@ impl VoiceSocket {
         };
 
         if audio_packet::is_ping(&plain) {
-            let echoed = audio_packet::decode_ping(&plain)?;
+            let Ok(echoed) = audio_packet::decode_ping(&plain) else {
+                return Ok(UdpEvent::Rejected("malformed ping packet"));
+            };
             let now = Instant::now();
             self.last_pong = Some(now);
             self.established = true;
-            let rtt = self
-                .last_ping_sent
+            let sent_at = self
+                .pending_pings
+                .iter()
+                .position(|(ts, _)| *ts == echoed)
+                .and_then(|idx| self.pending_pings.remove(idx))
+                .map(|(_, sent)| sent)
+                .or(self.last_ping_sent);
+            let rtt = sent_at
                 .map(|s| now.saturating_duration_since(s))
                 .unwrap_or_default();
-            // The server echoes our timestamp verbatim, so a mismatch means a
-            // stale reply; we still count it as liveness.
-            let _ = echoed;
             return Ok(UdpEvent::Pong { rtt });
         }
 
@@ -278,5 +294,91 @@ mod tests {
         let client = VoiceSocket::bind(dead, crypt).await.unwrap();
         assert!(!client.is_healthy(Instant::now()));
         assert!(!client.is_established());
+    }
+
+    #[tokio::test]
+    async fn malformed_ping_is_rejected_without_killing_the_socket() {
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+        let (client_crypt, mut server_crypt) = crypt_pair();
+        let mut client = VoiceSocket::bind(server_addr, client_crypt).await.unwrap();
+
+        client.send_ping(1).await.unwrap();
+        let mut buf = [0u8; 2048];
+        let (n, from) = server.recv_from(&mut buf).await.unwrap();
+        server_crypt.decrypt(&buf[..n]).unwrap();
+
+        // Valid OCB2 tag over a ping header missing its varint timestamp.
+        let malformed = [audio_packet::TYPE_PING << 5];
+        let sealed = server_crypt.encrypt(&malformed).unwrap();
+        server.send_to(&sealed, from).await.unwrap();
+        assert!(matches!(
+            client.recv().await.unwrap(),
+            UdpEvent::Rejected("malformed ping packet")
+        ));
+
+        // Socket must remain healthy and keep processing valid packets.
+        let ok_ping = audio_packet::encode_ping(1);
+        let sealed = server_crypt.encrypt(&ok_ping).unwrap();
+        server.send_to(&sealed, from).await.unwrap();
+        assert!(matches!(
+            client.recv().await.unwrap(),
+            UdpEvent::Pong { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn late_pong_matches_original_ping_and_bounds_queue() {
+        let server = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_addr = server.local_addr().unwrap();
+        let (client_crypt, mut server_crypt) = crypt_pair();
+        let mut client = VoiceSocket::bind(server_addr, client_crypt).await.unwrap();
+
+        client.send_ping(101).await.unwrap();
+        let after_first = Instant::now();
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        client.send_ping(202).await.unwrap();
+        let after_second = Instant::now();
+
+        let mut buf = [0u8; 2048];
+        let (n1, from) = server.recv_from(&mut buf).await.unwrap();
+        server_crypt.decrypt(&buf[..n1]).unwrap();
+        let (n2, _) = server.recv_from(&mut buf).await.unwrap();
+        server_crypt.decrypt(&buf[..n2]).unwrap();
+
+        // Echo the older ping (101) after ping 202 was already sent.
+        let earlier_than_pong = Instant::now();
+        let echo1 = server_crypt
+            .encrypt(&audio_packet::encode_ping(101))
+            .unwrap();
+        server.send_to(&echo1, from).await.unwrap();
+        match client.recv().await.unwrap() {
+            UdpEvent::Pong { rtt } => {
+                assert!(
+                    rtt >= after_second.duration_since(after_first),
+                    "late pong RTT {rtt:?} must reflect original ping 101, not ping 202"
+                );
+            }
+            other => panic!("expected Pong, got {other:?}"),
+        }
+        // An Instant captured slightly before recv() must not panic in is_healthy().
+        assert!(client.is_healthy(earlier_than_pong));
+
+        // Unmatched timestamp falls back to last_ping_sent without panicking.
+        let echo_unknown = server_crypt
+            .encrypt(&audio_packet::encode_ping(999))
+            .unwrap();
+        server.send_to(&echo_unknown, from).await.unwrap();
+        assert!(matches!(
+            client.recv().await.unwrap(),
+            UdpEvent::Pong { .. }
+        ));
+
+        // Pending ping history stays capped at MAX_PENDING_PINGS.
+        for ts in 1_000..1_012u64 {
+            client.send_ping(ts).await.unwrap();
+        }
+        assert_eq!(client.pending_pings.len(), MAX_PENDING_PINGS);
+        assert_eq!(client.pending_pings.front().map(|(t, _)| *t), Some(1_004));
     }
 }

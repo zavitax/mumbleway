@@ -153,6 +153,11 @@ class _AddServerScreenState extends State<AddServerScreen> {
   final _user = TextEditingController();
   final _password = TextEditingController();
   bool _saving = false;
+  bool _suggested = false;
+
+  /// The name this app made up when the device gave none, if it did. The
+  /// hint shows only while the field still holds exactly that.
+  String? _madeUpName;
 
   bool get _editing => widget.existing != null;
 
@@ -198,10 +203,6 @@ class _AddServerScreenState extends State<AddServerScreen> {
         port = defaultPort();
       } catch (_) {}
       _port.text = port.toString();
-      // A name to connect under, so the field is not simply blank and in the
-      // way. Derived from the device rather than shared or invented, and only
-      // a suggestion — it is an ordinary editable field.
-      unawaited(_suggestUsername());
       return;
     }
     _name.text = source.name;
@@ -211,6 +212,25 @@ class _AddServerScreenState extends State<AddServerScreen> {
     _password.text = source.password ?? '';
     _proxyMode = source.proxyMode;
     _proxy = source.proxy;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_suggested || widget.existing != null) return;
+    _suggested = true;
+    if (widget.prefill != null) {
+      // An invitation without a name is filled with our own suggestion,
+      // which may be one we made up.
+      unawaited(_loadMadeUpName());
+      return;
+    }
+    // Not initState: reading an InheritedWidget is only legal once
+    // dependencies are established, and `_suggestUsername` reads AppStateScope.
+    // A name to connect under, so the field is not simply blank and in the
+    // way. Derived from the device rather than shared or invented, and only
+    // a suggestion — it is an ordinary editable field.
+    unawaited(_suggestUsername());
   }
 
   /// Fills the username field with the device's own suggestion.
@@ -225,12 +245,25 @@ class _AddServerScreenState extends State<AddServerScreen> {
     // to fail to draw the form.
     final String name;
     try {
-      name = await AppStateScope.of(context).suggestedUsername();
+      name = await AppStateScope.read(context).suggestedUsername();
     } catch (_) {
       return;
     }
     if (!mounted || _user.text.isNotEmpty) return;
     _user.text = name;
+    // The suggestion may have just been made up; learn that from its source.
+    await _loadMadeUpName();
+  }
+
+  Future<void> _loadMadeUpName() async {
+    String? made;
+    try {
+      made = await AppStateScope.read(context).madeUpUsername();
+    } catch (_) {
+      return;
+    }
+    if (!mounted || made == _madeUpName) return;
+    setState(() => _madeUpName = made);
   }
 
   /// Refills the form from a scanned invitation.
@@ -334,6 +367,29 @@ class _AddServerScreenState extends State<AddServerScreen> {
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? l.usernameMissing : null,
             ),
+            // Said under the field rather than in it: when adding a server and
+            // the device had no usable name (a Windows login of "User", an
+            // iPhone called "iPhone"), this one is made up and the rider should
+            // know to replace it. Decided by where the name came from, not by
+            // its shape: a typed or real name can be a word pair too. Not shown
+            // when editing a saved server, where whatever name is in the field
+            // was already saved.
+            if (!_editing)
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: _user,
+                builder: (context, value, _) =>
+                    _madeUpName != null && value.text.trim() == _madeUpName
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                        child: Text(
+                          l.usernameGenerated,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.tertiary,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _password,

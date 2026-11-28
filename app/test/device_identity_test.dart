@@ -111,6 +111,30 @@ void main() {
     });
   });
 
+  group('isGenerated', () {
+    test('recognises every name randomName hands out', () {
+      DeviceIdentity.randomOverride = Random(7);
+      addTearDown(() => DeviceIdentity.randomOverride = null);
+      for (var i = 0; i < 50; i++) {
+        expect(DeviceIdentity.isGenerated(DeviceIdentity.randomName()), isTrue);
+      }
+    });
+
+    test('leaves names a person chose alone', () {
+      for (final name in [
+        'Ilya',
+        'Ilya-Melamed',
+        'marble',
+        'marble-fern-2',
+        'fern-marble',
+        'Marble-Fern',
+        '',
+      ]) {
+        expect(DeviceIdentity.isGenerated(name), isFalse, reason: name);
+      }
+    });
+  });
+
   group('suggest', () {
     tearDown(() => DeviceIdentity.platformOverride = null);
 

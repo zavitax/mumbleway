@@ -327,6 +327,10 @@ class LRu extends L {
   String get passwordHelp => 'Только если сервер его требует';
 
   @override
+  String get usernameGenerated =>
+      'Имя придумано: устройство не подсказало подходящего. Замените его на своё, чтобы вас узнавали.';
+
+  @override
   String get addingServer => 'Добавление…';
 
   @override

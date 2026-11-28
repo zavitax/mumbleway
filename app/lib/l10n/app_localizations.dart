@@ -1165,6 +1165,18 @@ abstract class L {
   /// **'Show floating call window'**
   String get floatingWindow;
 
+  /// No description provided for @floatingPermissionMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Display over other apps is not allowed, so the window cannot appear.'**
+  String get floatingPermissionMissing;
+
+  /// No description provided for @floatingPermissionGrant.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get floatingPermissionGrant;
+
   /// No description provided for @identityFingerprint.
   ///
   /// In en, this message translates to:

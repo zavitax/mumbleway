@@ -1438,8 +1438,58 @@ class _OverlayTile extends StatefulWidget {
   State<_OverlayTile> createState() => _OverlayTileState();
 }
 
-class _OverlayTileState extends State<_OverlayTile> {
+class _OverlayTileState extends State<_OverlayTile>
+    with WidgetsBindingObserver {
   bool _busy = false;
+
+  /// Whether Android lets the window draw over other apps. Read separately
+  /// from the switch, which shows the rider's preference: with the preference
+  /// on and the permission refused, tapping the switch would turn the feature
+  /// off instead of asking for the grant, so the grant gets its own action.
+  bool? _permitted;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshPermission());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Coming back from Android's settings is how the grant arrives.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refreshPermission();
+  }
+
+  Future<void> _refreshPermission() async {
+    if (!mounted) return;
+    final state = AppStateScope.read(context);
+    if (state.overlayKind != FloatingKind.androidOverlay) return;
+    bool? permitted;
+    try {
+      permitted = await state.overlay.hasPermission();
+    } catch (_) {
+      return;
+    }
+    if (!mounted || permitted == _permitted) return;
+    setState(() => _permitted = permitted);
+  }
+
+  Future<void> _grantPermission(AppState state) async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final error = await state.enableOverlay();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _refreshPermission();
+    if (error != null) showError(messenger, error);
+  }
 
   /// Each platform grants a different set of controls, and on iOS the system
   /// owns the buttons outright. Saying which is which up front is the only way
@@ -1474,7 +1524,7 @@ class _OverlayTileState extends State<_OverlayTile> {
           title: Text(l.floatingWindow),
           subtitle: Text(_subtitleFor(kind)),
           isThreeLine: kind == FloatingKind.iosPictureInPicture,
-          value: state.overlayEnabled,
+          value: state.wantOverlay,
           onChanged: _busy
               ? null
               : (want) async {
@@ -1488,11 +1538,30 @@ class _OverlayTileState extends State<_OverlayTile> {
                   }
                   if (!mounted) return;
                   setState(() => _busy = false);
+                  await _refreshPermission();
                   if (error != null) {
                     showError(messenger, error);
                   }
                 },
         ),
+        if (kind == FloatingKind.androidOverlay &&
+            state.wantOverlay &&
+            _permitted == false)
+          ListTile(
+            key: const ValueKey('overlay-permission-missing'),
+            leading: const SizedBox(width: 24),
+            title: Text(
+              l.floatingPermissionMissing,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+            trailing: TextButton(
+              onPressed: _busy ? null : () => _grantPermission(state),
+              child: Text(l.floatingPermissionGrant),
+            ),
+          ),
         // A snackbar is gone in four seconds and this arrives after one. What
         // the system said has to stay on screen beside the switch that asked
         // it — and that includes success, because a window that opened and
@@ -1526,7 +1595,10 @@ class _FingerprintTileState extends State<_FingerprintTile> {
   @override
   void initState() {
     super.initState();
-    clientCertificateFingerprint()
+    // `Future.sync` so a bridge that is not initialised (a widget test, or a
+    // failed engine load) lands in `catchError` instead of throwing out of
+    // `initState` and taking the whole settings list down with it.
+    Future.sync(clientCertificateFingerprint)
         .then((v) {
           if (mounted) setState(() => _fp = v);
         })

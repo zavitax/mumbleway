@@ -583,6 +583,13 @@ class LEn extends L {
   String get floatingWindow => 'Show floating call window';
 
   @override
+  String get floatingPermissionMissing =>
+      'Display over other apps is not allowed, so the window cannot appear.';
+
+  @override
+  String get floatingPermissionGrant => 'Allow';
+
+  @override
   String get identityFingerprint => 'Your certificate fingerprint';
 
   @override

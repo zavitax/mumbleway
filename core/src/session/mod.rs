@@ -720,7 +720,13 @@ impl Session {
         ask_rights_for(&mut writer, state.self_channel(state.self_session)).await?;
 
         // From here the reader lives in its own task; see [`spawn_reader`].
-        let mut messages = spawn_reader(reader);
+        //
+        // The guard aborts that task however this connection ends. Without
+        // it, a link that died silently left the task parked in `recv()` on a
+        // socket that would never answer — and, holding the read half, it kept
+        // that socket open too: one task and one connection leaked per ping
+        // timeout, for as long as the app ran.
+        let (mut messages, _reader_task) = spawn_reader(reader);
         self.run_connected(&mut messages, &mut writer, &mut udp, &mut state)
             .await
     }
@@ -2327,9 +2333,21 @@ async fn send_hello(
     writer.send(MessageType::PluginDataTransmission, &m).await
 }
 
-fn spawn_reader(mut reader: ControlReader) -> mpsc::Receiver<Result<(u16, Vec<u8>)>> {
+/// Aborts the task it holds when dropped.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Whole control messages, as the reader task delivers them.
+type Messages = mpsc::Receiver<Result<(u16, Vec<u8>)>>;
+
+fn spawn_reader(mut reader: ControlReader) -> (Messages, AbortOnDrop) {
     let (tx, rx) = mpsc::channel(64);
-    tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         loop {
             let result = reader.recv().await;
             let failed = result.is_err();
@@ -2338,7 +2356,7 @@ fn spawn_reader(mut reader: ControlReader) -> mpsc::Receiver<Result<(u16, Vec<u8
             }
         }
     });
-    rx
+    (rx, AbortOnDrop(task))
 }
 
 /// Milliseconds since the Unix epoch, used for ping timestamps.
@@ -2353,3 +2371,23 @@ fn now_millis() -> u64 {
 pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn dropping_the_guard_ends_a_task_stuck_forever() {
+        // The shape of the leak: a reader parked on a socket that will never
+        // answer. Only an abort can end it.
+        let (tx, mut rx) = mpsc::channel::<()>(1);
+        let task = tokio::spawn(async move {
+            let _keep = tx; // dropped only if the task ends
+            std::future::pending::<()>().await;
+        });
+        let guard = AbortOnDrop(task);
+        drop(guard);
+        let ended = tokio::time::timeout(Duration::from_secs(1), rx.recv()).await;
+        assert_eq!(ended, Ok(None), "the task should have been aborted");
+    }
+}

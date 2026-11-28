@@ -16,6 +16,7 @@ void main() {
   late Map<String, String> backing;
   late bool failReads;
   late bool failWrites;
+  late bool failDeletes;
   late List<String> channelCalls;
 
   void installMockChannel() {
@@ -43,6 +44,9 @@ void main() {
               }
               return null;
             case 'deleteKeys':
+              if (failDeletes) {
+                throw PlatformException(code: 'delete-failed', message: 'denied');
+              }
               final keys = List<String>.from(call.arguments as List);
               for (final key in keys) {
                 backing.remove(key);
@@ -58,6 +62,7 @@ void main() {
     backing = <String, String>{};
     failReads = false;
     failWrites = false;
+    failDeletes = false;
     channelCalls = <String>[];
     SecretStore.instance.resetForTesting();
     SharedPreferences.setMockInitialValues({});
@@ -174,6 +179,76 @@ void main() {
         reloaded.servers.single.copyWith(clearPassword: true),
       );
       expect(backing.containsKey('server:voice.example:64738'), isFalse);
+
+      await Future<void>.delayed(Duration.zero);
+    });
+
+    test('an update that fails to reach the store survives a restart', () async {
+      final state = AppState();
+      addTearDown(state.dispose);
+      await state.addNewServer(
+        SavedServer(
+          name: 'Club',
+          host: 'voice.example',
+          port: 64738,
+          username: 'rider',
+          password: 'first',
+        ),
+      );
+      expect(backing['server:voice.example:64738'], 'first');
+
+      failWrites = true;
+      await state.updateServer(
+        state.servers.single.copyWith(password: 'second'),
+      );
+      expect(backing['server:voice.example:64738'], 'first');
+
+      // Restart with the store healthy again: the newer edit wins over the
+      // store's older copy and is moved into the store.
+      failWrites = false;
+      final reloaded = AppState();
+      addTearDown(reloaded.dispose);
+      await reloaded.loadServersForTesting();
+      expect(reloaded.servers.single.password, 'second');
+      expect(backing['server:voice.example:64738'], 'second');
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getStringList('mumbleway.servers')!.single,
+        isNot(contains('second')),
+      );
+
+      await Future<void>.delayed(Duration.zero);
+    });
+
+    test('a clear that fails to reach the store survives a restart', () async {
+      final state = AppState();
+      addTearDown(state.dispose);
+      await state.addNewServer(
+        SavedServer(
+          name: 'Club',
+          host: 'voice.example',
+          port: 64738,
+          username: 'rider',
+          password: 'first',
+        ),
+      );
+
+      failDeletes = true;
+      await state.updateServer(
+        state.servers.single.copyWith(clearPassword: true),
+      );
+      expect(backing['server:voice.example:64738'], 'first');
+
+      // Restart: the cleared password must not come back from the store, and
+      // the delete is retried now that the store accepts it.
+      failDeletes = false;
+      final reloaded = AppState();
+      addTearDown(reloaded.dispose);
+      await reloaded.loadServersForTesting();
+      expect(reloaded.servers.single.password, isNull);
+      expect(backing.containsKey('server:voice.example:64738'), isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getStringList('mumbleway.pendingSecretDeletes'), isNull);
 
       await Future<void>.delayed(Duration.zero);
     });
@@ -333,6 +408,84 @@ void main() {
   });
 
   group('proxy credentials', () {
+    const proxyA = ServerProxy(
+      scheme: ProxyScheme.socks5,
+      host: '10.0.0.10',
+      port: 1080,
+      username: 'user-a',
+      password: 'pass-a',
+      tunnelVoice: false,
+    );
+    const proxyB = ServerProxy(
+      scheme: ProxyScheme.socks5,
+      host: '10.0.0.11',
+      port: 1080,
+      username: 'user-b',
+      password: 'pass-b',
+      tunnelVoice: false,
+    );
+    ServerProxy bare(ServerProxy p) => ServerProxy(
+      scheme: p.scheme,
+      host: p.host,
+      port: p.port,
+      username: null,
+      password: null,
+      tunnelVoice: false,
+    );
+
+    test('A failing, then B succeeding, keeps A across a restart', () async {
+      failWrites = true;
+      await ServerProxies.instance.rememberCredentials(proxyA);
+      failWrites = false;
+      await ServerProxies.instance.rememberCredentials(proxyB);
+
+      final prefs = await SharedPreferences.getInstance();
+      final fallback = prefs.getString('mumbleway.proxyAuth');
+      expect(fallback, contains('pass-a'), reason: "B's success dropped A");
+      expect(fallback, isNot(contains('pass-b')));
+
+      // Restart with the store healthy: A is recovered and moved into it.
+      await ServerProxies.instance.load();
+      expect(ServerProxies.instance.withCredentials(bare(proxyA)).password,
+          'pass-a');
+      expect(ServerProxies.instance.withCredentials(bare(proxyB)).password,
+          'pass-b');
+      expect(backing.keys.where((k) => k.startsWith('proxy:')), hasLength(2));
+      expect(prefs.containsKey('mumbleway.proxyAuth'), isFalse);
+    });
+
+    test('a newer fallback edit wins over the store on restart', () async {
+      await ServerProxies.instance.rememberCredentials(proxyA);
+      failWrites = true;
+      await ServerProxies.instance.rememberCredentials(
+        const ServerProxy(
+          scheme: ProxyScheme.socks5,
+          host: '10.0.0.10',
+          port: 1080,
+          username: 'user-a',
+          password: 'pass-a2',
+          tunnelVoice: false,
+        ),
+      );
+      failWrites = false;
+
+      await ServerProxies.instance.load();
+      expect(ServerProxies.instance.withCredentials(bare(proxyA)).password,
+          'pass-a2');
+    });
+
+    test('a clear that fails to reach the store survives a restart', () async {
+      await ServerProxies.instance.rememberCredentials(proxyA);
+      failDeletes = true;
+      await ServerProxies.instance.rememberCredentials(bare(proxyA));
+      failDeletes = false;
+
+      await ServerProxies.instance.load();
+      expect(ServerProxies.instance.withCredentials(bare(proxyA)).password,
+          isNull);
+      expect(backing.keys.where((k) => k.startsWith('proxy:')), isEmpty);
+    });
+
     test('proxy credentials are kept out of SharedPreferences', () async {
       const proxyWithLogin = ServerProxy(
         scheme: ProxyScheme.socks5,

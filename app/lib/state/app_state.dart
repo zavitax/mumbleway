@@ -660,6 +660,7 @@ class AppState extends ChangeNotifier {
   final Map<String, ServerRuntime> runtimes = {};
   final Map<String, String> _storedServerSecrets = {};
   final Set<String> _pendingSecretDeletes = {};
+  static const _prefsPendingSecretDeletes = 'mumbleway.pendingSecretDeletes';
   bool _secretsLoaded = false;
   bool _probedSecrets = false;
 
@@ -1438,7 +1439,11 @@ class AppState extends ChangeNotifier {
     final secretAvailable =
         SecretStore.instance.isAvailable && !SecretStore.instance.lastReadFailed;
     _storedServerSecrets.clear();
-    _pendingSecretDeletes.clear();
+    _pendingSecretDeletes
+      ..clear()
+      // Clears that could not reach the store survive a restart, so a
+      // password the rider removed cannot come back from the store.
+      ..addAll(prefs.getStringList(_prefsPendingSecretDeletes) ?? const []);
     _probedSecrets = true;
     _secretsLoaded = secretAvailable;
     if (secretAvailable) {
@@ -1462,10 +1467,16 @@ class AppState extends ChangeNotifier {
           stripLegacyPasswords = true;
         }
         final storedPw = _storedServerSecrets[s.localId];
-        if (storedPw != null && storedPw.isNotEmpty) {
+        if ((s.password ?? '').isNotEmpty) {
+          // A password still in preferences is the newest one: a successful
+          // write to the store strips it, so it is only here when that write
+          // failed (or before migration). It wins over the store's copy.
+          if (storedPw != s.password) toMigrate[s.localId] = s.password!;
+        } else if (storedPw != null &&
+            storedPw.isNotEmpty &&
+            // Cleared, but the store's copy could not be deleted yet.
+            !_pendingSecretDeletes.contains(s.localId)) {
           s = s.copyWith(password: storedPw);
-        } else if ((s.password ?? '').isNotEmpty) {
-          toMigrate[s.localId] = s.password!;
         }
       }
       servers.add(s);
@@ -1477,13 +1488,17 @@ class AppState extends ChangeNotifier {
       });
       if (ok) {
         _storedServerSecrets.addAll(toMigrate);
+        _pendingSecretDeletes.removeAll(toMigrate.keys);
       } else {
         stripLegacyPasswords = false;
       }
     }
 
     final namesChanged = await _repairEscapedNames(prefs);
-    if ((secretAvailable && stripLegacyPasswords) || namesChanged) {
+    final retryDeletes = secretAvailable && _pendingSecretDeletes.isNotEmpty;
+    if ((secretAvailable && stripLegacyPasswords) ||
+        namesChanged ||
+        retryDeletes) {
       await _persist(publish: false);
     }
 
@@ -1584,8 +1599,10 @@ class AppState extends ChangeNotifier {
       }
       if (writeOk) {
         for (final e in toWrite.entries) {
-          _storedServerSecrets[e.key.substring(_secretServerPrefix.length)] =
-              e.value;
+          final id = e.key.substring(_secretServerPrefix.length);
+          _storedServerSecrets[id] = e.value;
+          // A new password replaces the clear that was waiting to happen.
+          _pendingSecretDeletes.remove(id);
         }
       }
       deleteOk = writeOk;
@@ -1604,6 +1621,14 @@ class AppState extends ChangeNotifier {
       }
     }
     final stripPasswords = !readFailed && writeOk && deleteOk;
+    if (_pendingSecretDeletes.isEmpty) {
+      await prefs.remove(_prefsPendingSecretDeletes);
+    } else {
+      await prefs.setStringList(
+        _prefsPendingSecretDeletes,
+        _pendingSecretDeletes.toList(),
+      );
+    }
 
     await prefs.setString(_prefsDeleted, jsonEncode(_deleted));
     await prefs.setString(_prefsSettingStamps, jsonEncode(_settingStamps));

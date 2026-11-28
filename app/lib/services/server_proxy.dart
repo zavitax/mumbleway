@@ -108,10 +108,19 @@ class ServerProxies {
     }
 
     // Transparently migrate any legacy plaintext proxy credentials out of
-    // SharedPreferences into the native secret store.
+    // SharedPreferences into the native secret store. An entry still in
+    // preferences is the newest one for its proxy — a successful write to the
+    // store removes it — so it wins over the store's copy.
     final toMigrate = <String, String>{};
+    final toDelete = <String>[];
     for (final e in legacy.entries) {
-      if (fromSecrets.containsKey(e.key)) continue;
+      if (fromSecrets[e.key] == e.value) continue;
+      if (e.value.user == null && e.value.password == null) {
+        // A clear whose delete did not reach the store: finish it.
+        fromSecrets.remove(e.key);
+        toDelete.add('$_secretPrefix${e.key}');
+        continue;
+      }
       fromSecrets[e.key] = e.value;
       toMigrate['$_secretPrefix${e.key}'] = _encodeSingleCredential(e.value);
     }
@@ -120,6 +129,9 @@ class ServerProxies {
     var migratedOk = true;
     if (toMigrate.isNotEmpty) {
       migratedOk = await SecretStore.instance.writeAll(toMigrate);
+    }
+    if (toDelete.isNotEmpty) {
+      migratedOk = await SecretStore.instance.deleteKeys(toDelete) && migratedOk;
     }
     if (migratedOk && prefs.containsKey(_prefsCredentials)) {
       await prefs.remove(_prefsCredentials);
@@ -168,17 +180,30 @@ class ServerProxies {
               secretKey: _encodeSingleCredential(_credentials[key]!),
             });
     }
+    // Reconciled by key: the fallback in preferences holds only the proxies
+    // whose last change did not reach the store. This one leaves it when its
+    // write succeeds and joins it when it fails; every other entry — another
+    // proxy whose write failed earlier — is kept as it is.
+    final fallback = _decodeCredentials(prefs.getString(_prefsCredentials));
     if (secretOk && !SecretStore.instance.lastReadFailed) {
+      fallback.remove(key);
+    } else {
+      // A failed clear is kept as an explicit empty entry, so the store's
+      // older copy cannot come back on restart; `load` finishes the delete.
+      fallback[key] = empty
+          ? (user: null, password: null)
+          : _credentials[key]!;
+    }
+    if (fallback.isEmpty) {
       if (prefs.containsKey(_prefsCredentials)) {
         await prefs.remove(_prefsCredentials);
       }
       return;
     }
-
     await prefs.setString(
       _prefsCredentials,
       jsonEncode({
-        for (final e in _credentials.entries)
+        for (final e in fallback.entries)
           e.key: {'u': e.value.user, 'p': e.value.password},
       }),
     );

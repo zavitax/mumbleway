@@ -102,11 +102,12 @@ People using other Mumble apps are told nothing — their app ignores it.
 **Muting.** When you mute your microphone, the server is told, so everyone on it
 can see that you are muted rather than just quiet — people using other Mumble
 apps included. And another MumbleWay user can ask your app to mute your
-microphone, for when it is sending noise, or to unmute it, for when you muted
-yourself and forgot. Either way you hear a sound and see who did it, and your
-app acts on at most one such request every 30 seconds. Being unmuted by others
-can be turned off in Settings, with "Let MumbleWay users unmute me". Being
-muted cannot, and your own mute button always turns the microphone back on.
+microphone, for when it is sending noise, and whoever did can unmute it again
+within ten minutes. Either way you hear a sound and see who did it, and your
+app acts on at most one mute request every 30 seconds. Letting any MumbleWay
+user unmute you, for when you muted yourself and forgot, is off unless you turn
+on "Let MumbleWay users unmute me" in Settings. Being muted cannot be turned
+off, and your own mute button always turns the microphone back on.
 
 **Silencing somebody for yourself.** Turning another rider down in the list of
 people in the channel affects only your own device — the server is not involved,

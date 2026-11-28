@@ -448,10 +448,21 @@ pub enum SessionEvent {
     /// the rider may have refused remote unmute, it may already be in that
     /// state, or it may be too soon after the last one — and only then acts and
     /// plays the cue. See `peers::RemoteMuteGuard`.
+    ///
+    /// `by` is the display name for notices and logs; `peer_key` is the stable
+    /// sender identity (`cert:{hash}` or `session:{sender}`) used to match an
+    /// undo against the rider who muted us.
     RemoteMuteRequested {
         mute: bool,
         by: String,
+        peer_key: String,
     },
+    /// A peer session left the server (`UserRemove`).
+    ///
+    /// Ephemeral session-keyed remote-mute grants for this session must be
+    /// revoked immediately because the server may hand the number to someone
+    /// else next.
+    UserRemoved(u32),
     /// The channels this client is listening to without having joined them.
     Listening(Vec<u32>),
     /// What this server will accept, in bytes: see [`ServerLimits`].

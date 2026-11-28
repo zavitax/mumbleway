@@ -178,6 +178,16 @@ pub const DATA_ID_MUTED_YOU: &str = "mumbleway/muted-you";
 /// moment later, and the microphone stayed shut.
 pub const REMOTE_MUTE_COOLDOWN: Duration = Duration::from_secs(30);
 
+/// How long the rider who muted somebody may still undo it themselves.
+///
+/// **Being unmuted by others is off by default**: a hello is not a credential,
+/// and any client on the server can send one and then ask for an unmute, in
+/// any channel, as often as it likes. What stays allowed without the setting is
+/// the one case the feature was built for — the rider who muted you because of
+/// noise, unmuting you once it has passed. Ten minutes covers a noisy stretch
+/// of road without leaving a stale grant behind for the rest of the ride.
+pub const REMOTE_UNDO_WINDOW: Duration = Duration::from_secs(10 * 60);
+
 /// How long after sending a mute request a matching refusal from the server is
 /// taken to be covered by it. See [`Peers::backup_covers`].
 pub const BACKUP_WINDOW: Duration = Duration::from_secs(5);
@@ -428,6 +438,10 @@ pub enum RemoteMuteDecision {
 #[derive(Debug, Default)]
 pub struct RemoteMuteGuard {
     last: Option<Instant>,
+    /// Who closed the microphone, and when, while that mute is still the one
+    /// in force. Lets the same rider undo their own mute even when the rider
+    /// on the receiving end has not allowed being unmuted by others.
+    muted_by: Option<(String, Instant)>,
 }
 
 impl RemoteMuteGuard {
@@ -441,30 +455,85 @@ impl RemoteMuteGuard {
     /// nothing, so it must not spend the half-minute either: otherwise a stream
     /// of refused unmutes would block the one mute request that was genuinely
     /// needed.
+    ///
+    /// `from` identifies the sender (certificate hash or session key, scoped
+    /// to its server by the caller — never a mutable display name). Without
+    /// `allow_unmute`, an unmute is still honoured from the rider who sent the
+    /// mute now in force; see [`REMOTE_UNDO_WINDOW`].
     pub fn decide(
         &mut self,
         mute: bool,
         currently_muted: bool,
         allow_unmute: bool,
+        from: &str,
         now: Instant,
     ) -> RemoteMuteDecision {
         if mute == currently_muted {
             return RemoteMuteDecision::AlreadyThere;
         }
-        if !mute && !allow_unmute {
-            return RemoteMuteDecision::UnmuteNotAllowed;
+        if !mute {
+            if !allow_unmute && !self.is_undo_by(from, now) {
+                return RemoteMuteDecision::UnmuteNotAllowed;
+            }
+            self.muted_by = None;
+            return RemoteMuteDecision::Apply;
         }
-        if mute
-            && self
-                .last
-                .is_some_and(|t| now.saturating_duration_since(t) < REMOTE_MUTE_COOLDOWN)
+        if self
+            .last
+            .is_some_and(|t| now.saturating_duration_since(t) < REMOTE_MUTE_COOLDOWN)
         {
             return RemoteMuteDecision::CoolingDown;
         }
-        if mute {
-            self.last = Some(now);
-        }
+        self.last = Some(now);
+        self.muted_by = Some((from.to_owned(), now));
         RemoteMuteDecision::Apply
+    }
+
+    /// The rider changed their own microphone to `muted`.
+    ///
+    /// **Unmuting by their own hand ends the remote mute**, so whoever sent it
+    /// can no longer reopen a microphone the rider has since closed again for
+    /// a reason of their own. Muting changes nothing: the app republishes the
+    /// microphone state after acting on a remote mute, and that echo must not
+    /// erase who sent it.
+    pub fn note_local(&mut self, muted: bool) {
+        if !muted {
+            self.muted_by = None;
+        }
+    }
+
+    /// Revokes any pending undo token held by `from` (for instance, when an
+    /// unauthenticated session disconnects and its session number may be
+    /// handed to someone else). Leaves the mute cooldown untouched.
+    pub fn revoke(&mut self, from: &str) {
+        let Some((by, _)) = &self.muted_by else {
+            return;
+        };
+        if !from.is_empty() && by == from {
+            self.muted_by = None;
+        }
+    }
+
+    /// Revokes any pending undo token whose sender key begins with `prefix`
+    /// (for instance, all ephemeral session tokens on a reconnecting server,
+    /// or all tokens for a server that disconnected). Leaves the mute cooldown
+    /// untouched.
+    pub fn revoke_prefix(&mut self, prefix: &str) {
+        let Some((by, _)) = &self.muted_by else {
+            return;
+        };
+        if !prefix.is_empty() && by.starts_with(prefix) {
+            self.muted_by = None;
+        }
+    }
+
+    /// Whether an unmute from `from` would undo the remote mute currently in
+    /// force, sent by that same rider within [`REMOTE_UNDO_WINDOW`].
+    fn is_undo_by(&self, from: &str, now: Instant) -> bool {
+        !from.is_empty()
+            && self.muted_by.as_ref().is_some_and(|(by, at)| {
+                by == from && now.saturating_duration_since(*at) < REMOTE_UNDO_WINDOW
+            })
     }
 }
 
@@ -518,6 +587,8 @@ pub struct Peers {
     /// Worth exactly as much as the peer is honest — which is enough for a mark
     /// in a roster and would not be enough for anything that mattered.
     muted_us: BTreeSet<u32>,
+    /// Server-reported client certificate hashes by session.
+    cert_hashes: HashMap<u32, String>,
 }
 
 impl Peers {
@@ -539,6 +610,27 @@ impl Peers {
         );
     }
 
+    /// Records the server-reported certificate hash for `session`, or clears
+    /// it when empty.
+    pub fn note_cert_hash(&mut self, session: u32, hash: &str) {
+        let trimmed = hash.trim();
+        if trimmed.is_empty() {
+            self.cert_hashes.remove(&session);
+        } else {
+            let lower = trimmed.to_ascii_lowercase();
+            self.cert_hashes.insert(session, lower);
+        }
+    }
+
+    /// Returns a stable sender key for `session`: `cert:{hash}` when the
+    /// server provided a certificate hash, or `session:{session}` otherwise.
+    pub fn peer_key(&self, session: u32) -> String {
+        match self.cert_hashes.get(&session) {
+            Some(h) if !h.is_empty() => format!("cert:{h}"),
+            _ => format!("session:{session}"),
+        }
+    }
+
     /// Forgets a session that has left. Its number may be handed to somebody
     /// else, who is not known to run anything.
     pub fn forget(&mut self, session: u32) {
@@ -546,6 +638,7 @@ impl Peers {
         self.owed.remove(&session);
         self.backups.remove(&session);
         self.muted_us.remove(&session);
+        self.cert_hashes.remove(&session);
     }
 
     /// Whether `session` said it understands being told about a local mute.
@@ -1070,18 +1163,21 @@ mod tests {
         // would otherwise re-mute somebody the moment they unmuted themselves.
         let t0 = Instant::now();
         let mut g = RemoteMuteGuard::default();
-        assert_eq!(g.decide(true, false, true, t0), RemoteMuteDecision::Apply);
+        assert_eq!(
+            g.decide(true, false, true, "rider", t0),
+            RemoteMuteDecision::Apply
+        );
 
         // They unmute themselves; the next request, from anybody, waits.
         let soon = t0 + Duration::from_secs(10);
         assert_eq!(
-            g.decide(true, false, true, soon),
+            g.decide(true, false, true, "rider", soon),
             RemoteMuteDecision::CoolingDown
         );
 
         let later = t0 + REMOTE_MUTE_COOLDOWN;
         assert_eq!(
-            g.decide(true, false, true, later),
+            g.decide(true, false, true, "rider", later),
             RemoteMuteDecision::Apply
         );
     }
@@ -1094,11 +1190,14 @@ mod tests {
         // the thing it exists to prevent.
         let t0 = Instant::now();
         let mut g = RemoteMuteGuard::default();
-        assert_eq!(g.decide(true, false, true, t0), RemoteMuteDecision::Apply);
+        assert_eq!(
+            g.decide(true, false, true, "rider", t0),
+            RemoteMuteDecision::Apply
+        );
 
         let moment = t0 + Duration::from_secs(2);
         assert_eq!(
-            g.decide(false, true, true, moment),
+            g.decide(false, true, true, "rider", moment),
             RemoteMuteDecision::Apply,
             "an unmute does not wait for the cooldown"
         );
@@ -1106,11 +1205,11 @@ mod tests {
         // And muting again still does: handing the microphone back is not a
         // way of buying another mute.
         assert_eq!(
-            g.decide(true, false, true, t0 + Duration::from_secs(3)),
+            g.decide(true, false, true, "rider", t0 + Duration::from_secs(3)),
             RemoteMuteDecision::CoolingDown
         );
         assert_eq!(
-            g.decide(true, false, true, t0 + REMOTE_MUTE_COOLDOWN),
+            g.decide(true, false, true, "rider", t0 + REMOTE_MUTE_COOLDOWN),
             RemoteMuteDecision::Apply
         );
     }
@@ -1119,14 +1218,14 @@ mod tests {
     fn a_rider_who_refused_remote_unmute_is_never_unmuted() {
         let mut g = RemoteMuteGuard::default();
         assert_eq!(
-            g.decide(false, true, false, Instant::now()),
+            g.decide(false, true, false, "rider", Instant::now()),
             RemoteMuteDecision::UnmuteNotAllowed
         );
         // Muting is still allowed: the setting is about opening a microphone,
         // not about closing one.
         let mut g = RemoteMuteGuard::default();
         assert_eq!(
-            g.decide(true, false, false, Instant::now()),
+            g.decide(true, false, false, "rider", Instant::now()),
             RemoteMuteDecision::Apply
         );
     }
@@ -1137,10 +1236,13 @@ mod tests {
         let mut g = RemoteMuteGuard::default();
         // Already muted: no change, so no cue — and no cooldown spent.
         assert_eq!(
-            g.decide(true, true, true, t0),
+            g.decide(true, true, true, "rider", t0),
             RemoteMuteDecision::AlreadyThere
         );
-        assert_eq!(g.decide(true, false, true, t0), RemoteMuteDecision::Apply);
+        assert_eq!(
+            g.decide(true, false, true, "rider", t0),
+            RemoteMuteDecision::Apply
+        );
     }
 
     #[test]
@@ -1152,15 +1254,171 @@ mod tests {
         for s in 0..5 {
             let t = t0 + Duration::from_secs(s);
             assert_eq!(
-                g.decide(false, true, false, t),
+                g.decide(false, true, false, "rider", t),
                 RemoteMuteDecision::UnmuteNotAllowed
             );
         }
         // Unmuted by their own hand in the meantime, then asked to mute.
         assert_eq!(
-            g.decide(true, false, false, t0 + Duration::from_secs(6)),
+            g.decide(true, false, false, "rider", t0 + Duration::from_secs(6)),
             RemoteMuteDecision::Apply
         );
+    }
+
+    #[test]
+    fn whoever_muted_you_can_undo_it_without_the_setting() {
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(
+            g.decide(true, false, false, "alice", t0),
+            RemoteMuteDecision::Apply
+        );
+        // Somebody else may not reopen it.
+        assert_eq!(
+            g.decide(false, true, false, "mallory", t0 + Duration::from_secs(5)),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+        // The rider who closed it may.
+        assert_eq!(
+            g.decide(false, true, false, "alice", t0 + Duration::from_secs(60)),
+            RemoteMuteDecision::Apply
+        );
+        // Once, not as a standing grant.
+        assert_eq!(
+            g.decide(false, true, false, "alice", t0 + Duration::from_secs(61)),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+    }
+
+    #[test]
+    fn the_undo_expires() {
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        g.decide(true, false, false, "alice", t0);
+        assert_eq!(
+            g.decide(false, true, false, "alice", t0 + REMOTE_UNDO_WINDOW),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+    }
+
+    #[test]
+    fn a_microphone_muted_again_by_hand_cannot_be_reopened_by_the_old_muter() {
+        // Muted remotely, unmuted by the rider, then muted by the rider for a
+        // reason of their own: the earlier mute no longer counts.
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        g.decide(true, false, false, "alice", t0);
+        g.note_local(true); // the app's own echo of the remote mute
+        g.note_local(false);
+        g.note_local(true);
+        assert_eq!(
+            g.decide(false, true, false, "alice", t0 + Duration::from_secs(30)),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+    }
+
+    #[test]
+    fn the_apps_own_echo_of_a_remote_mute_keeps_the_undo() {
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        g.decide(true, false, false, "alice", t0);
+        g.note_local(true);
+        assert_eq!(
+            g.decide(false, true, false, "alice", t0 + Duration::from_secs(30)),
+            RemoteMuteDecision::Apply
+        );
+    }
+
+    #[test]
+    fn a_nameless_sender_never_gets_the_undo() {
+        let t0 = Instant::now();
+        let mut g = RemoteMuteGuard::default();
+        g.decide(true, false, false, "", t0);
+        assert_eq!(
+            g.decide(false, true, false, "", t0 + Duration::from_secs(1)),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+    }
+
+    #[test]
+    fn revoking_a_departed_session_blocks_reuse_without_resetting_cooldown() {
+        let t0 = Instant::now();
+        let t5 = t0 + Duration::from_secs(5);
+        let t10 = t0 + Duration::from_secs(10);
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(
+            g.decide(true, false, false, "srv\0session:5", t0),
+            RemoteMuteDecision::Apply
+        );
+
+        // Non-matching or empty keys must not clear the grant.
+        g.revoke("");
+        g.revoke("srv\0session:50");
+        g.revoke("other\0session:5");
+        g.revoke("srv\0session:5");
+        assert_eq!(
+            g.decide(false, true, false, "srv\0session:5", t5),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+
+        // Leaving must not reset the global mute cooldown either.
+        g.note_local(false);
+        assert_eq!(
+            g.decide(true, false, false, "srv\0session:6", t10),
+            RemoteMuteDecision::CoolingDown
+        );
+    }
+
+    #[test]
+    fn revoke_prefix_scopes_ephemeral_and_server_tokens() {
+        let t0 = Instant::now();
+        let t5 = t0 + Duration::from_secs(5);
+        let mut g = RemoteMuteGuard::default();
+        assert_eq!(
+            g.decide(true, false, false, "srv1\0cert:alice", t0),
+            RemoteMuteDecision::Apply
+        );
+
+        // Dropping ephemeral session tokens or another server leaves cert grants intact.
+        g.revoke_prefix("");
+        g.revoke_prefix("srv1\0session:");
+        g.revoke_prefix("srv10\0");
+        g.revoke_prefix("srv2\0");
+        assert_eq!(
+            g.decide(false, true, false, "srv1\0cert:alice", t5),
+            RemoteMuteDecision::Apply
+        );
+
+        // Disconnecting the server clears both cert and session grants for it.
+        let t1 = t0 + REMOTE_MUTE_COOLDOWN;
+        let t2 = t1 + Duration::from_secs(1);
+        assert_eq!(
+            g.decide(true, false, false, "srv1\0cert:alice", t1),
+            RemoteMuteDecision::Apply
+        );
+        g.revoke_prefix("srv1\0");
+        assert_eq!(
+            g.decide(false, true, false, "srv1\0cert:alice", t2),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+    }
+
+    #[test]
+    fn peer_key_prefers_cert_hash_and_forgets_on_departure() {
+        let mut p = Peers::default();
+        assert_eq!(p.peer_key(7), "session:7");
+
+        p.note_cert_hash(7, "  AABBCC  ");
+        assert_eq!(p.peer_key(7), "cert:aabbcc");
+
+        // A departing session must drop its cert hash so a cert-less newcomer
+        // handed the same session number never inherits the old identity.
+        p.forget(7);
+        assert_eq!(p.peer_key(7), "session:7");
+
+        p.note_cert_hash(7, "deadbeef");
+        p.note_cert_hash(7, "   ");
+        assert_eq!(p.peer_key(7), "session:7");
     }
 
     #[test]

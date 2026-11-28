@@ -1342,6 +1342,9 @@ impl Session {
                     if let Some(n) = m.name {
                         e.name = n;
                     }
+                    if let Some(h) = m.hash.as_deref() {
+                        state.peers.note_cert_hash(s, h);
+                    }
                     if let Some(c) = m.channel_id {
                         let moved_ourselves = Some(s) == state.self_session && e.channel_id != c;
                         e.channel_id = c;
@@ -1671,6 +1674,7 @@ impl Session {
                 // The number goes back to the server and may be handed to
                 // somebody who runs something else entirely.
                 state.peers.forget(m.session);
+                self.emit(SessionEvent::UserRemoved(m.session)).await;
                 self.emit(SessionEvent::Users(state.user_list())).await;
                 // They were standing in a channel, and the count beside it is
                 // ours to keep true.
@@ -1745,61 +1749,9 @@ impl Session {
                 let _ = writer;
             }
             MessageType::PluginDataTransmission => {
-                // **Written by another client, not by the server.** Every other
-                // arm here may treat a message it cannot decode as a broken
-                // connection; nothing another rider sends should be able to cost
-                // us ours, so this one drops what it cannot read and carries on.
-                let Ok(m) = mumble::PluginDataTransmission::decode(payload) else {
-                    return Ok(None);
-                };
-                // Whatever the version said, a relayed message proves relaying.
-                state.plugin_data = true;
-                // The server stamps the sender; the client cannot choose it.
-                let (Some(sender), Some(id)) = (m.sender_session, m.data_id.as_deref()) else {
-                    return Ok(None);
-                };
-                if Some(sender) == state.self_session {
-                    return Ok(None);
+                if let Some(event) = process_plugin_data(state, payload) {
+                    self.emit(event).await;
                 }
-                if id == peers::DATA_ID_HELLO {
-                    if let Some(hello) = m.data.as_deref().and_then(peers::decode_hello) {
-                        state.peers.on_hello(sender, hello);
-                        self.emit(SessionEvent::Users(state.user_list())).await;
-                    }
-                } else if id == peers::DATA_ID_MUTE {
-                    // Only from somebody who has said they run MumbleWay, so
-                    // there is a name to tell the rider. Whether to act is not
-                    // decided here: the rider's setting, their current state
-                    // and the cooldown all live in the app, and one guard has
-                    // to hold across every server they are on.
-                    if !state.peers.is_mumbleway(sender) {
-                        return Ok(None);
-                    }
-                    if let Some(mute) = m.data.as_deref().and_then(peers::decode_mute_request) {
-                        let by = state
-                            .users
-                            .get(&sender)
-                            .map(|u| u.name.clone())
-                            .unwrap_or_default();
-                        self.emit(SessionEvent::RemoteMuteRequested { mute, by })
-                            .await;
-                    }
-                } else if id == peers::DATA_ID_MUTED_YOU {
-                    // Only from a peer that has identified itself, like every
-                    // other exchange here: an unannounced session saying this
-                    // is a client we know nothing about marking somebody's
-                    // roster, and there is no name to put against it.
-                    if !state.peers.is_mumbleway(sender) {
-                        return Ok(None);
-                    }
-                    if let Some(muted) = m.data.as_deref().and_then(peers::decode_muted_you) {
-                        state.peers.note_muted_us(sender, muted);
-                        self.emit(SessionEvent::Users(state.user_list())).await;
-                    }
-                }
-                // Other `mumbleway/` IDs are reserved for the exchanges this
-                // handshake exists to enable, and nothing under any other
-                // prefix is ours to read.
             }
             _ => {}
         }
@@ -2353,3 +2305,168 @@ fn now_millis() -> u64 {
 pub type EventSender = mpsc::Sender<SessionEvent>;
 pub type CommandSender = mpsc::Sender<SessionCommand>;
 pub type SharedIdentity = Arc<Identity>;
+
+fn process_plugin_data(state: &mut LiveState, payload: &[u8]) -> Option<SessionEvent> {
+    use prost::Message;
+
+    // **Written by another client, not by the server.** Every other arm in
+    // `handle_control` may treat a message it cannot decode as a broken
+    // connection; nothing another rider sends should be able to cost us ours,
+    // so this one drops what it cannot read and carries on.
+    let m = mumble::PluginDataTransmission::decode(payload).ok()?;
+    // Whatever the version said, a relayed message proves relaying.
+    state.plugin_data = true;
+    // The server stamps the sender; the client cannot choose it.
+    let sender = m.sender_session?;
+    let id = m.data_id.as_deref()?;
+    if Some(sender) == state.self_session {
+        return None;
+    }
+    match id {
+        peers::DATA_ID_HELLO => {
+            let hello = m.data.as_deref().and_then(peers::decode_hello)?;
+            state.peers.on_hello(sender, hello);
+            Some(SessionEvent::Users(state.user_list()))
+        }
+        peers::DATA_ID_MUTE => {
+            // Only from somebody who has said they run MumbleWay, so there is
+            // a name to tell the rider. Whether to act is not decided here: the
+            // rider's setting, their current state and the cooldown all live in
+            // the app, and one guard has to hold across every server they are
+            // on.
+            if !state.peers.is_mumbleway(sender) {
+                return None;
+            }
+            let mute = m.data.as_deref().and_then(peers::decode_mute_request)?;
+            let by = state
+                .users
+                .get(&sender)
+                .map(|u| u.name.clone())
+                .unwrap_or_default();
+            let peer_key = state.peers.peer_key(sender);
+            Some(SessionEvent::RemoteMuteRequested { mute, by, peer_key })
+        }
+        peers::DATA_ID_MUTED_YOU => {
+            // Only from a peer that has identified itself, like every other
+            // exchange here: an unannounced session saying this is a client we
+            // know nothing about marking somebody's roster, and there is no
+            // name to put against it.
+            if !state.peers.is_mumbleway(sender) {
+                return None;
+            }
+            let muted = m.data.as_deref().and_then(peers::decode_muted_you)?;
+            state.peers.note_muted_us(sender, muted);
+            Some(SessionEvent::Users(state.user_list()))
+        }
+        // Other `mumbleway/` IDs are reserved for the exchanges this handshake
+        // exists to enable, and nothing under any other prefix is ours to read.
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use prost::Message;
+
+    use super::*;
+
+    fn test_user(session: u32, name: &str) -> UserInfo {
+        UserInfo {
+            session,
+            name: name.into(),
+            channel_id: 0,
+            mute: false,
+            deaf: false,
+            self_mute: false,
+            self_deaf: false,
+            talking: false,
+            local_mute: false,
+            suppress: false,
+            mumbleway: None,
+            quality: None,
+            user_id: None,
+            muted_you: false,
+            comment: String::new(),
+            priority_speaker: false,
+        }
+    }
+
+    fn add_mumbleway_peer(state: &mut LiveState, session: u32, name: &str, hash: Option<&str>) {
+        state.users.insert(session, test_user(session, name));
+        if let Some(h) = hash {
+            state.peers.note_cert_hash(session, h);
+        }
+        let hello = peers::Hello {
+            version: "1.2.0".into(),
+            proto: peers::PROTOCOL,
+            caps: vec![peers::CAP_REMOTE_MUTE.into()],
+            mic_mode: String::new(),
+            reply: true,
+        };
+        state.peers.on_hello(session, hello);
+    }
+
+    fn mute_payload(sender: u32, mute: bool) -> Vec<u8> {
+        let msg = mumble::PluginDataTransmission {
+            sender_session: Some(sender),
+            receiver_sessions: Vec::new(),
+            data: Some(peers::encode_mute_request(mute).into()),
+            data_id: Some(peers::DATA_ID_MUTE.to_string()),
+        };
+        msg.encode_to_vec()
+    }
+
+    #[test]
+    fn remote_mute_request_distinguishes_same_display_name_by_cert_hash() {
+        let mut state = LiveState::new();
+        add_mumbleway_peer(&mut state, 1, "Anna", Some("AAA111"));
+        add_mumbleway_peer(&mut state, 2, "Anna", Some("BBB222"));
+
+        let ev1 = process_plugin_data(&mut state, &mute_payload(1, true));
+        let ev2 = process_plugin_data(&mut state, &mute_payload(2, false));
+
+        match (ev1, ev2) {
+            (
+                Some(SessionEvent::RemoteMuteRequested {
+                    mute: m1,
+                    by: by1,
+                    peer_key: k1,
+                }),
+                Some(SessionEvent::RemoteMuteRequested {
+                    mute: m2,
+                    by: by2,
+                    peer_key: k2,
+                }),
+            ) => {
+                assert!(m1);
+                assert!(!m2);
+                assert_eq!(by1, "Anna");
+                assert_eq!(by2, "Anna");
+                assert_eq!(k1, "cert:aaa111");
+                assert_eq!(k2, "cert:bbb222");
+                assert_ne!(k1, k2);
+            }
+            other => panic!("unexpected events: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn remote_mute_request_falls_back_to_session_and_clears_cert_on_forget() {
+        let mut state = LiveState::new();
+        add_mumbleway_peer(&mut state, 7, "Anna", Some("AAA111"));
+        state.peers.forget(7);
+        state.users.remove(&7);
+
+        // Newcomer on session 7 has no cert and spoofs the same name.
+        add_mumbleway_peer(&mut state, 7, "Anna", None);
+        let ev = process_plugin_data(&mut state, &mute_payload(7, false));
+        match ev {
+            Some(SessionEvent::RemoteMuteRequested { mute, by, peer_key }) => {
+                assert!(!mute);
+                assert_eq!(by, "Anna");
+                assert_eq!(peer_key, "session:7");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+}

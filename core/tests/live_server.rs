@@ -336,7 +336,7 @@ async fn one_rider_can_ask_another_to_mute() {
                 }
             }
         }
-        if let SessionEvent::RemoteMuteRequested { mute, by } = &event.event {
+        if let SessionEvent::RemoteMuteRequested { mute, by, .. } = &event.event {
             println!("{} was asked to mute={mute} by {by}", event.server_id);
             requests.push((event.server_id.clone(), *mute));
         }

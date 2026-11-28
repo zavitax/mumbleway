@@ -1341,7 +1341,7 @@ class AppState extends ChangeNotifier {
     // On by default; see the field. A rider who has already chosen keeps
     // their choice — this only decides what a fresh install starts with.
     voiceCommunication = prefs.getBool(_prefsVoiceCommunication) ?? true;
-    allowRemoteUnmute = prefs.getBool(_prefsAllowRemoteUnmute) ?? true;
+    allowRemoteUnmute = prefs.getBool(_prefsAllowRemoteUnmute) ?? false;
     _loadReviewCounters(prefs);
     // The rider's own picture, from this device. Read off the disk rather
     // than out of preferences, so this settles a moment later and does not
@@ -4008,12 +4008,14 @@ class AppState extends ChangeNotifier {
 
   /// Whether another MumbleWay rider may turn our microphone back on.
   ///
-  /// On by default, and only unmuting is governed by it: being muted by
+  /// Off by default, and only unmuting is governed by it: being muted by
   /// somebody costs a rider nothing their own button cannot undo, while being
-  /// unmuted puts them on air. The reason it is on is the rider who muted to
-  /// take a call and forgot, and is now talking to a channel that hears
-  /// nothing. The core holds the live copy; see `set_allow_remote_unmute`.
-  bool allowRemoteUnmute = true;
+  /// unmuted puts them on air. It is off because the request carries no
+  /// credential — any client on the server can claim to run MumbleWay and ask.
+  /// Whoever muted the rider can still undo that one mute without it; see
+  /// `REMOTE_UNDO_WINDOW`. The core holds the live copy; see
+  /// `set_allow_remote_unmute`.
+  bool allowRemoteUnmute = false;
 
   /// Launches and completed calls since the last time we asked for a review.
   ///
@@ -4998,6 +5000,24 @@ class AppState extends ChangeNotifier {
 
   void toggleMute() => _applyMute(!_muted);
 
+  /// Records every `setMicrophoneMuted` call attempted by [_applyMute] and
+  /// [_publishMute], before the FFI call (which throws when no engine is loaded
+  /// in unit tests).
+  @visibleForTesting
+  void Function(bool muted)? onMicrophoneMutedForTest;
+
+  @visibleForTesting
+  void setCapturingForTest({required bool capturing}) {
+    _capturing = capturing;
+  }
+
+  void _pushEngineMute(bool muted) {
+    onMicrophoneMutedForTest?.call(muted);
+    try {
+      setMicrophoneMuted(muted: muted);
+    } catch (_) {}
+  }
+
   /// The one way the microphone's mute changes, whoever asked.
   ///
   /// **Also told to every server, as Mumble's `self_mute`.** It never used to
@@ -5005,8 +5025,14 @@ class AppState extends ChangeNotifier {
   /// left the other riders unable to tell a muted rider from a silent one —
   /// and left a MumbleWay rider unable to offer "Unmute on server" to somebody
   /// who muted themselves and forgot, because nothing said they had.
-  void _applyMute(bool muted) {
+  void _applyMute(bool muted, {bool remote = false}) {
     _muted = muted;
+    if (!remote && !muted && effectivelyMuted) {
+      // Unmuting by hand must still invoke `note_local(false)` in the core
+      // when pocket mode has capture paused (`effectivelyMuted` stays true),
+      // before `_publishMute` pushes the effective capture mute.
+      _pushEngineMute(false);
+    }
     _publishMute();
   }
 
@@ -5017,9 +5043,7 @@ class AppState extends ChangeNotifier {
   /// listening state advertised as unmuted while unable to transmit.
   void _publishMute() {
     final muted = effectivelyMuted;
-    try {
-      setMicrophoneMuted(muted: muted);
-    } catch (_) {}
+    _pushEngineMute(muted);
     for (final entry in runtimes.entries) {
       if (entry.value.isLive) _mirrorSelfMute(entry.key, muted);
     }
@@ -5620,7 +5644,7 @@ class AppState extends ChangeNotifier {
         // this catches the interface up, and tells every server, so the
         // button reads true and the rider can undo it the way they would
         // undo their own.
-        _applyMute(muted);
+        _applyMute(muted, remote: true);
         _remoteMutes.add(
           RemoteMuteNotice(serverId: serverId, muted: muted, by: by),
         );

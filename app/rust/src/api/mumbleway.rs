@@ -768,8 +768,11 @@ struct App {
     last_status: Arc<Mutex<HashMap<String, ConnStatus>>>,
     identity: Identity,
     /// Whether another MumbleWay rider may turn this rider's microphone on.
-    /// A setting, on by default; see `set_allow_remote_unmute`.
+    /// A setting, off by default; see `set_allow_remote_unmute`.
     allow_remote_unmute: Arc<AtomicBool>,
+    /// Told about the rider's own mute changes, so a remote mute the rider has
+    /// since undone by hand can no longer be undone by whoever sent it.
+    remote_mute_guard: Arc<Mutex<RemoteMuteGuard>>,
 }
 
 /// Decides which audio cue, if any, a status transition should play.
@@ -854,6 +857,69 @@ fn cue_for_moderation(muted: Option<bool>, deafened: Option<bool>) -> Option<Aud
         (None, Some(false)) => Some(AudioCue::UnmutedByOther),
         (None, None) => None,
     }
+}
+
+/// Scopes a peer's identity key to its server so display-name changes or
+/// collisions never transfer an undo grant, while keeping servers isolated.
+fn remote_mute_sender_key(server_id: &str, peer_key: &str) -> String {
+    if peer_key.is_empty() {
+        String::new()
+    } else {
+        format!("{server_id}\u{0}{peer_key}")
+    }
+}
+
+/// Revokes remote-mute undo grants when a server connection transitions:
+/// reconnect attempts drop ephemeral `session:` keys, while permanent
+/// disconnects drop every grant for that server.
+fn revoke_remote_mute_for_status(
+    guard: &Mutex<RemoteMuteGuard>,
+    server_id: &str,
+    status: ConnStatus,
+) {
+    match status {
+        ConnStatus::Reconnecting | ConnStatus::Connecting => {
+            let prefix = format!("{server_id}\u{0}session:");
+            guard.lock().revoke_prefix(&prefix);
+        }
+        ConnStatus::Disconnected | ConnStatus::Failed | ConnStatus::Idle => {
+            let prefix = format!("{server_id}\u{0}");
+            guard.lock().revoke_prefix(&prefix);
+        }
+        ConnStatus::Handshaking | ConnStatus::Connected => {}
+    }
+}
+
+/// Decides a peer's mute request and, if it is acted on, changes the
+/// microphone — both under the guard's lock.
+///
+/// The local path takes the same lock (see [`apply_local_mute`]), so a remote
+/// undo that was already authorised cannot be applied after the rider's own
+/// mute: whichever comes second sees the other's result. Local intent made
+/// after a remote change therefore always wins.
+fn decide_remote_mute(
+    guard: &Mutex<RemoteMuteGuard>,
+    is_muted: impl Fn() -> bool,
+    set_muted: impl FnOnce(bool),
+    mute: bool,
+    allow_unmute: bool,
+    from: &str,
+    now: std::time::Instant,
+) -> RemoteMuteDecision {
+    let mut guard = guard.lock();
+    let decision = guard.decide(mute, is_muted(), allow_unmute, from, now);
+    if decision == RemoteMuteDecision::Apply {
+        set_muted(mute);
+    }
+    decision
+}
+
+/// The rider's own mute: the microphone and the guard change together, under
+/// the lock [`decide_remote_mute`] holds.
+fn apply_local_mute(guard: &Mutex<RemoteMuteGuard>, set_muted: impl FnOnce(bool), muted: bool) {
+    let mut guard = guard.lock();
+    set_muted(muted);
+    guard.note_local(muted);
 }
 
 static APP: OnceLock<App> = OnceLock::new();
@@ -995,15 +1061,16 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
     let cue_shared = shared.clone();
     let last_status: Arc<Mutex<HashMap<String, ConnStatus>>> = Arc::new(Mutex::new(HashMap::new()));
     let status_tracker = last_status.clone();
-    // On by default, and overwritten from the saved setting as soon as Dart has
-    // read it. Default-on is the setting's own default, so the brief window
-    // before that write cannot do anything the rider has not left enabled.
-    let allow_remote_unmute = Arc::new(AtomicBool::new(true));
+    // Off by default, and overwritten from the saved setting as soon as Dart
+    // has read it. Default-off is the setting's own default, so the brief
+    // window before that write cannot do anything the rider has not enabled.
+    let allow_remote_unmute = Arc::new(AtomicBool::new(false));
     let allow_unmute_task = allow_remote_unmute.clone();
     // One guard for the whole app, not one per server: a rider on two servers
     // at once still gets one cooldown, and nobody gets round it by asking from
     // the other one.
-    let remote_mute_guard = Mutex::new(RemoteMuteGuard::default());
+    let remote_mute_guard = Arc::new(Mutex::new(RemoteMuteGuard::default()));
+    let remote_mute_local = remote_mute_guard.clone();
     // Every server's bandwidth allowance, by server. One encoder feeds them
     // all, so what it is set to is decided by the *tightest* of these — see
     // `audio::bandwidth::tightest`.
@@ -1041,6 +1108,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         };
                         bandwidth_shared.set_bandwidth_cap(tightest.unwrap_or(0));
                     }
+                    revoke_remote_mute_for_status(&remote_mute_guard, &server_id, u.status);
 
                     let previous = status_tracker.lock().insert(server_id, u.status);
                     if let Some(cue) = cue_for_transition(previous, u.status) {
@@ -1316,25 +1384,32 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                         })
                         .collect(),
                 }),
-                SessionEvent::RemoteMuteRequested { mute, by } => {
+                SessionEvent::RemoteMuteRequested { mute, by, peer_key } => {
                     // Decided here rather than in the session, because this is
                     // where all three inputs meet: the microphone's real state,
                     // the rider's setting, and a cooldown that has to hold
                     // across every server.
-                    let decision = remote_mute_guard.lock().decide(
+                    //
+                    // Keyed by stable peer identity (`cert:{hash}` or
+                    // `session:{id}`) scoped to its server, never by display
+                    // name — a rider copying a name cannot steal an undo grant.
+                    let from = remote_mute_sender_key(&server_id, &peer_key);
+                    // The change is made here, under the guard, rather than
+                    // left to Dart: the cue says the microphone moved, and it
+                    // must not be able to play for a change that a busy UI
+                    // thread then never makes — nor land after a mute the
+                    // rider made in between.
+                    let decision = decide_remote_mute(
+                        &remote_mute_guard,
+                        || cue_shared.is_muted(),
+                        |m| cue_shared.set_muted(m),
                         mute,
-                        cue_shared.is_muted(),
                         allow_unmute_task.load(Ordering::Relaxed),
+                        &from,
                         now(),
                     );
                     match decision {
                         RemoteMuteDecision::Apply => {
-                            // The change and the cue together, here, rather
-                            // than leaving the change to Dart: the cue says the
-                            // microphone moved, and it must not be able to play
-                            // for a change that a busy UI thread then never
-                            // makes.
-                            cue_shared.set_muted(mute);
                             if mute_cue_echo.should_play(mute, now()) {
                                 cue_shared.play_cue(if mute {
                                     AudioCue::MutedByOther
@@ -1397,6 +1472,10 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
                 }
                 // Talking state already rides along on the user roster.
                 SessionEvent::Talking { .. } => {}
+                SessionEvent::UserRemoved(session) => {
+                    let key = format!("{server_id}\u{0}session:{session}");
+                    remote_mute_guard.lock().revoke(&key);
+                }
             }
         }
     });
@@ -1531,6 +1610,7 @@ pub fn start_engine(options: StartupOptions) -> anyhow::Result<()> {
         last_status,
         identity,
         allow_remote_unmute,
+        remote_mute_guard: remote_mute_local,
     });
     Ok(())
 }
@@ -1952,13 +2032,16 @@ pub fn remove_server(server_id: String) -> anyhow::Result<()> {
     // leaves one that nothing will ever move on — so the cue would carry on
     // every few seconds with nothing connected and no way to stop it.
     app.last_status.lock().remove(&server_id);
+    let prefix = format!("{server_id}\u{0}");
+    app.remote_mute_guard.lock().revoke_prefix(&prefix);
     Ok(())
 }
 
 /// Mutes or unmutes the local microphone.
 #[frb(sync)]
 pub fn set_microphone_muted(muted: bool) -> anyhow::Result<()> {
-    app()?.shared.set_muted(muted);
+    let app = app()?;
+    apply_local_mute(&app.remote_mute_guard, |m| app.shared.set_muted(m), muted);
     Ok(())
 }
 
@@ -3899,6 +3982,58 @@ pub fn import_servers(
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_local_mute_during_a_remote_undo_always_wins() {
+        use std::sync::mpsc as std_mpsc;
+        use std::time::{Duration, Instant};
+
+        let guard = Arc::new(Mutex::new(RemoteMuteGuard::default()));
+        let mic = Arc::new(AtomicBool::new(false));
+        let alice = remote_mute_sender_key("srv", "cert:aaa");
+        let t0 = Instant::now();
+
+        // Alice mutes the rider, then sends the undo she is allowed.
+        let applied = decide_remote_mute(
+            &guard,
+            || mic.load(Ordering::SeqCst),
+            |m| mic.store(m, Ordering::SeqCst),
+            true,
+            false,
+            &alice,
+            t0,
+        );
+        assert_eq!(applied, RemoteMuteDecision::Apply);
+
+        // While the undo is being decided, the rider mutes by hand.
+        let (tx, rx) = std_mpsc::channel::<()>();
+        let local = {
+            let guard = guard.clone();
+            let mic = mic.clone();
+            std::thread::spawn(move || {
+                rx.recv().unwrap();
+                apply_local_mute(&guard, |m| mic.store(m, Ordering::SeqCst), true);
+            })
+        };
+        let undo = decide_remote_mute(
+            &guard,
+            || {
+                let muted = mic.load(Ordering::SeqCst);
+                tx.send(()).unwrap();
+                std::thread::sleep(Duration::from_millis(50));
+                muted
+            },
+            |m| mic.store(m, Ordering::SeqCst),
+            false,
+            false,
+            &alice,
+            t0 + Duration::from_secs(5),
+        );
+        local.join().unwrap();
+
+        assert_eq!(undo, RemoteMuteDecision::Apply);
+        assert!(mic.load(Ordering::SeqCst), "the remote undo landed after the rider's own mute");
+    }
+
     fn slot_map() -> Arc<Mutex<HashMap<String, u16>>> {
         Arc::new(Mutex::new(HashMap::new()))
     }
@@ -4155,6 +4290,83 @@ mod tests {
         assert_eq!(
             cue_for_transition(Some(ConnStatus::Connected), ConnStatus::Disconnected),
             None
+        );
+    }
+
+    #[test]
+    fn spoofed_display_name_cannot_undo_remote_mute() {
+        let t0 = std::time::Instant::now();
+        let t1 = t0 + std::time::Duration::from_secs(10);
+        let t2 = t0 + std::time::Duration::from_secs(20);
+        let mut guard = RemoteMuteGuard::default();
+
+        let alice = remote_mute_sender_key("srv", "cert:aaa");
+        let mallory_same_name = remote_mute_sender_key("srv", "cert:bbb");
+        let other_server = remote_mute_sender_key("srv2", "cert:aaa");
+
+        assert_eq!(
+            guard.decide(true, false, false, &alice, t0),
+            RemoteMuteDecision::Apply
+        );
+        assert_eq!(
+            guard.decide(false, true, false, &mallory_same_name, t1),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+        assert_eq!(
+            guard.decide(false, true, false, &other_server, t1),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+        assert_eq!(
+            guard.decide(false, true, false, &alice, t2),
+            RemoteMuteDecision::Apply
+        );
+        assert_eq!(remote_mute_sender_key("srv", ""), "");
+    }
+
+    #[test]
+    fn reconnect_and_disconnect_revoke_expected_remote_mute_grants() {
+        let t0 = std::time::Instant::now();
+        let t1 = t0 + std::time::Duration::from_secs(5);
+        let guard = Mutex::new(RemoteMuteGuard::default());
+
+        // Ephemeral session grant is cleared on reconnect.
+        let session_key = remote_mute_sender_key("srv", "session:4");
+        assert_eq!(
+            guard.lock().decide(true, false, false, &session_key, t0),
+            RemoteMuteDecision::Apply
+        );
+        revoke_remote_mute_for_status(&guard, "srv", ConnStatus::Reconnecting);
+        assert_eq!(
+            guard.lock().decide(false, true, false, &session_key, t1),
+            RemoteMuteDecision::UnmuteNotAllowed
+        );
+
+        // Cert-backed grant survives reconnect on the same server, but clears
+        // on full disconnect while leaving other servers alone.
+        let t2 = t0 + mumbleway_core::session::peers::REMOTE_MUTE_COOLDOWN;
+        let t3 = t2 + std::time::Duration::from_secs(5);
+        let cert_key = remote_mute_sender_key("srv", "cert:alice");
+        assert_eq!(
+            guard.lock().decide(true, false, false, &cert_key, t2),
+            RemoteMuteDecision::Apply
+        );
+        revoke_remote_mute_for_status(&guard, "srv", ConnStatus::Reconnecting);
+        revoke_remote_mute_for_status(&guard, "other", ConnStatus::Disconnected);
+        assert_eq!(
+            guard.lock().decide(false, true, false, &cert_key, t3),
+            RemoteMuteDecision::Apply
+        );
+
+        let t4 = t2 + mumbleway_core::session::peers::REMOTE_MUTE_COOLDOWN;
+        let t5 = t4 + std::time::Duration::from_secs(5);
+        assert_eq!(
+            guard.lock().decide(true, false, false, &cert_key, t4),
+            RemoteMuteDecision::Apply
+        );
+        revoke_remote_mute_for_status(&guard, "srv", ConnStatus::Disconnected);
+        assert_eq!(
+            guard.lock().decide(false, true, false, &cert_key, t5),
+            RemoteMuteDecision::UnmuteNotAllowed
         );
     }
 }

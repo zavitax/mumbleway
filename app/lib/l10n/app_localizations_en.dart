@@ -2395,4 +2395,19 @@ class LEn extends L {
   @override
   String get pocketBlockedByPushToTalk =>
       'Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.';
+
+  @override
+  String get globalHotkey => 'Global';
+
+  @override
+  String get globalHotkeyTooltip =>
+      'Work even when MumbleWay is in the background';
+
+  @override
+  String get globalHotkeyUnavailable =>
+      'Not working in the background: the system or another app already uses this shortcut';
+
+  @override
+  String get globalHotkeyRequiresModifier =>
+      'Global hotkeys require a modifier or an F-key';
 }

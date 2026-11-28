@@ -4350,6 +4350,30 @@ abstract class L {
   /// In en, this message translates to:
   /// **'Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.'**
   String get pocketBlockedByPushToTalk;
+
+  /// No description provided for @globalHotkey.
+  ///
+  /// In en, this message translates to:
+  /// **'Global'**
+  String get globalHotkey;
+
+  /// No description provided for @globalHotkeyTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Work even when MumbleWay is in the background'**
+  String get globalHotkeyTooltip;
+
+  /// No description provided for @globalHotkeyUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not working in the background: the system or another app already uses this shortcut'**
+  String get globalHotkeyUnavailable;
+
+  /// No description provided for @globalHotkeyRequiresModifier.
+  ///
+  /// In en, this message translates to:
+  /// **'Global hotkeys require a modifier or an F-key'**
+  String get globalHotkeyRequiresModifier;
 }
 
 class _LDelegate extends LocalizationsDelegate<L> {

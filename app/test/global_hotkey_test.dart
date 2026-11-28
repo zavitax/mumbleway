@@ -366,6 +366,61 @@ void main() {
   });
 
   group('setGlobalHotkeys sync & opt-in toggle', () {
+    test('a shortcut the system refuses is reported per binding', () async {
+      final f9 = LogicalKeyboardKey.f9.keyId;
+      final f10 = LogicalKeyboardKey.f10.keyId;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        if (call.method == 'setGlobalHotkeys') {
+          return {
+            'rejected': [
+              {'keyId': f9, 'modifiers': 0},
+            ],
+          };
+        }
+        return null;
+      });
+      var changed = 0;
+      buttons.onCaptureChanged = () => changed++;
+      addTearDown(() => buttons.onCaptureChanged = null);
+
+      final refused = ButtonBinding(
+        keyId: f9,
+        action: ButtonAction.toggleMute,
+        global: true,
+      );
+      final accepted = ButtonBinding(
+        keyId: f10,
+        action: ButtonAction.toggleDeafen,
+        global: true,
+      );
+      buttons.setBindings([refused, accepted]);
+      await flush();
+
+      expect(buttons.isGlobalRejected(refused), isTrue);
+      expect(buttons.isGlobalRejected(accepted), isFalse);
+      expect(changed, greaterThan(0));
+      // Not global: nothing to refuse.
+      expect(
+        buttons.isGlobalRejected(refused.copyWith(global: false)),
+        isFalse,
+      );
+    });
+
+    test('an older runner answering true refuses nothing', () {
+      expect(ButtonController.parseRejectedHotkeys(true), isEmpty);
+      expect(ButtonController.parseRejectedHotkeys(null), isEmpty);
+      expect(
+        ButtonController.parseRejectedHotkeys({
+          'rejected': [
+            {'keyId': 5, 'modifiers': 2},
+            {'keyId': 'x'},
+          ],
+        }),
+        {(5, 2)},
+      );
+    });
+
     test('newly added and default bindings do not register global hotkeys until opted in', () async {
       final f9 = LogicalKeyboardKey.f9.keyId;
       final space = LogicalKeyboardKey.space.keyId;

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <optional>
 #include <unordered_set>
+#include <utility>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -373,8 +374,21 @@ bool FlutterWindow::OnCreate() {
               }
             }
           }
-          SetGlobalHotkeys(hotkeys);
-          result->Success(flutter::EncodableValue(true));
+          const std::vector<HotkeySpec> rejected = SetGlobalHotkeys(hotkeys);
+          flutter::EncodableList rejected_list;
+          rejected_list.reserve(rejected.size());
+          for (const auto& spec : rejected) {
+            rejected_list.emplace_back(flutter::EncodableMap{
+                {flutter::EncodableValue("keyId"),
+                 flutter::EncodableValue(spec.key_id)},
+                {flutter::EncodableValue("modifiers"),
+                 flutter::EncodableValue(spec.modifiers)},
+            });
+          }
+          result->Success(flutter::EncodableValue(flutter::EncodableMap{
+              {flutter::EncodableValue("rejected"),
+               flutter::EncodableValue(std::move(rejected_list))},
+          }));
         } else {
           result->NotImplemented();
         }
@@ -423,7 +437,8 @@ void FlutterWindow::OnDestroy() {
   Win32Window::OnDestroy();
 }
 
-void FlutterWindow::SetGlobalHotkeys(const std::vector<HotkeySpec>& hotkeys) {
+std::vector<FlutterWindow::HotkeySpec> FlutterWindow::SetGlobalHotkeys(
+    const std::vector<HotkeySpec>& hotkeys) {
   const std::vector<RegisteredHotkey> previously_held = held_hotkeys_;
   UnregisterGlobalHotkeys();
 
@@ -432,21 +447,26 @@ void FlutterWindow::SetGlobalHotkeys(const std::vector<HotkeySpec>& hotkeys) {
     for (const auto& held : previously_held) {
       InvokeGlobalHotkey(held.key_id, held.modifiers, false);
     }
-    return;
+    return hotkeys;
   }
+
+  std::vector<HotkeySpec> rejected;
 
   std::unordered_set<uint64_t> registered_combos;
   int next_id = 1;
   for (const auto& spec : hotkeys) {
     if (next_id > 0xBFFF) {
-      break;
+      rejected.push_back(spec);
+      continue;
     }
     const int modifiers = spec.modifiers & kModMask;
     if (!IsSafeGlobalKey(spec.key_id, modifiers)) {
+      rejected.push_back(spec);
       continue;
     }
     const std::optional<UINT> vk = FlutterKeyIdToVirtualKey(spec.key_id);
     if (!vk.has_value()) {
+      rejected.push_back(spec);
       continue;
     }
     const UINT win_mods = ModifiersToWin32(modifiers);
@@ -460,6 +480,9 @@ void FlutterWindow::SetGlobalHotkeys(const std::vector<HotkeySpec>& hotkeys) {
           next_id,
           RegisteredHotkey{next_id, *vk, win_mods, spec.key_id, modifiers});
       ++next_id;
+    } else {
+      // Reserved by Windows or already registered by another application.
+      rejected.push_back(spec);
     }
   }
 
@@ -488,6 +511,7 @@ void FlutterWindow::SetGlobalHotkeys(const std::vector<HotkeySpec>& hotkeys) {
       hotkey_timer_active_ = true;
     }
   }
+  return rejected;
 }
 
 void FlutterWindow::UnregisterGlobalHotkeys() {

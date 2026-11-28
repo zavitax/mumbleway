@@ -2404,6 +2404,10 @@ class LEn extends L {
       'Work even when MumbleWay is in the background';
 
   @override
+  String get globalHotkeyUnavailable =>
+      'Not working in the background: the system or another app already uses this shortcut';
+
+  @override
   String get globalHotkeyRequiresModifier =>
       'Global hotkeys require a modifier or an F-key';
 }

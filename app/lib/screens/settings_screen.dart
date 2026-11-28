@@ -1147,13 +1147,24 @@ class _ButtonBindingsState extends State<_ButtonBindings> {
           ListTile(
             leading: const Icon(Icons.radio_button_checked),
             title: Text(b.displayName),
-            subtitle:
-                supportsGlobal &&
-                    !ButtonController.isSyntheticMediaKey(b.keyId) &&
-                    !ButtonController.isSafeGlobalKey(
-                      keyId: b.keyId,
-                      modifiers: b.modifiers,
-                    )
+            subtitle: supportsGlobal && state.buttons.isGlobalRejected(b)
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(b.action.label(l)),
+                      Text(
+                        l.globalHotkeyUnavailable,
+                        style: TextStyle(fontSize: 11, color: scheme.error),
+                      ),
+                    ],
+                  )
+                : supportsGlobal &&
+                      !ButtonController.isSyntheticMediaKey(b.keyId) &&
+                      !ButtonController.isSafeGlobalKey(
+                        keyId: b.keyId,
+                        modifiers: b.modifiers,
+                      )
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,

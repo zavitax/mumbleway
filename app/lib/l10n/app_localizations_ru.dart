@@ -2396,6 +2396,10 @@ class LRu extends L {
   String get globalHotkeyTooltip => 'Работает, даже когда MumbleWay в фоне';
 
   @override
+  String get globalHotkeyUnavailable =>
+      'В фоне не работает: это сочетание уже занято системой или другим приложением';
+
+  @override
   String get globalHotkeyRequiresModifier =>
       'Глобальная клавиша требует модификатор или F-клавишу';
 }

@@ -4363,6 +4363,12 @@ abstract class L {
   /// **'Work even when MumbleWay is in the background'**
   String get globalHotkeyTooltip;
 
+  /// No description provided for @globalHotkeyUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Not working in the background: the system or another app already uses this shortcut'**
+  String get globalHotkeyUnavailable;
+
   /// No description provided for @globalHotkeyRequiresModifier.
   ///
   /// In en, this message translates to:

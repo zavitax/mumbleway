@@ -473,13 +473,52 @@ class ButtonController {
   }
 
   Future<void> _syncGlobalHotkeys(List<Map<String, int>> hotkeys) async {
+    Object? reply;
     try {
-      await _channel.invokeMethod<void>('setGlobalHotkeys', {
+      reply = await _channel.invokeMethod<Object?>('setGlobalHotkeys', {
         'hotkeys': hotkeys,
       });
     } catch (_) {
       // Unsupported platforms or test environments without a platform runner.
+      return;
     }
+    // While learning nothing is registered, which is not a refusal: keep
+    // showing what the last real registration said.
+    if (_learner != null && hotkeys.isEmpty) return;
+    final rejected = parseRejectedHotkeys(reply);
+    if (rejected.length == _rejectedGlobal.length &&
+        rejected.containsAll(_rejectedGlobal)) {
+      return;
+    }
+    _rejectedGlobal = rejected;
+    onCaptureChanged?.call();
+  }
+
+  /// Global shortcuts the system refused to register: reserved by the OS or
+  /// already taken by another app. Keyed by `(keyId, modifiers)`.
+  Set<(int, int)> _rejectedGlobal = {};
+
+  /// Whether [b] is set to work globally but the system refused it, so
+  /// Settings can say so instead of showing Global as working.
+  bool isGlobalRejected(ButtonBinding b) =>
+      b.global && _rejectedGlobal.contains((b.keyId, b.modifiers));
+
+  /// Reads the platform's answer to `setGlobalHotkeys`:
+  /// `{'rejected': [{'keyId': int, 'modifiers': int}, ...]}`. Anything else —
+  /// an older runner answering `true`, or nothing — means nothing was refused.
+  @visibleForTesting
+  static Set<(int, int)> parseRejectedHotkeys(Object? reply) {
+    if (reply is! Map) return {};
+    final list = reply['rejected'];
+    if (list is! List) return {};
+    return {
+      for (final e in list)
+        if (e is Map && e['keyId'] is int)
+          (
+            e['keyId'] as int,
+            e['modifiers'] is int ? e['modifiers'] as int : 0,
+          ),
+    };
   }
 
   /// What the platform said when last asked to listen for remote buttons.

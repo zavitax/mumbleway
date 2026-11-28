@@ -1435,5 +1435,6 @@
   "pocketBlockedByPushToTalk": "Unavailable while the microphone mode is push to talk: a button cannot be instant if the microphone is closed until you tap. Choose voice activated or open mic first.",
   "globalHotkey": "Global",
   "globalHotkeyTooltip": "Work even when MumbleWay is in the background",
+  "globalHotkeyUnavailable": "Not working in the background: the system or another app already uses this shortcut",
   "globalHotkeyRequiresModifier": "Global hotkeys require a modifier or an F-key"
 }

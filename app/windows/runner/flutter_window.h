@@ -48,8 +48,11 @@ class FlutterWindow : public Win32Window {
     int modifiers;
   };
 
-  // Registers or replaces system-wide hotkeys for the opted-in bindings.
-  void SetGlobalHotkeys(const std::vector<HotkeySpec>& hotkeys);
+  // Registers or replaces system-wide hotkeys for the opted-in bindings and
+  // returns the ones the system refused (reserved, or taken by another app),
+  // so Settings can say so instead of showing them as working.
+  std::vector<HotkeySpec> SetGlobalHotkeys(
+      const std::vector<HotkeySpec>& hotkeys);
   void UnregisterGlobalHotkeys();
   void InvokeGlobalHotkey(int64_t key_id, int modifiers, bool pressed);
   void PollHotkeyReleases();

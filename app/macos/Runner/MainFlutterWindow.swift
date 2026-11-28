@@ -170,8 +170,12 @@ class MainFlutterWindow: NSWindow {
           }
           specs.append(HotkeySpec(keyId: keyId, modifiers: modifiers))
         }
-        self.setGlobalHotkeys(specs)
-        result(true)
+        let rejected = self.setGlobalHotkeys(specs)
+        result([
+          "rejected": rejected.map {
+            ["keyId": NSNumber(value: $0.keyId), "modifiers": NSNumber(value: $0.modifiers)]
+          }
+        ])
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -268,26 +272,23 @@ class MainFlutterWindow: NSWindow {
     nextHotKeyId = 1
   }
 
-  private func setGlobalHotkeys(_ hotkeys: [HotkeySpec]) {
-    let nextSet = Set(hotkeys)
-    for id in heldHotKeyIds {
-      if let held = registeredHotKeys[id] {
-        let heldSpec = HotkeySpec(keyId: held.keyId, modifiers: held.modifiers)
-        if !nextSet.contains(heldSpec) {
-          invokeGlobalHotkey(
-            keyId: held.keyId,
-            modifiers: held.modifiers,
-            pressed: false)
-        }
-      }
-    }
-    unregisterAllHotKeys(emitHeldReleases: false)
+  /// Replaces the registered set and returns the specs the system refused.
+  ///
+  /// Every held hotkey is released first, including one that stays in the new
+  /// set: its new registration has a new ID, and Carbon does not promise to
+  /// deliver a release to it for a press that began under the old one, so a
+  /// push-to-talk chord held while a binding is edited could otherwise stay
+  /// keyed until restart.
+  @discardableResult
+  private func setGlobalHotkeys(_ hotkeys: [HotkeySpec]) -> [HotkeySpec] {
+    unregisterAllHotKeys(emitHeldReleases: true)
 
     guard !hotkeys.isEmpty else {
       removeHotKeyHandler()
-      return
+      return []
     }
-    guard ensureHotKeyHandlerInstalled() else { return }
+    guard ensureHotKeyHandlerInstalled() else { return hotkeys }
+    var rejected: [HotkeySpec] = []
 
     struct KeyCombo: Hashable {
       let keyCode: UInt32
@@ -299,6 +300,7 @@ class MainFlutterWindow: NSWindow {
       guard Self.isSafeGlobalKey(keyId: spec.keyId, modifiers: spec.modifiers),
         let keyCode = Self.flutterKeyIdToCarbonKeyCode(spec.keyId)
       else {
+        rejected.append(spec)
         continue
       }
       let carbonMods = Self.carbonModifiers(from: spec.modifiers)
@@ -325,12 +327,16 @@ class MainFlutterWindow: NSWindow {
         if nextHotKeyId == 0 {
           nextHotKeyId = 1
         }
+      } else {
+        // Reserved by the system or already registered by another app.
+        rejected.append(spec)
       }
     }
 
     if registeredHotKeys.isEmpty {
       removeHotKeyHandler()
     }
+    return rejected
   }
 
   private func handleCarbonHotKey(id: UInt32, pressed: Bool) {
